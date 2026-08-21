@@ -23,6 +23,8 @@ The WebView/browser owns affect state, input timing, logging, preferences, and S
 
 The browser can import/export the shared settings JSON. It retains desktop-only LSL metadata unchanged, but must clearly disclose that browsers do not publish LSL. Browser-local preferences override `site/settings.json` after the first customized visit.
 
+Document Picture-in-Picture is a browser-only, transient presentation mode. It mirrors the canonical SVG renderer, requires a user gesture, is feature-detected, is never persisted in portable JSON, and cannot be described as a transparent, click-through, globally monitored substitute for the Tauri overlay.
+
 ### Desktop
 
 Rust owns authoritative affect state and durable settings. The `monio` raw-input hook maps global physical events to actions and marker records. A bounded background loop advances smoothed state, emits compact snapshots to both Tauri windows, and supplies the always-on LSL service. The WebView renders snapshots and issues narrow product commands.

@@ -6,6 +6,7 @@
 - Preserve mapping extrema/midpoint, profile normalization, seeded repeatability, finite/closed paths, coordinate input, ring-buffer, CSV, dragging, and sampling tests.
 - Verify the project-path GitHub Pages URL and absence of unexpected runtime requests after deployment.
 - Verify shared settings normalization, desktop-compatible JSON round-trips, opacity/transparency endpoints, imports, exports, and checked-in `site/settings.json` defaults.
+- Verify Document Picture-in-Picture feature detection, checkbox open/close lifecycle, live shape/color/opacity mirroring, origin-page restoration, and the unsupported-browser message in a real browser.
 
 ## Desktop gates
 

@@ -61,6 +61,12 @@ The portable schema stores transparency as `overlay.opacity` (`1` is opaque, `0`
 
 Repository maintainers can replace [`site/settings.json`](./site/settings.json) with an exported version-1 file to change the hosted defaults. Returning browsers retain their own `localStorage` preferences; clear site data or import the JSON to apply new defaults immediately. Settings import/export stays local and never uploads the file.
 
+### Float over other applications from the browser
+
+In browsers that support Document Picture-in-Picture, enable **Float Flubber over other apps** under Customization. The live SVG then moves into a browser-owned always-on-top window and returns to the page when that window closes. The originating page must remain open, the browser controls the floating window position, and configured controls only work while either Affect Tracker window is focused. Unsupported browsers show a disabled checkbox and can use the desktop companion instead.
+
+This is intentionally transient and is not stored in the portable settings JSON. Unlike the Tauri overlay, the browser window is not click-through, does not have an OS-transparent background, cannot monitor global input, and cannot publish LSL.
+
 ## Desktop companion
 
 **Affect Tracker Desktop** uses the bundle identifier `io.github.georgefejer91.affecttracker`. It contains two local windows:

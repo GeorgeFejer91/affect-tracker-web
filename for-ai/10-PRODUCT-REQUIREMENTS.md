@@ -26,6 +26,7 @@ The SVG uses 192 angular samples, 16 projections, deterministic seeded phase/amp
 - Browser-only 10,000-record ring buffer with 20 Hz affect sampling and CSV export.
 - No upload, analytics, account, server, or persistent affect history.
 - Must remain suitable for placing next to or integrating with browser-based study stimuli.
+- In supporting browsers, provide an explicit user-activated Document Picture-in-Picture checkbox that mirrors the live Flubber in an always-on-top browser-owned window. It must close with the originating page and degrade clearly when unsupported.
 
 ## Desktop companion
 
