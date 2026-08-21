@@ -256,9 +256,13 @@ button.is-held {
 .picture-in-picture-toggle:has(input:disabled) { color: rgb(255 255 255 / 42%); cursor: not-allowed; }
 .affect-widget.is-drag-disabled { cursor: default; }
 
-.pip-body { display: grid; place-items: center; width: 100%; height: 100%; margin: 0; overflow: hidden; background: #000; }
-.pip-widget { width: min(92vw, 92vh); height: min(92vw, 92vh); filter: drop-shadow(0 0 1.25rem rgb(255 255 255 / 14%)); }
-.pip-widget svg { display: block; width: 100%; height: 100%; overflow: visible; }
+html:has(.pip-body),
+.pip-body { background: transparent !important; }
+.pip-body { display: grid; place-items: center; width: 100%; height: 100%; margin: 0; overflow: hidden; }
+.pip-widget { width: 100vw; height: 100vh; margin: 0; outline: none !important; filter: none; }
+.pip-widget:focus,
+.pip-widget:focus-visible { outline: none !important; }
+.pip-widget svg { display: block; width: 100%; height: 100%; overflow: hidden; }
 
 .direction-pad {
   display: grid;
