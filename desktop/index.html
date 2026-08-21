@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="color-scheme" content="dark">
+    <meta name="description" content="Configure Affect Tracker Desktop and its local LSL streams.">
+    <title>Affect Tracker Desktop</title>
+    <link rel="stylesheet" href="./styles.css">
+  </head>
+  <body class="settings-body">
+    <main class="settings-shell">
+      <header class="app-header">
+        <div>
+          <p class="eyebrow">Offline companion</p>
+          <h1>Affect Tracker Desktop</h1>
+          <p class="lede">A local, floating valence–arousal tracker with configurable shortcuts and LSL output.</p>
+        </div>
+        <div class="status-stack" aria-label="Runtime status">
+          <span id="engine-status" class="status-pill is-ok">Engine running</span>
+          <span id="lsl-status" class="status-pill">LSL stopped</span>
+        </div>
+      </header>
+
+      <section class="dashboard-card preview-card" aria-labelledby="live-title">
+        <div class="section-heading">
+          <div><p class="eyebrow">Live state</p><h2 id="live-title">Affect preview</h2></div>
+          <div class="coordinates"><output id="valence-output">+0.000</output><span>valence</span><output id="arousal-output">+0.000</output><span>arousal</span></div>
+        </div>
+        <div class="preview-layout">
+          <div class="flubber-preview" aria-label="Current affect visualization">
+            <svg viewBox="-1.62 -1.62 3.24 3.24" aria-hidden="true">
+              <path class="shape-halo"></path><path class="shape-base"></path><path class="shape-outline"></path>
+            </svg>
+          </div>
+          <div>
+            <div class="direction-pad" aria-label="Nudge affect coordinates">
+              <button data-action="increaseArousal" class="up" aria-label="Increase arousal">↑</button>
+              <button data-action="decreaseValence" class="left" aria-label="Decrease valence">←</button>
+              <button id="reset-button" class="neutral" aria-label="Reset to neutral">●</button>
+              <button data-action="increaseValence" class="right" aria-label="Increase valence">→</button>
+              <button data-action="decreaseArousal" class="down" aria-label="Decrease arousal">↓</button>
+            </div>
+            <div class="button-row">
+              <button id="pause-button">Pause motion</button>
+              <button id="overlay-visible-button">Show overlay</button>
+              <button id="overlay-edit-button">Edit overlay position</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <form id="settings-form">
+        <section class="dashboard-card" aria-labelledby="input-title">
+          <div class="section-heading"><div><p class="eyebrow">Controls</p><h2 id="input-title">Input behavior</h2></div></div>
+          <div class="field-grid">
+            <label>Input mode<select id="input-mode"><option value="continuous">Continuous</option><option value="step">Step</option></select></label>
+            <label>Step size<input id="step-size" type="number" min="0.01" max="1" step="0.01"></label>
+            <label>Hold speed / second<input id="continuous-speed" type="number" min="0.05" max="4" step="0.05"></label>
+            <label>Smoothing response<input id="response" type="number" min="0.1" max="30" step="0.1"></label>
+          </div>
+
+          <h3>Global shortcut assignments</h3>
+          <p class="field-help">Use Tauri accelerator syntax such as <code>Control+Alt+Right</code>. Every assignment must be unique.</p>
+          <div id="binding-grid" class="binding-grid"></div>
+        </section>
+
+        <section class="dashboard-card" aria-labelledby="overlay-title">
+          <div class="section-heading"><div><p class="eyebrow">Always on top</p><h2 id="overlay-title">Overlay</h2></div></div>
+          <div class="field-grid">
+            <label>Size (pixels)<input id="overlay-size" type="number" min="120" max="640" step="10"></label>
+            <label>Opacity<input id="overlay-opacity" type="number" min="0.2" max="1" step="0.05"></label>
+          </div>
+          <p class="field-help">Unlock the overlay before dragging it. Lock it again to make it click-through over other applications.</p>
+        </section>
+
+        <section class="dashboard-card" aria-labelledby="lsl-title">
+          <div class="section-heading"><div><p class="eyebrow">Research stream</p><h2 id="lsl-title">Lab Streaming Layer</h2></div></div>
+          <div class="field-grid">
+            <label>State stream name<input id="lsl-stream-name" maxlength="80"></label>
+            <label>Stream type<input id="lsl-stream-type" maxlength="80"></label>
+            <label>Marker stream name<input id="lsl-marker-name" maxlength="80"></label>
+            <label>Sample rate (Hz)<input id="lsl-sample-rate" type="number" min="1" max="240" step="1"></label>
+            <label>Source ID<input id="lsl-source-id" maxlength="120"></label>
+            <label class="checkbox-field"><input id="lsl-start-enabled" type="checkbox"> Start LSL when the app opens</label>
+          </div>
+          <div class="button-row">
+            <button id="lsl-toggle-button" type="button">Start LSL</button>
+          </div>
+          <p class="field-help">LSL stays on the local machine/network. It is not an internet upload or analytics service.</p>
+        </section>
+
+        <div class="save-bar">
+          <span id="dirty-status">Settings loaded</span>
+          <button type="submit" class="primary">Save and apply settings</button>
+        </div>
+      </form>
+
+      <footer>
+        The online and desktop versions share the same SVG affect renderer. Inspired by
+        <span>afourcade/AffectTracker</span>.
+      </footer>
+      <p id="live-region" class="visually-hidden" aria-live="polite"></p>
+    </main>
+    <script type="module" src="./src/settings.js"></script>
+  </body>
+</html>

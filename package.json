@@ -6,9 +6,17 @@
   "description": "A browser-only 2D affect tracker inspired by AffectTracker.",
   "scripts": {
     "test": "node --test",
-    "serve": "python -m http.server 8000 --directory site"
+    "test:web": "node --test",
+    "serve": "python -m http.server 8000 --directory site",
+    "desktop:dev": "vite --config desktop/vite.config.js",
+    "desktop:build": "vite build --config desktop/vite.config.js",
+    "desktop:preview": "vite preview --config desktop/vite.config.js"
   },
   "engines": {
     "node": ">=22"
+  },
+  "devDependencies": {
+    "@tauri-apps/api": "2.8.0",
+    "vite": "7.1.3"
   }
 }
