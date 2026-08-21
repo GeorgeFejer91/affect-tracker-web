@@ -1,8 +1,19 @@
-# Affect Tracker Web
+# Affect Tracker: Web + Desktop
 
-A dependency-free, browser-only 2D affect tracker inspired by [AffectTracker](https://github.com/afourcade/AffectTracker). It maps valence and arousal to the shape, regularity, speed, projection amplitude, color, and saturation of a draggable SVG widget.
+A matched pair of 2D affect trackers inspired by [AffectTracker](https://github.com/afourcade/AffectTracker):
+
+- A dependency-free online application hosted on GitHub Pages for browser studies.
+- An offline Tauri v2/Rust desktop companion with configurable global shortcuts, a click-through always-on-top overlay, and local Lab Streaming Layer output.
+
+Both forms use the same canonical SVG renderer and the same valence/arousal mappings.
 
 Live site: <https://GeorgeFejer91.github.io/affect-tracker-web/>
+
+Desktop source: [`desktop/`](./desktop/) and [`src-tauri/`](./src-tauri/)
+
+## Mandatory project brief for AI agents
+
+Every AI agent must read [`AGENTS.md`](./AGENTS.md) and every file in [`for-ai/`](./for-ai/) before doing anything else in this repository. That directory records the product requirements, web/desktop parity contract, architecture, test gates, and roadmap.
 
 ## Controls
 
@@ -42,6 +53,51 @@ Everything stays inside the current browser tab. Nothing is uploaded, and there 
 
 The widget position, widget size, panel state, and input mode are saved in `localStorage`. Affect values and history are not persisted.
 
+## Desktop companion
+
+**Affect Tracker Desktop** uses the bundle identifier `io.github.georgefejer91.affecttracker`. It contains two local windows:
+
+- A normal settings window for live coordinates, shortcut mappings, input behavior, overlay appearance, and LSL configuration.
+- A transparent overlay that floats above other applications. It is click-through while locked and draggable only in explicit edit mode.
+
+Rust owns authoritative affect coordinates, smoothing, timestamps, settings, native shortcuts, tray lifecycle, and LSL publication. The desktop WebViews contain presentation only and communicate through narrow typed commands. Closing the settings window quits the process and removes the overlay; the tray menu also provides an explicit Quit action.
+
+The safe default bindings use combinations such as `Control+Alt+Right`, avoiding silent capture of ordinary WASD/arrow input in other applications. Users can edit every assignment, and invalid or conflicting shortcuts are rejected.
+
+### Desktop LSL schema
+
+The regular float stream defaults to `AffectTracker` at 50 Hz with these channels:
+
+```text
+current_valence, current_arousal, target_valence, target_arousal,
+radius, angle_degrees, animation_active, input_active
+```
+
+The separate `AffectTrackerMarkers` stream carries irregular semantic markers such as press/release, reset, pause, settings changes, and overlay movement. Both streams remain local to LSL; the application does not upload study data to a web service.
+
+### Build the desktop companion
+
+Install Node.js 22, pnpm 11, stable Rust, the current Tauri v2 prerequisites for your OS, CMake, and a native C/C++ compiler. Then run:
+
+```sh
+pnpm install --frozen-lockfile
+pnpm desktop:build
+cargo test --manifest-path src-tauri/Cargo.toml
+cargo tauri dev
+```
+
+See [`desktop/README.md`](./desktop/README.md) for the LSL feature fallback and qualification requirements. Unsigned development builds are not a substitute for signed/notarized public installers.
+
+### Desktop downloads
+
+Cross-platform packages are published on the [GitHub Releases page](https://github.com/GeorgeFejer91/affect-tracker-web/releases). Each desktop release includes:
+
+- Windows x64 NSIS installer (`.exe`).
+- Linux x64 AppImage and Debian package (`.AppImage` and `.deb`).
+- Universal macOS disk image for Apple Silicon and Intel (`.dmg`).
+
+The initial packages are unsigned. Windows SmartScreen, macOS Gatekeeper, or Linux desktop security tooling may therefore ask the user to confirm that they trust the download.
+
 ## Accessibility
 
 - All controls use semantic HTML and visible keyboard focus states.
@@ -59,12 +115,12 @@ python -m http.server 8000 --directory site
 
 Then open <http://localhost:8000/>. Opening `index.html` directly is not recommended because browser security rules can block ES module imports from `file:` URLs.
 
-## Test
+## Test the web application
 
 The unit suite uses Node.js 22's built-in test runner and has no package dependencies:
 
 ```sh
-npm test
+pnpm test
 ```
 
 It covers the affect mappings, normalized profiles, deterministic offsets, path generation, smoothing, keyboard/wheel movement, widget constraints, ring-buffer rollover, session reset, and CSV escaping.
@@ -72,6 +128,8 @@ It covers the affect mappings, normalized profiles, deterministic offsets, path 
 ## Deployment
 
 Pushes to `main` run the tests and deploy only the contents of `site/` through GitHub Actions and GitHub Pages. In the repository settings, Pages must use **GitHub Actions** as its source.
+
+The separate desktop workflow builds the WebViews and runs Rust formatting, checks, tests, and clippy on Windows, macOS, and Linux. Public installer publication, signing, notarization, and updater configuration remain explicit release steps.
 
 ## Attribution and license
 

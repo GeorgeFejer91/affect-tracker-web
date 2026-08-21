@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-labelledby="title desc">
+  <title id="title">Affect Tracker Desktop icon</title>
+  <desc id="desc">A luminous green and coral affect waveform floating on a dark rounded square.</desc>
+  <defs>
+    <radialGradient id="background" cx="50%" cy="42%" r="72%">
+      <stop offset="0" stop-color="#18241f"/>
+      <stop offset="0.7" stop-color="#070a09"/>
+      <stop offset="1" stop-color="#020303"/>
+    </radialGradient>
+    <linearGradient id="affect" x1="168" y1="180" x2="852" y2="844" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#5dffb0"/>
+      <stop offset="0.48" stop-color="#d9ff67"/>
+      <stop offset="1" stop-color="#ff5b68"/>
+    </linearGradient>
+    <radialGradient id="core" cx="42%" cy="35%" r="70%">
+      <stop offset="0" stop-color="#ecffd8"/>
+      <stop offset="0.6" stop-color="#a9ff82"/>
+      <stop offset="1" stop-color="#42da84"/>
+    </radialGradient>
+  </defs>
+  <rect x="32" y="32" width="960" height="960" rx="224" fill="url(#background)"/>
+  <circle cx="512" cy="512" r="340" fill="none" stroke="#58fba0" stroke-opacity="0.12" stroke-width="86"/>
+  <path
+    d="M512 142
+       C554 206 581 166 622 197
+       C657 223 690 207 713 248
+       C737 290 778 267 790 319
+       C801 365 848 368 831 419
+       C816 463 870 488 840 532
+       C812 573 854 612 813 646
+       C775 677 802 727 750 743
+       C702 758 711 810 655 812
+       C604 813 592 866 540 841
+       C494 819 463 867 422 833
+       C384 802 342 840 316 797
+       C291 757 243 782 228 731
+       C215 685 164 687 175 633
+       C184 584 136 566 164 519
+       C189 477 149 440 187 402
+       C221 368 191 321 239 298
+       C282 278 266 226 320 216
+       C369 207 373 155 425 176
+       C472 194 486 151 512 142 Z"
+    fill="#0a110e"
+    stroke="url(#affect)"
+    stroke-width="54"
+    stroke-linejoin="round"/>
+  <circle cx="512" cy="512" r="134" fill="url(#core)"/>
+  <circle cx="470" cy="466" r="32" fill="#ffffff" fill-opacity="0.72"/>
+</svg>
