@@ -36,7 +36,12 @@ fn build_tray(app: &tauri::App) -> tauri::Result<()> {
         ],
     )?;
 
-    TrayIconBuilder::new()
+    let mut tray = TrayIconBuilder::new();
+    if let Some(icon) = app.default_window_icon() {
+        tray = tray.icon(icon.clone());
+    }
+
+    tray
         .tooltip("Affect Tracker Desktop")
         .menu(&menu)
         .show_menu_on_left_click(true)
