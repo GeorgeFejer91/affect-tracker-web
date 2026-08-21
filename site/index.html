@@ -143,7 +143,13 @@
               <canvas id="web-feature-space-canvas" width="160" height="160" aria-hidden="true"></canvas>
               <span class="space-axis space-up">Up</span><span class="space-axis space-down">Down</span>
               <span class="space-axis space-left">Left</span><span class="space-axis space-right">Right</span>
-              <span id="web-feature-point" class="web-feature-point" aria-hidden="true"></span>
+              <svg id="web-feature-point" class="web-feature-point" viewBox="-1.62 -1.62 3.24 3.24" aria-hidden="true" focusable="false">
+                <path id="web-feature-flubber-path"></path>
+              </svg>
+            </div>
+            <div class="feature-preview-values" aria-live="off">
+              <span>Valence <output id="web-feature-valence-output">+0.000</output></span>
+              <span>Arousal <output id="web-feature-arousal-output">+0.000</output></span>
             </div>
             <div class="web-palette-grid">
               <label>Up <input type="color" data-palette="up"></label>
@@ -151,7 +157,7 @@
               <label>Left <input type="color" data-palette="left"></label>
               <label>Right <input type="color" data-palette="right"></label>
             </div>
-            <p>Click or drag in the map to pick a coordinate. Use the four color controls to preview the complete blended space.</p>
+            <p>Click, drag, or use the arrow keys to move the miniature Flubber through valence and arousal while tuning the four blended colors.</p>
           </details>
 
           <dl class="buffer-status">
@@ -223,7 +229,7 @@
               </span>
             </label>
             <p id="touch-tracking-note">Detected input: <output id="touch-pointer-type">waiting</output>. Laptop touchpads expose the OS-accelerated cursor path, not raw finger contacts.</p>
-            <p>Short fast bursts respond after two measured segments. When movement stops, the last result is held briefly and then returns gradually toward neutral.</p>
+            <p>Repeated short touch/pen strokes beginning within 900 ms share speed evidence, but never join their shapes or count the lifted-finger jump. When movement stops, the last result is held briefly and then returns gradually toward neutral.</p>
 
             <div id="touch-playground-surface" class="touch-playground-surface" aria-label="Live experimental movement-path playground">
               <canvas id="touch-playground-canvas" width="320" height="180" aria-hidden="true"></canvas>
@@ -234,6 +240,21 @@
               <span>Speed <output id="playground-speed-output">still</output></span>
               <span>Confidence <output id="playground-confidence-output">0%</output></span>
             </div>
+
+            <section class="touch-affect-map" aria-labelledby="touch-affect-map-title">
+              <h4 id="touch-affect-map-title">Live movement mapping</h4>
+              <p>The dot shows how the current finger or cursor path is driving the displayed Flubber.</p>
+              <div id="touch-affect-space" class="touch-affect-space" role="img" aria-label="Experimental mapping at neutral valence and neutral arousal">
+                <canvas id="touch-affect-space-canvas" width="160" height="160" aria-hidden="true"></canvas>
+                <span class="space-axis space-up">Fast</span><span class="space-axis space-down">Slow</span>
+                <span class="space-axis space-left">Jagged</span><span class="space-axis space-right">Round</span>
+                <span id="touch-affect-point" class="touch-affect-point" aria-hidden="true"></span>
+              </div>
+              <div class="feature-preview-values" aria-live="off">
+                <span>Valence <output id="touch-affect-valence-output">+0.000</output></span>
+                <span>Arousal <output id="touch-affect-arousal-output">+0.000</output></span>
+              </div>
+            </section>
 
             <label class="picture-in-picture-toggle">
               <input id="touch-trace-feedback-toggle" type="checkbox">

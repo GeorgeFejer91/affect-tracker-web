@@ -1,8 +1,9 @@
 import { clamp, smoothToward } from "./math.js";
 
-export const TOUCH_TRACE_ALGORITHM_VERSION = "touch-trace-v2";
+export const TOUCH_TRACE_ALGORITHM_VERSION = "touch-trace-v3";
 export const TRACE_DURATION_MS = 4_000;
 export const MOTION_TIMEOUT_MS = 400;
+export const STROKE_SPEED_CONTINUITY_MS = 900;
 export const FEEDBACK_HOLD_MS = 1_800;
 export const TARGET_ATTACK_SECONDS = 0.3;
 export const TARGET_RELEASE_SECONDS = 3;
@@ -289,25 +290,41 @@ export class TouchTraceAnalyzer {
     this.targetY = 0;
     this.motionActive = false;
     this.feedbackHeld = false;
+    this.speedContinuityActive = false;
   }
 
-  resetSegment() {
+  resetSegment({ preserveSpeed = false } = {}) {
     this.xFilter.reset();
     this.yFilter.reset();
-    this.speedWindow = [];
-    this.sourceSpeedWindow = [];
+    if (!preserveSpeed) {
+      this.speedWindow = [];
+      this.sourceSpeedWindow = [];
+    }
     this.resampledPoints = [];
     this.previousFiltered = undefined;
     this.previousSource = undefined;
     this.resampleCarry = 0;
     this.shape = computeShapeMetrics([]);
     this.shapeConfidence = 0;
+    this.speedContinuityActive = preserveSpeed;
   }
 
-  beginStroke(pointerType = "unknown") {
+  shouldPreserveSpeed(time) {
+    return Number.isFinite(time)
+      && this.lastPointTime !== undefined
+      && time >= this.lastPointTime
+      && time - this.lastPointTime <= STROKE_SPEED_CONTINUITY_MS
+      && this.sourceSpeedWindow.length > 0;
+  }
+
+  beginStroke(pointerType = "unknown", { preserveSpeed = false } = {}) {
     this.strokeId += 1;
     this.pointerType = pointerType;
-    this.resetSegment();
+    this.resetSegment({ preserveSpeed });
+    // A new stroke never measures the lifted-finger displacement. Clearing
+    // the timestamp also prevents the gap detector from immediately undoing
+    // deliberate short-stroke speed continuity on the first new point.
+    this.lastPointTime = undefined;
   }
 
   resize(width, height) {
@@ -457,6 +474,7 @@ export class TouchTraceAnalyzer {
       shapeConfidence: this.shapeConfidence,
       motionActive: this.motionActive,
       feedbackHeld: this.feedbackHeld,
+      speedContinuityActive: this.speedContinuityActive,
       tracePoints: this.trace,
     };
   }
