@@ -300,7 +300,8 @@ mod tests {
 
     #[test]
     fn github_pages_default_json_deserializes_as_desktop_settings() {
-        let value: Settings = serde_json::from_str(include_str!("../../site/settings.json")).unwrap();
+        let value: Settings =
+            serde_json::from_str(include_str!("../../site/settings.json")).unwrap();
         value.validate().unwrap();
         assert_eq!(value.overlay.size, 240);
         assert_eq!(value.bindings[&Action::IncreaseValence], "key:ArrowRight");
