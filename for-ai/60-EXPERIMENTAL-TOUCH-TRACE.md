@@ -12,7 +12,7 @@ This file is the normative contract for the browser-only movement-feedback proto
 - Outside experiments, native controls/settings are excluded. During a fullscreen experiment the entire experiment layer is the capture surface. Only the primary pointer is analyzed; extra simultaneous pointers are ignored and logged.
 - Selecting touch mode disables Flubber dragging. Keyboard, mouse-button, wheel, and on-screen controls remain observable/logged but do not drive affect.
 - Practice movement may update the display, but raw pointer coordinates are written only while an experiment is actively playing. The browser cannot observe other tabs, browser chrome, background pages, or other applications.
-- Trace feedback defaults off and is stored only in browser local storage. The input source is likewise browser-local and intentionally absent from portable settings version 1.
+- Trace feedback and cursor hiding default off and are stored only in browser local storage. The input source is likewise browser-local and intentionally absent from portable settings version 1. Cursor hiding applies only while this source is active, covers the movement/Flubber/experiment surfaces, and leaves the settings panel cursor visible so participants can reverse it.
 
 ## Acquisition and segmentation
 
@@ -63,7 +63,7 @@ Record types are:
 - `sample`: 20 Hz displayed current and target coordinates.
 - `event`: input/lifecycle, buffering, visibility, resize, fullscreen, abort, and completion markers.
 
-All rows retain session/experiment/stimulus identifiers, ISO and monotonic time, `active_elapsed_ms`, stimulus time, source/mode, and animation/widget state. `active_elapsed_ms` advances only during playback. Buffering pauses metric/sample emission and active time. Finish captures a final metric/sample before completion; abort/fullscreen exit/player failure generates a marked partial CSV.
+All rows retain session/experiment/stimulus identifiers, ISO and monotonic time, `active_elapsed_ms`, stimulus time, source/mode, effective `cursor_hidden`, and animation/widget state. `active_elapsed_ms` advances only during playback. Buffering pauses metric/sample emission and active time. Finish captures a final metric/sample before completion; abort/fullscreen exit/player failure generates a marked partial CSV.
 
 Algorithm identifier: `touch-trace-v3`. Changing formulas, defaults, columns, segmentation, or adaptive behavior requires tests, an algorithm-version decision, and an update to the provenance ledger.
 

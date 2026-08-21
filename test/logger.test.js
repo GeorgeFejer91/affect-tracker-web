@@ -149,6 +149,7 @@ test("extended CSV distinguishes raw, metric, and displayed state", () => {
   assert.match(rows[1], /touch-trace/);
   assert.match(rows[0], /feedback_held/);
   assert.match(rows[0], /speed_continuity_active/);
+  assert.match(rows[0], /cursor_hidden/);
   const fields = rows[0].replace(/^\uFEFF/, "").split(",");
   assert.equal(rows[2].split(",")[fields.indexOf("speed_continuity_active")], "true");
 });

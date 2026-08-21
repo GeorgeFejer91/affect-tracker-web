@@ -230,6 +230,11 @@
             </label>
             <p id="touch-tracking-note">Detected input: <output id="touch-pointer-type">waiting</output>. Laptop touchpads expose the OS-accelerated cursor path, not raw finger contacts.</p>
             <p>Repeated short touch/pen strokes beginning within 900 ms share speed evidence, but never join their shapes or count the lifted-finger jump. When movement stops, the last result is held briefly and then returns gradually toward neutral.</p>
+            <label class="picture-in-picture-toggle">
+              <input id="touch-hide-cursor-toggle" type="checkbox">
+              <span>Hide mouse cursor while tracking</span>
+            </label>
+            <p>The cursor remains visible over settings controls so this option can always be turned off.</p>
 
             <div id="touch-playground-surface" class="touch-playground-surface" aria-label="Live experimental movement-path playground">
               <canvas id="touch-playground-canvas" width="320" height="180" aria-hidden="true"></canvas>
