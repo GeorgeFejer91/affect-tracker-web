@@ -5,6 +5,7 @@
 - Run the Node built-in unit suite.
 - Preserve mapping extrema/midpoint, profile normalization, seeded repeatability, finite/closed paths, coordinate input, ring-buffer, CSV, dragging, and sampling tests.
 - Verify the project-path GitHub Pages URL and absence of unexpected runtime requests after deployment.
+- Verify shared settings normalization, desktop-compatible JSON round-trips, opacity/transparency endpoints, imports, exports, and checked-in `site/settings.json` defaults.
 
 ## Desktop gates
 
@@ -16,6 +17,8 @@
 - At least one real Tauri launch/build smoke test on every supported OS before calling a release cross-platform.
 
 Pure Rust tests cover affect math, direct-coordinate and directional clamping, smoothing, opposite-action cancellation, settings validation/migration, binding collisions, physical token naming, LSL sample schema, marker generation, and lifecycle state. Frontend tests cover the shared renderer, four-anchor color mapping, and typed IPC adapter behavior.
+
+Rust tests must deserialize and validate `site/settings.json`. Any portable settings schema change requires coordinated browser tests, Rust tests, documentation, and an explicit schema-version decision.
 
 ## LSL qualification
 

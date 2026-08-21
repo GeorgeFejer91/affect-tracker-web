@@ -1,17 +1,15 @@
 import { nativeApi } from "./native.js";
 import { createFlubberRenderer } from "./render.js";
 import { affectPaletteColor } from "../../site/src/math.js";
-
-const bindingLabels = {
-  increaseValence: "Increase valence",
-  decreaseValence: "Decrease valence",
-  increaseArousal: "Increase arousal",
-  decreaseArousal: "Decrease arousal",
-  reset: "Reset to neutral",
-  togglePause: "Pause or resume",
-  showSettings: "Show settings",
-  toggleOverlayEditing: "Enable or disable overlay dragging",
-};
+import {
+  BINDING_LABELS,
+  describeBinding,
+  mouseButtonName,
+  opacityToTransparencyPercent,
+  portableSettingsJson,
+  transparencyPercentToOpacity,
+  wheelDirection,
+} from "../../site/src/portable-settings.js";
 
 const elements = {
   form: document.querySelector("#settings-form"),
@@ -27,6 +25,11 @@ const elements = {
   featureMap: document.querySelector("#feature-space-map"),
   featureCanvas: document.querySelector("#feature-space-canvas"),
   featurePoint: document.querySelector("#feature-space-point"),
+  transparency: document.querySelector("#overlay-transparency"),
+  transparencyOutput: document.querySelector("#overlay-transparency-output"),
+  importFile: document.querySelector("#settings-import-file"),
+  importButton: document.querySelector("#settings-import-button"),
+  exportButton: document.querySelector("#settings-export-button"),
 };
 
 const renderFlubber = createFlubberRenderer(document.querySelector(".flubber-preview"));
@@ -35,16 +38,6 @@ let settings;
 let latestSnapshot;
 let captureInput;
 let featurePointerId;
-
-const mouseBindings = ["Left", "Middle", "Right", "Button4", "Button5"];
-
-function describeBinding(value) {
-  const [kind, control = ""] = value.split(":");
-  if (kind === "key") return `Keyboard · ${control.replace(/^Key/, "")}`;
-  if (kind === "mouse") return `Mouse · ${control}`;
-  if (kind === "wheel") return `Scroll · ${control}`;
-  return value;
-}
 
 function finishCapture(value) {
   if (!captureInput) return;
@@ -112,7 +105,8 @@ function formatCoordinate(value) {
 function renderSnapshot(snapshot) {
   latestSnapshot = snapshot;
   const palette = settings ? readPalette() : snapshot.palette;
-  renderFlubber({ ...snapshot, palette }, reducedMotion.matches);
+  const overlayOpacity = settings ? transparencyPercentToOpacity(elements.transparency.value) : snapshot.overlayOpacity;
+  renderFlubber({ ...snapshot, palette, overlayOpacity }, reducedMotion.matches);
   updateFeatureSpace(snapshot, palette);
   elements.valence.textContent = formatCoordinate(snapshot.currentX);
   elements.arousal.textContent = formatCoordinate(snapshot.currentY);
@@ -126,7 +120,7 @@ function renderSnapshot(snapshot) {
 
 function createBindingInputs(bindings) {
   elements.bindingGrid.replaceChildren();
-  for (const [action, label] of Object.entries(bindingLabels)) {
+  for (const [action, label] of Object.entries(BINDING_LABELS)) {
     const wrapper = document.createElement("label");
     wrapper.textContent = label;
     const input = document.createElement("input");
@@ -148,7 +142,8 @@ function fillForm(value) {
   document.querySelector("#continuous-speed").value = value.continuousSpeed;
   document.querySelector("#response").value = value.response;
   document.querySelector("#overlay-size").value = value.overlay.size;
-  document.querySelector("#overlay-opacity").value = value.overlay.opacity;
+  elements.transparency.value = opacityToTransparencyPercent(value.overlay.opacity);
+  elements.transparencyOutput.value = `${elements.transparency.value}%`;
   document.querySelector("#lsl-stream-name").value = value.lsl.streamName;
   document.querySelector("#lsl-stream-type").value = value.lsl.streamType;
   document.querySelector("#lsl-marker-name").value = value.lsl.markerName;
@@ -159,11 +154,11 @@ function fillForm(value) {
   elements.dirtyStatus.textContent = "Settings loaded";
 }
 
-function readForm() {
+function readForm(currentSettings = settings) {
   const bindings = {};
   for (const input of document.querySelectorAll("[data-binding]")) bindings[input.dataset.binding] = input.dataset.bindingValue;
   return {
-    ...settings,
+    ...currentSettings,
     inputMode: document.querySelector("#input-mode").value,
     stepSize: Number(document.querySelector("#step-size").value),
     continuousSpeed: Number(document.querySelector("#continuous-speed").value),
@@ -171,9 +166,9 @@ function readForm() {
     bindings,
     palette: readPalette(),
     overlay: {
-      ...settings.overlay,
+      ...currentSettings.overlay,
       size: Number(document.querySelector("#overlay-size").value),
-      opacity: Number(document.querySelector("#overlay-opacity").value),
+      opacity: transparencyPercentToOpacity(elements.transparency.value),
     },
     lsl: {
       streamName: document.querySelector("#lsl-stream-name").value.trim(),
@@ -183,6 +178,33 @@ function readForm() {
       sourceId: document.querySelector("#lsl-source-id").value.trim(),
     },
   };
+}
+
+async function saveForm() {
+  const currentSettings = await nativeApi.getSettings();
+  return nativeApi.saveSettings(readForm(currentSettings));
+}
+
+function downloadSettings(value) {
+  const blob = new Blob([portableSettingsJson(value)], { type: "application/json;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = "affect-tracker-settings-v1.json";
+  document.body.append(anchor);
+  anchor.click();
+  anchor.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
+async function importSettingsFile(file) {
+  if (!file) return;
+  if (file.size > 256 * 1024) throw new Error("Settings JSON must be smaller than 256 KB.");
+  const parsed = JSON.parse(await file.text());
+  const saved = await nativeApi.saveSettings(parsed);
+  fillForm(saved);
+  if (latestSnapshot) renderSnapshot(latestSnapshot);
+  announce("Settings JSON imported, validated, and applied.");
 }
 
 async function invokeWithFeedback(operation, successMessage) {
@@ -205,6 +227,10 @@ async function initialize() {
   await nativeApi.onSnapshot(renderSnapshot);
 
   elements.form.addEventListener("input", () => { elements.dirtyStatus.textContent = "Unsaved changes"; });
+  elements.transparency.addEventListener("input", () => {
+    elements.transparencyOutput.value = `${elements.transparency.value}%`;
+    if (latestSnapshot) renderSnapshot(latestSnapshot);
+  });
   for (const input of document.querySelectorAll("input[type='color']")) {
     input.addEventListener("input", () => {
       if (latestSnapshot) renderSnapshot(latestSnapshot);
@@ -212,7 +238,7 @@ async function initialize() {
   }
   elements.form.addEventListener("submit", async (event) => {
     event.preventDefault();
-    const saved = await invokeWithFeedback(() => nativeApi.saveSettings(readForm()), "Settings saved and applied.");
+    const saved = await invokeWithFeedback(saveForm, "Settings saved and applied.");
     fillForm(saved);
   });
 
@@ -223,6 +249,22 @@ async function initialize() {
   elements.pause.addEventListener("click", () => invokeWithFeedback(nativeApi.togglePause));
   elements.overlayVisible.addEventListener("click", () => invokeWithFeedback(() => nativeApi.setOverlayVisible(!latestSnapshot.overlayVisible)));
   elements.overlayEdit.addEventListener("click", () => invokeWithFeedback(() => nativeApi.setOverlayEditing(!latestSnapshot.overlayEditing)));
+  elements.exportButton.addEventListener("click", async () => {
+    const saved = await invokeWithFeedback(saveForm, "Settings saved and exported.");
+    fillForm(saved);
+    downloadSettings(saved);
+  });
+  elements.importButton.addEventListener("click", () => elements.importFile.click());
+  elements.importFile.addEventListener("change", async () => {
+    try {
+      await importSettingsFile(elements.importFile.files?.[0]);
+    } catch (error) {
+      announce(error?.message ?? String(error));
+      elements.dirtyStatus.textContent = error?.message ?? String(error);
+    } finally {
+      elements.importFile.value = "";
+    }
+  });
   elements.featureMap.addEventListener("pointerdown", (event) => {
     featurePointerId = event.pointerId;
     elements.featureMap.setPointerCapture(event.pointerId);
@@ -255,15 +297,14 @@ document.addEventListener("mousedown", (event) => {
   if (!captureInput) return;
   event.preventDefault();
   event.stopImmediatePropagation();
-  finishCapture(`mouse:${mouseBindings[event.button] ?? `Button${event.button + 1}`}`);
+  finishCapture(`mouse:${mouseButtonName(event.button)}`);
 }, true);
 
 document.addEventListener("wheel", (event) => {
   if (!captureInput) return;
   event.preventDefault();
   event.stopImmediatePropagation();
-  const horizontal = Math.abs(event.deltaX) > Math.abs(event.deltaY);
-  finishCapture(`wheel:${horizontal ? (event.deltaX < 0 ? "Left" : "Right") : (event.deltaY < 0 ? "Up" : "Down")}`);
+  finishCapture(`wheel:${wheelDirection(event.deltaX, event.deltaY)}`);
 }, { capture: true, passive: false });
 
 document.addEventListener("contextmenu", (event) => {

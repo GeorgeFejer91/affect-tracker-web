@@ -15,7 +15,7 @@
         class="affect-widget"
         role="img"
         tabindex="0"
-        aria-label="Draggable affect shape. Use arrow keys or WASD to adjust valence and arousal."
+        aria-label="Draggable affect shape. Use the configured controls to adjust valence and arousal."
       >
         <svg viewBox="-1.62 -1.62 3.24 3.24" aria-hidden="true" focusable="false">
           <defs>
@@ -59,6 +59,44 @@
             <label><input type="radio" name="input-mode" value="step"> Step</label>
           </fieldset>
 
+          <details id="customization-editor" class="customization-editor">
+            <summary>Customization and settings JSON</summary>
+            <div class="web-settings-grid">
+              <label>Step size<input id="web-step-size" type="number" min="0.01" max="1" step="0.01"></label>
+              <label>Hold speed / second<input id="web-continuous-speed" type="number" min="0.05" max="4" step="0.05"></label>
+              <label>Smoothing response<input id="web-response" type="number" min="0.1" max="30" step="0.1"></label>
+              <label>Flubber size (px)<input id="web-widget-size" type="number" min="120" max="640" step="10"></label>
+              <label class="wide-field">Flubber transparency
+                <span class="web-range-field"><input id="web-transparency" type="range" min="0" max="100" step="1"><output id="web-transparency-output">5%</output></span>
+              </label>
+            </div>
+            <div class="settings-button-row">
+              <button id="widget-visible-button" type="button">Hide flubber</button>
+              <button id="drag-toggle-button" type="button">Disable dragging</button>
+            </div>
+
+            <h3>Keyboard, mouse, and wheel assignments</h3>
+            <p>Click a field and then press, click, or scroll. Browser assignments work while this page is focused.</p>
+            <div id="web-binding-grid" class="web-binding-grid"></div>
+
+            <h3>Desktop LSL metadata</h3>
+            <p>Browsers cannot publish LSL. These values remain in the portable JSON and take effect when imported by the desktop app.</p>
+            <div class="web-settings-grid">
+              <label>State stream<input id="web-lsl-stream-name" maxlength="80"></label>
+              <label>Stream type<input id="web-lsl-stream-type" maxlength="80"></label>
+              <label>Marker stream<input id="web-lsl-marker-name" maxlength="80"></label>
+              <label>Sample rate<input id="web-lsl-sample-rate" type="number" min="1" max="240" step="1"></label>
+              <label class="wide-field">Source ID<input id="web-lsl-source-id" maxlength="120"></label>
+            </div>
+
+            <div class="settings-button-row">
+              <input id="settings-import-file" class="visually-hidden" type="file" accept="application/json,.json">
+              <button id="settings-import-button" type="button">Import settings JSON</button>
+              <button id="settings-export-button" type="button">Export settings JSON</button>
+            </div>
+            <p>The same version-1 JSON is accepted by Affect Tracker Desktop. Replacing <code>site/settings.json</code> in the repository changes the hosted defaults for new browser profiles.</p>
+          </details>
+
           <div class="direction-pad" aria-label="Directional affect controls">
             <button class="direction-button up" type="button" data-direction="up" aria-label="Increase arousal">↑</button>
             <button class="direction-button left" type="button" data-direction="left" aria-label="Decrease valence">←</button>
@@ -98,8 +136,8 @@
 
           <details class="help">
             <summary>Controls and privacy</summary>
-            <p><kbd>←</kbd><kbd>→</kbd> or <kbd>A</kbd><kbd>D</kbd> change valence. <kbd>↑</kbd><kbd>↓</kbd> or <kbd>W</kbd><kbd>S</kbd> change arousal.</p>
-            <p>Wheel changes arousal; hold <kbd>Shift</kbd> while scrolling to change valence. <kbd>Space</kbd> pauses motion and <kbd>R</kbd> returns to neutral.</p>
+            <p>The arrow keys control valence and arousal by default. Every key, mouse button, and wheel direction can be reassigned under Customization.</p>
+            <p>Unassigned wheel gestures retain the browser fallback: wheel changes arousal and <kbd>Shift</kbd> + wheel changes valence.</p>
             <p>Records remain in this tab only. Download the CSV before closing or refreshing.</p>
           </details>
 

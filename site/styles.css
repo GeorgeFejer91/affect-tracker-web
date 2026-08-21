@@ -235,6 +235,24 @@ button.is-held {
   font-size: 0.82rem;
 }
 
+.customization-editor { margin-bottom: 0.75rem; padding: 0.6rem; border: 1px solid rgb(255 255 255 / 10%); border-radius: 0.55rem; }
+.customization-editor summary { cursor: pointer; color: #eee; font-size: 0.78rem; }
+.customization-editor h3 { margin: 0.85rem 0 0.25rem; font-size: 0.75rem; }
+.customization-editor p { margin: 0.3rem 0 0.65rem; color: rgb(255 255 255 / 58%); font-size: 0.67rem; line-height: 1.4; }
+.web-settings-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; margin-top: 0.65rem; }
+.web-settings-grid label, .web-binding-grid label { display: grid; gap: 0.25rem; color: rgb(255 255 255 / 62%); font-size: 0.65rem; }
+.web-settings-grid input, .web-binding-grid input { width: 100%; min-height: 2rem; padding: 0.3rem 0.4rem; border: 1px solid rgb(255 255 255 / 18%); border-radius: 0.4rem; background: #15181b; color: #fff; }
+.web-settings-grid .wide-field { grid-column: 1 / -1; }
+.web-range-field { display: grid; grid-template-columns: 1fr 2.8rem; align-items: center; gap: 0.45rem; }
+.web-range-field input { padding: 0; }
+.web-range-field output { font: 0.7rem ui-monospace, SFMono-Regular, Consolas, monospace; text-align: right; }
+.web-binding-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.45rem; }
+.web-binding-grid input { cursor: pointer; font-size: 0.63rem; }
+.web-binding-grid input.is-capturing { border-color: #74d8ff; background: #123345; color: #bdefff; }
+.settings-button-row { display: grid; grid-template-columns: 1fr 1fr; gap: 0.45rem; margin-top: 0.65rem; }
+.settings-button-row button { min-height: 2.15rem; padding: 0.4rem; font-size: 0.7rem; }
+.affect-widget.is-drag-disabled { cursor: default; }
+
 .direction-pad {
   display: grid;
   grid-template-areas:
