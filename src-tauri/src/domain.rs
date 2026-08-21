@@ -129,6 +129,19 @@ pub struct AffectSnapshot {
     pub lsl_message: String,
 }
 
+pub(crate) struct SnapshotContext<'a> {
+    pub overlay_visible: bool,
+    pub overlay_editing: bool,
+    pub overlay_opacity: f32,
+    pub overlay_size: u32,
+    pub animation_speed: f32,
+    pub amplitude_scale: f32,
+    pub disorder_scale: f32,
+    pub palette: AffectPalette,
+    pub lsl_state: &'a str,
+    pub lsl_message: &'a str,
+}
+
 #[derive(Debug)]
 pub struct AffectEngine {
     current_x: f32,
@@ -262,25 +275,14 @@ impl AffectEngine {
 
         if self.animation_active {
             let frequency = 1.5 + self.current_y;
-            self.phase = (self.phase + dt * std::f32::consts::TAU * frequency * self.animation_speed)
+            self.phase = (self.phase
+                + dt * std::f32::consts::TAU * frequency * self.animation_speed)
                 .rem_euclid(std::f32::consts::TAU);
         }
         self.sequence = self.sequence.wrapping_add(1);
     }
 
-    pub fn snapshot(
-        &self,
-        overlay_visible: bool,
-        overlay_editing: bool,
-        overlay_opacity: f32,
-        overlay_size: u32,
-        animation_speed: f32,
-        amplitude_scale: f32,
-        disorder_scale: f32,
-        palette: AffectPalette,
-        lsl_state: &str,
-        lsl_message: &str,
-    ) -> AffectSnapshot {
+    pub(crate) fn snapshot(&self, context: SnapshotContext<'_>) -> AffectSnapshot {
         let radius = self.current_x.hypot(self.current_y).min(1.0);
         let angle_degrees = if self.current_x.abs() < 0.005 && self.current_y.abs() < 0.005 {
             0.0
@@ -301,16 +303,16 @@ impl AffectEngine {
             input_active: !self.held.is_empty(),
             radius,
             angle_degrees,
-            overlay_visible,
-            overlay_editing,
-            overlay_opacity,
-            overlay_size,
-            animation_speed,
-            amplitude_scale,
-            disorder_scale,
-            palette,
-            lsl_state: lsl_state.to_owned(),
-            lsl_message: lsl_message.to_owned(),
+            overlay_visible: context.overlay_visible,
+            overlay_editing: context.overlay_editing,
+            overlay_opacity: context.overlay_opacity,
+            overlay_size: context.overlay_size,
+            animation_speed: context.animation_speed,
+            amplitude_scale: context.amplitude_scale,
+            disorder_scale: context.disorder_scale,
+            palette: context.palette,
+            lsl_state: context.lsl_state.to_owned(),
+            lsl_message: context.lsl_message.to_owned(),
         }
     }
 }

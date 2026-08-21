@@ -355,10 +355,9 @@ mod tests {
     #[test]
     fn advanced_bindings_are_optional_and_conflict_with_core_bindings() {
         let mut value = Settings::default();
-        value.advanced_bindings.insert(
-            FeatureAction::IncreaseTransparency,
-            "mouse:button4".into(),
-        );
+        value
+            .advanced_bindings
+            .insert(FeatureAction::IncreaseTransparency, "mouse:button4".into());
         value.validate().unwrap();
         value.advanced_bindings.insert(
             FeatureAction::IncreaseSize,
