@@ -31,7 +31,7 @@
   "bundle": {
     "active": true,
     "targets": "all",
-    "category": "Science",
+    "category": "HealthcareAndFitness",
     "shortDescription": "Floating valence-arousal tracker with local LSL streaming",
     "longDescription": "A cross-platform offline affect tracker that mirrors the GitHub Pages application and publishes local Lab Streaming Layer streams.",
     "copyright": "Copyright 2026 George Fejer",
