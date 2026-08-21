@@ -15,6 +15,17 @@ import {
   normalizeWheel,
 } from "./input.js";
 import { AffectLogger } from "./logger.js";
+import {
+  computeExperimentLayout,
+  DEFAULT_EXPERIMENT_CONFIG,
+  DEMO_START_SECONDS,
+  DEMO_VIDEO_ID,
+  DEMO_VIDEO_URL,
+  EXPERIMENT_SAMPLE_INTERVAL_MS,
+  experimentBufferCapacity,
+  experimentFilename,
+  normalizeExperimentConfig,
+} from "./experiment.js";
 import { pictureInPictureOptions, pictureInPictureSupported } from "./picture-in-picture.js";
 import {
   actionForBinding,
@@ -45,6 +56,9 @@ const elements = {
   panelToggle: document.querySelector("#panel-toggle"),
   panelContent: document.querySelector("#panel-content"),
   toggleSymbol: document.querySelector(".toggle-symbol"),
+  experimentPanel: document.querySelector("#experiment-panel"),
+  experimentPanelToggle: document.querySelector("#experiment-panel-toggle"),
+  experimentToggleSymbol: document.querySelector("#experiment-toggle-symbol"),
   valenceOutput: document.querySelector("#valence-output"),
   arousalOutput: document.querySelector("#arousal-output"),
   modeInputs: [...document.querySelectorAll("input[name='input-mode']")],
@@ -85,6 +99,17 @@ const elements = {
   lslSourceId: document.querySelector("#web-lsl-source-id"),
   pictureInPictureToggle: document.querySelector("#picture-in-picture-toggle"),
   pictureInPictureNote: document.querySelector("#picture-in-picture-note"),
+  experimentStartButton: document.querySelector("#experiment-start-button"),
+  experimentSource: document.querySelector("#experiment-source"),
+  experimentYoutubeUrl: document.querySelector("#experiment-youtube-url"),
+  experimentStartSeconds: document.querySelector("#experiment-start-seconds"),
+  experimentEndSeconds: document.querySelector("#experiment-end-seconds"),
+  experimentSourceNote: document.querySelector("#experiment-source-note"),
+  experimentLayer: document.querySelector("#experiment-layer"),
+  experimentCountdown: document.querySelector("#experiment-countdown"),
+  experimentPlayerShell: document.querySelector("#experiment-player-shell"),
+  experimentVideo: document.querySelector("#experiment-video"),
+  youtubePlayer: document.querySelector("#youtube-player"),
 };
 
 async function loadBundledSettings() {
@@ -118,6 +143,7 @@ function readPreferences(bundledSettings) {
       widgetX: Number.isFinite(parsed.widgetX) ? parsed.widgetX : settings.overlay.x + settings.overlay.size / 2,
       widgetY: Number.isFinite(parsed.widgetY) ? parsed.widgetY : settings.overlay.y + settings.overlay.size / 2,
       panelOpen: typeof parsed.panelOpen === "boolean" ? parsed.panelOpen : !parsed.seenIntro,
+      experimentPanelOpen: typeof parsed.experimentPanelOpen === "boolean" ? parsed.experimentPanelOpen : false,
       settings,
       seenIntro: true,
     };
@@ -126,6 +152,7 @@ function readPreferences(bundledSettings) {
       widgetX: bundledSettings.overlay.x + bundledSettings.overlay.size / 2,
       widgetY: bundledSettings.overlay.y + bundledSettings.overlay.size / 2,
       panelOpen: true,
+      experimentPanelOpen: false,
       settings: structuredClone(bundledSettings),
       seenIntro: true,
     };
@@ -154,14 +181,40 @@ const state = {
   widgetVisible: preferences.settings.overlay.visible,
   widgetDragEnabled: true,
   panelOpen: preferences.panelOpen,
+  experimentPanelOpen: preferences.experimentPanelOpen,
   palette: preferences.settings.palette,
   lsl: preferences.settings.lsl,
   heldDirections: new Set(),
   phase: 0,
   dragging: false,
 };
+if (state.panelOpen && state.experimentPanelOpen) state.experimentPanelOpen = false;
 
-const logger = new AffectLogger();
+const experiment = {
+  phase: "idle",
+  id: "",
+  adapter: undefined,
+  config: { ...DEFAULT_EXPERIMENT_CONFIG },
+  sampleTimer: undefined,
+  restore: undefined,
+  videoTimeSeconds: "",
+};
+
+function experimentRecordContext() {
+  if (experiment.phase !== "running" && experiment.phase !== "finishing") return {};
+  let videoTime = experiment.videoTimeSeconds;
+  try {
+    const current = experiment.adapter?.currentTime?.();
+    if (Number.isFinite(current)) videoTime = Math.round(current * 1000) / 1000;
+  } catch { /* the media adapter may be resetting */ }
+  return {
+    experimentId: experiment.id,
+    stimulusId: experiment.adapter?.stimulusId ?? DEMO_VIDEO_ID,
+    stimulusTimeSeconds: videoTime,
+  };
+}
+
+const logger = new AffectLogger({ context: experimentRecordContext });
 const profiles = createProfiles();
 let offsets = createProjectionOffsets(logger.sessionId, profiles.waveCount);
 let previousTimestamp;
@@ -177,11 +230,19 @@ let animationFrameId;
 const reducedMotionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
 
 function savePreferences() {
+  const savedX = experiment.restore?.widgetX ?? state.widgetX;
+  const savedY = experiment.restore?.widgetY ?? state.widgetY;
+  const settings = settingsFromState();
+  if (experiment.restore) {
+    settings.overlay.x = Math.round(savedX - state.widgetSize / 2);
+    settings.overlay.y = Math.round(savedY - state.widgetSize / 2);
+  }
   localStorage.setItem(STORAGE_KEY, JSON.stringify({
-    widgetX: state.widgetX,
-    widgetY: state.widgetY,
+    widgetX: savedX,
+    widgetY: savedY,
     panelOpen: state.panelOpen,
-    settings: settingsFromState(),
+    experimentPanelOpen: state.experimentPanelOpen,
+    settings,
     seenIntro: true,
   }));
 }
@@ -235,6 +296,12 @@ function updatePanelState() {
   elements.panel.classList.toggle("is-collapsed", !state.panelOpen);
   elements.panelToggle.setAttribute("aria-expanded", String(state.panelOpen));
   elements.toggleSymbol.textContent = state.panelOpen ? "−" : "+";
+}
+
+function updateExperimentPanelState() {
+  elements.experimentPanel.classList.toggle("is-collapsed", !state.experimentPanelOpen);
+  elements.experimentPanelToggle.setAttribute("aria-expanded", String(state.experimentPanelOpen));
+  elements.experimentToggleSymbol.textContent = state.experimentPanelOpen ? "−" : "+";
 }
 
 function updateModeControls() {
@@ -414,7 +481,22 @@ function chooseFeatureCoordinate(event) {
   state.targetY = clamp(1 - ((event.clientY - bounds.top) / bounds.height) * 2, -1, 1);
 }
 
+function layoutExperiment() {
+  if (experiment.phase === "idle") return;
+  const layout = computeExperimentLayout(window.innerWidth, window.innerHeight, state.widgetSize);
+  const { left, top, width, height } = layout.videoRect;
+  Object.assign(elements.experimentPlayerShell.style, {
+    left: `${left}px`,
+    top: `${top}px`,
+    width: `${width}px`,
+    height: `${height}px`,
+  });
+  state.widgetX = layout.widget.x;
+  state.widgetY = layout.widget.y;
+}
+
 function constrainAndRenderWidget() {
+  layoutExperiment();
   const constrained = constrainWidgetPosition(
     state.widgetX,
     state.widgetY,
@@ -761,19 +843,369 @@ function finishWidgetDrag(event) {
   recordEvent("pointer", "drag-complete", "widget", `${Math.round(state.widgetX)}:${Math.round(state.widgetY)}`);
 }
 
-function exportLog() {
-  recordEvent("panel", "export", "csv", logger.buffer.length);
+function downloadLog(filename) {
   const blob = new Blob([logger.exportCsv()], { type: "text/csv;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
-  const timestamp = new Date().toISOString().replaceAll(":", "-").replace(/\.\d{3}Z$/, "Z");
   anchor.href = url;
-  anchor.download = `affect-tracker-${logger.sessionId}-${timestamp}.csv`;
+  anchor.download = filename;
   document.body.append(anchor);
   anchor.click();
   anchor.remove();
   setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
+function exportLog() {
+  recordEvent("panel", "export", "csv", logger.buffer.length);
+  const timestamp = new Date().toISOString().replaceAll(":", "-").replace(/\.\d{3}Z$/, "Z");
+  downloadLog(`affect-tracker-${logger.sessionId}-${timestamp}.csv`);
   announce(`CSV exported with ${logger.buffer.length.toLocaleString()} records.`);
+}
+
+function wait(milliseconds) {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
+let youtubeApiPromise;
+
+function loadYouTubeApi() {
+  if (window.YT?.Player) return Promise.resolve(window.YT);
+  if (youtubeApiPromise) return youtubeApiPromise;
+  youtubeApiPromise = new Promise((resolve, reject) => {
+    const previousReady = window.onYouTubeIframeAPIReady;
+    window.onYouTubeIframeAPIReady = () => {
+      previousReady?.();
+      resolve(window.YT);
+    };
+    const script = document.createElement("script");
+    script.src = "https://www.youtube.com/iframe_api";
+    script.onerror = () => reject(new Error("The YouTube player API could not be loaded."));
+    document.head.append(script);
+  });
+  return youtubeApiPromise;
+}
+
+function createLocalExperimentAdapter() {
+  const video = elements.experimentVideo;
+  elements.youtubePlayer.hidden = true;
+  video.hidden = false;
+  video.onended = () => finishExperiment("video-ended");
+  video.onpause = () => {
+    if (experiment.phase === "running") video.play().catch(() => {});
+  };
+  video.onplaying = () => {
+    if (experiment.phase === "running") recordEvent("local-video", "state-change", "player", "playing");
+  };
+  video.onwaiting = () => {
+    if (experiment.phase === "running") recordEvent("local-video", "state-change", "player", "buffering");
+  };
+  return {
+    stimulusId: "dictator-3-study.mp4",
+    source: "local-video",
+    async prepare() {
+      video.controls = false;
+      video.muted = true;
+      video.currentTime = 0;
+      if (!video.getAttribute("src")) video.src = DEMO_VIDEO_URL;
+      await video.play();
+    },
+    async start() {
+      video.currentTime = 0;
+      video.muted = false;
+      if (video.paused) await video.play();
+    },
+    stop() {
+      video.pause();
+      video.currentTime = 0;
+      video.muted = true;
+    },
+    currentTime: () => DEMO_START_SECONDS + video.currentTime,
+    duration: () => DEMO_START_SECONDS + video.duration,
+  };
+}
+
+function createYouTubeExperimentAdapter(config) {
+  let player;
+  let resolvePlaying;
+  let rejectPlaying;
+  elements.experimentVideo.hidden = true;
+  elements.youtubePlayer.hidden = false;
+  elements.youtubePlayer.replaceChildren();
+  const waitForPlaying = () => new Promise((resolve, reject) => {
+    resolvePlaying = resolve;
+    rejectPlaying = reject;
+  });
+  return {
+    stimulusId: config.videoId,
+    source: "youtube",
+    async prepare() {
+      await loadYouTubeApi();
+      const playing = waitForPlaying();
+      if (!player) {
+        const mount = document.createElement("div");
+        mount.id = `youtube-player-${Date.now()}`;
+        elements.youtubePlayer.append(mount);
+        player = new window.YT.Player(mount, {
+          videoId: config.videoId,
+          host: "https://www.youtube.com",
+          playerVars: {
+            autoplay: 1,
+            controls: 0,
+            disablekb: 1,
+            fs: 0,
+            iv_load_policy: 3,
+            playsinline: 1,
+            rel: 0,
+            start: config.startSeconds,
+            end: config.endSeconds,
+            mute: 1,
+            origin: window.location.origin,
+          },
+          events: {
+            onReady: (event) => {
+              const iframe = event.target.getIframe();
+              iframe.tabIndex = -1;
+              iframe.setAttribute("aria-hidden", "true");
+              iframe.setAttribute("allow", "autoplay; encrypted-media");
+              iframe.setAttribute("referrerpolicy", "strict-origin-when-cross-origin");
+              event.target.mute();
+              event.target.playVideo();
+            },
+            onStateChange: (event) => {
+              if (event.data === window.YT.PlayerState.PLAYING) resolvePlaying?.();
+              if (experiment.phase !== "running") return;
+              const stateName = {
+                [window.YT.PlayerState.ENDED]: "ended",
+                [window.YT.PlayerState.PLAYING]: "playing",
+                [window.YT.PlayerState.PAUSED]: "paused",
+                [window.YT.PlayerState.BUFFERING]: "buffering",
+                [window.YT.PlayerState.CUED]: "cued",
+              }[event.data] ?? String(event.data);
+              recordEvent("youtube", "state-change", "player", stateName);
+              if (event.data === window.YT.PlayerState.ENDED) finishExperiment("video-ended");
+              else if (event.data === window.YT.PlayerState.PAUSED) event.target.playVideo();
+            },
+            onAutoplayBlocked: () => rejectPlaying?.(new DOMException("Playback requires another click.", "NotAllowedError")),
+            onError: (event) => {
+              const message = [101, 150].includes(event.data)
+                ? "This YouTube video does not permit embedded playback. Enable embedding or choose another video."
+                : `YouTube could not play the stimulus (error ${event.data}).`;
+              rejectPlaying?.(new Error(message));
+            },
+          },
+        });
+      } else {
+        player.mute();
+        player.playVideo();
+      }
+      await playing;
+    },
+    async start() {
+      const playing = waitForPlaying();
+      player.loadVideoById({
+        videoId: config.videoId,
+        startSeconds: config.startSeconds,
+        endSeconds: config.endSeconds,
+      });
+      player.unMute();
+      await playing;
+    },
+    stop() {
+      player?.destroy?.();
+      player = undefined;
+      elements.youtubePlayer.replaceChildren();
+    },
+    currentTime: () => player?.getCurrentTime?.() ?? config.startSeconds,
+    duration: () => config.endSeconds,
+  };
+}
+
+function readExperimentConfig() {
+  return normalizeExperimentConfig({
+    source: elements.experimentSource.value,
+    youtubeUrl: elements.experimentYoutubeUrl.value,
+    startSeconds: elements.experimentStartSeconds.value,
+    endSeconds: elements.experimentEndSeconds.value,
+  });
+}
+
+function updateExperimentSourceControls() {
+  const youtube = elements.experimentSource.value === "youtube";
+  for (const element of [elements.experimentYoutubeUrl, elements.experimentStartSeconds, elements.experimentEndSeconds]) {
+    element.disabled = !youtube || experiment.phase !== "idle";
+  }
+  elements.experimentSource.disabled = experiment.phase !== "idle";
+  elements.experimentSourceNote.textContent = youtube
+    ? "YouTube playback sends the requested video and normal embed metadata to YouTube. Recording remains local. Videos whose owners disable embedding cannot run here."
+    : "The preloaded video and recording remain in this page. Physical key, mouse-button, and wheel identifiers—not typed text—are recorded locally during the experiment.";
+}
+
+function teardownExperimentPresentation() {
+  clearInterval(experiment.sampleTimer);
+  experiment.sampleTimer = undefined;
+  experiment.adapter?.stop?.();
+  experiment.adapter = undefined;
+  elements.experimentPlayerShell.hidden = true;
+  elements.experimentLayer.classList.remove("is-preloading", "is-video-visible");
+  elements.experimentCountdown.value = "";
+  elements.experimentLayer.hidden = true;
+  document.body.classList.remove("is-experiment-running");
+  if (experiment.restore) {
+    state.widgetX = experiment.restore.widgetX;
+    state.widgetY = experiment.restore.widgetY;
+    state.widgetDragEnabled = experiment.restore.widgetDragEnabled;
+    state.panelOpen = experiment.restore.panelOpen;
+  }
+  experiment.restore = undefined;
+  experiment.videoTimeSeconds = "";
+  experiment.id = "";
+  experiment.phase = "idle";
+  elements.experimentStartButton.disabled = false;
+  elements.experimentStartButton.textContent = "Start experiment";
+  updateExperimentSourceControls();
+  updatePanelState();
+  updateCustomizationControls();
+  constrainAndRenderWidget();
+}
+
+function abortExperiment(message) {
+  teardownExperimentPresentation();
+  announce(message);
+}
+
+function finishExperiment(reason = "video-ended") {
+  if (experiment.phase !== "running") return;
+  experiment.phase = "finishing";
+  clearInterval(experiment.sampleTimer);
+  experiment.sampleTimer = undefined;
+  recordSample();
+  recordEvent("experiment", "stop", reason, experiment.adapter?.duration?.() ?? "");
+  const filename = experimentFilename(logger.sessionId);
+  const recordCount = logger.buffer.length;
+  downloadLog(filename);
+  teardownExperimentPresentation();
+  announce(`Experiment complete. CSV downloaded with ${recordCount.toLocaleString()} timestamped records.`);
+}
+
+function recordExperimentSample() {
+  if (experiment.phase !== "running") return;
+  recordSample();
+  const stimulusTime = experiment.adapter?.currentTime?.();
+  if (Number.isFinite(stimulusTime) && stimulusTime >= experiment.config.endSeconds - 0.02) {
+    finishExperiment("configured-end");
+  }
+}
+
+async function runExperimentCountdown() {
+  document.body.classList.add("is-experiment-running");
+  elements.experimentLayer.classList.remove("is-preloading", "is-video-visible");
+  elements.experimentLayer.hidden = false;
+  elements.experimentPlayerShell.hidden = false;
+  state.widgetDragEnabled = false;
+  layoutExperiment();
+  constrainAndRenderWidget();
+  for (const number of [3, 2, 1]) {
+    elements.experimentCountdown.value = String(number);
+    announce(`${number}`);
+    await wait(1000);
+  }
+
+  experiment.id = globalThis.crypto?.randomUUID?.() ?? `experiment-${Date.now()}`;
+  experiment.phase = "starting";
+  experiment.videoTimeSeconds = experiment.config.startSeconds;
+  state.currentX = 0;
+  state.currentY = 0;
+  state.targetX = 0;
+  state.targetY = 0;
+  state.heldDirections.clear();
+  clearHeldButtonStyles();
+  logger.resetSession({
+    capacity: experimentBufferCapacity(experiment.config.endSeconds - experiment.config.startSeconds),
+  });
+  offsets = createProjectionOffsets(logger.sessionId, profiles.waveCount);
+  sampleAccumulator = 0;
+  await experiment.adapter.start();
+  experiment.phase = "running";
+  elements.experimentCountdown.value = "";
+  elements.experimentLayer.classList.add("is-video-visible");
+  recordEvent(
+    "experiment",
+    "start",
+    experiment.adapter.source,
+    `${experiment.adapter.stimulusId}@${experiment.config.startSeconds}-${experiment.config.endSeconds}`,
+  );
+  recordExperimentSample();
+  experiment.sampleTimer = setInterval(recordExperimentSample, EXPERIMENT_SAMPLE_INTERVAL_MS);
+  announce("Experiment recording started at neutral.");
+}
+
+async function startExperiment() {
+  if (experiment.phase === "awaiting-gesture") {
+    elements.experimentStartButton.disabled = true;
+    elements.experimentStartButton.textContent = "Preparing video…";
+    try {
+      await experiment.adapter.prepare();
+      experiment.phase = "preloading";
+      await runExperimentCountdown();
+    } catch (error) {
+      abortExperiment(error?.message ?? String(error));
+    }
+    return;
+  }
+  if (experiment.phase !== "idle") return;
+  try {
+    experiment.config = readExperimentConfig();
+  } catch (error) {
+    announce(error?.message ?? String(error));
+    return;
+  }
+  experiment.phase = "loading";
+  experiment.adapter = experiment.config.source === "youtube"
+    ? createYouTubeExperimentAdapter(experiment.config)
+    : createLocalExperimentAdapter();
+  experiment.restore = {
+    widgetX: state.widgetX,
+    widgetY: state.widgetY,
+    widgetDragEnabled: state.widgetDragEnabled,
+    panelOpen: state.panelOpen,
+  };
+  elements.experimentStartButton.disabled = true;
+  elements.experimentStartButton.textContent = "Loading video…";
+  elements.experimentLayer.hidden = false;
+  elements.experimentLayer.classList.add("is-preloading");
+  elements.experimentPlayerShell.hidden = false;
+  layoutExperiment();
+  updateExperimentSourceControls();
+  if (pictureInPictureWindow && !pictureInPictureWindow.closed) pictureInPictureWindow.close();
+  try {
+    experiment.phase = "preloading";
+    elements.experimentStartButton.textContent = "Preparing video…";
+    await experiment.adapter.prepare();
+    await runExperimentCountdown();
+  } catch (error) {
+    if (error?.name === "NotAllowedError") {
+      experiment.phase = "awaiting-gesture";
+      elements.experimentStartButton.disabled = false;
+      elements.experimentStartButton.textContent = "Continue video playback";
+      announce("The browser requires one more click before video playback.");
+    } else {
+      abortExperiment(error?.message ?? String(error));
+    }
+  }
+}
+
+function physicalModifiers(event) {
+  return {
+    alt: event.altKey,
+    ctrl: event.ctrlKey,
+    meta: event.metaKey,
+    shift: event.shiftKey,
+  };
+}
+
+function recordPhysicalInput(source, action, control, value = "") {
+  if (experiment.phase !== "running") return;
+  recordEvent(source, action, control, value);
 }
 
 function exportSettings() {
@@ -810,6 +1242,31 @@ function clearLog() {
 }
 
 function initializeEvents() {
+  window.addEventListener("keydown", (event) => {
+    recordPhysicalInput(
+      "keyboard",
+      "pressed",
+      event.code,
+      JSON.stringify({ repeat: event.repeat, ...physicalModifiers(event) }),
+    );
+  }, true);
+  window.addEventListener("keyup", (event) => {
+    recordPhysicalInput("keyboard", "released", event.code, JSON.stringify(physicalModifiers(event)));
+  }, true);
+  window.addEventListener("mousedown", (event) => {
+    recordPhysicalInput("mouse", "pressed", mouseButtonName(event.button), JSON.stringify(physicalModifiers(event)));
+  }, true);
+  window.addEventListener("mouseup", (event) => {
+    recordPhysicalInput("mouse", "released", mouseButtonName(event.button), JSON.stringify(physicalModifiers(event)));
+  }, true);
+  window.addEventListener("wheel", (event) => {
+    recordPhysicalInput("wheel", "scrolled", wheelDirection(event.deltaX, event.deltaY), JSON.stringify({
+      deltaX: event.deltaX,
+      deltaY: event.deltaY,
+      deltaMode: event.deltaMode,
+      ...physicalModifiers(event),
+    }));
+  }, { capture: true, passive: true });
   window.addEventListener("keydown", handleGlobalKeyDown);
   window.addEventListener("keyup", handleGlobalKeyUp);
   window.addEventListener("mousedown", handleGlobalMouseDown);
@@ -826,9 +1283,23 @@ function initializeEvents() {
 
   elements.panelToggle.addEventListener("click", () => {
     state.panelOpen = !state.panelOpen;
+    if (state.panelOpen) {
+      state.experimentPanelOpen = false;
+      updateExperimentPanelState();
+    }
     updatePanelState();
     savePreferences();
     recordEvent("panel", state.panelOpen ? "expand" : "collapse", "panel", state.panelOpen);
+  });
+  elements.experimentPanelToggle.addEventListener("click", () => {
+    state.experimentPanelOpen = !state.experimentPanelOpen;
+    if (state.experimentPanelOpen) {
+      state.panelOpen = false;
+      updatePanelState();
+    }
+    updateExperimentPanelState();
+    savePreferences();
+    recordEvent("panel", state.experimentPanelOpen ? "expand" : "collapse", "experiment-panel", state.experimentPanelOpen);
   });
 
   for (const input of elements.modeInputs) {
@@ -968,6 +1439,12 @@ function initializeEvents() {
   elements.pauseButton.addEventListener("click", () => toggleAnimation("button"));
   elements.exportButton.addEventListener("click", exportLog);
   elements.clearButton.addEventListener("click", clearLog);
+  elements.experimentStartButton.addEventListener("click", startExperiment);
+  elements.experimentSource.addEventListener("change", updateExperimentSourceControls);
+
+  document.addEventListener("visibilitychange", () => {
+    recordPhysicalInput("document", "visibility-change", "visibility", document.visibilityState);
+  });
 
   elements.widget.addEventListener("pointerdown", handleWidgetPointerDown);
   elements.widget.addEventListener("pointermove", handleWidgetPointerMove);
@@ -1010,7 +1487,7 @@ function animationFrame(timestamp) {
   updateCoordinateDisplay();
   updateFeatureSpace();
 
-  if (!document.hidden || pictureInPictureWindow) {
+  if (experiment.phase !== "running" && (!document.hidden || pictureInPictureWindow)) {
     sampleAccumulator += deltaSeconds;
     if (sampleAccumulator >= SAMPLE_INTERVAL_SECONDS) {
       sampleAccumulator %= SAMPLE_INTERVAL_SECONDS;
@@ -1023,10 +1500,12 @@ function animationFrame(timestamp) {
 
 function initialize() {
   updatePanelState();
+  updateExperimentPanelState();
   updateModeControls();
   updateFeatureSpace();
   updateCustomizationControls();
   updatePictureInPictureSupport();
+  updateExperimentSourceControls();
   constrainAndRenderWidget();
   initializeEvents();
   updateLoggerDisplay();

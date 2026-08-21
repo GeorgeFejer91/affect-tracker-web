@@ -15,9 +15,10 @@
 
 ## Study integration follow-up
 
+- Delivered: preloaded GitHub Pages video experiment with optional YouTube URL/start/finish configuration, countdown, protected playback, precise local CSV, and automatic export.
 - Document iframe/module integration for researchers embedding the online tracker beside video stimuli.
 - Add a stable browser integration API only after its event and privacy contract is specified.
-- Add optional local video selection or study-page examples without introducing uploads.
+- Add optional participant-local video selection without introducing uploads.
 - Align browser CSV and desktop local-export schemas if desktop CSV recording is added.
 
 ## Later, only with explicit approval

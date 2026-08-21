@@ -15,7 +15,7 @@ The two forms must share affect semantics and visual mathematics. Differences ar
 
 - Read this directory before source files.
 - Preserve the BSD-3-Clause license and attribution to `afourcade/AffectTracker`.
-- Keep browser operation local and private by default: no analytics, telemetry, CDN, external font, or runtime API dependency.
+- Keep browser operation local and private by default: no analytics, telemetry, CDN, external font, or silent runtime API dependency. The bundled experiment stimulus is repository-hosted. YouTube is an explicit user-selected stimulus source and must disclose the third-party connection before playback.
 - Treat Tauri WebViews and IPC arguments as untrusted. Native authority stays in Rust behind narrow typed commands.
 - Do not introduce remote WebView content, generic shell execution, unrestricted filesystem/network permissions, or silent global input capture.
 - Test web and desktop behavior proportionally to each change.

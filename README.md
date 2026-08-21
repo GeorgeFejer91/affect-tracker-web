@@ -44,12 +44,20 @@ The SVG has 192 radial samples and 16 projections. Both apps expose a four-ancho
 
 ## Logging and privacy
 
-The page keeps a fixed-size ring buffer of at most 10,000 records:
+The normal tracker session keeps a fixed-size ring buffer of at most 10,000 records:
 
 - Semantic input events such as key/button presses, wheel changes, resets, mode changes, drag completion, export, and buffer clearing.
 - Affect samples at 20 Hz while the page is visible.
 
-Everything stays inside the current browser tab. Nothing is uploaded, and there are no analytics or external network dependencies. Closing or refreshing the page discards records that have not been downloaded. Use **Download CSV** to export the current session in chronological order.
+Everything stays inside the current browser tab. Nothing is uploaded and there are no analytics. Closing or refreshing the page discards records that have not been downloaded. Use **Download CSV** to export the current session in chronological order.
+
+### Remote study demonstration
+
+Choose **Start experiment** to run a 3–2–1 countdown, force affect to neutral, begin an isolated 20 Hz recording session, and show a protected 16:9 stimulus centered at the largest size that leaves the Flubber unobstructed. The player has no controls, cannot receive pointer or keyboard interaction, and automatically exports the experiment CSV when the selected segment ends. Every experiment row includes monotonic elapsed time, ISO wall time, stimulus identity/time, current and target valence/arousal, and widget position. During acquisition, physical key press/release, mouse-button press/release, and wheel events are also recorded; typed characters and mouse movement are not.
+
+The top-left interface uses two accordion toggles: **Affect Tracker Settings** and **Experiment**. Opening one closes the other so the experiment configuration remains reachable on smaller screens. Experiment sessions allocate a duration-aware bounded buffer so the configured segment's 20 Hz samples are not lost to the normal 10,000-record rollover.
+
+The default stimulus is [`site/assets/dictator-3-study.mp4`](./site/assets/dictator-3-study.mp4), a 1920×1080 H.264/AAC copy of `Dictator 3.m4v` trimmed so its first frame corresponds to the original 90-second point. It is preloaded from GitHub Pages and does not contact a third party. Researchers can instead select **YouTube URL**, paste any supported watch/share/embed URL, and provide explicit start and finish seconds. That optional mode connects to YouTube and is subject to YouTube embedding permissions and playback policy; the affect CSV still remains local.
 
 The widget appearance, position, bindings, input behavior, and panel state are saved in `localStorage`. Affect values and history are not persisted.
 
@@ -137,7 +145,7 @@ The unit suite uses Node.js 22's built-in test runner and has no package depende
 pnpm test
 ```
 
-It covers the affect mappings, normalized profiles, deterministic offsets, path generation, smoothing, keyboard/wheel movement, widget constraints, ring-buffer rollover, session reset, and CSV escaping.
+It covers the affect mappings, normalized profiles, deterministic offsets, path generation, smoothing, keyboard/wheel movement, widget and experiment-video constraints, stimulus configuration parsing, ring-buffer rollover, session reset, experiment context fields, and CSV escaping.
 
 ## Deployment
 

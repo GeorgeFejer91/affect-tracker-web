@@ -75,6 +75,86 @@ button.is-held {
   filter: drop-shadow(0 0 1.25rem rgb(255 255 255 / 10%));
 }
 
+.experiment-launch {
+  padding: 0.8rem;
+  border: 1px solid #4d5964;
+  border-radius: 0.65rem;
+  background: #101419;
+}
+
+.experiment-launch h3 { margin: 0 0 0.4rem; }
+.experiment-launch p { margin: 0.45rem 0; }
+.experiment-launch button { width: 100%; font-weight: 700; }
+.experiment-privacy { color: #c3cbd3; font-size: 0.78rem; }
+.experiment-settings {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.55rem;
+  margin: 0.7rem 0;
+}
+.experiment-settings label { display: grid; gap: 0.25rem; font-size: 0.78rem; }
+.experiment-settings .wide-field { grid-column: 1 / -1; }
+.experiment-settings input,
+.experiment-settings select { width: 100%; min-width: 0; }
+
+.experiment-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  pointer-events: none;
+  background: #000;
+}
+
+.experiment-layer.is-preloading { background: transparent; }
+
+.experiment-countdown {
+  position: fixed;
+  inset: 0;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  background: #000;
+  font-size: clamp(6rem, 22vw, 16rem);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.experiment-countdown:empty { display: none; }
+
+.experiment-player-shell {
+  position: fixed;
+  overflow: hidden;
+  background: #000;
+  box-shadow: 0 0 0 1px #252a30;
+  pointer-events: auto;
+  visibility: hidden;
+}
+
+.experiment-layer.is-video-visible .experiment-player-shell { visibility: visible; }
+
+.experiment-player-shell video,
+.experiment-player-shell #youtube-player,
+.experiment-player-shell iframe {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  object-fit: contain;
+  background: #000;
+}
+
+.experiment-input-shield {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  background: transparent;
+  cursor: default;
+}
+
+body.is-experiment-running .control-panel { visibility: hidden; pointer-events: none; }
+body.is-experiment-running .affect-widget { z-index: 40; }
+
 .affect-widget.is-dragging {
   cursor: grabbing;
 }
@@ -139,18 +219,27 @@ button.is-held {
   opacity: 1;
 }
 
-.control-panel {
+.panel-stack {
   position: fixed;
   z-index: 3;
   top: 1rem;
   left: 1rem;
   width: min(20rem, calc(100vw - 2rem));
+  display: grid;
+  gap: 0.55rem;
+}
+
+.control-panel {
+  position: relative;
+  width: 100%;
   border: 1px solid rgb(255 255 255 / 15%);
   border-radius: 0.8rem;
   background: rgb(12 12 15 / 88%);
   box-shadow: 0 1rem 3rem rgb(0 0 0 / 48%);
   backdrop-filter: blur(14px);
 }
+
+.experiment-panel .panel-content { max-height: calc(100vh - 9rem); }
 
 .panel-toggle {
   display: flex;
@@ -418,7 +507,7 @@ kbd {
 }
 
 @media (max-width: 520px) {
-  .control-panel {
+  .panel-stack {
     top: 0.65rem;
     left: 0.65rem;
     width: min(19rem, calc(100vw - 1.3rem));

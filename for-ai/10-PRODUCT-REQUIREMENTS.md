@@ -24,7 +24,11 @@ The SVG uses 192 angular samples, 16 projections, deterministic seeded phase/amp
 - An advanced menu can optionally bind physical inputs to increase or decrease animation speed, pulse amplitude, shape disorder, transparency, and widget size.
 - Interactive 2D color-space coordinate selection and four persisted axis colors.
 - Continuous and step modes, reset, pause, reduced-motion support, and visible focus.
-- Browser-only 10,000-record ring buffer with 20 Hz affect sampling and CSV export.
+- Browser-only 10,000-record normal-session ring buffer with 20 Hz affect sampling and CSV export. Experiment sessions use a duration-aware bounded capacity sufficient for the selected segment plus physical-input events.
+- Two stacked accordion toggles label the surfaces **Affect Tracker Settings** and **Experiment**; opening one collapses the other.
+- Online-only experiment module with a 3–2–1 countdown, neutral reset, isolated 20 Hz recording session, protected centered 16:9 player, collision-free Flubber placement, and automatic CSV download at the selected segment end.
+- The preloaded GitHub Pages example is a repository-hosted 1080p H.264/AAC video trimmed at the source's 90-second point. Researchers may alternatively provide any embeddable YouTube URL plus explicit start and finish seconds; this optional connection is disclosed and never changes the desktop app.
+- Experiment CSV rows add experiment/stimulus identity and stimulus time. Acquisition records every physical key press/release, mouse-button press/release, and wheel event without typed text or mouse movement.
 - No upload, analytics, account, server, or persistent affect history.
 - Must remain suitable for placing next to or integrating with browser-based study stimuli.
 - In supporting browsers, provide an explicit user-activated Document Picture-in-Picture checkbox that mirrors the live Flubber in an always-on-top browser-owned window. Make every site-controlled surface transparent, borderless, and edge-to-edge; request reduced browser chrome. It must close with the originating page and degrade clearly when unsupported. Never claim the browser-controlled frame or compositor surface is transparent.
@@ -55,6 +59,7 @@ The SVG uses 192 angular samples, 16 projections, deterministic seeded phase/amp
 - The user-facing transparency control spans 0% (fully opaque) through 100% (fully transparent); the JSON stores the inverse `overlay.opacity` in `[0,1]`.
 - The web app exposes every portable customization. It preserves LSL metadata for transfer but cannot publish LSL, and global browser bindings only operate while the page is focused.
 - Browser preferences may override bundled defaults for returning users. Replacing `site/settings.json` changes defaults for new/clean browser profiles; importing applies a file immediately.
+- Experiment stimulus source/URL/timing are browser-study configuration, not portable Flubber settings, and are intentionally absent from the desktop-compatible version-1 JSON.
 
 ## LSL output
 

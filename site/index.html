@@ -35,6 +35,7 @@
         <span class="drag-hint" aria-hidden="true">drag</span>
       </div>
 
+      <div class="panel-stack">
       <section id="control-panel" class="control-panel" aria-labelledby="panel-title">
         <button
           id="panel-toggle"
@@ -43,7 +44,7 @@
           aria-expanded="true"
           aria-controls="panel-content"
         >
-          <span id="panel-title">Affect Tracker</span>
+          <span id="panel-title">Affect Tracker Settings</span>
           <span class="toggle-symbol" aria-hidden="true">−</span>
         </button>
 
@@ -161,6 +162,42 @@
             Inspired by
             <a href="https://github.com/afourcade/AffectTracker" target="_blank" rel="noreferrer">AffectTracker</a>.
           </p>
+        </div>
+      </section>
+
+      <section id="experiment-panel" class="control-panel experiment-panel is-collapsed" aria-labelledby="experiment-panel-title">
+        <button id="experiment-panel-toggle" class="panel-toggle" type="button" aria-expanded="false" aria-controls="experiment-panel-content">
+          <span id="experiment-panel-title">Experiment</span>
+          <span id="experiment-toggle-symbol" class="toggle-symbol" aria-hidden="true">+</span>
+        </button>
+        <div id="experiment-panel-content" class="panel-content">
+          <section class="experiment-launch" aria-labelledby="experiment-title">
+            <h3 id="experiment-title">Remote study demonstration</h3>
+            <p>Runs the selected stimulus after a 3–2–1 countdown. The preloaded example begins at the source video's original 01:30 point; YouTube studies can define their own start and finish times.</p>
+            <div class="experiment-settings">
+              <label>Stimulus source
+                <select id="experiment-source">
+                  <option value="local">Preloaded Dictator example</option>
+                  <option value="youtube">YouTube URL</option>
+                </select>
+              </label>
+              <label class="wide-field">YouTube URL<input id="experiment-youtube-url" type="url" value="https://www.youtube.com/watch?v=pY6vrOpnM64"></label>
+              <label>Start (seconds)<input id="experiment-start-seconds" type="number" min="0" step="0.1" value="90"></label>
+              <label>Finish (seconds)<input id="experiment-end-seconds" type="number" min="0.1" step="0.1" value="344.4"></label>
+            </div>
+            <button id="experiment-start-button" type="button">Start experiment</button>
+            <p id="experiment-source-note" class="experiment-privacy">The preloaded video and recording remain in this page. Physical key, mouse-button, and wheel identifiers—not typed text—are recorded locally during the experiment.</p>
+          </section>
+        </div>
+      </section>
+      </div>
+
+      <section id="experiment-layer" class="experiment-layer" hidden aria-label="Demo video experiment">
+        <output id="experiment-countdown" class="experiment-countdown" aria-live="assertive"></output>
+        <div id="experiment-player-shell" class="experiment-player-shell" hidden>
+          <video id="experiment-video" preload="auto" playsinline disablepictureinpicture aria-label="Study stimulus video; participant playback controls are disabled"></video>
+          <div id="youtube-player" hidden></div>
+          <div class="experiment-input-shield" aria-hidden="true"></div>
         </div>
       </section>
 

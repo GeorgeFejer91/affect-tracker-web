@@ -10,6 +10,9 @@ export const CSV_FIELDS = [
   "action",
   "control",
   "value",
+  "experiment_id",
+  "stimulus_id",
+  "stimulus_time_seconds",
   "current_x",
   "current_y",
   "target_x",
@@ -39,16 +42,18 @@ export function recordsToCsv(records) {
 }
 
 export class AffectLogger {
-  constructor({ capacity = 10_000, now = () => performance.now(), wallClock = () => new Date(), sessionId = defaultSessionId } = {}) {
+  constructor({ capacity = 10_000, now = () => performance.now(), wallClock = () => new Date(), sessionId = defaultSessionId, context = () => ({}) } = {}) {
     this.buffer = new RingBuffer(capacity);
     this.now = now;
     this.wallClock = wallClock;
     this.sessionIdFactory = sessionId;
+    this.context = context;
     this.resetSession();
   }
 
-  resetSession() {
-    this.buffer.clear();
+  resetSession({ capacity } = {}) {
+    if (capacity !== undefined && capacity !== this.buffer.capacity) this.buffer = new RingBuffer(capacity);
+    else this.buffer.clear();
     this.sessionId = this.sessionIdFactory();
     this.sequence = 0;
     this.startedAt = this.now();
@@ -58,6 +63,7 @@ export class AffectLogger {
 
   record(recordType, details, state) {
     const now = this.now();
+    const context = this.context();
     const record = {
       session_id: this.sessionId,
       sequence: this.sequence,
@@ -68,6 +74,9 @@ export class AffectLogger {
       action: details.action ?? "",
       control: details.control ?? "",
       value: details.value ?? "",
+      experiment_id: context.experimentId ?? "",
+      stimulus_id: context.stimulusId ?? "",
+      stimulus_time_seconds: context.stimulusTimeSeconds ?? "",
       current_x: state.currentX,
       current_y: state.currentY,
       target_x: state.targetX,

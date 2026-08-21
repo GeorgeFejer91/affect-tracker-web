@@ -50,6 +50,9 @@ test("reset creates a fresh session and clears counters", () => {
   assert.equal(logger.sessionId, "session-2");
   assert.equal(logger.sequence, 0);
   assert.equal(logger.buffer.length, 0);
+  logger.resetSession({ capacity: 25_000 });
+  assert.equal(logger.buffer.capacity, 25_000);
+  assert.equal(logger.buffer.length, 0);
 });
 
 test("CSV output is UTF-8, chronological, and RFC escaped", () => {
@@ -61,4 +64,25 @@ test("CSV output is UTF-8, chronological, and RFC escaped", () => {
   assert.ok(csv.startsWith("\uFEFFsession_id,"));
   assert.ok(csv.indexOf("first") < csv.indexOf('"second,quoted"'));
   assert.ok(csv.endsWith("\r\n"));
+});
+
+test("experiment context is attached to every timestamped record", () => {
+  const logger = new AffectLogger({
+    now: () => 250.125,
+    wallClock: () => new Date("2026-08-21T12:00:00.123Z"),
+    sessionId: () => "session-study",
+    context: () => ({
+      experimentId: "experiment-1",
+      stimulusId: "video-1",
+      stimulusTimeSeconds: 90.125,
+    }),
+  });
+  const record = logger.record("sample", { action: "sample" }, state);
+  assert.equal(record.elapsed_ms, 0);
+  assert.equal(record.iso_time, "2026-08-21T12:00:00.123Z");
+  assert.equal(record.experiment_id, "experiment-1");
+  assert.equal(record.stimulus_id, "video-1");
+  assert.equal(record.stimulus_time_seconds, 90.125);
+  assert.equal(record.current_x, state.currentX);
+  assert.equal(record.current_y, state.currentY);
 });
