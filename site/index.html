@@ -73,6 +73,23 @@
             <button id="clear-button" class="subtle-danger" type="button">Clear buffer</button>
           </div>
 
+          <details class="palette-editor">
+            <summary>Valence–arousal color space</summary>
+            <div id="web-feature-space" class="web-feature-space" role="slider" tabindex="0" aria-label="Choose valence and arousal from the color space" aria-valuetext="Neutral">
+              <canvas id="web-feature-space-canvas" width="160" height="160" aria-hidden="true"></canvas>
+              <span class="space-axis space-up">Up</span><span class="space-axis space-down">Down</span>
+              <span class="space-axis space-left">Left</span><span class="space-axis space-right">Right</span>
+              <span id="web-feature-point" class="web-feature-point" aria-hidden="true"></span>
+            </div>
+            <div class="web-palette-grid">
+              <label>Up <input type="color" data-palette="up"></label>
+              <label>Down <input type="color" data-palette="down"></label>
+              <label>Left <input type="color" data-palette="left"></label>
+              <label>Right <input type="color" data-palette="right"></label>
+            </div>
+            <p>Click or drag in the map to pick a coordinate. Use the four color controls to preview the complete blended space.</p>
+          </details>
+
           <dl class="buffer-status">
             <div><dt>Events</dt><dd id="event-count">0</dd></div>
             <div><dt>Samples</dt><dd id="sample-count">0</dd></div>

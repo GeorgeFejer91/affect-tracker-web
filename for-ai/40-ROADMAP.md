@@ -5,10 +5,11 @@
 - Two-window Tauri shell and tray lifecycle.
 - Shared SVG renderer.
 - Rust affect engine and typed IPC.
-- Configurable safe global shortcuts.
+- Click-to-capture global key, mouse-button, and wheel bindings with arrow-key defaults.
+- Four-color interactive valence-arousal feature space shared with the web app.
 - Click-through overlay with explicit edit mode.
 - Persisted settings.
-- Continuous affect and marker LSL outlets.
+- Always-on continuous affect and all-physical-input marker LSL outlets.
 - Cross-platform CI checks and platform qualification checklist.
 
 ## Study integration follow-up
@@ -20,7 +21,7 @@
 
 ## Later, only with explicit approval
 
-- Bare-key background capture through platform input hooks.
+- A separately permissioned Wayland/evdev global-input backend.
 - Gamepad/HID mapping.
 - Autostart.
 - Signed auto-updates.

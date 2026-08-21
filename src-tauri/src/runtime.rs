@@ -9,7 +9,6 @@ use std::sync::{Arc, Mutex, RwLock};
 use std::thread;
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter};
-use tauri_plugin_global_shortcut::Shortcut;
 
 const MARKER_CAPACITY: usize = 1_024;
 
@@ -22,8 +21,8 @@ struct LslStatus {
 impl Default for LslStatus {
     fn default() -> Self {
         Self {
-            state: "stopped",
-            message: "LSL stopped".into(),
+            state: "starting",
+            message: "LSL starting…".into(),
         }
     }
 }
@@ -31,9 +30,8 @@ impl Default for LslStatus {
 pub struct Runtime {
     engine: Mutex<AffectEngine>,
     settings: RwLock<Settings>,
-    shortcuts: RwLock<Vec<(Shortcut, Action)>>,
+    input_hook: Mutex<Option<monio::Hook>>,
     markers: Mutex<VecDeque<String>>,
-    lsl_requested: AtomicBool,
     lsl_revision: AtomicU64,
     lsl_status: Mutex<LslStatus>,
     overlay_visible: AtomicBool,
@@ -45,7 +43,6 @@ pub struct Runtime {
 
 impl Runtime {
     pub fn new(settings: Settings, settings_path: PathBuf) -> Arc<Self> {
-        let start_lsl = settings.lsl.start_enabled;
         let overlay_visible = settings.overlay.visible;
         Arc::new(Self {
             engine: Mutex::new(AffectEngine::new(
@@ -55,9 +52,8 @@ impl Runtime {
                 settings.response,
             )),
             settings: RwLock::new(settings),
-            shortcuts: RwLock::new(Vec::new()),
+            input_hook: Mutex::new(None),
             markers: Mutex::new(VecDeque::with_capacity(MARKER_CAPACITY)),
-            lsl_requested: AtomicBool::new(start_lsl),
             lsl_revision: AtomicU64::new(0),
             lsl_status: Mutex::new(LslStatus::default()),
             overlay_visible: AtomicBool::new(overlay_visible),
@@ -115,19 +111,20 @@ impl Runtime {
         self.push_marker(&format!("overlay:moved:{x}:{y}"));
     }
 
-    pub fn set_shortcuts(&self, shortcuts: Vec<(Shortcut, Action)>) {
+    pub fn set_input_hook(&self, hook: monio::Hook) {
         *self
-            .shortcuts
-            .write()
-            .unwrap_or_else(|poisoned| poisoned.into_inner()) = shortcuts;
+            .input_hook
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(hook);
     }
 
-    pub fn action_for_shortcut(&self, shortcut: &Shortcut) -> Option<Action> {
-        self.shortcuts
+    pub fn action_for_binding(&self, token: &str) -> Option<Action> {
+        self.settings
             .read()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .bindings
             .iter()
-            .find_map(|(candidate, action)| (candidate == shortcut).then_some(*action))
+            .find_map(|(action, binding)| binding.eq_ignore_ascii_case(token).then_some(*action))
     }
 
     pub fn handle_direction(&self, action: Action, pressed: bool, source: &str) {
@@ -158,6 +155,14 @@ impl Runtime {
         self.push_marker(&format!("{source}:reset"));
     }
 
+    pub fn set_target(&self, x: f32, y: f32, source: &str) {
+        self.engine
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .set_target(x, y);
+        self.push_marker(&format!("{source}:set_target:{x:.4}:{y:.4}"));
+    }
+
     pub fn toggle_pause(&self, source: &str) {
         self.engine
             .lock()
@@ -178,6 +183,12 @@ impl Runtime {
             .unwrap_or_else(|poisoned| poisoned.into_inner())
             .overlay
             .opacity;
+        let palette = self
+            .settings
+            .read()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .palette
+            .clone();
         self.engine
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
@@ -185,23 +196,10 @@ impl Runtime {
                 self.overlay_visible.load(Ordering::Relaxed),
                 self.overlay_editing.load(Ordering::Relaxed),
                 opacity,
+                palette,
                 status.state,
                 &status.message,
             )
-    }
-
-    pub fn set_lsl_requested(&self, enabled: bool) {
-        self.lsl_requested.store(enabled, Ordering::Relaxed);
-        self.lsl_revision.fetch_add(1, Ordering::Relaxed);
-        self.push_marker(if enabled {
-            "system:lsl_start_requested"
-        } else {
-            "system:lsl_stop_requested"
-        });
-    }
-
-    pub fn lsl_requested(&self) -> bool {
-        self.lsl_requested.load(Ordering::Relaxed)
     }
 
     pub fn set_overlay_visible(&self, visible: bool) {
@@ -240,6 +238,14 @@ impl Runtime {
         self.quitting.store(true, Ordering::Relaxed);
         self.shutdown.store(true, Ordering::Relaxed);
         self.push_marker("system:session_ended");
+        if let Some(hook) = self
+            .input_hook
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .take()
+        {
+            let _ = hook.stop();
+        }
     }
 
     pub fn is_quitting(&self) -> bool {
@@ -255,6 +261,10 @@ impl Runtime {
             queue.pop_front();
         }
         queue.push_back(marker.to_owned());
+    }
+
+    pub fn push_input_marker(&self, device: &str, event: &str, control: &str, value: &str) {
+        self.push_marker(&format!("input:{device}:{event}:{control}:{value}"));
     }
 
     fn drain_markers(&self) -> Vec<String> {
@@ -299,15 +309,7 @@ impl Runtime {
                 lsl_accumulator += dt;
 
                 let revision = runtime.lsl_revision.load(Ordering::Relaxed);
-                let requested = runtime.lsl_requested();
-                if !requested {
-                    if lsl_service.take().is_some() {
-                        runtime.set_lsl_status("stopped", "LSL stopped");
-                    }
-                    active_revision = revision;
-                } else if active_revision != revision
-                    || (lsl_service.is_none() && now >= next_lsl_retry)
-                {
+                if active_revision != revision || (lsl_service.is_none() && now >= next_lsl_retry) {
                     lsl_service = None;
                     runtime.set_lsl_status("starting", "Starting LSL…");
                     let config = runtime.settings();
@@ -331,7 +333,7 @@ impl Runtime {
 
                 let config = runtime.settings();
                 let sample_interval = 1.0 / config.lsl.sample_rate as f32;
-                if requested && lsl_accumulator >= sample_interval {
+                if lsl_accumulator >= sample_interval {
                     lsl_accumulator %= sample_interval;
                     if let Some(service) = &lsl_service {
                         let snapshot = runtime.snapshot();

@@ -153,12 +153,48 @@ export function affectColor(angle01, saturation) {
   return `rgb(${r} ${g} ${b})`;
 }
 
+export const DEFAULT_AFFECT_PALETTE = Object.freeze({
+  up: "#ffd166",
+  down: "#5c7cfa",
+  left: "#ff5b68",
+  right: "#5dffb0",
+});
+
+function hexToRgb(value) {
+  const match = /^#([\da-f]{2})([\da-f]{2})([\da-f]{2})$/i.exec(value);
+  return match ? match.slice(1).map((component) => Number.parseInt(component, 16)) : null;
+}
+
+export function affectPaletteColor(x, y, palette = DEFAULT_AFFECT_PALETTE) {
+  const anchors = {
+    up: hexToRgb(palette.up) ?? hexToRgb(DEFAULT_AFFECT_PALETTE.up),
+    down: hexToRgb(palette.down) ?? hexToRgb(DEFAULT_AFFECT_PALETTE.down),
+    left: hexToRgb(palette.left) ?? hexToRgb(DEFAULT_AFFECT_PALETTE.left),
+    right: hexToRgb(palette.right) ?? hexToRgb(DEFAULT_AFFECT_PALETTE.right),
+  };
+  const weights = {
+    up: Math.max(0, y),
+    down: Math.max(0, -y),
+    left: Math.max(0, -x),
+    right: Math.max(0, x),
+  };
+  const total = Object.values(weights).reduce((sum, value) => sum + value, 0);
+  const neutral = [183, 183, 183];
+  if (total <= Number.EPSILON) return `rgb(${neutral.join(" ")})`;
+  const directional = neutral.map((_, component) => Object.entries(weights)
+    .reduce((sum, [name, weight]) => sum + anchors[name][component] * weight, 0) / total);
+  const intensity = clamp(Math.hypot(x, y), 0, 1);
+  const result = neutral.map((value, component) => Math.round(mix(value, directional[component], intensity)));
+  return `rgb(${result.join(" ")})`;
+}
+
 export function buildFlubberPath({
   profiles,
   offsets,
   x,
   y,
   phase,
+  palette,
   reducedMotion = false,
 }) {
   const parameters = affectParameters(x, y);
@@ -183,7 +219,7 @@ export function buildFlubberPath({
 
   return {
     path: pathParts.join(""),
-    color: affectColor(parameters.angle01, parameters.saturation),
+    color: palette ? affectPaletteColor(x, y, palette) : affectColor(parameters.angle01, parameters.saturation),
     parameters,
   };
 }

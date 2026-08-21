@@ -1,5 +1,6 @@
 import { nativeApi } from "./native.js";
 import { createFlubberRenderer } from "./render.js";
+import { affectPaletteColor } from "../../site/src/math.js";
 
 const bindingLabels = {
   increaseValence: "Increase valence",
@@ -23,13 +24,81 @@ const elements = {
   pause: document.querySelector("#pause-button"),
   overlayVisible: document.querySelector("#overlay-visible-button"),
   overlayEdit: document.querySelector("#overlay-edit-button"),
-  lslToggle: document.querySelector("#lsl-toggle-button"),
+  featureMap: document.querySelector("#feature-space-map"),
+  featureCanvas: document.querySelector("#feature-space-canvas"),
+  featurePoint: document.querySelector("#feature-space-point"),
 };
 
 const renderFlubber = createFlubberRenderer(document.querySelector(".flubber-preview"));
 const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
 let settings;
 let latestSnapshot;
+let captureInput;
+let featurePointerId;
+
+const mouseBindings = ["Left", "Middle", "Right", "Button4", "Button5"];
+
+function describeBinding(value) {
+  const [kind, control = ""] = value.split(":");
+  if (kind === "key") return `Keyboard · ${control.replace(/^Key/, "")}`;
+  if (kind === "mouse") return `Mouse · ${control}`;
+  if (kind === "wheel") return `Scroll · ${control}`;
+  return value;
+}
+
+function finishCapture(value) {
+  if (!captureInput) return;
+  captureInput.dataset.bindingValue = value;
+  captureInput.value = describeBinding(value);
+  captureInput.classList.remove("is-capturing");
+  captureInput.dispatchEvent(new Event("input", { bubbles: true }));
+  announce(`${captureInput.closest("label").firstChild.textContent.trim()} assigned to ${describeBinding(value)}.`);
+  captureInput = undefined;
+}
+
+function beginCapture(input) {
+  if (captureInput && captureInput !== input) {
+    captureInput.value = describeBinding(captureInput.dataset.bindingValue);
+    captureInput.classList.remove("is-capturing");
+  }
+  captureInput = input;
+  input.value = "Press, click, or scroll…";
+  input.classList.add("is-capturing");
+  announce("Waiting for a keyboard, mouse-button, or wheel input.");
+}
+
+function readPalette() {
+  return Object.fromEntries(["up", "down", "left", "right"].map((name) => [name, document.querySelector(`#palette-${name}`).value]));
+}
+
+function updateFeatureSpace(snapshot, palette = snapshot.palette) {
+  for (const [name, color] of Object.entries(palette)) elements.featureMap.style.setProperty(`--palette-${name}`, color);
+  const paletteKey = JSON.stringify(palette);
+  if (elements.featureCanvas.dataset.palette !== paletteKey) {
+    const context = elements.featureCanvas.getContext("2d");
+    const image = context.createImageData(elements.featureCanvas.width, elements.featureCanvas.height);
+    for (let py = 0; py < elements.featureCanvas.height; py += 1) {
+      for (let px = 0; px < elements.featureCanvas.width; px += 1) {
+        const color = affectPaletteColor(px / (elements.featureCanvas.width - 1) * 2 - 1, 1 - py / (elements.featureCanvas.height - 1) * 2, palette);
+        const [red, green, blue] = color.match(/\d+/g).map(Number);
+        const offset = (py * elements.featureCanvas.width + px) * 4;
+        image.data.set([red, green, blue, 255], offset);
+      }
+    }
+    context.putImageData(image, 0, 0);
+    elements.featureCanvas.dataset.palette = paletteKey;
+  }
+  elements.featurePoint.style.left = `${(snapshot.currentX + 1) * 50}%`;
+  elements.featurePoint.style.top = `${(1 - snapshot.currentY) * 50}%`;
+  elements.featureMap.setAttribute("aria-valuetext", `Valence ${formatCoordinate(snapshot.targetX)}, arousal ${formatCoordinate(snapshot.targetY)}`);
+}
+
+function chooseFeatureCoordinate(event) {
+  const bounds = elements.featureMap.getBoundingClientRect();
+  const x = Math.max(-1, Math.min(1, ((event.clientX - bounds.left) / bounds.width) * 2 - 1));
+  const y = Math.max(-1, Math.min(1, 1 - ((event.clientY - bounds.top) / bounds.height) * 2));
+  invokeWithFeedback(() => nativeApi.setAffectTarget(x, y));
+}
 
 function announce(message) {
   elements.live.textContent = "";
@@ -42,7 +111,9 @@ function formatCoordinate(value) {
 
 function renderSnapshot(snapshot) {
   latestSnapshot = snapshot;
-  renderFlubber(snapshot, reducedMotion.matches);
+  const palette = settings ? readPalette() : snapshot.palette;
+  renderFlubber({ ...snapshot, palette }, reducedMotion.matches);
+  updateFeatureSpace(snapshot, palette);
   elements.valence.textContent = formatCoordinate(snapshot.currentX);
   elements.arousal.textContent = formatCoordinate(snapshot.currentY);
   elements.pause.textContent = snapshot.animationActive ? "Pause motion" : "Resume motion";
@@ -51,7 +122,6 @@ function renderSnapshot(snapshot) {
   elements.lslStatus.textContent = snapshot.lslMessage;
   elements.lslStatus.classList.toggle("is-ok", snapshot.lslState === "running");
   elements.lslStatus.classList.toggle("is-error", snapshot.lslState === "error");
-  elements.lslToggle.textContent = snapshot.lslState === "running" ? "Stop LSL" : "Start LSL";
 }
 
 function createBindingInputs(bindings) {
@@ -61,9 +131,11 @@ function createBindingInputs(bindings) {
     wrapper.textContent = label;
     const input = document.createElement("input");
     input.dataset.binding = action;
-    input.value = bindings[action] ?? "";
-    input.maxLength = 80;
+    input.dataset.bindingValue = bindings[action] ?? "";
+    input.value = describeBinding(input.dataset.bindingValue);
+    input.readOnly = true;
     input.autocomplete = "off";
+    input.addEventListener("click", () => beginCapture(input));
     wrapper.append(input);
     elements.bindingGrid.append(wrapper);
   }
@@ -82,14 +154,14 @@ function fillForm(value) {
   document.querySelector("#lsl-marker-name").value = value.lsl.markerName;
   document.querySelector("#lsl-sample-rate").value = value.lsl.sampleRate;
   document.querySelector("#lsl-source-id").value = value.lsl.sourceId;
-  document.querySelector("#lsl-start-enabled").checked = value.lsl.startEnabled;
+  for (const [name, color] of Object.entries(value.palette)) document.querySelector(`#palette-${name}`).value = color;
   createBindingInputs(value.bindings);
   elements.dirtyStatus.textContent = "Settings loaded";
 }
 
 function readForm() {
   const bindings = {};
-  for (const input of document.querySelectorAll("[data-binding]")) bindings[input.dataset.binding] = input.value.trim();
+  for (const input of document.querySelectorAll("[data-binding]")) bindings[input.dataset.binding] = input.dataset.bindingValue;
   return {
     ...settings,
     inputMode: document.querySelector("#input-mode").value,
@@ -97,6 +169,7 @@ function readForm() {
     continuousSpeed: Number(document.querySelector("#continuous-speed").value),
     response: Number(document.querySelector("#response").value),
     bindings,
+    palette: readPalette(),
     overlay: {
       ...settings.overlay,
       size: Number(document.querySelector("#overlay-size").value),
@@ -108,7 +181,6 @@ function readForm() {
       markerName: document.querySelector("#lsl-marker-name").value.trim(),
       sampleRate: Number(document.querySelector("#lsl-sample-rate").value),
       sourceId: document.querySelector("#lsl-source-id").value.trim(),
-      startEnabled: document.querySelector("#lsl-start-enabled").checked,
     },
   };
 }
@@ -133,6 +205,11 @@ async function initialize() {
   await nativeApi.onSnapshot(renderSnapshot);
 
   elements.form.addEventListener("input", () => { elements.dirtyStatus.textContent = "Unsaved changes"; });
+  for (const input of document.querySelectorAll("input[type='color']")) {
+    input.addEventListener("input", () => {
+      if (latestSnapshot) renderSnapshot(latestSnapshot);
+    });
+  }
   elements.form.addEventListener("submit", async (event) => {
     event.preventDefault();
     const saved = await invokeWithFeedback(() => nativeApi.saveSettings(readForm()), "Settings saved and applied.");
@@ -146,8 +223,52 @@ async function initialize() {
   elements.pause.addEventListener("click", () => invokeWithFeedback(nativeApi.togglePause));
   elements.overlayVisible.addEventListener("click", () => invokeWithFeedback(() => nativeApi.setOverlayVisible(!latestSnapshot.overlayVisible)));
   elements.overlayEdit.addEventListener("click", () => invokeWithFeedback(() => nativeApi.setOverlayEditing(!latestSnapshot.overlayEditing)));
-  elements.lslToggle.addEventListener("click", () => invokeWithFeedback(() => nativeApi.setLslEnabled(latestSnapshot.lslState !== "running")));
+  elements.featureMap.addEventListener("pointerdown", (event) => {
+    featurePointerId = event.pointerId;
+    elements.featureMap.setPointerCapture(event.pointerId);
+    chooseFeatureCoordinate(event);
+  });
+  elements.featureMap.addEventListener("pointermove", (event) => {
+    if (event.pointerId === featurePointerId) chooseFeatureCoordinate(event);
+  });
+  const finishFeatureSelection = (event) => {
+    if (event.pointerId === featurePointerId) featurePointerId = undefined;
+  };
+  elements.featureMap.addEventListener("pointerup", finishFeatureSelection);
+  elements.featureMap.addEventListener("pointercancel", finishFeatureSelection);
+  elements.featureMap.addEventListener("keydown", (event) => {
+    const direction = { ArrowLeft: [-0.05, 0], ArrowRight: [0.05, 0], ArrowUp: [0, 0.05], ArrowDown: [0, -0.05] }[event.key];
+    if (!direction) return;
+    event.preventDefault();
+    invokeWithFeedback(() => nativeApi.setAffectTarget(latestSnapshot.targetX + direction[0], latestSnapshot.targetY + direction[1]));
+  });
 }
+
+document.addEventListener("keydown", (event) => {
+  if (!captureInput) return;
+  event.preventDefault();
+  event.stopImmediatePropagation();
+  finishCapture(`key:${event.code}`);
+}, true);
+
+document.addEventListener("mousedown", (event) => {
+  if (!captureInput) return;
+  event.preventDefault();
+  event.stopImmediatePropagation();
+  finishCapture(`mouse:${mouseBindings[event.button] ?? `Button${event.button + 1}`}`);
+}, true);
+
+document.addEventListener("wheel", (event) => {
+  if (!captureInput) return;
+  event.preventDefault();
+  event.stopImmediatePropagation();
+  const horizontal = Math.abs(event.deltaX) > Math.abs(event.deltaY);
+  finishCapture(`wheel:${horizontal ? (event.deltaX < 0 ? "Left" : "Right") : (event.deltaY < 0 ? "Up" : "Down")}`);
+}, { capture: true, passive: false });
+
+document.addEventListener("contextmenu", (event) => {
+  if (captureInput) event.preventDefault();
+}, true);
 
 initialize().catch((error) => {
   elements.dirtyStatus.textContent = `Startup failed: ${error?.message ?? error}`;

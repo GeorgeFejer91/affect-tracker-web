@@ -2,6 +2,26 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use uuid::Uuid;
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct AffectPalette {
+    pub up: String,
+    pub down: String,
+    pub left: String,
+    pub right: String,
+}
+
+impl Default for AffectPalette {
+    fn default() -> Self {
+        Self {
+            up: "#ffd166".into(),
+            down: "#5c7cfa".into(),
+            left: "#ff5b68".into(),
+            right: "#5dffb0".into(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum Action {
@@ -64,6 +84,7 @@ pub struct AffectSnapshot {
     pub overlay_visible: bool,
     pub overlay_editing: bool,
     pub overlay_opacity: f32,
+    pub palette: AffectPalette,
     pub lsl_state: String,
     pub lsl_message: String,
 }
@@ -151,6 +172,12 @@ impl AffectEngine {
         self.held.clear();
     }
 
+    pub fn set_target(&mut self, x: f32, y: f32) {
+        self.target_x = x.clamp(-1.0, 1.0);
+        self.target_y = y.clamp(-1.0, 1.0);
+        self.held.clear();
+    }
+
     pub fn toggle_pause(&mut self) {
         self.animation_active = !self.animation_active;
     }
@@ -197,6 +224,7 @@ impl AffectEngine {
         overlay_visible: bool,
         overlay_editing: bool,
         overlay_opacity: f32,
+        palette: AffectPalette,
         lsl_state: &str,
         lsl_message: &str,
     ) -> AffectSnapshot {
@@ -223,6 +251,7 @@ impl AffectEngine {
             overlay_visible,
             overlay_editing,
             overlay_opacity,
+            palette,
             lsl_state: lsl_state.to_owned(),
             lsl_message: lsl_message.to_owned(),
         }
@@ -283,5 +312,13 @@ mod tests {
         assert_eq!(value.current_x, before);
         value.tick(0.05);
         assert!(value.current_x < before);
+    }
+
+    #[test]
+    fn direct_target_selection_clamps_coordinates() {
+        let mut value = engine();
+        value.set_target(2.0, -3.0);
+        assert_eq!(value.target_x, 1.0);
+        assert_eq!(value.target_y, -1.0);
     }
 }

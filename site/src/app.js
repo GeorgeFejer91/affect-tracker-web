@@ -1,9 +1,11 @@
 import {
   affectParameters,
+  affectPaletteColor,
   buildFlubberPath,
   clamp,
   createProfiles,
   createProjectionOffsets,
+  DEFAULT_AFFECT_PALETTE,
   smoothToward,
 } from "./math.js";
 import {
@@ -45,7 +47,15 @@ const elements = {
   sampleCount: document.querySelector("#sample-count"),
   bufferCount: document.querySelector("#buffer-count"),
   status: document.querySelector("#status-region"),
+  featureSpace: document.querySelector("#web-feature-space"),
+  featureCanvas: document.querySelector("#web-feature-space-canvas"),
+  featurePoint: document.querySelector("#web-feature-point"),
+  paletteInputs: [...document.querySelectorAll("[data-palette]")],
 };
+
+function validPalette(value) {
+  return value && ["up", "down", "left", "right"].every((name) => /^#[\da-f]{6}$/i.test(value[name] ?? ""));
+}
 
 function readPreferences() {
   try {
@@ -56,6 +66,7 @@ function readPreferences() {
       widgetSize: Number.isFinite(parsed.widgetSize) ? clamp(parsed.widgetSize, 120, 320) : 180,
       inputMode: parsed.inputMode === "step" ? "step" : "continuous",
       panelOpen: typeof parsed.panelOpen === "boolean" ? parsed.panelOpen : !parsed.seenIntro,
+      palette: validPalette(parsed.palette) ? parsed.palette : { ...DEFAULT_AFFECT_PALETTE },
       seenIntro: true,
     };
   } catch {
@@ -65,6 +76,7 @@ function readPreferences() {
       widgetSize: 180,
       inputMode: "continuous",
       panelOpen: true,
+      palette: { ...DEFAULT_AFFECT_PALETTE },
       seenIntro: true,
     };
   }
@@ -82,6 +94,7 @@ const state = {
   widgetY: preferences.widgetY,
   widgetSize: preferences.widgetSize,
   panelOpen: preferences.panelOpen,
+  palette: preferences.palette,
   heldDirections: new Set(),
   phase: 0,
   dragging: false,
@@ -94,6 +107,7 @@ let previousTimestamp;
 let sampleAccumulator = 0;
 let dragOffsetX = 0;
 let dragOffsetY = 0;
+let featurePointerId;
 const reducedMotionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
 
 function savePreferences() {
@@ -103,6 +117,7 @@ function savePreferences() {
     widgetSize: state.widgetSize,
     inputMode: state.inputMode,
     panelOpen: state.panelOpen,
+    palette: state.palette,
     seenIntro: true,
   }));
 }
@@ -151,6 +166,35 @@ function updateCoordinateDisplay() {
     "aria-label",
     `Draggable affect shape. Valence ${state.currentX.toFixed(2)}, arousal ${state.currentY.toFixed(2)}. Use arrow keys or WASD to adjust.`,
   );
+}
+
+function updateFeatureSpace() {
+  for (const [name, color] of Object.entries(state.palette)) elements.featureSpace.style.setProperty(`--palette-${name}`, color);
+  const paletteKey = JSON.stringify(state.palette);
+  if (elements.featureCanvas.dataset.palette !== paletteKey) {
+    const context = elements.featureCanvas.getContext("2d");
+    const image = context.createImageData(elements.featureCanvas.width, elements.featureCanvas.height);
+    for (let py = 0; py < elements.featureCanvas.height; py += 1) {
+      for (let px = 0; px < elements.featureCanvas.width; px += 1) {
+        const color = affectPaletteColor(px / (elements.featureCanvas.width - 1) * 2 - 1, 1 - py / (elements.featureCanvas.height - 1) * 2, state.palette);
+        const [red, green, blue] = color.match(/\d+/g).map(Number);
+        const offset = (py * elements.featureCanvas.width + px) * 4;
+        image.data.set([red, green, blue, 255], offset);
+      }
+    }
+    context.putImageData(image, 0, 0);
+    elements.featureCanvas.dataset.palette = paletteKey;
+  }
+  elements.featurePoint.style.left = `${(state.currentX + 1) * 50}%`;
+  elements.featurePoint.style.top = `${(1 - state.currentY) * 50}%`;
+  for (const input of elements.paletteInputs) input.value = state.palette[input.dataset.palette];
+  elements.featureSpace.setAttribute("aria-valuetext", `Valence ${state.targetX.toFixed(2)}, arousal ${state.targetY.toFixed(2)}`);
+}
+
+function chooseFeatureCoordinate(event) {
+  const bounds = elements.featureSpace.getBoundingClientRect();
+  state.targetX = clamp(((event.clientX - bounds.left) / bounds.width) * 2 - 1, -1, 1);
+  state.targetY = clamp(1 - ((event.clientY - bounds.top) / bounds.height) * 2, -1, 1);
 }
 
 function constrainAndRenderWidget() {
@@ -383,6 +427,38 @@ function initializeEvents() {
   for (const input of elements.modeInputs) {
     input.addEventListener("change", () => setMode(input.value));
   }
+  for (const input of elements.paletteInputs) {
+    input.addEventListener("input", () => {
+      state.palette[input.dataset.palette] = input.value;
+      updateFeatureSpace();
+      savePreferences();
+      recordEvent("panel", "palette-change", input.dataset.palette, input.value);
+    });
+  }
+  elements.featureSpace.addEventListener("pointerdown", (event) => {
+    featurePointerId = event.pointerId;
+    elements.featureSpace.setPointerCapture(event.pointerId);
+    chooseFeatureCoordinate(event);
+  });
+  elements.featureSpace.addEventListener("pointermove", (event) => {
+    if (event.pointerId === featurePointerId) chooseFeatureCoordinate(event);
+  });
+  const finishFeatureSelection = (event) => {
+    if (event.pointerId !== featurePointerId) return;
+    featurePointerId = undefined;
+    recordEvent("feature-space", "select-coordinate", "pointer", `${state.targetX.toFixed(4)},${state.targetY.toFixed(4)}`);
+  };
+  elements.featureSpace.addEventListener("pointerup", finishFeatureSelection);
+  elements.featureSpace.addEventListener("pointercancel", finishFeatureSelection);
+  elements.featureSpace.addEventListener("keydown", (event) => {
+    const direction = { ArrowLeft: [-0.05, 0], ArrowRight: [0.05, 0], ArrowUp: [0, 0.05], ArrowDown: [0, -0.05] }[event.key];
+    if (!direction) return;
+    event.preventDefault();
+    event.stopPropagation();
+    state.targetX = clamp(state.targetX + direction[0], -1, 1);
+    state.targetY = clamp(state.targetY + direction[1], -1, 1);
+    recordEvent("feature-space", "select-coordinate", event.key, `${state.targetX.toFixed(4)},${state.targetY.toFixed(4)}`);
+  });
 
   for (const button of elements.directionButtons) {
     button.addEventListener("pointerdown", handleDirectionPointerDown);
@@ -426,6 +502,7 @@ function animationFrame(timestamp) {
     x: state.currentX,
     y: state.currentY,
     phase: state.phase,
+    palette: state.palette,
     reducedMotion: reducedMotionQuery.matches,
   });
   elements.basePath.setAttribute("d", rendered.path);
@@ -433,6 +510,7 @@ function animationFrame(timestamp) {
   elements.haloPath.setAttribute("d", rendered.path);
   elements.widget.style.setProperty("--affect-color", rendered.color);
   updateCoordinateDisplay();
+  updateFeatureSpace();
 
   if (!document.hidden) {
     sampleAccumulator += deltaSeconds;
@@ -448,6 +526,7 @@ function animationFrame(timestamp) {
 function initialize() {
   updatePanelState();
   updateModeControls();
+  updateFeatureSpace();
   constrainAndRenderWidget();
   initializeEvents();
   updateLoggerDisplay();

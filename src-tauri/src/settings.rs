@@ -1,4 +1,4 @@
-use crate::domain::{Action, InputMode};
+use crate::domain::{Action, AffectPalette, InputMode};
 use crate::error::CommandError;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
@@ -16,6 +16,7 @@ pub struct Settings {
     pub continuous_speed: f32,
     pub response: f32,
     pub bindings: HashMap<Action, String>,
+    pub palette: AffectPalette,
     pub overlay: OverlaySettings,
     pub lsl: LslSettings,
 }
@@ -38,7 +39,6 @@ pub struct LslSettings {
     pub marker_name: String,
     pub sample_rate: u32,
     pub source_id: String,
-    pub start_enabled: bool,
 }
 
 impl Default for Settings {
@@ -50,15 +50,16 @@ impl Default for Settings {
             continuous_speed: 0.8,
             response: 8.0,
             bindings: HashMap::from([
-                (Action::IncreaseValence, "Control+Alt+Right".into()),
-                (Action::DecreaseValence, "Control+Alt+Left".into()),
-                (Action::IncreaseArousal, "Control+Alt+Up".into()),
-                (Action::DecreaseArousal, "Control+Alt+Down".into()),
-                (Action::Reset, "Control+Alt+R".into()),
-                (Action::TogglePause, "Control+Alt+Space".into()),
-                (Action::ShowSettings, "Control+Alt+A".into()),
-                (Action::ToggleOverlayEditing, "Control+Alt+E".into()),
+                (Action::IncreaseValence, "key:ArrowRight".into()),
+                (Action::DecreaseValence, "key:ArrowLeft".into()),
+                (Action::IncreaseArousal, "key:ArrowUp".into()),
+                (Action::DecreaseArousal, "key:ArrowDown".into()),
+                (Action::Reset, "key:KeyR".into()),
+                (Action::TogglePause, "key:Space".into()),
+                (Action::ShowSettings, "key:F10".into()),
+                (Action::ToggleOverlayEditing, "key:F9".into()),
             ]),
+            palette: AffectPalette::default(),
             overlay: OverlaySettings::default(),
             lsl: LslSettings::default(),
         }
@@ -85,7 +86,6 @@ impl Default for LslSettings {
             marker_name: "AffectTrackerMarkers".into(),
             sample_rate: 50,
             source_id: "affect-tracker-desktop".into(),
-            start_enabled: false,
         }
     }
 }
@@ -146,12 +146,12 @@ impl Settings {
             ));
         }
         let mut unique = HashSet::new();
-        for shortcut in self.bindings.values() {
-            let normalized = shortcut.trim().to_ascii_lowercase();
-            if normalized.is_empty() || shortcut.len() > 80 {
+        for binding in self.bindings.values() {
+            let normalized = binding.trim().to_ascii_lowercase();
+            if !valid_binding(&normalized) {
                 return Err(CommandError::new(
-                    "invalid_shortcut",
-                    "Shortcut assignments cannot be empty or longer than 80 characters.",
+                    "invalid_binding",
+                    "Bindings must identify one captured key, mouse button, or wheel direction.",
                 ));
             }
             if !unique.insert(normalized) {
@@ -161,8 +161,46 @@ impl Settings {
                 ));
             }
         }
+        for color in [
+            &self.palette.up,
+            &self.palette.down,
+            &self.palette.left,
+            &self.palette.right,
+        ] {
+            if !valid_hex_color(color) {
+                return Err(CommandError::new(
+                    "invalid_palette",
+                    "Palette colors must use six-digit hex notation such as #5dffb0.",
+                ));
+            }
+        }
         Ok(())
     }
+}
+
+fn valid_binding(value: &str) -> bool {
+    let Some((kind, control)) = value.split_once(':') else {
+        return false;
+    };
+    if control.is_empty() || control.len() > 40 {
+        return false;
+    }
+    match kind {
+        "key" => control
+            .chars()
+            .all(|character| character.is_ascii_alphanumeric()),
+        "mouse" => matches!(control, "left" | "right" | "middle" | "button4" | "button5"),
+        "wheel" => matches!(control, "up" | "down" | "left" | "right"),
+        _ => false,
+    }
+}
+
+fn valid_hex_color(value: &str) -> bool {
+    value.len() == 7
+        && value.starts_with('#')
+        && value[1..]
+            .chars()
+            .all(|character| character.is_ascii_hexdigit())
 }
 
 fn validate_range(label: &str, value: f32, minimum: f32, maximum: f32) -> Result<(), CommandError> {
@@ -179,9 +217,18 @@ pub fn load(path: &Path) -> Settings {
     let Ok(contents) = fs::read_to_string(path) else {
         return Settings::default();
     };
-    let Ok(settings) = serde_json::from_str::<Settings>(&contents) else {
+    let Ok(mut settings) = serde_json::from_str::<Settings>(&contents) else {
         return Settings::default();
     };
+    if matches!(
+        settings.validate(),
+        Err(CommandError {
+            code: "invalid_binding" | "missing_binding" | "shortcut_conflict",
+            ..
+        })
+    ) {
+        settings.bindings = Settings::default().bindings;
+    }
     if settings.validate().is_ok() {
         settings
     } else {
@@ -216,10 +263,18 @@ mod tests {
     #[test]
     fn duplicate_shortcuts_are_rejected_case_insensitively() {
         let mut value = Settings::default();
-        value
-            .bindings
-            .insert(Action::IncreaseValence, "Control+Alt+R".into());
+        let duplicate = value.bindings[&Action::Reset].clone();
+        value.bindings.insert(Action::IncreaseValence, duplicate);
         assert_eq!(value.validate().unwrap_err().code, "shortcut_conflict");
+    }
+
+    #[test]
+    fn defaults_use_plain_arrow_keys_for_affect_axes() {
+        let value = Settings::default();
+        assert_eq!(value.bindings[&Action::IncreaseValence], "key:ArrowRight");
+        assert_eq!(value.bindings[&Action::DecreaseValence], "key:ArrowLeft");
+        assert_eq!(value.bindings[&Action::IncreaseArousal], "key:ArrowUp");
+        assert_eq!(value.bindings[&Action::DecreaseArousal], "key:ArrowDown");
     }
 
     #[test]
