@@ -13,6 +13,19 @@ export const BINDING_LABELS = Object.freeze({
   toggleOverlayEditing: "Toggle flubber dragging",
 });
 
+export const ADVANCED_BINDING_LABELS = Object.freeze({
+  increaseAnimationSpeed: "Increase animation speed",
+  decreaseAnimationSpeed: "Decrease animation speed",
+  increaseAmplitude: "Increase pulse amplitude",
+  decreaseAmplitude: "Decrease pulse amplitude",
+  increaseDisorder: "Increase shape disorder",
+  decreaseDisorder: "Decrease shape disorder",
+  increaseTransparency: "Increase transparency",
+  decreaseTransparency: "Decrease transparency",
+  increaseSize: "Increase flubber size",
+  decreaseSize: "Decrease flubber size",
+});
+
 export const DIRECTION_BY_ACTION = Object.freeze({
   increaseValence: "right",
   decreaseValence: "left",
@@ -36,6 +49,8 @@ export const DEFAULT_PORTABLE_SETTINGS = Object.freeze({
     showSettings: "key:F10",
     toggleOverlayEditing: "key:F9",
   }),
+  advancedBindings: Object.freeze({}),
+  visual: Object.freeze({ animationSpeed: 1, amplitudeScale: 1, disorderScale: 1 }),
   palette: DEFAULT_AFFECT_PALETTE,
   overlay: Object.freeze({ x: 120, y: 120, size: 240, opacity: 0.95, visible: true }),
   lsl: Object.freeze({
@@ -86,6 +101,24 @@ function normalizedBindings(value) {
   return bindings;
 }
 
+function normalizedAdvancedBindings(value, reservedBindings) {
+  if (value === undefined) return {};
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("Advanced bindings must be an object.");
+  }
+  const bindings = {};
+  const unique = new Set(Object.values(reservedBindings).map((binding) => binding.toLowerCase()));
+  for (const [action, binding] of Object.entries(value)) {
+    if (!(action in ADVANCED_BINDING_LABELS)) throw new Error(`Unknown advanced action: ${action}.`);
+    if (!validBinding(binding)) throw new Error(`The ${ADVANCED_BINDING_LABELS[action]} binding is invalid.`);
+    const normalized = binding.toLowerCase();
+    if (unique.has(normalized)) throw new Error("Every input assignment must be unique.");
+    unique.add(normalized);
+    bindings[action] = binding;
+  }
+  return bindings;
+}
+
 function normalizedPalette(value) {
   if (!value || typeof value !== "object") throw new Error("The four-color palette is missing.");
   const palette = {};
@@ -106,14 +139,22 @@ export function normalizePortableSettings(value) {
   if (value.inputMode !== "continuous" && value.inputMode !== "step") throw new Error("Input mode must be continuous or step.");
   const overlay = value.overlay ?? {};
   const lsl = value.lsl ?? {};
+  const visual = value.visual ?? DEFAULT_PORTABLE_SETTINGS.visual;
   if (typeof overlay.visible !== "boolean") throw new Error("Overlay visibility must be true or false.");
+  const bindings = normalizedBindings(value.bindings);
   return {
     version: SETTINGS_VERSION,
     inputMode: value.inputMode,
     stepSize: assertNumber(value.stepSize, "Step size", 0.01, 1),
     continuousSpeed: assertNumber(value.continuousSpeed, "Continuous speed", 0.05, 4),
     response: assertNumber(value.response, "Smoothing response", 0.1, 30),
-    bindings: normalizedBindings(value.bindings),
+    bindings,
+    advancedBindings: normalizedAdvancedBindings(value.advancedBindings, bindings),
+    visual: {
+      animationSpeed: assertNumber(visual.animationSpeed, "Animation speed", 0.25, 4),
+      amplitudeScale: assertNumber(visual.amplitudeScale, "Pulse amplitude", 0, 2),
+      disorderScale: assertNumber(visual.disorderScale, "Shape disorder", 0, 2),
+    },
     palette: normalizedPalette(value.palette),
     overlay: {
       x: Math.round(assertNumber(overlay.x, "Overlay X", -100000, 100000)),
@@ -136,9 +177,10 @@ export function portableSettingsJson(value) {
   return `${JSON.stringify(normalizePortableSettings(value), null, 2)}\n`;
 }
 
-export function actionForBinding(bindings, token) {
+export function actionForBinding(bindings, token, advancedBindings = {}) {
   const normalized = token.toLowerCase();
-  return Object.entries(bindings).find(([, binding]) => binding.toLowerCase() === normalized)?.[0] ?? null;
+  return Object.entries({ ...bindings, ...advancedBindings })
+    .find(([, binding]) => binding.toLowerCase() === normalized)?.[0] ?? null;
 }
 
 export function describeBinding(value) {

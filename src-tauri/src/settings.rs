@@ -1,4 +1,4 @@
-use crate::domain::{Action, AffectPalette, InputMode};
+use crate::domain::{Action, AffectPalette, FeatureAction, InputMode};
 use crate::error::CommandError;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
@@ -16,6 +16,8 @@ pub struct Settings {
     pub continuous_speed: f32,
     pub response: f32,
     pub bindings: HashMap<Action, String>,
+    pub advanced_bindings: HashMap<FeatureAction, String>,
+    pub visual: VisualSettings,
     pub palette: AffectPalette,
     pub overlay: OverlaySettings,
     pub lsl: LslSettings,
@@ -29,6 +31,14 @@ pub struct OverlaySettings {
     pub size: u32,
     pub opacity: f32,
     pub visible: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct VisualSettings {
+    pub animation_speed: f32,
+    pub amplitude_scale: f32,
+    pub disorder_scale: f32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -59,9 +69,21 @@ impl Default for Settings {
                 (Action::ShowSettings, "key:F10".into()),
                 (Action::ToggleOverlayEditing, "key:F9".into()),
             ]),
+            advanced_bindings: HashMap::new(),
+            visual: VisualSettings::default(),
             palette: AffectPalette::default(),
             overlay: OverlaySettings::default(),
             lsl: LslSettings::default(),
+        }
+    }
+}
+
+impl Default for VisualSettings {
+    fn default() -> Self {
+        Self {
+            animation_speed: 1.0,
+            amplitude_scale: 1.0,
+            disorder_scale: 1.0,
         }
     }
 }
@@ -91,6 +113,41 @@ impl Default for LslSettings {
 }
 
 impl Settings {
+    pub fn adjust_feature(&mut self, action: FeatureAction) {
+        match action {
+            FeatureAction::IncreaseAnimationSpeed => {
+                self.visual.animation_speed = (self.visual.animation_speed + 0.1).clamp(0.25, 4.0);
+            }
+            FeatureAction::DecreaseAnimationSpeed => {
+                self.visual.animation_speed = (self.visual.animation_speed - 0.1).clamp(0.25, 4.0);
+            }
+            FeatureAction::IncreaseAmplitude => {
+                self.visual.amplitude_scale = (self.visual.amplitude_scale + 0.1).clamp(0.0, 2.0);
+            }
+            FeatureAction::DecreaseAmplitude => {
+                self.visual.amplitude_scale = (self.visual.amplitude_scale - 0.1).clamp(0.0, 2.0);
+            }
+            FeatureAction::IncreaseDisorder => {
+                self.visual.disorder_scale = (self.visual.disorder_scale + 0.1).clamp(0.0, 2.0);
+            }
+            FeatureAction::DecreaseDisorder => {
+                self.visual.disorder_scale = (self.visual.disorder_scale - 0.1).clamp(0.0, 2.0);
+            }
+            FeatureAction::IncreaseTransparency => {
+                self.overlay.opacity = (self.overlay.opacity - 0.05).clamp(0.0, 1.0);
+            }
+            FeatureAction::DecreaseTransparency => {
+                self.overlay.opacity = (self.overlay.opacity + 0.05).clamp(0.0, 1.0);
+            }
+            FeatureAction::IncreaseSize => {
+                self.overlay.size = self.overlay.size.saturating_add(10).clamp(120, 640);
+            }
+            FeatureAction::DecreaseSize => {
+                self.overlay.size = self.overlay.size.saturating_sub(10).clamp(120, 640);
+            }
+        }
+    }
+
     pub fn validate(&self) -> Result<(), CommandError> {
         if self.version != SETTINGS_VERSION {
             return Err(CommandError::new(
@@ -101,6 +158,9 @@ impl Settings {
         validate_range("step size", self.step_size, 0.01, 1.0)?;
         validate_range("continuous speed", self.continuous_speed, 0.05, 4.0)?;
         validate_range("smoothing response", self.response, 0.1, 30.0)?;
+        validate_range("animation speed", self.visual.animation_speed, 0.25, 4.0)?;
+        validate_range("pulse amplitude", self.visual.amplitude_scale, 0.0, 2.0)?;
+        validate_range("shape disorder", self.visual.disorder_scale, 0.0, 2.0)?;
         if !(120..=640).contains(&self.overlay.size) {
             return Err(CommandError::new(
                 "invalid_overlay_size",
@@ -158,6 +218,21 @@ impl Settings {
                 return Err(CommandError::new(
                     "shortcut_conflict",
                     "Every shortcut assignment must be unique.",
+                ));
+            }
+        }
+        for binding in self.advanced_bindings.values() {
+            let normalized = binding.trim().to_ascii_lowercase();
+            if !valid_binding(&normalized) {
+                return Err(CommandError::new(
+                    "invalid_binding",
+                    "Advanced bindings must identify one captured key, mouse button, or wheel direction.",
+                ));
+            }
+            if !unique.insert(normalized) {
+                return Err(CommandError::new(
+                    "shortcut_conflict",
+                    "Every shortcut assignment must be unique across standard and advanced controls.",
                 ));
             }
         }
@@ -278,12 +353,57 @@ mod tests {
     }
 
     #[test]
+    fn advanced_bindings_are_optional_and_conflict_with_core_bindings() {
+        let mut value = Settings::default();
+        value.advanced_bindings.insert(
+            FeatureAction::IncreaseTransparency,
+            "mouse:button4".into(),
+        );
+        value.validate().unwrap();
+        value.advanced_bindings.insert(
+            FeatureAction::IncreaseSize,
+            value.bindings[&Action::Reset].clone(),
+        );
+        assert_eq!(value.validate().unwrap_err().code, "shortcut_conflict");
+    }
+
+    #[test]
     fn invalid_numeric_values_are_rejected() {
         let value = Settings {
             step_size: f32::NAN,
             ..Settings::default()
         };
         assert_eq!(value.validate().unwrap_err().code, "invalid_range");
+    }
+
+    #[test]
+    fn advanced_feature_adjustments_are_bounded() {
+        let mut value = Settings::default();
+        for _ in 0..100 {
+            value.adjust_feature(FeatureAction::IncreaseAnimationSpeed);
+            value.adjust_feature(FeatureAction::IncreaseAmplitude);
+            value.adjust_feature(FeatureAction::IncreaseDisorder);
+            value.adjust_feature(FeatureAction::IncreaseTransparency);
+            value.adjust_feature(FeatureAction::IncreaseSize);
+        }
+        assert_eq!(value.visual.animation_speed, 4.0);
+        assert_eq!(value.visual.amplitude_scale, 2.0);
+        assert_eq!(value.visual.disorder_scale, 2.0);
+        assert_eq!(value.overlay.opacity, 0.0);
+        assert_eq!(value.overlay.size, 640);
+
+        for _ in 0..100 {
+            value.adjust_feature(FeatureAction::DecreaseAnimationSpeed);
+            value.adjust_feature(FeatureAction::DecreaseAmplitude);
+            value.adjust_feature(FeatureAction::DecreaseDisorder);
+            value.adjust_feature(FeatureAction::DecreaseTransparency);
+            value.adjust_feature(FeatureAction::DecreaseSize);
+        }
+        assert_eq!(value.visual.animation_speed, 0.25);
+        assert_eq!(value.visual.amplitude_scale, 0.0);
+        assert_eq!(value.visual.disorder_scale, 0.0);
+        assert_eq!(value.overlay.opacity, 1.0);
+        assert_eq!(value.overlay.size, 120);
     }
 
     #[test]
@@ -304,6 +424,8 @@ mod tests {
             serde_json::from_str(include_str!("../../site/settings.json")).unwrap();
         value.validate().unwrap();
         assert_eq!(value.overlay.size, 240);
+        assert_eq!(value.visual.animation_speed, 1.0);
+        assert!(value.advanced_bindings.is_empty());
         assert_eq!(value.bindings[&Action::IncreaseValence], "key:ArrowRight");
         assert_eq!(value.lsl.stream_name, "AffectTracker");
     }

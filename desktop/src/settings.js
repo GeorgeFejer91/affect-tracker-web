@@ -2,6 +2,7 @@ import { nativeApi } from "./native.js";
 import { createFlubberRenderer } from "./render.js";
 import { affectPaletteColor } from "../../site/src/math.js";
 import {
+  ADVANCED_BINDING_LABELS,
   BINDING_LABELS,
   describeBinding,
   mouseButtonName,
@@ -14,6 +15,7 @@ import {
 const elements = {
   form: document.querySelector("#settings-form"),
   bindingGrid: document.querySelector("#binding-grid"),
+  advancedBindingGrid: document.querySelector("#advanced-binding-grid"),
   valence: document.querySelector("#valence-output"),
   arousal: document.querySelector("#arousal-output"),
   lslStatus: document.querySelector("#lsl-status"),
@@ -41,10 +43,22 @@ let featurePointerId;
 
 function finishCapture(value) {
   if (!captureInput) return;
+  const conflict = [...document.querySelectorAll("[data-binding]")]
+    .find((input) => input !== captureInput && input.dataset.bindingValue?.toLowerCase() === value.toLowerCase());
+  if (conflict) {
+    const label = BINDING_LABELS[conflict.dataset.binding] ?? ADVANCED_BINDING_LABELS[conflict.dataset.binding];
+    captureInput.value = captureInput.dataset.bindingValue ? describeBinding(captureInput.dataset.bindingValue) : "";
+    captureInput.classList.remove("is-capturing");
+    captureInput = undefined;
+    announce(`That input is already assigned to ${label}.`);
+    return;
+  }
   captureInput.dataset.bindingValue = value;
   captureInput.value = describeBinding(value);
   captureInput.classList.remove("is-capturing");
   captureInput.dispatchEvent(new Event("input", { bubbles: true }));
+  const clearButton = captureInput.closest(".advanced-binding-field")?.querySelector("button");
+  if (clearButton) clearButton.disabled = false;
   announce(`${captureInput.closest("label").firstChild.textContent.trim()} assigned to ${describeBinding(value)}.`);
   captureInput = undefined;
 }
@@ -104,9 +118,26 @@ function formatCoordinate(value) {
 
 function renderSnapshot(snapshot) {
   latestSnapshot = snapshot;
+  if (settings && elements.dirtyStatus.textContent === "Settings loaded") {
+    settings.visual.animationSpeed = snapshot.animationSpeed;
+    settings.visual.amplitudeScale = snapshot.amplitudeScale;
+    settings.visual.disorderScale = snapshot.disorderScale;
+    settings.overlay.opacity = snapshot.overlayOpacity;
+    settings.overlay.size = snapshot.overlaySize;
+    document.querySelector("#animation-speed").value = snapshot.animationSpeed;
+    document.querySelector("#amplitude-scale").value = snapshot.amplitudeScale;
+    document.querySelector("#disorder-scale").value = snapshot.disorderScale;
+    document.querySelector("#overlay-size").value = snapshot.overlaySize;
+    elements.transparency.value = opacityToTransparencyPercent(snapshot.overlayOpacity);
+    elements.transparencyOutput.value = `${elements.transparency.value}%`;
+  }
   const palette = settings ? readPalette() : snapshot.palette;
   const overlayOpacity = settings ? transparencyPercentToOpacity(elements.transparency.value) : snapshot.overlayOpacity;
-  renderFlubber({ ...snapshot, palette, overlayOpacity }, reducedMotion.matches);
+  const visualPreview = settings ? {
+    amplitudeScale: Number(document.querySelector("#amplitude-scale").value),
+    disorderScale: Number(document.querySelector("#disorder-scale").value),
+  } : {};
+  renderFlubber({ ...snapshot, ...visualPreview, palette, overlayOpacity }, reducedMotion.matches);
   updateFeatureSpace(snapshot, palette);
   elements.valence.textContent = formatCoordinate(snapshot.currentX);
   elements.arousal.textContent = formatCoordinate(snapshot.currentY);
@@ -125,6 +156,7 @@ function createBindingInputs(bindings) {
     wrapper.textContent = label;
     const input = document.createElement("input");
     input.dataset.binding = action;
+    input.dataset.bindingGroup = "core";
     input.dataset.bindingValue = bindings[action] ?? "";
     input.value = describeBinding(input.dataset.bindingValue);
     input.readOnly = true;
@@ -132,6 +164,37 @@ function createBindingInputs(bindings) {
     input.addEventListener("click", () => beginCapture(input));
     wrapper.append(input);
     elements.bindingGrid.append(wrapper);
+  }
+
+  elements.advancedBindingGrid.replaceChildren();
+  for (const [action, label] of Object.entries(ADVANCED_BINDING_LABELS)) {
+    const row = document.createElement("div");
+    row.className = "advanced-binding-field";
+    const wrapper = document.createElement("label");
+    wrapper.textContent = label;
+    const input = document.createElement("input");
+    input.dataset.binding = action;
+    input.dataset.bindingGroup = "advanced";
+    input.dataset.bindingValue = settings?.advancedBindings?.[action] ?? "";
+    input.value = input.dataset.bindingValue ? describeBinding(input.dataset.bindingValue) : "";
+    input.placeholder = "Unassigned";
+    input.readOnly = true;
+    input.autocomplete = "off";
+    input.addEventListener("click", () => beginCapture(input));
+    const clear = document.createElement("button");
+    clear.type = "button";
+    clear.textContent = "Clear";
+    clear.disabled = !input.dataset.bindingValue;
+    clear.addEventListener("click", () => {
+      input.dataset.bindingValue = "";
+      input.value = "";
+      clear.disabled = true;
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      announce(`${label} assignment cleared.`);
+    });
+    wrapper.append(input);
+    row.append(wrapper, clear);
+    elements.advancedBindingGrid.append(row);
   }
 }
 
@@ -141,6 +204,9 @@ function fillForm(value) {
   document.querySelector("#step-size").value = value.stepSize;
   document.querySelector("#continuous-speed").value = value.continuousSpeed;
   document.querySelector("#response").value = value.response;
+  document.querySelector("#animation-speed").value = value.visual.animationSpeed;
+  document.querySelector("#amplitude-scale").value = value.visual.amplitudeScale;
+  document.querySelector("#disorder-scale").value = value.visual.disorderScale;
   document.querySelector("#overlay-size").value = value.overlay.size;
   elements.transparency.value = opacityToTransparencyPercent(value.overlay.opacity);
   elements.transparencyOutput.value = `${elements.transparency.value}%`;
@@ -156,7 +222,14 @@ function fillForm(value) {
 
 function readForm(currentSettings = settings) {
   const bindings = {};
-  for (const input of document.querySelectorAll("[data-binding]")) bindings[input.dataset.binding] = input.dataset.bindingValue;
+  const advancedBindings = {};
+  for (const input of document.querySelectorAll("[data-binding]")) {
+    if (input.dataset.bindingGroup === "advanced") {
+      if (input.dataset.bindingValue) advancedBindings[input.dataset.binding] = input.dataset.bindingValue;
+    } else {
+      bindings[input.dataset.binding] = input.dataset.bindingValue;
+    }
+  }
   return {
     ...currentSettings,
     inputMode: document.querySelector("#input-mode").value,
@@ -164,6 +237,12 @@ function readForm(currentSettings = settings) {
     continuousSpeed: Number(document.querySelector("#continuous-speed").value),
     response: Number(document.querySelector("#response").value),
     bindings,
+    advancedBindings,
+    visual: {
+      animationSpeed: Number(document.querySelector("#animation-speed").value),
+      amplitudeScale: Number(document.querySelector("#amplitude-scale").value),
+      disorderScale: Number(document.querySelector("#disorder-scale").value),
+    },
     palette: readPalette(),
     overlay: {
       ...currentSettings.overlay,
@@ -234,6 +313,11 @@ async function initialize() {
   for (const input of document.querySelectorAll("input[type='color']")) {
     input.addEventListener("input", () => {
       if (latestSnapshot) renderSnapshot(latestSnapshot);
+    });
+  }
+  for (const input of [document.querySelector("#amplitude-scale"), document.querySelector("#disorder-scale")]) {
+    input.addEventListener("input", () => {
+      if (latestSnapshot && input.checkValidity()) renderSnapshot(latestSnapshot);
     });
   }
   elements.form.addEventListener("submit", async (event) => {

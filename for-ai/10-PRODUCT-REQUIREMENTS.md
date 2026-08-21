@@ -21,6 +21,7 @@ The SVG uses 192 angular samples, 16 projections, deterministic seeded phase/amp
 - Works without a build step or runtime dependency after static assets load.
 - Fullscreen black study surface with a draggable affect widget.
 - Configurable keyboard, mouse-button, wheel/trackpad, and accessible on-screen controls; arrow keys are the defaults.
+- An advanced menu can optionally bind physical inputs to increase or decrease animation speed, pulse amplitude, shape disorder, transparency, and widget size.
 - Interactive 2D color-space coordinate selection and four persisted axis colors.
 - Continuous and step modes, reset, pause, reduced-motion support, and visible focus.
 - Browser-only 10,000-record ring buffer with 20 Hz affect sampling and CSV export.
@@ -40,6 +41,7 @@ The SVG uses 192 angular samples, 16 projections, deterministic seeded phase/amp
 - Closing the main settings window quits the entire application and removes the overlay; it must never leave an orphan floating widget.
 - Native Rust owns affect state, smoothing, timestamps, persisted settings, global raw-input monitoring, and LSL publication.
 - Users assign positive/negative valence, positive/negative arousal, reset, pause, settings, and overlay editing by clicking a field and physically pressing a key, mouse button, or wheel direction.
+- Optional advanced global bindings adjust animation speed, pulse amplitude, shape disorder, transparency, and overlay size in bounded increments; every assignment remains collision-free across standard and advanced actions.
 - Plain arrow keys are the default affect controls. Assignments remain active while other applications are focused; conflicts and invalid mappings produce actionable errors.
 - Settings include input mode, step size, held-input speed, smoothing response, axis colors, overlay size/transparency/position, persisted LSL names/rate/source, and physical input bindings.
 - The canonical native icon is `desktop/icons/app-icon.svg`; regenerate platform PNG, ICO, and ICNS assets with `pnpm desktop:icons` after changing it.
@@ -49,6 +51,7 @@ The SVG uses 192 angular samples, 16 projections, deterministic seeded phase/amp
 
 - `site/settings.json` is the canonical version-1 JSON defaults file and must deserialize as native Rust `Settings` without migration.
 - Web and desktop import and export the same complete JSON object. Palette, size, opacity, visibility, coordinates, input behavior, bindings, and LSL metadata must round-trip without visual or semantic loss.
+- Version 1 remains the active schema: `visual` and `advancedBindings` are additive fields with defaults, so older version-1 files import safely with neutral visual multipliers and no advanced assignments.
 - The user-facing transparency control spans 0% (fully opaque) through 100% (fully transparent); the JSON stores the inverse `overlay.opacity` in `[0,1]`.
 - The web app exposes every portable customization. It preserves LSL metadata for transfer but cannot publish LSL, and global browser bindings only operate while the page is focused.
 - Browser preferences may override bundled defaults for returning users. Replacing `site/settings.json` changes defaults for new/clean browser profiles; importing applies a file immediately.

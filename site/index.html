@@ -84,6 +84,17 @@
             <p>Click a field and then press, click, or scroll. Browser assignments work while this page is focused.</p>
             <div id="web-binding-grid" class="web-binding-grid"></div>
 
+            <details class="advanced-controls">
+              <summary>Advanced Flubber feature controls</summary>
+              <p>Set the starting visual values, then optionally assign a key, mouse button, or wheel direction to increase or decrease each feature. Advanced assignments are unassigned by default.</p>
+              <div class="web-settings-grid">
+                <label>Animation speed<input id="web-animation-speed" type="number" min="0.25" max="4" step="0.1"></label>
+                <label>Pulse amplitude<input id="web-amplitude-scale" type="number" min="0" max="2" step="0.1"></label>
+                <label>Shape disorder<input id="web-disorder-scale" type="number" min="0" max="2" step="0.1"></label>
+              </div>
+              <div id="web-advanced-binding-grid" class="web-binding-grid"></div>
+            </details>
+
             <h3>Desktop LSL metadata</h3>
             <p>Browsers cannot publish LSL. These values remain in the portable JSON and take effect when imported by the desktop app.</p>
             <div class="web-settings-grid">

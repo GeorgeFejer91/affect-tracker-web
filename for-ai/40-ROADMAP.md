@@ -6,6 +6,7 @@
 - Shared SVG renderer.
 - Rust affect engine and typed IPC.
 - Click-to-capture global key, mouse-button, and wheel bindings with arrow-key defaults.
+- Optional advanced bindings for bounded animation speed, pulse amplitude, shape disorder, transparency, and overlay size adjustments.
 - Four-color interactive valence-arousal feature space shared with the web app.
 - Click-through overlay with explicit edit mode.
 - Persisted settings.

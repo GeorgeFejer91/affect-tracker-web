@@ -1,5 +1,5 @@
-use crate::commands::{apply_overlay_editing, show_settings};
-use crate::domain::Action;
+use crate::commands::{apply_overlay_editing, apply_overlay_geometry, show_settings};
+use crate::domain::{Action, FeatureAction};
 use crate::runtime::Runtime;
 use monio::{Button, Event, EventType, Hook, ScrollDirection};
 use std::collections::HashSet;
@@ -50,6 +50,22 @@ fn trigger_action(
     }
 }
 
+fn trigger_feature_action(
+    app: &AppHandle,
+    runtime: &Runtime,
+    action: FeatureAction,
+    pressed: bool,
+    impulse: bool,
+) {
+    if !pressed && !impulse {
+        return;
+    }
+    runtime.adjust_feature(action, "global-input");
+    if action.changes_size() {
+        let _ = apply_overlay_geometry(app, &runtime.settings());
+    }
+}
+
 fn handle_button_event(
     app: &AppHandle,
     runtime: &Runtime,
@@ -78,6 +94,8 @@ fn handle_button_event(
     if first_transition {
         if let Some(action) = runtime.action_for_binding(&token) {
             trigger_action(app, runtime, action, pressed, false);
+        } else if let Some(action) = runtime.feature_action_for_binding(&token) {
+            trigger_feature_action(app, runtime, action, pressed, false);
         }
     }
 }
@@ -109,6 +127,8 @@ fn handle_event(app: &AppHandle, runtime: &Runtime, held: &Mutex<HashSet<String>
             if first_transition {
                 if let Some(action) = runtime.action_for_binding(&token) {
                     trigger_action(app, runtime, action, pressed, false);
+                } else if let Some(action) = runtime.feature_action_for_binding(&token) {
+                    trigger_feature_action(app, runtime, action, pressed, false);
                 }
             }
         }
@@ -130,6 +150,8 @@ fn handle_event(app: &AppHandle, runtime: &Runtime, held: &Mutex<HashSet<String>
                 runtime.push_input_marker("wheel", "scrolled", &name, &wheel.delta.to_string());
                 if let Some(action) = runtime.action_for_binding(&token) {
                     trigger_action(app, runtime, action, true, true);
+                } else if let Some(action) = runtime.feature_action_for_binding(&token) {
+                    trigger_feature_action(app, runtime, action, true, true);
                 }
             }
         }

@@ -37,6 +37,22 @@ test("binding lookup is case-insensitive and duplicate assignments are rejected"
   assert.throws(() => normalizePortableSettings(settings), /unique/);
 });
 
+test("advanced feature bindings are optional, portable, and share conflict validation", () => {
+  const settings = cloneDefaultSettings();
+  settings.advancedBindings.increaseTransparency = "mouse:Button4";
+  settings.visual = { animationSpeed: 1.7, amplitudeScale: 0.8, disorderScale: 1.4 };
+  const normalized = normalizePortableSettings(settings);
+  assert.equal(actionForBinding(normalized.bindings, "MOUSE:BUTTON4", normalized.advancedBindings), "increaseTransparency");
+  normalized.advancedBindings.increaseSize = normalized.bindings.reset;
+  assert.throws(() => normalizePortableSettings(normalized), /unique/);
+
+  const legacy = cloneDefaultSettings();
+  delete legacy.advancedBindings;
+  delete legacy.visual;
+  assert.deepEqual(normalizePortableSettings(legacy).advancedBindings, {});
+  assert.deepEqual(normalizePortableSettings(legacy).visual, cloneDefaultSettings().visual);
+});
+
 test("portable settings require an explicit overlay visibility boolean", () => {
   const settings = cloneDefaultSettings();
   settings.overlay.visible = "false";

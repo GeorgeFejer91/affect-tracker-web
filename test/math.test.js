@@ -68,6 +68,16 @@ test("generated SVG path is closed and contains only finite coordinates", () => 
   assert.match(output.color, /^rgb\(\d+ \d+ \d+\)$/);
 });
 
+test("advanced amplitude and disorder scales alter geometry without invalid coordinates", () => {
+  const profiles = createProfiles();
+  const offsets = createProjectionOffsets("advanced-geometry");
+  const neutral = buildFlubberPath({ profiles, offsets, x: -0.5, y: 0.5, phase: 1, amplitudeScale: 1, disorderScale: 1 });
+  const adjusted = buildFlubberPath({ profiles, offsets, x: -0.5, y: 0.5, phase: 1, amplitudeScale: 1.8, disorderScale: 0.2 });
+  assert.notEqual(adjusted.path, neutral.path);
+  assert.doesNotMatch(adjusted.path, /NaN|Infinity/);
+  assert.match(adjusted.path, /Z$/);
+});
+
 test("exponential smoothing is stable across equivalent time subdivisions", () => {
   const oneStep = smoothToward(0, 1, 8, 0.1);
   const halfStep = smoothToward(smoothToward(0, 1, 8, 0.05), 1, 8, 0.05);

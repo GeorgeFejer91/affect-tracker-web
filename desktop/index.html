@@ -63,6 +63,17 @@
           <h3>Global keyboard and mouse assignments</h3>
           <p class="field-help">Click a field, then press a key, click a mouse button, or scroll in the desired direction. Assignments work while other applications are focused.</p>
           <div id="binding-grid" class="binding-grid"></div>
+
+          <details class="advanced-controls">
+            <summary>Advanced Flubber feature controls</summary>
+            <p class="field-help">Configure the starting visual values and optionally assign global inputs to increase or decrease each feature. Advanced assignments are unassigned by default.</p>
+            <div class="field-grid">
+              <label>Animation speed<input id="animation-speed" type="number" min="0.25" max="4" step="0.1"></label>
+              <label>Pulse amplitude<input id="amplitude-scale" type="number" min="0" max="2" step="0.1"></label>
+              <label>Shape disorder<input id="disorder-scale" type="number" min="0" max="2" step="0.1"></label>
+            </div>
+            <div id="advanced-binding-grid" class="binding-grid"></div>
+          </details>
         </section>
 
         <section class="dashboard-card" aria-labelledby="feature-space-title">

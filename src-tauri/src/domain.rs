@@ -35,6 +35,42 @@ pub enum Action {
     ToggleOverlayEditing,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum FeatureAction {
+    IncreaseAnimationSpeed,
+    DecreaseAnimationSpeed,
+    IncreaseAmplitude,
+    DecreaseAmplitude,
+    IncreaseDisorder,
+    DecreaseDisorder,
+    IncreaseTransparency,
+    DecreaseTransparency,
+    IncreaseSize,
+    DecreaseSize,
+}
+
+impl FeatureAction {
+    pub fn marker_name(self) -> &'static str {
+        match self {
+            Self::IncreaseAnimationSpeed => "increase_animation_speed",
+            Self::DecreaseAnimationSpeed => "decrease_animation_speed",
+            Self::IncreaseAmplitude => "increase_amplitude",
+            Self::DecreaseAmplitude => "decrease_amplitude",
+            Self::IncreaseDisorder => "increase_disorder",
+            Self::DecreaseDisorder => "decrease_disorder",
+            Self::IncreaseTransparency => "increase_transparency",
+            Self::DecreaseTransparency => "decrease_transparency",
+            Self::IncreaseSize => "increase_size",
+            Self::DecreaseSize => "decrease_size",
+        }
+    }
+
+    pub fn changes_size(self) -> bool {
+        matches!(self, Self::IncreaseSize | Self::DecreaseSize)
+    }
+}
+
 impl Action {
     pub fn is_directional(self) -> bool {
         matches!(
@@ -84,6 +120,10 @@ pub struct AffectSnapshot {
     pub overlay_visible: bool,
     pub overlay_editing: bool,
     pub overlay_opacity: f32,
+    pub overlay_size: u32,
+    pub animation_speed: f32,
+    pub amplitude_scale: f32,
+    pub disorder_scale: f32,
     pub palette: AffectPalette,
     pub lsl_state: String,
     pub lsl_message: String,
@@ -101,6 +141,7 @@ pub struct AffectEngine {
     input_mode: InputMode,
     step_size: f32,
     continuous_speed: f32,
+    animation_speed: f32,
     response: f32,
     session_id: Uuid,
     sequence: u64,
@@ -112,6 +153,7 @@ impl AffectEngine {
         step_size: f32,
         continuous_speed: f32,
         response: f32,
+        animation_speed: f32,
     ) -> Self {
         Self {
             current_x: 0.0,
@@ -124,6 +166,7 @@ impl AffectEngine {
             input_mode,
             step_size,
             continuous_speed,
+            animation_speed,
             response,
             session_id: Uuid::new_v4(),
             sequence: 0,
@@ -136,10 +179,12 @@ impl AffectEngine {
         step_size: f32,
         continuous_speed: f32,
         response: f32,
+        animation_speed: f32,
     ) {
         self.input_mode = input_mode;
         self.step_size = step_size;
         self.continuous_speed = continuous_speed;
+        self.animation_speed = animation_speed;
         self.response = response;
         self.held.clear();
     }
@@ -182,6 +227,10 @@ impl AffectEngine {
         self.animation_active = !self.animation_active;
     }
 
+    pub fn set_animation_speed(&mut self, animation_speed: f32) {
+        self.animation_speed = animation_speed.clamp(0.25, 4.0);
+    }
+
     fn apply_direction(&mut self, action: Action, amount: f32) {
         match action {
             Action::IncreaseValence => self.target_x += amount,
@@ -213,7 +262,7 @@ impl AffectEngine {
 
         if self.animation_active {
             let frequency = 1.5 + self.current_y;
-            self.phase = (self.phase + dt * std::f32::consts::TAU * frequency)
+            self.phase = (self.phase + dt * std::f32::consts::TAU * frequency * self.animation_speed)
                 .rem_euclid(std::f32::consts::TAU);
         }
         self.sequence = self.sequence.wrapping_add(1);
@@ -224,6 +273,10 @@ impl AffectEngine {
         overlay_visible: bool,
         overlay_editing: bool,
         overlay_opacity: f32,
+        overlay_size: u32,
+        animation_speed: f32,
+        amplitude_scale: f32,
+        disorder_scale: f32,
         palette: AffectPalette,
         lsl_state: &str,
         lsl_message: &str,
@@ -251,6 +304,10 @@ impl AffectEngine {
             overlay_visible,
             overlay_editing,
             overlay_opacity,
+            overlay_size,
+            animation_speed,
+            amplitude_scale,
+            disorder_scale,
             palette,
             lsl_state: lsl_state.to_owned(),
             lsl_message: lsl_message.to_owned(),
@@ -263,7 +320,7 @@ mod tests {
     use super::*;
 
     fn engine() -> AffectEngine {
-        AffectEngine::new(InputMode::Continuous, 0.1, 0.8, 8.0)
+        AffectEngine::new(InputMode::Continuous, 0.1, 0.8, 8.0, 1.0)
     }
 
     #[test]
@@ -320,5 +377,15 @@ mod tests {
         value.set_target(2.0, -3.0);
         assert_eq!(value.target_x, 1.0);
         assert_eq!(value.target_y, -1.0);
+    }
+
+    #[test]
+    fn animation_speed_multiplier_changes_phase_rate() {
+        let mut normal = engine();
+        let mut fast = engine();
+        fast.set_animation_speed(2.0);
+        normal.tick(0.05);
+        fast.tick(0.05);
+        assert!((fast.phase - normal.phase * 2.0).abs() < 0.0001);
     }
 }

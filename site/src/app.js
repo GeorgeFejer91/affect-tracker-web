@@ -18,6 +18,7 @@ import { AffectLogger } from "./logger.js";
 import { pictureInPictureOptions, pictureInPictureSupported } from "./picture-in-picture.js";
 import {
   actionForBinding,
+  ADVANCED_BINDING_LABELS,
   BINDING_LABELS,
   cloneDefaultSettings,
   describeBinding,
@@ -61,9 +62,13 @@ const elements = {
   featurePoint: document.querySelector("#web-feature-point"),
   paletteInputs: [...document.querySelectorAll("[data-palette]")],
   bindingGrid: document.querySelector("#web-binding-grid"),
+  advancedBindingGrid: document.querySelector("#web-advanced-binding-grid"),
   stepSize: document.querySelector("#web-step-size"),
   continuousSpeed: document.querySelector("#web-continuous-speed"),
   response: document.querySelector("#web-response"),
+  animationSpeed: document.querySelector("#web-animation-speed"),
+  amplitudeScale: document.querySelector("#web-amplitude-scale"),
+  disorderScale: document.querySelector("#web-disorder-scale"),
   widgetSize: document.querySelector("#web-widget-size"),
   transparency: document.querySelector("#web-transparency"),
   transparencyOutput: document.querySelector("#web-transparency-output"),
@@ -139,6 +144,8 @@ const state = {
   continuousSpeed: preferences.settings.continuousSpeed,
   response: preferences.settings.response,
   bindings: preferences.settings.bindings,
+  advancedBindings: preferences.settings.advancedBindings,
+  visual: preferences.settings.visual,
   animationActive: true,
   widgetX: preferences.widgetX,
   widgetY: preferences.widgetY,
@@ -187,6 +194,8 @@ function settingsFromState() {
     continuousSpeed: state.continuousSpeed,
     response: state.response,
     bindings: state.bindings,
+    advancedBindings: state.advancedBindings,
+    visual: state.visual,
     palette: state.palette,
     overlay: {
       x: Math.round(state.widgetX - state.widgetSize / 2),
@@ -235,19 +244,22 @@ function updateModeControls() {
 function finishBindingCapture(value) {
   if (!captureInput) return;
   const action = captureInput.dataset.binding;
-  const conflict = Object.entries(state.bindings).find(([candidate, binding]) => candidate !== action && binding.toLowerCase() === value.toLowerCase());
+  const group = captureInput.dataset.bindingGroup === "advanced" ? "advancedBindings" : "bindings";
+  const assignments = { ...state.bindings, ...state.advancedBindings };
+  const conflict = Object.entries(assignments).find(([candidate, binding]) => candidate !== action && binding.toLowerCase() === value.toLowerCase());
   if (conflict) {
     captureInput.value = describeBinding(captureInput.dataset.bindingValue);
     captureInput.classList.remove("is-capturing");
     captureInput = undefined;
-    announce(`That input is already assigned to ${BINDING_LABELS[conflict[0]]}.`);
+    announce(`That input is already assigned to ${BINDING_LABELS[conflict[0]] ?? ADVANCED_BINDING_LABELS[conflict[0]]}.`);
     return;
   }
   captureInput.dataset.bindingValue = value;
   captureInput.value = describeBinding(value);
   captureInput.classList.remove("is-capturing");
-  state.bindings[captureInput.dataset.binding] = value;
+  state[group][captureInput.dataset.binding] = value;
   captureInput = undefined;
+  createBindingInputs();
   savePreferences();
   recordEvent("settings", "binding-change", "input", value);
   announce(`Input assigned to ${describeBinding(value)}.`);
@@ -273,11 +285,43 @@ function createBindingInputs() {
     input.readOnly = true;
     input.autocomplete = "off";
     input.dataset.binding = action;
+    input.dataset.bindingGroup = "core";
     input.dataset.bindingValue = state.bindings[action];
     input.value = describeBinding(state.bindings[action]);
     input.addEventListener("click", () => beginBindingCapture(input));
     wrapper.append(input);
     elements.bindingGrid.append(wrapper);
+  }
+
+  elements.advancedBindingGrid.replaceChildren();
+  for (const [action, label] of Object.entries(ADVANCED_BINDING_LABELS)) {
+    const row = document.createElement("div");
+    row.className = "advanced-binding-field";
+    const wrapper = document.createElement("label");
+    wrapper.textContent = label;
+    const input = document.createElement("input");
+    input.readOnly = true;
+    input.autocomplete = "off";
+    input.placeholder = "Unassigned";
+    input.dataset.binding = action;
+    input.dataset.bindingGroup = "advanced";
+    input.dataset.bindingValue = state.advancedBindings[action] ?? "";
+    input.value = input.dataset.bindingValue ? describeBinding(input.dataset.bindingValue) : "";
+    input.addEventListener("click", () => beginBindingCapture(input));
+    const clear = document.createElement("button");
+    clear.type = "button";
+    clear.textContent = "Clear";
+    clear.disabled = !input.dataset.bindingValue;
+    clear.addEventListener("click", () => {
+      delete state.advancedBindings[action];
+      savePreferences();
+      createBindingInputs();
+      recordEvent("settings", "advanced-binding-clear", action, "");
+      announce(`${label} assignment cleared.`);
+    });
+    wrapper.append(input);
+    row.append(wrapper, clear);
+    elements.advancedBindingGrid.append(row);
   }
 }
 
@@ -285,6 +329,9 @@ function updateCustomizationControls() {
   elements.stepSize.value = state.stepSize;
   elements.continuousSpeed.value = state.continuousSpeed;
   elements.response.value = state.response;
+  elements.animationSpeed.value = state.visual.animationSpeed;
+  elements.amplitudeScale.value = state.visual.amplitudeScale;
+  elements.disorderScale.value = state.visual.disorderScale;
   elements.widgetSize.value = state.widgetSize;
   elements.transparency.value = opacityToTransparencyPercent(state.widgetOpacity);
   elements.transparencyOutput.value = `${elements.transparency.value}%`;
@@ -305,6 +352,8 @@ function applyPortableSettings(value, applyPosition = true) {
   state.continuousSpeed = normalized.continuousSpeed;
   state.response = normalized.response;
   state.bindings = normalized.bindings;
+  state.advancedBindings = normalized.advancedBindings;
+  state.visual = normalized.visual;
   state.palette = normalized.palette;
   state.widgetSize = normalized.overlay.size;
   state.widgetOpacity = normalized.overlay.opacity;
@@ -533,7 +582,36 @@ function targetIsEditable(event) {
   return isNativeFormControl(event.target);
 }
 
+function applyAdvancedFeatureAction(action, pressed, source) {
+  if (!(action in ADVANCED_BINDING_LABELS)) return false;
+  if (!pressed) return true;
+  const changes = {
+    increaseAnimationSpeed: () => { state.visual.animationSpeed = clamp(state.visual.animationSpeed + 0.1, 0.25, 4); },
+    decreaseAnimationSpeed: () => { state.visual.animationSpeed = clamp(state.visual.animationSpeed - 0.1, 0.25, 4); },
+    increaseAmplitude: () => { state.visual.amplitudeScale = clamp(state.visual.amplitudeScale + 0.1, 0, 2); },
+    decreaseAmplitude: () => { state.visual.amplitudeScale = clamp(state.visual.amplitudeScale - 0.1, 0, 2); },
+    increaseDisorder: () => { state.visual.disorderScale = clamp(state.visual.disorderScale + 0.1, 0, 2); },
+    decreaseDisorder: () => { state.visual.disorderScale = clamp(state.visual.disorderScale - 0.1, 0, 2); },
+    increaseTransparency: () => { state.widgetOpacity = clamp(state.widgetOpacity - 0.05, 0, 1); },
+    decreaseTransparency: () => { state.widgetOpacity = clamp(state.widgetOpacity + 0.05, 0, 1); },
+    increaseSize: () => { state.widgetSize = clamp(state.widgetSize + 10, 120, 640); },
+    decreaseSize: () => { state.widgetSize = clamp(state.widgetSize - 10, 120, 640); },
+  };
+  changes[action]();
+  updateCustomizationControls();
+  constrainAndRenderWidget();
+  savePreferences();
+  recordEvent(source, "advanced-feature", action, JSON.stringify({
+    visual: state.visual,
+    opacity: state.widgetOpacity,
+    size: state.widgetSize,
+  }));
+  announce(`${ADVANCED_BINDING_LABELS[action]} applied.`);
+  return true;
+}
+
 function applyBoundAction(action, pressed, source, impulse = false) {
+  if (applyAdvancedFeatureAction(action, pressed, source)) return true;
   const direction = DIRECTION_BY_ACTION[action];
   if (direction) {
     if (impulse || state.inputMode === "step") {
@@ -566,7 +644,7 @@ function applyBoundAction(action, pressed, source, impulse = false) {
 
 function handleGlobalKeyDown(event) {
   if (targetIsEditable(event) || captureInput) return;
-  const action = actionForBinding(state.bindings, `key:${event.code}`);
+  const action = actionForBinding(state.bindings, `key:${event.code}`, state.advancedBindings);
   if (action) {
     event.preventDefault();
     if (!event.repeat) applyBoundAction(action, true, "keyboard");
@@ -575,7 +653,7 @@ function handleGlobalKeyDown(event) {
 
 function handleGlobalKeyUp(event) {
   if (targetIsEditable(event) || captureInput) return;
-  const action = actionForBinding(state.bindings, `key:${event.code}`);
+  const action = actionForBinding(state.bindings, `key:${event.code}`, state.advancedBindings);
   if (action) {
     event.preventDefault();
     applyBoundAction(action, false, "keyboard");
@@ -585,7 +663,7 @@ function handleGlobalKeyUp(event) {
 function handleWheel(event) {
   if (targetIsEditable(event) || captureInput) return;
   event.preventDefault();
-  const action = actionForBinding(state.bindings, `wheel:${wheelDirection(event.deltaX, event.deltaY)}`);
+  const action = actionForBinding(state.bindings, `wheel:${wheelDirection(event.deltaX, event.deltaY)}`, state.advancedBindings);
   if (action) {
     applyBoundAction(action, true, "wheel", true);
     return;
@@ -599,13 +677,13 @@ function handleWheel(event) {
 
 function handleGlobalMouseDown(event) {
   if (targetIsEditable(event) || captureInput || elements.widget.contains(event.target)) return;
-  const action = actionForBinding(state.bindings, `mouse:${mouseButtonName(event.button)}`);
+  const action = actionForBinding(state.bindings, `mouse:${mouseButtonName(event.button)}`, state.advancedBindings);
   if (action) applyBoundAction(action, true, "mouse");
 }
 
 function handleGlobalMouseUp(event) {
   if (captureInput) return;
-  const action = actionForBinding(state.bindings, `mouse:${mouseButtonName(event.button)}`);
+  const action = actionForBinding(state.bindings, `mouse:${mouseButtonName(event.button)}`, state.advancedBindings);
   if (action) applyBoundAction(action, false, "mouse");
 }
 
@@ -781,6 +859,22 @@ function initializeEvents() {
       savePreferences();
     });
   }
+  for (const [element, key] of [
+    [elements.animationSpeed, "animationSpeed"],
+    [elements.amplitudeScale, "amplitudeScale"],
+    [elements.disorderScale, "disorderScale"],
+  ]) {
+    element.addEventListener("change", () => {
+      if (!element.checkValidity()) {
+        updateCustomizationControls();
+        announce("Enter an advanced visual value within the displayed range.");
+        return;
+      }
+      state.visual[key] = Number(element.value);
+      savePreferences();
+      recordEvent("panel", "visual-change", key, element.value);
+    });
+  }
   elements.transparency.addEventListener("input", () => {
     state.widgetOpacity = transparencyPercentToOpacity(elements.transparency.value);
     elements.transparencyOutput.value = `${elements.transparency.value}%`;
@@ -894,7 +988,7 @@ function animationFrame(timestamp) {
 
   const currentParameters = affectParameters(state.currentX, state.currentY);
   if (state.animationActive) {
-    state.phase = (state.phase + deltaSeconds * Math.PI * 2 * currentParameters.frequency) % (Math.PI * 2);
+    state.phase = (state.phase + deltaSeconds * Math.PI * 2 * currentParameters.frequency * state.visual.animationSpeed) % (Math.PI * 2);
   }
 
   const rendered = buildFlubberPath({
@@ -904,6 +998,8 @@ function animationFrame(timestamp) {
     y: state.currentY,
     phase: state.phase,
     palette: state.palette,
+    amplitudeScale: state.visual.amplitudeScale,
+    disorderScale: state.visual.disorderScale,
     reducedMotion: reducedMotionQuery.matches,
   });
   elements.basePath.setAttribute("d", rendered.path);

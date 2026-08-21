@@ -195,9 +195,13 @@ export function buildFlubberPath({
   y,
   phase,
   palette,
+  amplitudeScale = 1,
+  disorderScale = 1,
   reducedMotion = false,
 }) {
   const parameters = affectParameters(x, y);
+  const adjustedAmplitude = parameters.amplitude * clamp(amplitudeScale, 0, 2);
+  const adjustedDisorder = parameters.disorder * clamp(disorderScale, 0, 2);
   const { vertexCount, waveCount, pointy, rounded } = profiles;
   const verticesPerWave = vertexCount / waveCount;
   const scale = reducedMotion ? 1 : 0.9 + 0.1 * (Math.sin(phase) * 0.5 + 0.5);
@@ -208,9 +212,9 @@ export function buildFlubberPath({
     const waveIndex = Math.floor((index + verticesPerWave / 2) / verticesPerWave) % waveCount;
     const theta = (index * Math.PI * 2) / vertexCount;
     const shape = pointy[index] * (1 - parameters.shapeMix) + rounded[index] * parameters.shapeMix;
-    const wave = 0.5 + oscillationDepth * Math.sin(phase + parameters.disorder * offsets.phases[waveIndex]);
-    const asymmetry = 1 + parameters.disorder * offsets.amplitudes[waveIndex];
-    const radius = (1 + shape * parameters.amplitude * wave * asymmetry) * scale;
+    const wave = 0.5 + oscillationDepth * Math.sin(phase + adjustedDisorder * offsets.phases[waveIndex]);
+    const asymmetry = 1 + adjustedDisorder * offsets.amplitudes[waveIndex];
+    const radius = (1 + shape * adjustedAmplitude * wave * asymmetry) * scale;
     const px = radius * Math.cos(theta);
     const py = radius * Math.sin(theta);
     pathParts[index] = `${index === 0 ? "M" : "L"}${px.toFixed(4)},${py.toFixed(4)}`;

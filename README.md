@@ -55,9 +55,9 @@ The widget appearance, position, bindings, input behavior, and panel state are s
 
 ## Shared customization JSON
 
-The online and desktop apps expose the same input behavior, physical bindings, four-axis colors, flubber size, visibility, position, and 0–100% transparency control. Choose **Export settings JSON** in either app and import that file in the other. A desktop-exported file therefore produces the same flubber palette, geometry, transparency, controls, and placement in the browser, subject only to viewport constraints and the desktop overlay versus browser black-stage difference.
+The online and desktop apps expose the same input behavior, physical bindings, four-axis colors, flubber size, visibility, position, and 0–100% transparency control. Their advanced menus also expose animation speed, pulse amplitude, shape disorder, and optional input assignments for increasing or decreasing those features, transparency, and size. Choose **Export settings JSON** in either app and import that file in the other. A desktop-exported file therefore produces the same flubber palette, geometry, transparency, controls, and placement in the browser, subject only to viewport constraints and the desktop overlay versus browser black-stage difference.
 
-The portable schema stores transparency as `overlay.opacity` (`1` is opaque, `0` is fully transparent). It also carries the LSL stream metadata: GitHub Pages preserves those values for round-tripping, although a browser cannot publish LSL.
+The portable schema stores transparency as `overlay.opacity` (`1` is opaque, `0` is fully transparent). Additive version-1 `visual` and `advancedBindings` fields preserve backward compatibility with older version-1 files. The schema also carries the LSL stream metadata: GitHub Pages preserves those values for round-tripping, although a browser cannot publish LSL.
 
 Repository maintainers can replace [`site/settings.json`](./site/settings.json) with an exported version-1 file to change the hosted defaults. Returning browsers retain their own `localStorage` preferences; clear site data or import the JSON to apply new defaults immediately. Settings import/export stays local and never uploads the file.
 

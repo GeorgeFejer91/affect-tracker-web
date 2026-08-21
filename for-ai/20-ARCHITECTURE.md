@@ -15,6 +15,8 @@ for-ai/               mandatory project contract
 
 `site/src/portable-settings.js` is the canonical cross-runtime settings validator/serializer for web code, and `site/settings.json` is the checked-in hosted default. Rust has an independent typed deserializer and validator for the identical versioned schema; keep its contract test green whenever either side changes.
 
+Advanced feature bindings are stored separately from required affect/action bindings. They are optional, but their physical tokens share one global uniqueness constraint with core bindings. Visual multipliers modify the canonical renderer output without replacing the valence/arousal mapping formulas.
+
 ## Runtime ownership
 
 ### Browser

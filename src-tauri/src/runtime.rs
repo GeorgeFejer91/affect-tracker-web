@@ -1,4 +1,4 @@
-use crate::domain::{Action, AffectEngine, AffectSnapshot};
+use crate::domain::{Action, AffectEngine, AffectSnapshot, FeatureAction};
 use crate::error::CommandError;
 use crate::lsl_service::LslService;
 use crate::settings::{self, Settings};
@@ -50,6 +50,7 @@ impl Runtime {
                 settings.step_size,
                 settings.continuous_speed,
                 settings.response,
+                settings.visual.animation_speed,
             )),
             settings: RwLock::new(settings),
             input_hook: Mutex::new(None),
@@ -82,6 +83,7 @@ impl Runtime {
                 value.step_size,
                 value.continuous_speed,
                 value.response,
+                value.visual.animation_speed,
             );
         }
         self.overlay_visible
@@ -125,6 +127,32 @@ impl Runtime {
             .bindings
             .iter()
             .find_map(|(action, binding)| binding.eq_ignore_ascii_case(token).then_some(*action))
+    }
+
+    pub fn feature_action_for_binding(&self, token: &str) -> Option<FeatureAction> {
+        self.settings
+            .read()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .advanced_bindings
+            .iter()
+            .find_map(|(action, binding)| binding.eq_ignore_ascii_case(token).then_some(*action))
+    }
+
+    pub fn adjust_feature(&self, action: FeatureAction, source: &str) {
+        let animation_speed = {
+            let mut value = self
+                .settings
+                .write()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            value.adjust_feature(action);
+            value.visual.animation_speed
+        };
+        self.engine
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .set_animation_speed(animation_speed);
+        let _ = self.persist_settings();
+        self.push_marker(&format!("{source}:advanced:{}", action.marker_name()));
     }
 
     pub fn handle_direction(&self, action: Action, pressed: bool, source: &str) {
@@ -177,26 +205,19 @@ impl Runtime {
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
             .clone();
-        let opacity = self
-            .settings
-            .read()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .overlay
-            .opacity;
-        let palette = self
-            .settings
-            .read()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .palette
-            .clone();
+        let settings = self.settings();
         self.engine
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
             .snapshot(
                 self.overlay_visible.load(Ordering::Relaxed),
                 self.overlay_editing.load(Ordering::Relaxed),
-                opacity,
-                palette,
+                settings.overlay.opacity,
+                settings.overlay.size,
+                settings.visual.animation_speed,
+                settings.visual.amplitude_scale,
+                settings.visual.disorder_scale,
+                settings.palette,
                 status.state,
                 &status.message,
             )

@@ -249,6 +249,9 @@ button.is-held {
 .web-binding-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.45rem; }
 .web-binding-grid input { cursor: pointer; font-size: 0.63rem; }
 .web-binding-grid input.is-capturing { border-color: #74d8ff; background: #123345; color: #bdefff; }
+.advanced-controls { margin-top: 0.75rem; }
+.advanced-binding-field { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0.35rem; align-items: end; }
+.advanced-binding-field button { min-height: 2rem; padding: 0.3rem 0.5rem; }
 .settings-button-row { display: grid; grid-template-columns: 1fr 1fr; gap: 0.45rem; margin-top: 0.65rem; }
 .settings-button-row button { min-height: 2.15rem; padding: 0.4rem; font-size: 0.7rem; }
 .picture-in-picture-toggle { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.7rem; color: #f4f4f4; font-size: 0.72rem; cursor: pointer; }

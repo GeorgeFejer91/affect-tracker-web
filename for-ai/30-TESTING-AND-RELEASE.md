@@ -6,6 +6,7 @@
 - Preserve mapping extrema/midpoint, profile normalization, seeded repeatability, finite/closed paths, coordinate input, ring-buffer, CSV, dragging, and sampling tests.
 - Verify the project-path GitHub Pages URL and absence of unexpected runtime requests after deployment.
 - Verify shared settings normalization, desktop-compatible JSON round-trips, opacity/transparency endpoints, imports, exports, and checked-in `site/settings.json` defaults.
+- Verify optional advanced bindings, cross-grid collision rejection, legacy version-1 defaults, bounded feature adjustments, and finite modified SVG geometry.
 - Verify Document Picture-in-Picture feature detection, checkbox open/close lifecycle, live shape/color/opacity mirroring, origin-page restoration, and the unsupported-browser message in a real browser.
 
 ## Desktop gates
@@ -18,6 +19,8 @@
 - At least one real Tauri launch/build smoke test on every supported OS before calling a release cross-platform.
 
 Pure Rust tests cover affect math, direct-coordinate and directional clamping, smoothing, opposite-action cancellation, settings validation/migration, binding collisions, physical token naming, LSL sample schema, marker generation, and lifecycle state. Frontend tests cover the shared renderer, four-anchor color mapping, and typed IPC adapter behavior.
+
+Advanced feature actions must be tested for bounded animation speed, amplitude, disorder, opacity, and size changes; global actions must remain observable in marker output and persist without corrupting in-progress affect state.
 
 Rust tests must deserialize and validate `site/settings.json`. Any portable settings schema change requires coordinated browser tests, Rust tests, documentation, and an explicit schema-version decision.
 
