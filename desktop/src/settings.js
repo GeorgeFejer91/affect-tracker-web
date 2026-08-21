@@ -9,7 +9,7 @@ const bindingLabels = {
   reset: "Reset to neutral",
   togglePause: "Pause or resume",
   showSettings: "Show settings",
-  toggleOverlayEditing: "Edit or lock overlay",
+  toggleOverlayEditing: "Enable or disable overlay dragging",
 };
 
 const elements = {
@@ -47,7 +47,7 @@ function renderSnapshot(snapshot) {
   elements.arousal.textContent = formatCoordinate(snapshot.currentY);
   elements.pause.textContent = snapshot.animationActive ? "Pause motion" : "Resume motion";
   elements.overlayVisible.textContent = snapshot.overlayVisible ? "Hide overlay" : "Show overlay";
-  elements.overlayEdit.textContent = snapshot.overlayEditing ? "Lock overlay" : "Edit overlay position";
+  elements.overlayEdit.textContent = snapshot.overlayEditing ? "Lock overlay (click-through)" : "Enable overlay dragging";
   elements.lslStatus.textContent = snapshot.lslMessage;
   elements.lslStatus.classList.toggle("is-ok", snapshot.lslState === "running");
   elements.lslStatus.classList.toggle("is-error", snapshot.lslState === "error");

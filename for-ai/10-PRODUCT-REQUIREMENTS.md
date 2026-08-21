@@ -35,6 +35,7 @@ Polar angle selects the green-to-red-to-green gradient position. Polar radius co
 - Uses a normal settings window and a separate transparent, borderless, always-on-top overlay window.
 - Overlay is click-through when locked and draggable only in explicit edit-position mode.
 - Provides system-tray controls for settings, overlay visibility/editing, reset, LSL state, and quit.
+- Closing the main settings window quits the entire application and removes the overlay; it must never leave an orphan floating widget.
 - Native Rust owns affect state, smoothing, timestamps, persisted settings, global shortcuts, and LSL publication.
 - Users can assign shortcuts for positive/negative valence, positive/negative arousal, reset, pause, settings, and overlay editing.
 - Shortcut conflicts and invalid mappings must produce actionable errors. Reconfiguration unregisters replaced shortcuts.

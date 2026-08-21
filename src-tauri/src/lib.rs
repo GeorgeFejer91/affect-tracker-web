@@ -20,7 +20,13 @@ fn build_tray(app: &tauri::App) -> tauri::Result<()> {
     let settings_item = MenuItem::with_id(app, "settings", "Open settings", true, None::<&str>)?;
     let overlay_item =
         MenuItem::with_id(app, "overlay", "Show or hide overlay", true, None::<&str>)?;
-    let edit_item = MenuItem::with_id(app, "edit", "Edit or lock overlay", true, None::<&str>)?;
+    let edit_item = MenuItem::with_id(
+        app,
+        "edit",
+        "Toggle overlay dragging (lock or unlock)",
+        true,
+        None::<&str>,
+    )?;
     let reset_item = MenuItem::with_id(app, "reset", "Reset to neutral", true, None::<&str>)?;
     let lsl_item = MenuItem::with_id(app, "lsl", "Start or stop LSL", true, None::<&str>)?;
     let quit_item = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
@@ -146,11 +152,11 @@ pub fn run() {
                 return;
             };
             match event {
-                WindowEvent::CloseRequested { api, .. }
+                WindowEvent::CloseRequested { .. }
                     if window.label() == "settings" && !runtime.is_quitting() =>
                 {
-                    api.prevent_close();
-                    let _ = window.hide();
+                    runtime.begin_quit();
+                    window.app_handle().exit(0);
                 }
                 WindowEvent::Moved(position) if window.label() == "overlay" => {
                     runtime.update_overlay_position(position.x, position.y);

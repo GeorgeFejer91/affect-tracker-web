@@ -60,7 +60,7 @@ The widget position, widget size, panel state, and input mode are saved in `loca
 - A normal settings window for live coordinates, shortcut mappings, input behavior, overlay appearance, and LSL configuration.
 - A transparent overlay that floats above other applications. It is click-through while locked and draggable only in explicit edit mode.
 
-Rust owns authoritative affect coordinates, smoothing, timestamps, settings, native shortcuts, tray lifecycle, and LSL publication. The desktop WebViews contain presentation only and communicate through narrow typed commands. Closing the settings window hides it to the tray; quitting from the tray stops the native background loop.
+Rust owns authoritative affect coordinates, smoothing, timestamps, settings, native shortcuts, tray lifecycle, and LSL publication. The desktop WebViews contain presentation only and communicate through narrow typed commands. Closing the settings window quits the process and removes the overlay; the tray menu also provides an explicit Quit action.
 
 The safe default bindings use combinations such as `Control+Alt+Right`, avoiding silent capture of ordinary WASD/arrow input in other applications. Users can edit every assignment, and invalid or conflicting shortcuts are rejected.
 
