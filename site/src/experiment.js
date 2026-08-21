@@ -55,20 +55,39 @@ function fitVideo(maxWidth, maxHeight) {
   return { width, height: width / ratio };
 }
 
-export function computeExperimentLayout(viewportWidth, viewportHeight, widgetSize, gap = 24) {
+export function computeExperimentLayout(viewportWidth, viewportHeight, widgetSize, gap = 24, tracePanelSize) {
   const width = Math.max(1, Number(viewportWidth));
   const height = Math.max(1, Number(viewportHeight));
-  const body = clamp(Number(widgetSize) || 120, 80, 640);
   const edgeGap = clamp(gap, 8, 48);
+  const maximumWidth = Math.max(1, width - 2 * edgeGap);
+  let body = clamp(Number(widgetSize) || 120, Math.min(80, maximumWidth), Math.min(640, maximumWidth));
+  let traceWidth = tracePanelSize ? clamp(Number(tracePanelSize.width) || 220, 1, maximumWidth) : 0;
+  let traceHeight = tracePanelSize ? clamp(Number(tracePanelSize.height) || 0, 0, Math.max(0, height - 2 * edgeGap)) : 0;
+  const traceAspect = traceWidth > 0 ? traceHeight / traceWidth : 0;
+  const traceGap = traceHeight > 0 ? edgeGap : 0;
+  const interElementGaps = edgeGap + traceGap;
+  const innerHeight = Math.max(1, height - 2 * edgeGap - interElementGaps);
+
+  // On short landscape phones, preserving the configured desktop-sized widget
+  // can consume the complete viewport before the video is laid out. Collapse
+  // the experiment-only rendering size to a usable 80 px first, then shrink the
+  // trace only when even that cannot leave at least one video row. Portable
+  // settings remain unchanged and are restored after the experiment.
+  if (body + traceHeight >= innerHeight) body = Math.min(body, Math.min(80, maximumWidth));
+  const maximumTraceHeight = Math.max(0, innerHeight - body - 1);
+  if (traceHeight > maximumTraceHeight) {
+    traceHeight = maximumTraceHeight;
+    traceWidth = traceAspect > 0 ? Math.min(traceWidth, traceHeight / traceAspect) : 0;
+  }
 
   // Treat the stimulus and Flubber as one centered vertical stack. Reserving the
   // widget's full height first guarantees that it remains directly below the
   // video without overlap, even when the viewport becomes narrow.
   const video = fitVideo(
-    Math.max(0, width - 2 * edgeGap),
-    Math.max(0, height - body - 3 * edgeGap),
+    maximumWidth,
+    Math.max(1, innerHeight - body - traceHeight),
   );
-  const stackHeight = video.height + edgeGap + body;
+  const stackHeight = video.height + edgeGap + body + traceGap + traceHeight;
   const stackTop = Math.max(edgeGap, (height - stackHeight) / 2);
   const videoRect = {
     left: (width - video.width) / 2,
@@ -82,7 +101,14 @@ export function computeExperimentLayout(viewportWidth, viewportHeight, widgetSiz
     y: videoRect.top + videoRect.height + edgeGap + body / 2,
   };
 
-  return { videoRect, widget, placement: "below" };
+  const traceRect = traceHeight > 0 ? {
+    left: (width - traceWidth) / 2,
+    top: widget.y + body / 2 + traceGap,
+    width: traceWidth,
+    height: traceHeight,
+  } : undefined;
+
+  return { videoRect, widget, widgetSize: body, traceRect, placement: "below" };
 }
 
 export function experimentFilename(sessionId, wallClock = new Date()) {

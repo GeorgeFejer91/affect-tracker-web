@@ -16,6 +16,8 @@
 ## Study integration follow-up
 
 - Delivered: preloaded GitHub Pages video experiment with optional YouTube URL/start/finish configuration, countdown, protected playback, precise local CSV, and automatic export.
+- Delivered as an experimental web prototype: adaptive unrestricted touch/pen/cursor path input, speed→arousal, roundness/jaggedness→valence, optional normalized trace feedback, and append-only raw/derived/display CSV records.
+- Validate the touch-trace feature experimentally before describing it as an affect estimator; tune priors/thresholds only from documented study evidence and retain reconstructable raw features.
 - Document iframe/module integration for researchers embedding the online tracker beside video stimuli.
 - Add a stable browser integration API only after its event and privacy contract is specified.
 - Add optional participant-local video selection without introducing uploads.

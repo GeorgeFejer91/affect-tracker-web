@@ -9,6 +9,11 @@
 - Verify optional advanced bindings, cross-grid collision rejection, legacy version-1 defaults, bounded feature adjustments, and finite modified SVG geometry.
 - Verify local and YouTube experiment configuration, URL parsing, start/finish validation, user-activated fullscreen entry and automatic exit (including declined/unsupported fallback), exact neutral reset, countdown, player shielding, centered 16:9 layout, the Flubber centered directly below the video without overlap, physical-input markers, stimulus timestamps, automatic end/export, and cleanup. Confirm the checked-in video stays below GitHub's 100 MB per-file limit and plays in current Chrome, Firefox, Safari, and Edge.
 - Verify Document Picture-in-Picture feature detection, checkbox open/close lifecycle, live shape/color/opacity mirroring, origin-page restoration, and the unsupported-browser message in a real browser.
+- Verify synthetic stationary, straight, arc, circle, corner, sinusoid, and zigzag paths; translation/rotation/scale and 30/60/120/240 Hz invariance; equal-distance interpolation; timestamp gaps; duplicate rejection; finite output; 1€ ground-truth values; adaptive bounds, bootstrap, minimum spans, asymmetric response, confidence, inactivity, and reset.
+- Verify hover-driven mouse/touchpad input, primary touch/pen capture, coalesced-event fallback, UI exclusion, unsupported multitouch logging, Flubber drag suppression, manual-event logging without affect changes, and the strict raw-movement privacy boundary.
+- Verify the four-second high-DPI trace fit, preserved aspect ratio, degenerate paths, fading/reduced-motion behavior, mobile layout order, and no video/Flubber/trace overlap.
+- Verify `pointer_raw`, `touch_metric`, `sample`, and `event` rows are chronological and distinguishable; append-only experiment storage does not roll over; active time pauses during buffering; final/partial export and retry retain all rows; long-trial warnings remain non-blocking.
+- Run a 240 Hz, 30-minute synthetic analyzer workload before research release and keep average ingest/update cost below 1 ms with bounded buffers and finite values.
 
 ## Desktop gates
 
@@ -43,4 +48,4 @@ The `desktop-release.yml` workflow is the canonical packaging path. A `desktop-v
 
 ## Definition of parity
 
-A change to coordinates, mappings, smoothing defaults, input actions, pause/reset semantics, seed handling, accessibility language, or shared record meaning must be assessed in both runtimes. Platform-only features such as LSL and click-through overlays need an explicit browser counterpart or an explicit documented exception. The stimulus experiment and its extended browser CSV fields are an explicit online-only exception.
+A change to coordinates, mappings, smoothing defaults, input actions, pause/reset semantics, seed handling, accessibility language, or shared record meaning must be assessed in both runtimes. Platform-only features such as LSL and click-through overlays need an explicit browser counterpart or an explicit documented exception. The stimulus experiment, touch-trace source, and their extended browser CSV fields are explicit online-only exceptions.

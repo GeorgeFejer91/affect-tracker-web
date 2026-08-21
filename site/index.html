@@ -35,6 +35,15 @@
         <span class="drag-hint" aria-hidden="true">drag</span>
       </div>
 
+      <section id="touch-trace-panel" class="touch-trace-panel" hidden aria-label="Experimental movement trace feedback">
+        <canvas id="touch-trace-canvas" width="320" height="160" aria-hidden="true"></canvas>
+        <div class="touch-trace-metrics" aria-live="off">
+          <span>Shape <output id="touch-shape-output">neutral</output></span>
+          <span>Speed <output id="touch-speed-output">still</output></span>
+          <span>Confidence <output id="touch-confidence-output">0%</output></span>
+        </div>
+      </section>
+
       <div class="panel-stack">
       <section id="control-panel" class="control-panel" aria-labelledby="panel-title">
         <button
@@ -52,6 +61,22 @@
           <div class="coordinates" aria-label="Current affect coordinates">
             <div><span>Valence</span><output id="valence-output">+0.000</output></div>
             <div><span>Arousal</span><output id="arousal-output">+0.000</output></div>
+          </div>
+
+          <fieldset class="mode-control input-source-control">
+            <legend>Control source</legend>
+            <label><input type="radio" name="input-source" value="manual" checked> Manual controls</label>
+            <label><input type="radio" name="input-source" value="touch-trace"> Experimental Touch/Trackpad</label>
+          </fieldset>
+
+          <div id="touch-trace-settings" class="touch-trace-settings" hidden>
+            <p><strong class="experimental-badge">Experimental</strong> Movement shape controls valence; movement speed controls arousal.</p>
+            <p>Detected input: <output id="touch-pointer-type">waiting</output>. Laptop touchpads expose an OS-accelerated cursor path, not raw finger contacts.</p>
+            <label class="picture-in-picture-toggle">
+              <input id="touch-trace-feedback-toggle" type="checkbox">
+              <span>Movement trace feedback</span>
+            </label>
+            <p>The optional rectangle below the Flubber mirrors the recent page-wide path. It does not constrain movement.</p>
           </div>
 
           <fieldset class="mode-control">
@@ -186,6 +211,8 @@
               <label>Finish (seconds)<input id="experiment-end-seconds" type="number" min="0.1" step="0.1" value="344.4"></label>
             </div>
             <button id="experiment-start-button" type="button">Start experiment</button>
+            <button id="experiment-retry-export-button" type="button" hidden>Retry last experiment CSV</button>
+            <p id="experiment-size-warning" class="experiment-warning" hidden></p>
             <p id="experiment-source-note" class="experiment-privacy">The preloaded video and recording remain in this page. Physical key, mouse-button, and wheel identifiers—not typed text—are recorded locally during the experiment.</p>
           </section>
         </div>

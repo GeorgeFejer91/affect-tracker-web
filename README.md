@@ -29,6 +29,18 @@ Every AI agent must read [`AGENTS.md`](./AGENTS.md) and every file in [`for-ai/`
 
 Continuous mode moves while a direction is held. Step mode changes the target by `0.1` per press. The on-screen direction pad follows the selected mode.
 
+### Experimental Touch/Trackpad control
+
+Under **Affect Tracker Settings → Control source**, select **Experimental Touch/Trackpad** to map an unrestricted two-dimensional pointer trajectory into the display:
+
+- Smooth, coherently curving paths move valence toward round/positive; alternating jagged turns move it toward jagged/negative.
+- Faster movement raises arousal; slower movement lowers it. Stopping is inactivity and decays both dimensions toward neutral rather than being classified as slow movement.
+- Touchscreens and pens use browser Pointer Events. A laptop touchpad appears to the page as an OS-accelerated mouse cursor trajectory; browsers do not expose its raw finger contacts.
+
+The mode adapts its speed and shape ranges to the current participant with bounded rolling percentiles. Enable **Movement trace feedback** to show the last four seconds as an aspect-preserving fading rainbow below the Flubber. The rectangle mirrors page-wide motion; it is not a drawing area. Flubber dragging and manual affect changes are disabled while this source is selected, although physical inputs remain logged during experiments.
+
+This is an experimental movement-feedback prototype, not validated emotion recognition or diagnosis. Its algorithm, limitations, and research provenance are documented in [`for-ai/60-EXPERIMENTAL-TOUCH-TRACE.md`](./for-ai/60-EXPERIMENTAL-TOUCH-TRACE.md) and [`for-ai/70-RESEARCH-PROVENANCE.md`](./for-ai/70-RESEARCH-PROVENANCE.md).
+
 ## Visual mapping
 
 The animation preserves the default AffectTracker mapping while using deterministic seeded irregularity and frame-rate-independent input smoothing:
@@ -53,9 +65,11 @@ Everything stays inside the current browser tab. Nothing is uploaded and there a
 
 ### Remote study demonstration
 
-Choose **Start experiment** to run a 3–2–1 countdown, force affect to neutral, begin an isolated 20 Hz recording session, and show a protected 16:9 stimulus centered at the largest size that leaves the Flubber unobstructed. The player has no controls, cannot receive pointer or keyboard interaction, and automatically exports the experiment CSV when the selected segment ends. Every experiment row includes monotonic elapsed time, ISO wall time, stimulus identity/time, current and target valence/arousal, and widget position. During acquisition, physical key press/release, mouse-button press/release, and wheel events are also recorded; typed characters and mouse movement are not.
+Choose **Start experiment** to run a 3–2–1 countdown, force affect to neutral, begin an isolated 20 Hz recording session, and show a protected 16:9 stimulus centered at the largest size that leaves the Flubber unobstructed. The player has no controls, cannot receive pointer or keyboard interaction, and automatically exports the experiment CSV when the selected segment ends. Every experiment row includes monotonic elapsed time, ISO wall time, stimulus identity/time, current and target valence/arousal, and widget position. During acquisition, physical key press/release, mouse-button press/release, and wheel events are also recorded; typed characters are never recorded. Pointer movement is captured and written only when the visibly enabled Experimental Touch/Trackpad source is active and the stimulus is actually playing. It cannot capture other tabs, browser chrome, background pages, or other applications.
 
-The top-left interface uses two accordion toggles: **Affect Tracker Settings** and **Experiment**. Opening one closes the other so the experiment configuration remains reachable on smaller screens. Experiment sessions allocate a duration-aware bounded buffer so the configured segment's 20 Hz samples are not lost to the normal 10,000-record rollover.
+The top-left interface uses two accordion toggles: **Affect Tracker Settings** and **Experiment**. Opening one closes the other so the experiment configuration remains reachable on smaller screens. Experiment sessions use an append-only chunked CSV writer so raw pointer points and 20 Hz samples never roll over with the normal 10,000-record buffer. Buffering pauses active-time sampling, partial trials are marked with a stop reason, and a failed export can be retried from the Experiment panel.
+
+Touch experiments distinguish `pointer_raw`, `touch_metric`, `sample`, and `event` rows. Extended columns retain observed pointer coordinates, filtered speed, shape components, adaptive bounds, confidence, normalized touch targets, displayed affect state, wall time, active playback time, and player time so researchers can reconstruct or replace the online normalization. Trials configured over 30 minutes show a local file-size warning without blocking playback.
 
 The default stimulus is [`site/assets/dictator-3-study.mp4`](./site/assets/dictator-3-study.mp4), a 1920×1080 H.264/AAC copy of `Dictator 3.m4v` trimmed so its first frame corresponds to the original 90-second point. It is preloaded from GitHub Pages and does not contact a third party. Researchers can instead select **YouTube URL**, paste any supported watch/share/embed URL, and provide explicit start and finish seconds. That optional mode connects to YouTube and is subject to YouTube embedding permissions and playback policy; the affect CSV still remains local.
 
@@ -145,7 +159,7 @@ The unit suite uses Node.js 22's built-in test runner and has no package depende
 pnpm test
 ```
 
-It covers the affect mappings, normalized profiles, deterministic offsets, path generation, smoothing, keyboard/wheel movement, widget and experiment-video constraints, stimulus configuration parsing, ring-buffer rollover, session reset, experiment context fields, and CSV escaping.
+It covers the affect mappings, normalized profiles, deterministic offsets, path generation, smoothing, keyboard/wheel movement, widget and experiment-video/trace constraints, stimulus configuration parsing, ring-buffer rollover, append-only experiment logging, session reset, experiment context fields, CSV escaping, 1€ conformance values, synthetic path shape metrics, sampling-rate invariance, adaptive calibration, inactivity decay, and trace normalization.
 
 ## Deployment
 

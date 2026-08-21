@@ -14,7 +14,7 @@ import {
   isNativeFormControl,
   normalizeWheel,
 } from "./input.js";
-import { AffectLogger } from "./logger.js";
+import { AffectLogger, ExperimentCsvWriter } from "./logger.js";
 import {
   computeExperimentLayout,
   DEFAULT_EXPERIMENT_CONFIG,
@@ -22,10 +22,15 @@ import {
   DEMO_VIDEO_ID,
   DEMO_VIDEO_URL,
   EXPERIMENT_SAMPLE_INTERVAL_MS,
-  experimentBufferCapacity,
   experimentFilename,
   normalizeExperimentConfig,
 } from "./experiment.js";
+import {
+  fitTracePoints,
+  TOUCH_TRACE_ALGORITHM_VERSION,
+  TouchTraceAnalyzer,
+  TRACE_DURATION_MS,
+} from "./touch-trace.js";
 import { pictureInPictureOptions, pictureInPictureSupported } from "./picture-in-picture.js";
 import {
   actionForBinding,
@@ -62,6 +67,15 @@ const elements = {
   valenceOutput: document.querySelector("#valence-output"),
   arousalOutput: document.querySelector("#arousal-output"),
   modeInputs: [...document.querySelectorAll("input[name='input-mode']")],
+  sourceInputs: [...document.querySelectorAll("input[name='input-source']")],
+  touchTraceSettings: document.querySelector("#touch-trace-settings"),
+  touchPointerType: document.querySelector("#touch-pointer-type"),
+  touchTraceFeedbackToggle: document.querySelector("#touch-trace-feedback-toggle"),
+  touchTracePanel: document.querySelector("#touch-trace-panel"),
+  touchTraceCanvas: document.querySelector("#touch-trace-canvas"),
+  touchShapeOutput: document.querySelector("#touch-shape-output"),
+  touchSpeedOutput: document.querySelector("#touch-speed-output"),
+  touchConfidenceOutput: document.querySelector("#touch-confidence-output"),
   directionButtons: [...document.querySelectorAll("[data-direction]")],
   resetButton: document.querySelector("#reset-button"),
   pauseButton: document.querySelector("#pause-button"),
@@ -105,6 +119,8 @@ const elements = {
   experimentStartSeconds: document.querySelector("#experiment-start-seconds"),
   experimentEndSeconds: document.querySelector("#experiment-end-seconds"),
   experimentSourceNote: document.querySelector("#experiment-source-note"),
+  experimentSizeWarning: document.querySelector("#experiment-size-warning"),
+  experimentRetryExportButton: document.querySelector("#experiment-retry-export-button"),
   experimentLayer: document.querySelector("#experiment-layer"),
   experimentCountdown: document.querySelector("#experiment-countdown"),
   experimentPlayerShell: document.querySelector("#experiment-player-shell"),
@@ -144,6 +160,8 @@ function readPreferences(bundledSettings) {
       widgetY: Number.isFinite(parsed.widgetY) ? parsed.widgetY : settings.overlay.y + settings.overlay.size / 2,
       panelOpen: typeof parsed.panelOpen === "boolean" ? parsed.panelOpen : !parsed.seenIntro,
       experimentPanelOpen: typeof parsed.experimentPanelOpen === "boolean" ? parsed.experimentPanelOpen : false,
+      inputSource: parsed.inputSource === "touch-trace" ? "touch-trace" : "manual",
+      touchTraceFeedback: parsed.touchTraceFeedback === true,
       settings,
       seenIntro: true,
     };
@@ -153,6 +171,8 @@ function readPreferences(bundledSettings) {
       widgetY: bundledSettings.overlay.y + bundledSettings.overlay.size / 2,
       panelOpen: true,
       experimentPanelOpen: false,
+      inputSource: "manual",
+      touchTraceFeedback: false,
       settings: structuredClone(bundledSettings),
       seenIntro: true,
     };
@@ -167,6 +187,7 @@ const state = {
   targetX: 0,
   targetY: 0,
   inputMode: preferences.settings.inputMode,
+  inputSource: preferences.inputSource,
   stepSize: preferences.settings.stepSize,
   continuousSpeed: preferences.settings.continuousSpeed,
   response: preferences.settings.response,
@@ -187,6 +208,7 @@ const state = {
   heldDirections: new Set(),
   phase: 0,
   dragging: false,
+  touchTraceFeedback: preferences.touchTraceFeedback,
 };
 if (state.panelOpen && state.experimentPanelOpen) state.experimentPanelOpen = false;
 
@@ -199,10 +221,24 @@ const experiment = {
   restore: undefined,
   videoTimeSeconds: "",
   ownsFullscreen: false,
+  writer: undefined,
+  playbackActive: false,
+  activeElapsedMs: 0,
+  activeStartedAt: undefined,
+  lastExport: undefined,
+  displayWidgetSize: undefined,
+  traceRect: undefined,
 };
 
+function currentExperimentActiveElapsedMs(now = performance.now()) {
+  const active = experiment.playbackActive && experiment.activeStartedAt !== undefined
+    ? now - experiment.activeStartedAt
+    : 0;
+  return Math.round((experiment.activeElapsedMs + active) * 1000) / 1000;
+}
+
 function experimentRecordContext() {
-  if (experiment.phase !== "running" && experiment.phase !== "finishing") return {};
+  if (!experiment.writer) return {};
   let videoTime = experiment.videoTimeSeconds;
   try {
     const current = experiment.adapter?.currentTime?.();
@@ -212,10 +248,14 @@ function experimentRecordContext() {
     experimentId: experiment.id,
     stimulusId: experiment.adapter?.stimulusId ?? DEMO_VIDEO_ID,
     stimulusTimeSeconds: videoTime,
+    activeElapsedMs: currentExperimentActiveElapsedMs(),
+    playbackActive: experiment.playbackActive,
+    algorithmVersion: state.inputSource === "touch-trace" ? TOUCH_TRACE_ALGORITHM_VERSION : "",
   };
 }
 
-const logger = new AffectLogger({ context: experimentRecordContext });
+const logger = new AffectLogger();
+const touchTrace = new TouchTraceAnalyzer({ width: window.innerWidth, height: window.innerHeight });
 const profiles = createProfiles();
 let offsets = createProjectionOffsets(logger.sessionId, profiles.waveCount);
 let previousTimestamp;
@@ -228,6 +268,7 @@ let pictureInPictureWindow;
 let pictureInPictureView;
 let animationFrameOwner;
 let animationFrameId;
+let activeTracePointerId;
 const reducedMotionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
 
 function savePreferences() {
@@ -243,6 +284,8 @@ function savePreferences() {
     widgetY: savedY,
     panelOpen: state.panelOpen,
     experimentPanelOpen: state.experimentPanelOpen,
+    inputSource: state.inputSource,
+    touchTraceFeedback: state.touchTraceFeedback,
     settings,
     seenIntro: true,
   }));
@@ -277,20 +320,57 @@ function announce(message) {
   });
 }
 
+function activeLogger() {
+  return experiment.writer ?? logger;
+}
+
 function recordEvent(source, action, control = "", value = "") {
-  logger.record("event", { source, action, control, value }, state);
+  activeLogger().record("event", { source, action, control, value }, state);
   updateLoggerDisplay();
 }
 
 function recordSample() {
-  logger.record("sample", { source: "timer", action: "sample" }, state);
+  activeLogger().record("sample", { source: "timer", action: "sample" }, state);
   updateLoggerDisplay();
 }
 
+function recordTouchMetric() {
+  if (!experiment.writer || state.inputSource !== "touch-trace") return;
+  const metric = touchTrace.snapshot();
+  experiment.writer.record("touch_metric", {
+    source: "touch-trace",
+    action: "feature-sample",
+    algorithmVersion: metric.algorithmVersion,
+    pointerType: metric.pointerType,
+    strokeId: metric.strokeId,
+    rawSpeed: metric.rawSpeed,
+    filteredSpeed: metric.filteredSpeed,
+    speedFeature: metric.speedFeature,
+    shapeFeature: metric.shapeFeature,
+    turnActivity: metric.turnActivity,
+    turnCoherence: metric.turnCoherence,
+    signFlipRate: metric.signFlipRate,
+    roughness: metric.roughness,
+    speedLower: metric.speedLower,
+    speedUpper: metric.speedUpper,
+    shapeLower: metric.shapeLower,
+    shapeUpper: metric.shapeUpper,
+    mappedX: metric.mappedX,
+    mappedY: metric.mappedY,
+    speedConfidence: metric.speedConfidence,
+    shapeConfidence: metric.shapeConfidence,
+    motionActive: metric.motionActive,
+    traceFeedbackVisible: state.touchTraceFeedback,
+  }, state);
+}
+
 function updateLoggerDisplay() {
-  elements.eventCount.textContent = logger.eventCount.toLocaleString();
-  elements.sampleCount.textContent = logger.sampleCount.toLocaleString();
-  elements.bufferCount.textContent = `${logger.buffer.length.toLocaleString()} / ${logger.buffer.capacity.toLocaleString()}`;
+  const active = activeLogger();
+  elements.eventCount.textContent = active.eventCount.toLocaleString();
+  elements.sampleCount.textContent = active.sampleCount.toLocaleString();
+  elements.bufferCount.textContent = experiment.writer
+    ? `${experiment.writer.length.toLocaleString()} / append-only`
+    : `${logger.buffer.length.toLocaleString()} / ${logger.buffer.capacity.toLocaleString()}`;
 }
 
 function updatePanelState() {
@@ -307,6 +387,20 @@ function updateExperimentPanelState() {
 
 function updateModeControls() {
   for (const input of elements.modeInputs) input.checked = input.value === state.inputMode;
+}
+
+function updateInputSourceControls() {
+  const active = state.inputSource === "touch-trace";
+  for (const input of elements.sourceInputs) input.checked = input.value === state.inputSource;
+  elements.touchTraceSettings.hidden = !active;
+  elements.touchTraceFeedbackToggle.checked = state.touchTraceFeedback;
+  elements.touchTracePanel.hidden = !(active && state.touchTraceFeedback && state.widgetVisible);
+  elements.featureSpace.setAttribute("aria-disabled", String(active));
+  for (const button of elements.directionButtons) button.disabled = false;
+  document.body.classList.toggle("is-touch-source", active);
+  elements.experimentLayer.classList.toggle("is-touch-capture-active", active && experiment.phase !== "idle");
+  elements.dragToggleButton.disabled = active || experiment.phase !== "idle";
+  positionTracePanel();
 }
 
 function finishBindingCapture(value) {
@@ -405,12 +499,14 @@ function updateCustomizationControls() {
   elements.transparencyOutput.value = `${elements.transparency.value}%`;
   elements.widgetVisibleButton.textContent = state.widgetVisible ? "Hide flubber" : "Show flubber";
   elements.dragToggleButton.textContent = state.widgetDragEnabled ? "Disable dragging" : "Enable dragging";
+  elements.dragToggleButton.disabled = state.inputSource === "touch-trace" || experiment.phase !== "idle";
   elements.lslStreamName.value = state.lsl.streamName;
   elements.lslStreamType.value = state.lsl.streamType;
   elements.lslMarkerName.value = state.lsl.markerName;
   elements.lslSampleRate.value = state.lsl.sampleRate;
   elements.lslSourceId.value = state.lsl.sourceId;
   createBindingInputs();
+  updateInputSourceControls();
 }
 
 function applyPortableSettings(value, applyPosition = true) {
@@ -449,7 +545,7 @@ function updateCoordinateDisplay() {
   elements.arousalOutput.textContent = formatCoordinate(state.currentY);
   elements.widget.setAttribute(
     "aria-label",
-    `Draggable affect shape. Valence ${state.currentX.toFixed(2)}, arousal ${state.currentY.toFixed(2)}. Use the configured controls to adjust.`,
+    `${state.inputSource === "touch-trace" ? "Experimental movement-responsive" : "Draggable"} affect shape. Valence ${state.currentX.toFixed(2)}, arousal ${state.currentY.toFixed(2)}.`,
   );
 }
 
@@ -477,14 +573,85 @@ function updateFeatureSpace() {
 }
 
 function chooseFeatureCoordinate(event) {
+  if (state.inputSource !== "manual") return;
   const bounds = elements.featureSpace.getBoundingClientRect();
   state.targetX = clamp(((event.clientX - bounds.left) / bounds.width) * 2 - 1, -1, 1);
   state.targetY = clamp(1 - ((event.clientY - bounds.top) / bounds.height) * 2, -1, 1);
 }
 
+function tracePanelDimensions() {
+  const width = Math.min(Math.max(220, state.widgetSize * 1.35), 360, Math.max(1, window.innerWidth - 32));
+  return { width, height: width / 2 + 30 };
+}
+
+function positionTracePanel() {
+  if (elements.touchTracePanel.hidden) return;
+  if (experiment.phase !== "idle" && experiment.traceRect) {
+    Object.assign(elements.touchTracePanel.style, {
+      left: `${experiment.traceRect.left}px`,
+      top: `${experiment.traceRect.top}px`,
+      width: `${experiment.traceRect.width}px`,
+    });
+    return;
+  }
+  const dimensions = tracePanelDimensions();
+  const left = clamp(state.widgetX - dimensions.width / 2, 16, Math.max(16, window.innerWidth - dimensions.width - 16));
+  const top = state.widgetY + state.widgetSize / 2 + 12;
+  Object.assign(elements.touchTracePanel.style, {
+    left: `${left}px`,
+    top: `${top}px`,
+    width: `${dimensions.width}px`,
+  });
+}
+
+function renderTouchTrace(timestamp) {
+  const snapshot = touchTrace.snapshot();
+  elements.touchPointerType.value = snapshot.pointerType === "unknown" ? "waiting" : snapshot.pointerType;
+  elements.touchShapeOutput.value = snapshot.motionActive
+    ? (snapshot.mappedX < -0.15 ? "jagged" : snapshot.mappedX > 0.15 ? "round" : "neutral")
+    : "inactive";
+  elements.touchSpeedOutput.value = snapshot.motionActive
+    ? (snapshot.mappedY < -0.15 ? "slow" : snapshot.mappedY > 0.15 ? "fast" : "mid")
+    : "still";
+  elements.touchConfidenceOutput.value = `${Math.round((snapshot.speedConfidence + snapshot.shapeConfidence) * 50)}%`;
+  if (elements.touchTracePanel.hidden) return;
+  positionTracePanel();
+  const canvas = elements.touchTraceCanvas;
+  const rect = canvas.getBoundingClientRect();
+  const ratio = Math.max(1, window.devicePixelRatio || 1);
+  const pixelWidth = Math.max(1, Math.round(rect.width * ratio));
+  const pixelHeight = Math.max(1, Math.round(rect.height * ratio));
+  if (canvas.width !== pixelWidth || canvas.height !== pixelHeight) {
+    canvas.width = pixelWidth;
+    canvas.height = pixelHeight;
+  }
+  const context = canvas.getContext("2d");
+  context.setTransform(ratio, 0, 0, ratio, 0, 0);
+  context.clearRect(0, 0, rect.width, rect.height);
+  const points = fitTracePoints(snapshot.tracePoints, rect.width, rect.height);
+  context.lineCap = "round";
+  context.lineJoin = "round";
+  context.lineWidth = 2.25;
+  for (let index = 1; index < points.length; index += 1) {
+    const before = points[index - 1];
+    const current = points[index];
+    if (before.strokeId !== current.strokeId) continue;
+    const age = clamp((timestamp - current.time) / TRACE_DURATION_MS, 0, 1);
+    const hue = reducedMotionQuery.matches
+      ? index / Math.max(1, points.length - 1) * 300
+      : ((1 - age) * 300 + timestamp * 0.02) % 360;
+    context.strokeStyle = `hsl(${hue} 90% 64% / ${Math.max(0.08, 1 - age)})`;
+    context.beginPath();
+    context.moveTo(before.x, before.y);
+    context.lineTo(current.x, current.y);
+    context.stroke();
+  }
+}
+
 function layoutExperiment() {
   if (experiment.phase === "idle") return;
-  const layout = computeExperimentLayout(window.innerWidth, window.innerHeight, state.widgetSize);
+  const traceSize = state.inputSource === "touch-trace" && state.touchTraceFeedback && state.widgetVisible ? tracePanelDimensions() : undefined;
+  const layout = computeExperimentLayout(window.innerWidth, window.innerHeight, state.widgetSize, 24, traceSize);
   const { left, top, width, height } = layout.videoRect;
   Object.assign(elements.experimentPlayerShell.style, {
     left: `${left}px`,
@@ -494,25 +661,36 @@ function layoutExperiment() {
   });
   state.widgetX = layout.widget.x;
   state.widgetY = layout.widget.y;
+  experiment.displayWidgetSize = layout.widgetSize;
+  experiment.traceRect = layout.traceRect;
 }
 
 function constrainAndRenderWidget() {
   layoutExperiment();
+  const renderedWidgetSize = experiment.phase === "idle"
+    ? state.widgetSize
+    : (experiment.displayWidgetSize ?? state.widgetSize);
   const constrained = constrainWidgetPosition(
     state.widgetX,
     state.widgetY,
-    state.widgetSize,
+    renderedWidgetSize,
     window.innerWidth,
     window.innerHeight,
   );
   state.widgetX = constrained.x;
   state.widgetY = constrained.y;
+  if (experiment.phase === "idle" && state.inputSource === "touch-trace" && state.touchTraceFeedback) {
+    const trace = tracePanelDimensions();
+    const maximumY = window.innerHeight - trace.height - 12 - state.widgetSize / 2;
+    state.widgetY = clamp(state.widgetY, state.widgetSize / 2, Math.max(state.widgetSize / 2, maximumY));
+  }
   elements.widget.style.left = `${state.widgetX}px`;
   elements.widget.style.top = `${state.widgetY}px`;
-  elements.widget.style.setProperty("--widget-size", `${state.widgetSize}px`);
+  elements.widget.style.setProperty("--widget-size", `${renderedWidgetSize}px`);
   elements.widget.style.opacity = String(state.widgetOpacity);
   elements.widget.hidden = !state.widgetVisible || Boolean(pictureInPictureWindow);
-  elements.widget.classList.toggle("is-drag-disabled", !state.widgetDragEnabled);
+  elements.widget.classList.toggle("is-drag-disabled", !state.widgetDragEnabled || state.inputSource === "touch-trace");
+  positionTracePanel();
   if (pictureInPictureView) {
     pictureInPictureView.root.hidden = !state.widgetVisible;
     pictureInPictureView.root.style.opacity = String(state.widgetOpacity);
@@ -616,6 +794,11 @@ function updatePictureInPictureSupport() {
 }
 
 function resetAffect(source = "keyboard") {
+  if (state.inputSource === "touch-trace") {
+    recordEvent(source, "ignored-control", "reset", "touch-trace");
+    announce("Reset was logged but movement remains in control while Experimental Touch/Trackpad is selected.");
+    return;
+  }
   state.targetX = 0;
   state.targetY = 0;
   state.heldDirections.clear();
@@ -643,7 +826,27 @@ function setMode(mode, source = "panel") {
   announce(`${mode === "step" ? "Step" : "Continuous"} input mode selected.`);
 }
 
+function setInputSource(inputSource, source = "panel") {
+  if (inputSource !== "manual" && inputSource !== "touch-trace") return;
+  if (inputSource === state.inputSource) return;
+  state.inputSource = inputSource;
+  state.heldDirections.clear();
+  clearHeldButtonStyles();
+  state.targetX = 0;
+  state.targetY = 0;
+  touchTrace.reset({ width: window.innerWidth, height: window.innerHeight });
+  updateInputSourceControls();
+  updateExperimentSourceControls();
+  constrainAndRenderWidget();
+  savePreferences();
+  recordEvent(source, "source-change", "input-source", inputSource);
+  announce(inputSource === "touch-trace"
+    ? "Experimental Touch/Trackpad control selected. Page movement now drives the affect display."
+    : "Manual affect controls selected.");
+}
+
 function moveTarget(direction, source, amount = state.stepSize) {
+  if (state.inputSource === "touch-trace") return;
   const next = applyStep(state.targetX, state.targetY, direction, amount);
   state.targetX = next.x;
   state.targetY = next.y;
@@ -651,7 +854,7 @@ function moveTarget(direction, source, amount = state.stepSize) {
 }
 
 function updateContinuousInput(deltaSeconds) {
-  if (state.inputMode !== "continuous" || state.heldDirections.size === 0) return;
+  if (state.inputSource !== "manual" || state.inputMode !== "continuous" || state.heldDirections.size === 0) return;
   const movement = continuousMovement(state.heldDirections, deltaSeconds, state.continuousSpeed);
   state.targetX = clamp(state.targetX + movement.x);
   state.targetY = clamp(state.targetY + movement.y);
@@ -695,8 +898,19 @@ function applyAdvancedFeatureAction(action, pressed, source) {
 
 function applyBoundAction(action, pressed, source, impulse = false) {
   if (applyAdvancedFeatureAction(action, pressed, source)) return true;
+  if (state.inputSource === "touch-trace" && action === "reset") {
+    if (pressed) resetAffect(source);
+    return true;
+  }
   const direction = DIRECTION_BY_ACTION[action];
   if (direction) {
+    if (state.inputSource === "touch-trace") {
+      if (pressed) {
+        recordEvent(source, "ignored-control", direction, "touch-trace");
+        announce("Manual direction was logged but movement remains in control.");
+      }
+      return true;
+    }
     if (impulse || state.inputMode === "step") {
       if (pressed) moveTarget(direction, source);
     } else if (pressed) {
@@ -745,12 +959,14 @@ function handleGlobalKeyUp(event) {
 
 function handleWheel(event) {
   if (targetIsEditable(event) || captureInput) return;
-  event.preventDefault();
   const action = actionForBinding(state.bindings, `wheel:${wheelDirection(event.deltaX, event.deltaY)}`, state.advancedBindings);
   if (action) {
+    event.preventDefault();
     applyBoundAction(action, true, "wheel", true);
     return;
   }
+  if (state.inputSource === "touch-trace") return;
+  event.preventDefault();
   // Keep the original browser gesture as a fallback when no wheel direction is explicitly assigned.
   const amount = normalizeWheel(event.deltaY);
   if (event.shiftKey) state.targetX = clamp(state.targetX + amount);
@@ -771,7 +987,7 @@ function handleGlobalMouseUp(event) {
 }
 
 function handleDirectionPointerDown(event) {
-  if (state.inputMode !== "continuous") return;
+  if (state.inputSource !== "manual" || state.inputMode !== "continuous") return;
   const button = event.currentTarget;
   const direction = button.dataset.direction;
   event.preventDefault();
@@ -793,12 +1009,16 @@ function releaseDirectionButton(event) {
 }
 
 function handleDirectionClick(event) {
-  if (state.inputMode === "step") {
+  if (state.inputSource === "touch-trace") {
+    recordEvent("button", "ignored-control", event.currentTarget.dataset.direction, "touch-trace");
+    announce("Manual direction was logged but movement remains in control.");
+  } else if (state.inputMode === "step") {
     moveTarget(event.currentTarget.dataset.direction, "button");
   }
 }
 
 function handleDirectionButtonKeyDown(event) {
+  if (state.inputSource !== "manual") return;
   if (state.inputMode !== "continuous" || (event.key !== " " && event.key !== "Enter")) return;
   event.preventDefault();
   const button = event.currentTarget;
@@ -817,7 +1037,7 @@ function handleDirectionButtonKeyUp(event) {
 }
 
 function handleWidgetPointerDown(event) {
-  if (event.button !== 0 || !state.widgetDragEnabled) return;
+  if (event.button !== 0 || !state.widgetDragEnabled || state.inputSource === "touch-trace") return;
   state.dragging = true;
   dragOffsetX = event.clientX - state.widgetX;
   dragOffsetY = event.clientY - state.widgetY;
@@ -844,8 +1064,90 @@ function finishWidgetDrag(event) {
   recordEvent("pointer", "drag-complete", "widget", `${Math.round(state.widgetX)}:${Math.round(state.widgetY)}`);
 }
 
-function downloadLog(filename) {
-  const blob = new Blob([logger.exportCsv()], { type: "text/csv;charset=utf-8" });
+function touchTraceTargetExcluded(target) {
+  if (experiment.phase !== "idle") return false;
+  return Boolean(target?.closest?.(".control-panel, .touch-trace-panel, button, input, select, textarea, [contenteditable='true']"));
+}
+
+function touchTraceCaptureEnabled(event) {
+  if (state.inputSource !== "touch-trace" || captureInput || document.hidden) return false;
+  if (experiment.phase === "running" && !experiment.playbackActive) return false;
+  if (experiment.phase !== "idle" && experiment.phase !== "running") return false;
+  return !touchTraceTargetExcluded(event.target);
+}
+
+function recordRawPointer(event, phase, coalescedIndex, result) {
+  if (!experiment.writer || experiment.phase !== "running" || !experiment.playbackActive) return;
+  const diagonal = Math.hypot(window.innerWidth, window.innerHeight);
+  experiment.writer.record("pointer_raw", {
+    source: "pointer",
+    action: phase,
+    control: event.pointerType,
+    value: result.accepted ? "" : result.reason,
+    algorithmVersion: TOUCH_TRACE_ALGORITHM_VERSION,
+    pointerTimeMs: event.timeStamp,
+    pointerId: event.pointerId,
+    pointerType: event.pointerType,
+    pointerPhase: phase,
+    strokeId: touchTrace.strokeId,
+    coalescedIndex,
+    clientX: event.clientX,
+    clientY: event.clientY,
+    normalizedX: event.clientX / diagonal,
+    normalizedY: event.clientY / diagonal,
+    pressure: event.pressure,
+    buttons: event.buttons,
+    viewportWidth: window.innerWidth,
+    viewportHeight: window.innerHeight,
+    rawSpeed: result.rawSpeed ?? "",
+    filteredSpeed: result.filteredSpeed ?? "",
+    traceFeedbackVisible: state.touchTraceFeedback,
+  }, state);
+}
+
+function ingestPointerEvent(event, phase) {
+  if (!touchTraceCaptureEnabled(event)) return;
+  if (event.isPrimary === false) {
+    if (phase === "down") recordEvent("pointer", "ignored-multitouch", event.pointerType, event.pointerId);
+    return;
+  }
+  if (
+    activeTracePointerId !== undefined
+    && event.pointerType !== "mouse"
+    && event.pointerId !== activeTracePointerId
+    && touchTrace.pointerType !== "mouse"
+  ) {
+    if (phase === "down") recordEvent("pointer", "ignored-multitouch", event.pointerType, event.pointerId);
+    return;
+  }
+  if (phase === "down") {
+    activeTracePointerId = event.pointerId;
+    touchTrace.beginStroke(event.pointerType);
+    try { elements.stage.setPointerCapture(event.pointerId); } catch { /* implicit capture remains available */ }
+  } else if (phase === "move" && activeTracePointerId === undefined) {
+    activeTracePointerId = event.pointerId;
+  }
+  const coalesced = phase === "move" ? event.getCoalescedEvents?.() : undefined;
+  const points = coalesced?.length ? coalesced : [event];
+  points.forEach((point, index) => {
+    const result = touchTrace.ingest({
+      clientX: point.clientX,
+      clientY: point.clientY,
+      time: point.timeStamp,
+      pointerType: event.pointerType,
+    });
+    recordRawPointer(point, phase, index, result);
+  });
+  if (event.pointerType !== "mouse" && event.cancelable) event.preventDefault();
+  if (phase === "up" || phase === "cancel") {
+    if (elements.stage.hasPointerCapture?.(event.pointerId)) elements.stage.releasePointerCapture(event.pointerId);
+    activeTracePointerId = undefined;
+    if (phase === "cancel") touchTrace.beginStroke(event.pointerType);
+  }
+}
+
+function downloadCsvParts(parts, filename) {
+  const blob = new Blob(parts, { type: "text/csv;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = url;
@@ -854,6 +1156,11 @@ function downloadLog(filename) {
   anchor.click();
   anchor.remove();
   setTimeout(() => URL.revokeObjectURL(url), 0);
+  return { parts, filename, bytes: blob.size };
+}
+
+function downloadLog(filename) {
+  return downloadCsvParts([logger.exportCsv()], filename);
 }
 
 function exportLog() {
@@ -868,6 +1175,17 @@ function wait(milliseconds) {
 }
 
 let youtubeApiPromise;
+
+function setExperimentPlayback(active, source) {
+  if (experiment.playbackActive === active) return;
+  const now = performance.now();
+  if (experiment.playbackActive && experiment.activeStartedAt !== undefined) {
+    experiment.activeElapsedMs += now - experiment.activeStartedAt;
+  }
+  experiment.playbackActive = active;
+  experiment.activeStartedAt = active ? now : undefined;
+  if (experiment.writer) recordEvent(source, "state-change", "player", active ? "playing" : "buffering");
+}
 
 function loadYouTubeApi() {
   if (window.YT?.Player) return Promise.resolve(window.YT);
@@ -892,13 +1210,16 @@ function createLocalExperimentAdapter() {
   video.hidden = false;
   video.onended = () => finishExperiment("video-ended");
   video.onpause = () => {
-    if (experiment.phase === "running") video.play().catch(() => {});
+    if (experiment.phase === "running") {
+      setExperimentPlayback(false, "local-video");
+      video.play().catch(() => {});
+    }
   };
   video.onplaying = () => {
-    if (experiment.phase === "running") recordEvent("local-video", "state-change", "player", "playing");
+    if (experiment.phase === "running") setExperimentPlayback(true, "local-video");
   };
   video.onwaiting = () => {
-    if (experiment.phase === "running") recordEvent("local-video", "state-change", "player", "buffering");
+    if (experiment.phase === "running") setExperimentPlayback(false, "local-video");
   };
   return {
     stimulusId: "dictator-3-study.mp4",
@@ -982,7 +1303,11 @@ function createYouTubeExperimentAdapter(config) {
                 [window.YT.PlayerState.BUFFERING]: "buffering",
                 [window.YT.PlayerState.CUED]: "cued",
               }[event.data] ?? String(event.data);
-              recordEvent("youtube", "state-change", "player", stateName);
+              if (event.data === window.YT.PlayerState.PLAYING) setExperimentPlayback(true, "youtube");
+              else if ([window.YT.PlayerState.BUFFERING, window.YT.PlayerState.PAUSED, window.YT.PlayerState.ENDED].includes(event.data)) {
+                setExperimentPlayback(false, "youtube");
+              }
+              else recordEvent("youtube", "state-change", "player", stateName);
               if (event.data === window.YT.PlayerState.ENDED) finishExperiment("video-ended");
               else if (event.data === window.YT.PlayerState.PAUSED) event.target.playVideo();
             },
@@ -1039,6 +1364,22 @@ function updateExperimentSourceControls() {
   elements.experimentSourceNote.textContent = youtube
     ? "YouTube playback sends the requested video and normal embed metadata to YouTube. Recording remains local. Videos whose owners disable embedding cannot run here."
     : "The preloaded video and recording remain in this page. Physical key, mouse-button, and wheel identifiers—not typed text—are recorded locally during the experiment.";
+  if (state.inputSource === "touch-trace") {
+    elements.experimentSourceNote.textContent += " Experimental pointer trajectories, derived movement metrics, adaptive bounds, and displayed affect values will also be included in the local CSV.";
+  }
+  updateExperimentSizeWarning();
+}
+
+function updateExperimentSizeWarning() {
+  const start = elements.experimentSource.value === "local" ? DEMO_START_SECONDS : Number(elements.experimentStartSeconds.value);
+  const end = elements.experimentSource.value === "local" ? DEFAULT_EXPERIMENT_CONFIG.endSeconds : Number(elements.experimentEndSeconds.value);
+  const duration = end - start;
+  const visible = state.inputSource === "touch-trace" && Number.isFinite(duration) && duration > 1_800;
+  elements.experimentSizeWarning.hidden = !visible;
+  if (visible) {
+    const estimateMb = Math.round(duration * 300 * 320 / 1_000_000);
+    elements.experimentSizeWarning.textContent = `Long experimental segment: browser-delivered pointer rows may produce roughly ${estimateMb.toLocaleString()} MB of local CSV data. Recording remains append-only and is not capped.`;
+  }
 }
 
 async function requestExperimentFullscreen() {
@@ -1071,6 +1412,7 @@ function teardownExperimentPresentation() {
   elements.experimentCountdown.value = "";
   elements.experimentLayer.hidden = true;
   document.body.classList.remove("is-experiment-running");
+  elements.experimentLayer.classList.remove("is-touch-capture-active");
   if (experiment.restore) {
     state.widgetX = experiment.restore.widgetX;
     state.widgetY = experiment.restore.widgetY;
@@ -1080,7 +1422,14 @@ function teardownExperimentPresentation() {
   experiment.restore = undefined;
   experiment.videoTimeSeconds = "";
   experiment.id = "";
+  experiment.writer = undefined;
+  experiment.playbackActive = false;
+  experiment.activeElapsedMs = 0;
+  experiment.activeStartedAt = undefined;
+  experiment.displayWidgetSize = undefined;
+  experiment.traceRect = undefined;
   experiment.phase = "idle";
+  offsets = createProjectionOffsets(logger.sessionId, profiles.waveCount);
   exitExperimentFullscreen();
   elements.experimentStartButton.disabled = false;
   elements.experimentStartButton.textContent = "Start experiment";
@@ -1091,6 +1440,12 @@ function teardownExperimentPresentation() {
 }
 
 function abortExperiment(message) {
+  if (experiment.writer?.length) {
+    recordEvent("experiment", "abort", "partial", message);
+    const filename = experimentFilename(experiment.writer.sessionId).replace(".csv", "-partial.csv");
+    experiment.lastExport = downloadCsvParts(experiment.writer.exportParts(), filename);
+    elements.experimentRetryExportButton.hidden = false;
+  }
   teardownExperimentPresentation();
   announce(message);
 }
@@ -1100,26 +1455,36 @@ function finishExperiment(reason = "video-ended") {
   experiment.phase = "finishing";
   clearInterval(experiment.sampleTimer);
   experiment.sampleTimer = undefined;
+  recordTouchMetric();
   recordSample();
   recordEvent("experiment", "stop", reason, experiment.adapter?.duration?.() ?? "");
-  const filename = experimentFilename(logger.sessionId);
-  const recordCount = logger.buffer.length;
-  downloadLog(filename);
+  const writer = experiment.writer;
+  const completed = reason === "configured-end" || reason === "video-ended";
+  const filename = completed
+    ? experimentFilename(writer.sessionId)
+    : experimentFilename(writer.sessionId).replace(".csv", "-partial.csv");
+  const recordCount = writer.length;
+  experiment.lastExport = downloadCsvParts(writer.exportParts(), filename);
+  elements.experimentRetryExportButton.hidden = false;
   teardownExperimentPresentation();
-  announce(`Experiment complete. CSV downloaded with ${recordCount.toLocaleString()} timestamped records.`);
+  announce(`${completed ? "Experiment complete" : "Experiment stopped early"}. CSV downloaded with ${recordCount.toLocaleString()} timestamped records.`);
 }
 
 function recordExperimentSample() {
   if (experiment.phase !== "running") return;
-  recordSample();
   const stimulusTime = experiment.adapter?.currentTime?.();
   if (Number.isFinite(stimulusTime) && stimulusTime >= experiment.config.endSeconds - 0.02) {
     finishExperiment("configured-end");
+    return;
   }
+  if (!experiment.playbackActive) return;
+  recordTouchMetric();
+  recordSample();
 }
 
 async function runExperimentCountdown() {
   document.body.classList.add("is-experiment-running");
+  elements.touchTracePanel.hidden = true;
   elements.experimentLayer.classList.remove("is-preloading", "is-video-visible");
   elements.experimentLayer.hidden = false;
   elements.experimentPlayerShell.hidden = false;
@@ -1141,15 +1506,18 @@ async function runExperimentCountdown() {
   state.targetY = 0;
   state.heldDirections.clear();
   clearHeldButtonStyles();
-  logger.resetSession({
-    capacity: experimentBufferCapacity(experiment.config.endSeconds - experiment.config.startSeconds),
-  });
-  offsets = createProjectionOffsets(logger.sessionId, profiles.waveCount);
+  touchTrace.reset({ width: window.innerWidth, height: window.innerHeight });
   sampleAccumulator = 0;
   await experiment.adapter.start();
   experiment.phase = "running";
+  experiment.activeElapsedMs = 0;
+  experiment.activeStartedAt = performance.now();
+  experiment.playbackActive = true;
+  experiment.writer = new ExperimentCsvWriter({ context: experimentRecordContext });
+  offsets = createProjectionOffsets(experiment.writer.sessionId, profiles.waveCount);
   elements.experimentCountdown.value = "";
   elements.experimentLayer.classList.add("is-video-visible");
+  updateInputSourceControls();
   recordEvent(
     "experiment",
     "start",
@@ -1181,6 +1549,8 @@ async function startExperiment() {
     announce(error?.message ?? String(error));
     return;
   }
+  experiment.lastExport = undefined;
+  elements.experimentRetryExportButton.hidden = true;
   await requestExperimentFullscreen();
   experiment.phase = "loading";
   experiment.adapter = experiment.config.source === "youtube"
@@ -1265,6 +1635,10 @@ function clearLog() {
 }
 
 function initializeEvents() {
+  window.addEventListener("pointerdown", (event) => ingestPointerEvent(event, "down"), { capture: true, passive: false });
+  window.addEventListener("pointermove", (event) => ingestPointerEvent(event, "move"), { capture: true, passive: false });
+  window.addEventListener("pointerup", (event) => ingestPointerEvent(event, "up"), { capture: true, passive: false });
+  window.addEventListener("pointercancel", (event) => ingestPointerEvent(event, "cancel"), { capture: true, passive: false });
   window.addEventListener("keydown", (event) => {
     recordPhysicalInput(
       "keyboard",
@@ -1296,12 +1670,23 @@ function initializeEvents() {
   window.addEventListener("mouseup", handleGlobalMouseUp);
   window.addEventListener("wheel", handleWheel, { passive: false });
   window.addEventListener("resize", () => {
+    touchTrace.resize(window.innerWidth, window.innerHeight);
+    activeTracePointerId = undefined;
+    recordPhysicalInput("window", "resize", "viewport", `${window.innerWidth}x${window.innerHeight}`);
     constrainAndRenderWidget();
     savePreferences();
   });
   window.addEventListener("blur", () => {
     state.heldDirections.clear();
     clearHeldButtonStyles();
+    touchTrace.beginStroke(touchTrace.pointerType);
+    activeTracePointerId = undefined;
+  });
+  screen.orientation?.addEventListener?.("change", () => {
+    touchTrace.resize(window.innerWidth, window.innerHeight);
+    activeTracePointerId = undefined;
+    recordPhysicalInput("window", "orientation-change", "orientation", screen.orientation.type);
+    constrainAndRenderWidget();
   });
 
   elements.panelToggle.addEventListener("click", () => {
@@ -1328,6 +1713,17 @@ function initializeEvents() {
   for (const input of elements.modeInputs) {
     input.addEventListener("change", () => setMode(input.value));
   }
+  for (const input of elements.sourceInputs) {
+    input.addEventListener("change", () => setInputSource(input.value));
+  }
+  elements.touchTraceFeedbackToggle.addEventListener("change", () => {
+    state.touchTraceFeedback = elements.touchTraceFeedbackToggle.checked;
+    updateInputSourceControls();
+    constrainAndRenderWidget();
+    savePreferences();
+    recordEvent("panel", "trace-feedback", "touch-trace", state.touchTraceFeedback);
+    announce(state.touchTraceFeedback ? "Movement trace feedback shown below the Flubber." : "Movement trace feedback hidden.");
+  });
   for (const input of elements.paletteInputs) {
     input.addEventListener("input", () => {
       state.palette[input.dataset.palette] = input.value;
@@ -1385,6 +1781,7 @@ function initializeEvents() {
     state.widgetDragEnabled = !state.widgetDragEnabled;
     updateCustomizationControls();
     constrainAndRenderWidget();
+    savePreferences();
   });
   elements.pictureInPictureToggle.addEventListener("change", async () => {
     if (elements.pictureInPictureToggle.checked) await openPictureInPicture();
@@ -1423,6 +1820,7 @@ function initializeEvents() {
     });
   }
   elements.featureSpace.addEventListener("pointerdown", (event) => {
+    if (state.inputSource !== "manual") return;
     featurePointerId = event.pointerId;
     elements.featureSpace.setPointerCapture(event.pointerId);
     chooseFeatureCoordinate(event);
@@ -1438,6 +1836,7 @@ function initializeEvents() {
   elements.featureSpace.addEventListener("pointerup", finishFeatureSelection);
   elements.featureSpace.addEventListener("pointercancel", finishFeatureSelection);
   elements.featureSpace.addEventListener("keydown", (event) => {
+    if (state.inputSource !== "manual") return;
     const direction = { ArrowLeft: [-0.05, 0], ArrowRight: [0.05, 0], ArrowUp: [0, 0.05], ArrowDown: [0, -0.05] }[event.key];
     if (!direction) return;
     event.preventDefault();
@@ -1463,13 +1862,28 @@ function initializeEvents() {
   elements.exportButton.addEventListener("click", exportLog);
   elements.clearButton.addEventListener("click", clearLog);
   elements.experimentStartButton.addEventListener("click", startExperiment);
+  elements.experimentRetryExportButton.addEventListener("click", () => {
+    if (!experiment.lastExport) return;
+    downloadCsvParts(experiment.lastExport.parts, experiment.lastExport.filename);
+    announce("The last experiment CSV download was requested again.");
+  });
   document.addEventListener("fullscreenchange", () => {
+    touchTrace.resize(window.innerWidth, window.innerHeight);
+    activeTracePointerId = undefined;
+    if (experiment.phase === "running" && experiment.ownsFullscreen && !document.fullscreenElement) {
+      finishExperiment("fullscreen-exited");
+      return;
+    }
     if (experiment.phase !== "idle") constrainAndRenderWidget();
   });
   elements.experimentSource.addEventListener("change", updateExperimentSourceControls);
+  elements.experimentStartSeconds.addEventListener("input", updateExperimentSizeWarning);
+  elements.experimentEndSeconds.addEventListener("input", updateExperimentSizeWarning);
 
   document.addEventListener("visibilitychange", () => {
     recordPhysicalInput("document", "visibility-change", "visibility", document.visibilityState);
+    touchTrace.beginStroke(touchTrace.pointerType);
+    activeTracePointerId = undefined;
   });
 
   elements.widget.addEventListener("pointerdown", handleWidgetPointerDown);
@@ -1486,6 +1900,11 @@ function animationFrame(timestamp) {
   previousTimestamp = timestamp;
 
   updateContinuousInput(deltaSeconds);
+  const touchMetric = touchTrace.update(timestamp, deltaSeconds);
+  if (state.inputSource === "touch-trace") {
+    state.targetX = clamp(touchMetric.targetX);
+    state.targetY = clamp(touchMetric.targetY);
+  }
   state.currentX = smoothToward(state.currentX, state.targetX, state.response, deltaSeconds);
   state.currentY = smoothToward(state.currentY, state.targetY, state.response, deltaSeconds);
 
@@ -1512,6 +1931,7 @@ function animationFrame(timestamp) {
   renderPictureInPicture(rendered);
   updateCoordinateDisplay();
   updateFeatureSpace();
+  renderTouchTrace(timestamp);
 
   if (experiment.phase !== "running" && (!document.hidden || pictureInPictureWindow)) {
     sampleAccumulator += deltaSeconds;

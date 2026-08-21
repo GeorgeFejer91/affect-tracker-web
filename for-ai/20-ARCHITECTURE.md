@@ -27,7 +27,13 @@ The browser can import/export the shared settings JSON. It retains desktop-only 
 
 The online experiment module is deliberately browser-only. A media-adapter boundary gives the bundled static MP4 and optional YouTube IFrame player the same prepare/start/stop/current-time lifecycle. The parent page owns countdown and sampling time, covers the player with an input shield, disables player keyboard controls, and restores normal layout after automatic CSV export. The default MP4 is a checked-in Pages asset; the YouTube API is loaded only after the user explicitly selects YouTube and starts an experiment.
 
+`site/src/touch-trace.js` is a dependency-free browser-only signal layer. It owns the 1€ position filters, equal-distance resampling, turn metrics, bounded rolling histograms, asymmetric range smoothing, confidence gating, inactivity decay, and trace-fit geometry. `app.js` owns Pointer Events acquisition, UI exclusion, rendering, experiment lifecycle, and logging. The portable settings schema remains version 1; `inputSource` and trace visibility are separate browser-local preferences.
+
+Normal sessions continue to use `AffectLogger`'s 10,000-row ring buffer. An experiment creates one `ExperimentCsvWriter`: it serializes append-only rows into roughly 1,000-row chunks, keeps chronological sequence numbers, and never sends high-rate pointer records through the ring buffer. Experiment elapsed time is wall-clock monotonic; `active_elapsed_ms` advances only while the player is playing, and stimulus time comes from the active media adapter.
+
 Document Picture-in-Picture is a browser-only, transient presentation mode. It mirrors the canonical SVG renderer, requires a user gesture, is feature-detected, is never persisted in portable JSON, and cannot be described as a transparent, click-through, globally monitored substitute for the Tauri overlay. CSS must leave its HTML/body/widget surfaces transparent and undecorated, but the browser-owned frame and OS compositor remain outside application control.
+
+The Experimental Touch/Trackpad input source, raw pointer rows, adaptive calibration, and trace panel are explicit online-only exceptions. Tauri state, portable settings version 1, and LSL schemas must not change merely to mirror this research prototype.
 
 ### Desktop
 

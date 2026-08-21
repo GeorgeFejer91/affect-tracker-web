@@ -24,7 +24,7 @@ The web and desktop applications must feel like the same instrument. Shared affe
 ## Global constraints
 
 - Research data stays participant-local unless a future requirement explicitly introduces a reviewed collection system.
-- Never record composed text, clipboard content, mouse movement, application contents, unrelated window titles, or other unnecessary personal data.
+- Never record composed text, clipboard content, application contents, unrelated window titles, or other unnecessary personal data. Pointer movement is permitted only under the explicit, visible web-only Experimental Touch/Trackpad source described in `60-EXPERIMENTAL-TOUCH-TRACE.md`; raw points are logged only during active experiment playback.
 - Keep the browser app static and GitHub Pages-compatible. Do not add a backend, telemetry, CDN, runtime package dependency, or remote asset silently.
 - Keep native authority in Rust behind narrow typed Tauri commands/events/channels. Treat WebView input and imported settings as untrusted.
 - Preserve least-privilege capabilities, restrictive CSP, local packaged content, and clean native-resource shutdown.
@@ -40,6 +40,8 @@ The web and desktop applications must feel like the same instrument. Shared affe
 - `site/src/portable-settings.js` and `site/settings.json`: canonical browser-side portable settings contract/defaults.
 - `src-tauri/`: authoritative Rust state, validation, persistence, input monitoring, lifecycle, and LSL implementation.
 - `site/`: dependency-free online application and online-only experiment module.
+- `site/src/touch-trace.js`: browser-only trajectory filtering, equal-distance geometry, adaptive calibration, and trace fitting.
+- `for-ai/70-RESEARCH-PROVENANCE.md` and `for-ai/references.bib`: source-decision ledger and citation-ready bibliography.
 - `desktop/`: Tauri WebView presentation and typed native adapter.
 - `.github/workflows/`: deployment, verification, and native packaging automation.
 

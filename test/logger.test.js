@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { AffectLogger, escapeCsv, recordsToCsv } from "../site/src/logger.js";
+import { AffectLogger, escapeCsv, ExperimentCsvWriter, recordsToCsv } from "../site/src/logger.js";
 import { RingBuffer } from "../site/src/ring-buffer.js";
 
 const state = {
@@ -85,4 +85,59 @@ test("experiment context is attached to every timestamped record", () => {
   assert.equal(record.stimulus_time_seconds, 90.125);
   assert.equal(record.current_x, state.currentX);
   assert.equal(record.current_y, state.currentY);
+});
+
+test("experiment writer is append-only across CSV chunks", () => {
+  let time = 10;
+  const writer = new ExperimentCsvWriter({
+    chunkSize: 2,
+    now: () => time++,
+    wallClock: () => new Date("2026-08-22T00:00:00Z"),
+    sessionId: () => "experiment-session",
+    context: () => ({ experimentId: "trial-1", activeElapsedMs: 50, playbackActive: true }),
+  });
+  for (let index = 0; index < 5; index += 1) {
+    writer.record("pointer_raw", { source: "pointer", action: "move", clientX: index, pointerType: "touch" }, state);
+  }
+  const csv = writer.exportCsv();
+  assert.equal(writer.length, 5);
+  assert.equal(writer.pointerCount, 5);
+  assert.equal(csv.split("\r\n").filter(Boolean).length, 6);
+  assert.match(csv, /experiment-session/);
+  assert.match(csv, /pointer_raw/);
+  assert.match(csv, /touch/);
+  assert.equal(writer.exportCsv(), csv, "retry export must be non-destructive");
+});
+
+test("experiment writer does not roll over beyond the normal session capacity", () => {
+  let time = 0;
+  const writer = new ExperimentCsvWriter({
+    now: () => time++,
+    wallClock: () => new Date(0),
+    sessionId: () => "long-trial",
+  });
+  for (let index = 0; index < 10_250; index += 1) {
+    writer.record("pointer_raw", { pointerTimeMs: index, clientX: index % 500 }, state);
+  }
+  assert.equal(writer.length, 10_250);
+  assert.equal(writer.pointerCount, 10_250);
+  const csv = writer.exportCsv();
+  assert.match(csv, /,10249,/);
+});
+
+test("extended CSV distinguishes raw, metric, and displayed state", () => {
+  const writer = new ExperimentCsvWriter({
+    now: () => 1,
+    wallClock: () => new Date("2026-08-22T00:00:00Z"),
+    sessionId: () => "session",
+  });
+  const touchState = { ...state, inputSource: "touch-trace" };
+  writer.record("pointer_raw", { pointerTimeMs: 1, normalizedX: 0.2, normalizedY: 0.3 }, touchState);
+  writer.record("touch_metric", { shapeFeature: -0.4, speedFeature: 0.6, mappedX: -0.8, mappedY: 0.7 }, touchState);
+  writer.record("sample", { source: "timer" }, touchState);
+  const rows = writer.exportCsv().split("\r\n");
+  assert.match(rows[1], /pointer_raw/);
+  assert.match(rows[2], /touch_metric/);
+  assert.match(rows[3], /sample/);
+  assert.match(rows[1], /touch-trace/);
 });

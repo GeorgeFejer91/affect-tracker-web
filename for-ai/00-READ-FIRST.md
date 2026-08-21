@@ -2,7 +2,7 @@
 
 This directory is the durable brief for the Affect Tracker project. Every future AI agent must read every Markdown file here, in filename order, before taking any project action.
 
-The repository root is the central project folder. [`05-PROJECT-METADATA.md`](./05-PROJECT-METADATA.md) records its identity, goals, global constraints, and source-of-truth map. [`50-AGENT-WORKFLOW.md`](./50-AGENT-WORKFLOW.md) defines the mandatory agent approach, skill routing, living-documentation policy, and Git checkpoint/clean-tree rules.
+The repository root is the central project folder. [`05-PROJECT-METADATA.md`](./05-PROJECT-METADATA.md) records its identity, goals, global constraints, and source-of-truth map. [`50-AGENT-WORKFLOW.md`](./50-AGENT-WORKFLOW.md) defines the mandatory agent approach, skill routing, living-documentation policy, and Git checkpoint/clean-tree rules. [`60-EXPERIMENTAL-TOUCH-TRACE.md`](./60-EXPERIMENTAL-TOUCH-TRACE.md) is the normative contract for the web-only movement prototype, and [`70-RESEARCH-PROVENANCE.md`](./70-RESEARCH-PROVENANCE.md) is the mandatory source ledger for research-derived ideas.
 
 ## Project purpose
 
@@ -18,6 +18,7 @@ The two forms must share affect semantics and visual mathematics. Differences ar
 - Read this directory before source files.
 - Preserve the BSD-3-Clause license and attribution to `afourcade/AffectTracker`.
 - Keep browser operation local and private by default: no analytics, telemetry, CDN, external font, or silent runtime API dependency. The bundled experiment stimulus is repository-hosted. YouTube is an explicit user-selected stimulus source and must disclose the third-party connection before playback.
+- Pointer trajectories are a narrow privacy exception: capture them only while the user has visibly selected Experimental Touch/Trackpad control, and write raw points only during active experiment playback.
 - Treat Tauri WebViews and IPC arguments as untrusted. Native authority stays in Rust behind narrow typed commands.
 - Do not introduce remote WebView content, generic shell execution, unrestricted filesystem/network permissions, or silent global input capture.
 - Test web and desktop behavior proportionally to each change.

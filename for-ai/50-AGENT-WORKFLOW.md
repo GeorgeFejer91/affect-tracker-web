@@ -6,7 +6,7 @@ Before inspecting source, planning changes, editing, testing, or publishing:
 
 1. locate the Git root with `git rev-parse --show-toplevel`;
 2. read the root `AGENTS.md`;
-3. read **every** Markdown file in `for-ai/` completely, in lexical filename order;
+3. read **every** Markdown file in `for-ai/` completely, in lexical filename order, then inspect `for-ai/references.bib` when research provenance is relevant;
 4. inspect `git status --short`, the active branch, remotes, and recent relevant history;
 5. preserve unrelated user or agent changes and identify any contract/implementation mismatch before proceeding;
 6. inspect the relevant manifests, lockfiles, entry points, configuration, capabilities, tests, and workflows before choosing commands or dependencies; and
@@ -48,6 +48,8 @@ Update `for-ai/` in the same change whenever:
 - testing/debugging reveals a reusable lesson that would prevent future mistakes.
 
 Record durable lessons, not temporary narration. Avoid dates, transient branch names, machine-specific output paths, one-off command logs, or speculative ideas unless they are genuinely relevant project metadata or an approved roadmap item. Consolidate duplicate or stale guidance instead of appending contradictions forever.
+
+Before merging any source-derived algorithm, API behavior, or compatibility decision, add its citation and exact adopted idea to `70-RESEARCH-PROVENANCE.md`; add publications to `references.bib`. Record license and code-reuse status. Reviewing an example is not code reuse, and independent implementation must be stated accurately.
 
 ## Git hygiene and regular checkpoints
 

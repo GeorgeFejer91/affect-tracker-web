@@ -36,6 +36,28 @@ test("flubber is always centered directly below the experiment video", () => {
   }
 });
 
+test("optional movement feedback stays below the flubber without video overlap", () => {
+  const layout = computeExperimentLayout(390, 844, 180, 24, { width: 260, height: 160 });
+  const videoBottom = layout.videoRect.top + layout.videoRect.height;
+  const widgetTop = layout.widget.y - 90;
+  const widgetBottom = layout.widget.y + 90;
+  assert.ok(widgetTop >= videoBottom);
+  assert.ok(layout.traceRect.top >= widgetBottom);
+  assert.ok(layout.traceRect.top + layout.traceRect.height <= 844);
+  assert.equal(layout.traceRect.left + layout.traceRect.width / 2, layout.widget.x);
+});
+
+test("short landscape viewports shrink the experiment widget before hiding the video", () => {
+  const layout = computeExperimentLayout(844, 390, 180, 24, { width: 243, height: 151.5 });
+  const widget = widgetBounds(layout, layout.widgetSize);
+  assert.equal(layout.widgetSize, 80);
+  assert.ok(layout.videoRect.width > 0);
+  assert.ok(layout.videoRect.height > 0);
+  assert.ok(widget.top >= layout.videoRect.top + layout.videoRect.height);
+  assert.ok(layout.traceRect.top >= widget.bottom);
+  assert.ok(layout.traceRect.top + layout.traceRect.height <= 390);
+});
+
 test("the repository stimulus represents the video segment beginning at 90 seconds", () => {
   assert.equal(DEMO_VIDEO_ID, "pY6vrOpnM64");
   assert.equal(DEMO_START_SECONDS, 90);
