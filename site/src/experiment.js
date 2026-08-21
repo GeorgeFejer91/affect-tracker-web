@@ -61,32 +61,28 @@ export function computeExperimentLayout(viewportWidth, viewportHeight, widgetSiz
   const body = clamp(Number(widgetSize) || 120, 80, 640);
   const edgeGap = clamp(gap, 8, 48);
 
-  const side = fitVideo(width - 2 * (body + edgeGap), height - 2 * edgeGap);
-  const below = fitVideo(width - 2 * edgeGap, height - 2 * (body + edgeGap));
-  const placement = side.width * side.height >= below.width * below.height ? "right" : "below";
-  let video = placement === "right" ? side : below;
-
-  // Retain a practical 200 px media minimum whenever the viewport makes it possible.
-  if (video.width < 200) video = fitVideo(Math.max(0, width - 2 * edgeGap), Math.max(0, height - 2 * edgeGap));
+  // Treat the stimulus and Flubber as one centered vertical stack. Reserving the
+  // widget's full height first guarantees that it remains directly below the
+  // video without overlap, even when the viewport becomes narrow.
+  const video = fitVideo(
+    Math.max(0, width - 2 * edgeGap),
+    Math.max(0, height - body - 3 * edgeGap),
+  );
+  const stackHeight = video.height + edgeGap + body;
+  const stackTop = Math.max(edgeGap, (height - stackHeight) / 2);
   const videoRect = {
     left: (width - video.width) / 2,
-    top: (height - video.height) / 2,
+    top: stackTop,
     width: video.width,
     height: video.height,
   };
 
-  const radius = body / 2;
-  const widget = placement === "right"
-    ? {
-        x: clamp(videoRect.left + videoRect.width + edgeGap + radius, radius, width - radius),
-        y: height / 2,
-      }
-    : {
-        x: width / 2,
-        y: clamp(videoRect.top + videoRect.height + edgeGap + radius, radius, height - radius),
-      };
+  const widget = {
+    x: videoRect.left + videoRect.width / 2,
+    y: videoRect.top + videoRect.height + edgeGap + body / 2,
+  };
 
-  return { videoRect, widget, placement };
+  return { videoRect, widget, placement: "below" };
 }
 
 export function experimentFilename(sessionId, wallClock = new Date()) {

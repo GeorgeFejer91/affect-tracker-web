@@ -198,6 +198,7 @@ const experiment = {
   sampleTimer: undefined,
   restore: undefined,
   videoTimeSeconds: "",
+  ownsFullscreen: false,
 };
 
 function experimentRecordContext() {
@@ -1040,6 +1041,26 @@ function updateExperimentSourceControls() {
     : "The preloaded video and recording remain in this page. Physical key, mouse-button, and wheel identifiers—not typed text—are recorded locally during the experiment.";
 }
 
+async function requestExperimentFullscreen() {
+  if (!document.fullscreenEnabled || document.fullscreenElement || !document.documentElement.requestFullscreen) {
+    return false;
+  }
+  try {
+    await document.documentElement.requestFullscreen();
+    experiment.ownsFullscreen = document.fullscreenElement === document.documentElement;
+    return experiment.ownsFullscreen;
+  } catch {
+    announce("Fullscreen permission was not granted. The experiment will continue in this window.");
+    return false;
+  }
+}
+
+function exitExperimentFullscreen() {
+  const shouldExit = experiment.ownsFullscreen && document.fullscreenElement === document.documentElement;
+  experiment.ownsFullscreen = false;
+  if (shouldExit) document.exitFullscreen?.().catch(() => {});
+}
+
 function teardownExperimentPresentation() {
   clearInterval(experiment.sampleTimer);
   experiment.sampleTimer = undefined;
@@ -1060,6 +1081,7 @@ function teardownExperimentPresentation() {
   experiment.videoTimeSeconds = "";
   experiment.id = "";
   experiment.phase = "idle";
+  exitExperimentFullscreen();
   elements.experimentStartButton.disabled = false;
   elements.experimentStartButton.textContent = "Start experiment";
   updateExperimentSourceControls();
@@ -1159,6 +1181,7 @@ async function startExperiment() {
     announce(error?.message ?? String(error));
     return;
   }
+  await requestExperimentFullscreen();
   experiment.phase = "loading";
   experiment.adapter = experiment.config.source === "youtube"
     ? createYouTubeExperimentAdapter(experiment.config)
@@ -1440,6 +1463,9 @@ function initializeEvents() {
   elements.exportButton.addEventListener("click", exportLog);
   elements.clearButton.addEventListener("click", clearLog);
   elements.experimentStartButton.addEventListener("click", startExperiment);
+  document.addEventListener("fullscreenchange", () => {
+    if (experiment.phase !== "idle") constrainAndRenderWidget();
+  });
   elements.experimentSource.addEventListener("change", updateExperimentSourceControls);
 
   document.addEventListener("visibilitychange", () => {

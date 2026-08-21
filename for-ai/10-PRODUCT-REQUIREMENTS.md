@@ -26,7 +26,7 @@ The SVG uses 192 angular samples, 16 projections, deterministic seeded phase/amp
 - Continuous and step modes, reset, pause, reduced-motion support, and visible focus.
 - Browser-only 10,000-record normal-session ring buffer with 20 Hz affect sampling and CSV export. Experiment sessions use a duration-aware bounded capacity sufficient for the selected segment plus physical-input events.
 - Two stacked accordion toggles label the surfaces **Affect Tracker Settings** and **Experiment**; opening one collapses the other.
-- Online-only experiment module with a 3–2–1 countdown, neutral reset, isolated 20 Hz recording session, protected centered 16:9 player, collision-free Flubber placement, and automatic CSV download at the selected segment end.
+- Online-only experiment module that requests fullscreen from the Start-button gesture, runs a 3–2–1 countdown, resets to neutral, records an isolated 20 Hz session, protects a centered 16:9 player, keeps the Flubber centered directly beneath the video without overlap, automatically downloads CSV at the selected segment end, and exits fullscreen during cleanup. A declined or unsupported fullscreen request must not prevent the experiment.
 - The preloaded GitHub Pages example is a repository-hosted 1080p H.264/AAC video trimmed at the source's 90-second point. Researchers may alternatively provide any embeddable YouTube URL plus explicit start and finish seconds; this optional connection is disclosed and never changes the desktop app.
 - Experiment CSV rows add experiment/stimulus identity and stimulus time. Acquisition records every physical key press/release, mouse-button press/release, and wheel event without typed text or mouse movement.
 - No upload, analytics, account, server, or persistent affect history.

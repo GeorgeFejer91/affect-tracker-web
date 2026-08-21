@@ -22,19 +22,17 @@ function widgetBounds(layout, size) {
   };
 }
 
-test("experiment video is centered, 16:9, and separated from the flubber", () => {
-  for (const [width, height, size] of [[1920, 1080, 180], [1366, 768, 240], [390, 844, 120]]) {
+test("flubber is always centered directly below the experiment video", () => {
+  for (const [width, height, size] of [[1920, 1080, 180], [1366, 768, 240], [390, 844, 120], [844, 390, 180]]) {
     const layout = computeExperimentLayout(width, height, size);
     const video = layout.videoRect;
     const widget = widgetBounds(layout, size);
     assert.ok(Math.abs(video.left + video.width / 2 - width / 2) < 1e-9);
-    assert.ok(Math.abs(video.top + video.height / 2 - height / 2) < 1e-9);
+    assert.ok(Math.abs(layout.widget.x - (video.left + video.width / 2)) < 1e-9);
     assert.ok(Math.abs(video.width / video.height - 16 / 9) < 1e-9);
-    const separated = widget.left >= video.left + video.width
-      || widget.right <= video.left
-      || widget.top >= video.top + video.height
-      || widget.bottom <= video.top;
-    assert.equal(separated, true);
+    assert.ok(widget.top >= video.top + video.height + 8);
+    assert.ok(widget.bottom <= height);
+    assert.equal(layout.placement, "below");
   }
 });
 
