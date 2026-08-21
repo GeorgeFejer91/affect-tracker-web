@@ -2,6 +2,8 @@
 
 This directory is the durable brief for the Affect Tracker project. Every future AI agent must read every Markdown file here, in filename order, before taking any project action.
 
+The repository root is the central project folder. [`05-PROJECT-METADATA.md`](./05-PROJECT-METADATA.md) records its identity, goals, global constraints, and source-of-truth map. [`50-AGENT-WORKFLOW.md`](./50-AGENT-WORKFLOW.md) defines the mandatory agent approach, skill routing, living-documentation policy, and Git checkpoint/clean-tree rules.
+
 ## Project purpose
 
 Provide one 2D valence/arousal affect tracker in two delivery forms:
