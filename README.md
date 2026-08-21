@@ -19,8 +19,8 @@ Every AI agent must read [`AGENTS.md`](./AGENTS.md) and every file in [`for-ai/`
 
 | Input | Effect |
 | --- | --- |
-| Left/Right or A/D | Decrease/increase valence |
-| Up/Down or W/S | Increase/decrease arousal |
+| Left/Right arrows (default) | Decrease/increase valence |
+| Up/Down arrows (default) | Increase/decrease arousal |
 | Mouse wheel or trackpad | Change arousal |
 | Shift + wheel | Change valence |
 | Space | Pause or resume shape motion |
@@ -51,7 +51,15 @@ The page keeps a fixed-size ring buffer of at most 10,000 records:
 
 Everything stays inside the current browser tab. Nothing is uploaded, and there are no analytics or external network dependencies. Closing or refreshing the page discards records that have not been downloaded. Use **Download CSV** to export the current session in chronological order.
 
-The widget position, widget size, panel state, and input mode are saved in `localStorage`. Affect values and history are not persisted.
+The widget appearance, position, bindings, input behavior, and panel state are saved in `localStorage`. Affect values and history are not persisted.
+
+## Shared customization JSON
+
+The online and desktop apps expose the same input behavior, physical bindings, four-axis colors, flubber size, visibility, position, and 0–100% transparency control. Choose **Export settings JSON** in either app and import that file in the other. A desktop-exported file therefore produces the same flubber palette, geometry, transparency, controls, and placement in the browser, subject only to viewport constraints and the desktop overlay versus browser black-stage difference.
+
+The portable schema stores transparency as `overlay.opacity` (`1` is opaque, `0` is fully transparent). It also carries the LSL stream metadata: GitHub Pages preserves those values for round-tripping, although a browser cannot publish LSL.
+
+Repository maintainers can replace [`site/settings.json`](./site/settings.json) with an exported version-1 file to change the hosted defaults. Returning browsers retain their own `localStorage` preferences; clear site data or import the JSON to apply new defaults immediately. Settings import/export stays local and never uploads the file.
 
 ## Desktop companion
 

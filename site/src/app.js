@@ -5,25 +5,33 @@ import {
   clamp,
   createProfiles,
   createProjectionOffsets,
-  DEFAULT_AFFECT_PALETTE,
   smoothToward,
 } from "./math.js";
 import {
   applyStep,
   constrainWidgetPosition,
   continuousMovement,
-  directionForKey,
   isNativeFormControl,
   normalizeWheel,
 } from "./input.js";
 import { AffectLogger } from "./logger.js";
+import {
+  actionForBinding,
+  BINDING_LABELS,
+  cloneDefaultSettings,
+  describeBinding,
+  DIRECTION_BY_ACTION,
+  mouseButtonName,
+  normalizePortableSettings,
+  opacityToTransparencyPercent,
+  portableSettingsJson,
+  transparencyPercentToOpacity,
+  wheelDirection,
+} from "./portable-settings.js";
 
 const STORAGE_KEY = "affect-tracker-web/preferences-v1";
 const SAMPLE_INTERVAL_SECONDS = 1 / 20;
 const MAX_DELTA_SECONDS = 0.05;
-const RESPONSE = 8;
-const CONTINUOUS_SPEED = 0.8;
-const STEP_SIZE = 0.1;
 
 const elements = {
   stage: document.querySelector("#stage"),
@@ -51,50 +59,93 @@ const elements = {
   featureCanvas: document.querySelector("#web-feature-space-canvas"),
   featurePoint: document.querySelector("#web-feature-point"),
   paletteInputs: [...document.querySelectorAll("[data-palette]")],
+  bindingGrid: document.querySelector("#web-binding-grid"),
+  stepSize: document.querySelector("#web-step-size"),
+  continuousSpeed: document.querySelector("#web-continuous-speed"),
+  response: document.querySelector("#web-response"),
+  widgetSize: document.querySelector("#web-widget-size"),
+  transparency: document.querySelector("#web-transparency"),
+  transparencyOutput: document.querySelector("#web-transparency-output"),
+  widgetVisibleButton: document.querySelector("#widget-visible-button"),
+  dragToggleButton: document.querySelector("#drag-toggle-button"),
+  settingsExportButton: document.querySelector("#settings-export-button"),
+  settingsImportButton: document.querySelector("#settings-import-button"),
+  settingsImportFile: document.querySelector("#settings-import-file"),
+  customization: document.querySelector("#customization-editor"),
+  lslStreamName: document.querySelector("#web-lsl-stream-name"),
+  lslStreamType: document.querySelector("#web-lsl-stream-type"),
+  lslMarkerName: document.querySelector("#web-lsl-marker-name"),
+  lslSampleRate: document.querySelector("#web-lsl-sample-rate"),
+  lslSourceId: document.querySelector("#web-lsl-source-id"),
 };
 
-function validPalette(value) {
-  return value && ["up", "down", "left", "right"].every((name) => /^#[\da-f]{6}$/i.test(value[name] ?? ""));
+async function loadBundledSettings() {
+  try {
+    const response = await fetch("./settings.json", { cache: "no-store" });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    return normalizePortableSettings(await response.json());
+  } catch {
+    return cloneDefaultSettings();
+  }
 }
 
-function readPreferences() {
+function readPreferences(bundledSettings) {
   try {
     const parsed = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "null") ?? {};
+    let settings;
+    try {
+      settings = normalizePortableSettings(parsed.settings ?? bundledSettings);
+    } catch {
+      settings = structuredClone(bundledSettings);
+    }
+    // Migrate the original browser-only preferences without discarding the new shared defaults.
+    if (!parsed.settings) {
+      if (parsed.inputMode === "step" || parsed.inputMode === "continuous") settings.inputMode = parsed.inputMode;
+      if (parsed.palette) {
+        try { settings.palette = normalizePortableSettings({ ...settings, palette: parsed.palette }).palette; } catch { /* retain defaults */ }
+      }
+      if (Number.isFinite(parsed.widgetSize)) settings.overlay.size = clamp(parsed.widgetSize, 120, 640);
+    }
     return {
-      widgetX: Number.isFinite(parsed.widgetX) ? parsed.widgetX : window.innerWidth / 2,
-      widgetY: Number.isFinite(parsed.widgetY) ? parsed.widgetY : window.innerHeight / 2,
-      widgetSize: Number.isFinite(parsed.widgetSize) ? clamp(parsed.widgetSize, 120, 320) : 180,
-      inputMode: parsed.inputMode === "step" ? "step" : "continuous",
+      widgetX: Number.isFinite(parsed.widgetX) ? parsed.widgetX : settings.overlay.x + settings.overlay.size / 2,
+      widgetY: Number.isFinite(parsed.widgetY) ? parsed.widgetY : settings.overlay.y + settings.overlay.size / 2,
       panelOpen: typeof parsed.panelOpen === "boolean" ? parsed.panelOpen : !parsed.seenIntro,
-      palette: validPalette(parsed.palette) ? parsed.palette : { ...DEFAULT_AFFECT_PALETTE },
+      settings,
       seenIntro: true,
     };
   } catch {
     return {
-      widgetX: window.innerWidth / 2,
-      widgetY: window.innerHeight / 2,
-      widgetSize: 180,
-      inputMode: "continuous",
+      widgetX: bundledSettings.overlay.x + bundledSettings.overlay.size / 2,
+      widgetY: bundledSettings.overlay.y + bundledSettings.overlay.size / 2,
       panelOpen: true,
-      palette: { ...DEFAULT_AFFECT_PALETTE },
+      settings: structuredClone(bundledSettings),
       seenIntro: true,
     };
   }
 }
 
-const preferences = readPreferences();
+const bundledSettings = await loadBundledSettings();
+const preferences = readPreferences(bundledSettings);
 const state = {
   currentX: 0,
   currentY: 0,
   targetX: 0,
   targetY: 0,
-  inputMode: preferences.inputMode,
+  inputMode: preferences.settings.inputMode,
+  stepSize: preferences.settings.stepSize,
+  continuousSpeed: preferences.settings.continuousSpeed,
+  response: preferences.settings.response,
+  bindings: preferences.settings.bindings,
   animationActive: true,
   widgetX: preferences.widgetX,
   widgetY: preferences.widgetY,
-  widgetSize: preferences.widgetSize,
+  widgetSize: preferences.settings.overlay.size,
+  widgetOpacity: preferences.settings.overlay.opacity,
+  widgetVisible: preferences.settings.overlay.visible,
+  widgetDragEnabled: true,
   panelOpen: preferences.panelOpen,
-  palette: preferences.palette,
+  palette: preferences.settings.palette,
+  lsl: preferences.settings.lsl,
   heldDirections: new Set(),
   phase: 0,
   dragging: false,
@@ -108,18 +159,37 @@ let sampleAccumulator = 0;
 let dragOffsetX = 0;
 let dragOffsetY = 0;
 let featurePointerId;
+let captureInput;
 const reducedMotionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
 
 function savePreferences() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify({
     widgetX: state.widgetX,
     widgetY: state.widgetY,
-    widgetSize: state.widgetSize,
-    inputMode: state.inputMode,
     panelOpen: state.panelOpen,
-    palette: state.palette,
+    settings: settingsFromState(),
     seenIntro: true,
   }));
+}
+
+function settingsFromState() {
+  return normalizePortableSettings({
+    version: 1,
+    inputMode: state.inputMode,
+    stepSize: state.stepSize,
+    continuousSpeed: state.continuousSpeed,
+    response: state.response,
+    bindings: state.bindings,
+    palette: state.palette,
+    overlay: {
+      x: Math.round(state.widgetX - state.widgetSize / 2),
+      y: Math.round(state.widgetY - state.widgetSize / 2),
+      size: Math.round(state.widgetSize),
+      opacity: state.widgetOpacity,
+      visible: state.widgetVisible,
+    },
+    lsl: state.lsl,
+  });
 }
 
 function announce(message) {
@@ -155,6 +225,97 @@ function updateModeControls() {
   for (const input of elements.modeInputs) input.checked = input.value === state.inputMode;
 }
 
+function finishBindingCapture(value) {
+  if (!captureInput) return;
+  const action = captureInput.dataset.binding;
+  const conflict = Object.entries(state.bindings).find(([candidate, binding]) => candidate !== action && binding.toLowerCase() === value.toLowerCase());
+  if (conflict) {
+    captureInput.value = describeBinding(captureInput.dataset.bindingValue);
+    captureInput.classList.remove("is-capturing");
+    captureInput = undefined;
+    announce(`That input is already assigned to ${BINDING_LABELS[conflict[0]]}.`);
+    return;
+  }
+  captureInput.dataset.bindingValue = value;
+  captureInput.value = describeBinding(value);
+  captureInput.classList.remove("is-capturing");
+  state.bindings[captureInput.dataset.binding] = value;
+  captureInput = undefined;
+  savePreferences();
+  recordEvent("settings", "binding-change", "input", value);
+  announce(`Input assigned to ${describeBinding(value)}.`);
+}
+
+function beginBindingCapture(input) {
+  if (captureInput && captureInput !== input) {
+    captureInput.value = describeBinding(captureInput.dataset.bindingValue);
+    captureInput.classList.remove("is-capturing");
+  }
+  captureInput = input;
+  input.value = "Press, click, or scroll…";
+  input.classList.add("is-capturing");
+  announce("Waiting for a keyboard, mouse-button, or wheel input.");
+}
+
+function createBindingInputs() {
+  elements.bindingGrid.replaceChildren();
+  for (const [action, label] of Object.entries(BINDING_LABELS)) {
+    const wrapper = document.createElement("label");
+    wrapper.textContent = label;
+    const input = document.createElement("input");
+    input.readOnly = true;
+    input.autocomplete = "off";
+    input.dataset.binding = action;
+    input.dataset.bindingValue = state.bindings[action];
+    input.value = describeBinding(state.bindings[action]);
+    input.addEventListener("click", () => beginBindingCapture(input));
+    wrapper.append(input);
+    elements.bindingGrid.append(wrapper);
+  }
+}
+
+function updateCustomizationControls() {
+  elements.stepSize.value = state.stepSize;
+  elements.continuousSpeed.value = state.continuousSpeed;
+  elements.response.value = state.response;
+  elements.widgetSize.value = state.widgetSize;
+  elements.transparency.value = opacityToTransparencyPercent(state.widgetOpacity);
+  elements.transparencyOutput.value = `${elements.transparency.value}%`;
+  elements.widgetVisibleButton.textContent = state.widgetVisible ? "Hide flubber" : "Show flubber";
+  elements.dragToggleButton.textContent = state.widgetDragEnabled ? "Disable dragging" : "Enable dragging";
+  elements.lslStreamName.value = state.lsl.streamName;
+  elements.lslStreamType.value = state.lsl.streamType;
+  elements.lslMarkerName.value = state.lsl.markerName;
+  elements.lslSampleRate.value = state.lsl.sampleRate;
+  elements.lslSourceId.value = state.lsl.sourceId;
+  createBindingInputs();
+}
+
+function applyPortableSettings(value, applyPosition = true) {
+  const normalized = normalizePortableSettings(value);
+  state.inputMode = normalized.inputMode;
+  state.stepSize = normalized.stepSize;
+  state.continuousSpeed = normalized.continuousSpeed;
+  state.response = normalized.response;
+  state.bindings = normalized.bindings;
+  state.palette = normalized.palette;
+  state.widgetSize = normalized.overlay.size;
+  state.widgetOpacity = normalized.overlay.opacity;
+  state.widgetVisible = normalized.overlay.visible;
+  state.lsl = normalized.lsl;
+  if (applyPosition) {
+    state.widgetX = normalized.overlay.x + normalized.overlay.size / 2;
+    state.widgetY = normalized.overlay.y + normalized.overlay.size / 2;
+  }
+  state.heldDirections.clear();
+  updateModeControls();
+  updateCustomizationControls();
+  updateFeatureSpace();
+  constrainAndRenderWidget();
+  savePreferences();
+  return normalized;
+}
+
 function formatCoordinate(value) {
   return `${value >= 0 ? "+" : ""}${value.toFixed(3)}`;
 }
@@ -164,7 +325,7 @@ function updateCoordinateDisplay() {
   elements.arousalOutput.textContent = formatCoordinate(state.currentY);
   elements.widget.setAttribute(
     "aria-label",
-    `Draggable affect shape. Valence ${state.currentX.toFixed(2)}, arousal ${state.currentY.toFixed(2)}. Use arrow keys or WASD to adjust.`,
+    `Draggable affect shape. Valence ${state.currentX.toFixed(2)}, arousal ${state.currentY.toFixed(2)}. Use the configured controls to adjust.`,
   );
 }
 
@@ -210,6 +371,9 @@ function constrainAndRenderWidget() {
   elements.widget.style.left = `${state.widgetX}px`;
   elements.widget.style.top = `${state.widgetY}px`;
   elements.widget.style.setProperty("--widget-size", `${state.widgetSize}px`);
+  elements.widget.style.opacity = String(state.widgetOpacity);
+  elements.widget.hidden = !state.widgetVisible;
+  elements.widget.classList.toggle("is-drag-disabled", !state.widgetDragEnabled);
 }
 
 function resetAffect(source = "keyboard") {
@@ -240,7 +404,7 @@ function setMode(mode, source = "panel") {
   announce(`${mode === "step" ? "Step" : "Continuous"} input mode selected.`);
 }
 
-function moveTarget(direction, source, amount = STEP_SIZE) {
+function moveTarget(direction, source, amount = state.stepSize) {
   const next = applyStep(state.targetX, state.targetY, direction, amount);
   state.targetX = next.x;
   state.targetY = next.y;
@@ -249,7 +413,7 @@ function moveTarget(direction, source, amount = STEP_SIZE) {
 
 function updateContinuousInput(deltaSeconds) {
   if (state.inputMode !== "continuous" || state.heldDirections.size === 0) return;
-  const movement = continuousMovement(state.heldDirections, deltaSeconds, CONTINUOUS_SPEED);
+  const movement = continuousMovement(state.heldDirections, deltaSeconds, state.continuousSpeed);
   state.targetX = clamp(state.targetX + movement.x);
   state.targetY = clamp(state.targetY + movement.y);
 }
@@ -262,47 +426,80 @@ function targetIsEditable(event) {
   return isNativeFormControl(event.target);
 }
 
-function handleGlobalKeyDown(event) {
-  if (targetIsEditable(event)) return;
-  const direction = directionForKey(event.key);
+function applyBoundAction(action, pressed, source, impulse = false) {
+  const direction = DIRECTION_BY_ACTION[action];
   if (direction) {
-    event.preventDefault();
-    if (state.inputMode === "step") {
-      if (!event.repeat) moveTarget(direction, "keyboard");
-      return;
+    if (impulse || state.inputMode === "step") {
+      if (pressed) moveTarget(direction, source);
+    } else if (pressed) {
+      if (!state.heldDirections.has(direction)) {
+        state.heldDirections.add(direction);
+        recordEvent(source, "press", direction, true);
+      }
+    } else if (state.heldDirections.delete(direction)) {
+      recordEvent(source, "release", direction, false);
     }
-    if (!state.heldDirections.has(direction)) {
-      state.heldDirections.add(direction);
-      recordEvent("keyboard", "press", direction, true);
-    }
-    return;
+    return true;
   }
+  if (!pressed && !impulse) return Boolean(action);
+  if (action === "reset") resetAffect(source);
+  else if (action === "togglePause") toggleAnimation(source);
+  else if (action === "showSettings") {
+    state.panelOpen = true;
+    elements.customization.open = true;
+    updatePanelState();
+  } else if (action === "toggleOverlayEditing") {
+    state.widgetDragEnabled = !state.widgetDragEnabled;
+    updateCustomizationControls();
+    constrainAndRenderWidget();
+    announce(state.widgetDragEnabled ? "Flubber dragging enabled." : "Flubber dragging disabled.");
+  }
+  return Boolean(action);
+}
 
-  if (event.key === " ") {
+function handleGlobalKeyDown(event) {
+  if (targetIsEditable(event) || captureInput) return;
+  const action = actionForBinding(state.bindings, `key:${event.code}`);
+  if (action) {
     event.preventDefault();
-    if (!event.repeat) toggleAnimation("keyboard");
-  } else if (event.key === "r" || event.key === "R") {
-    event.preventDefault();
-    if (!event.repeat) resetAffect("keyboard");
+    if (!event.repeat) applyBoundAction(action, true, "keyboard");
   }
 }
 
 function handleGlobalKeyUp(event) {
-  if (targetIsEditable(event) || state.inputMode !== "continuous") return;
-  const direction = directionForKey(event.key);
-  if (direction && state.heldDirections.delete(direction)) {
+  if (targetIsEditable(event) || captureInput) return;
+  const action = actionForBinding(state.bindings, `key:${event.code}`);
+  if (action) {
     event.preventDefault();
-    recordEvent("keyboard", "release", direction, false);
+    applyBoundAction(action, false, "keyboard");
   }
 }
 
 function handleWheel(event) {
-  if (targetIsEditable(event)) return;
+  if (targetIsEditable(event) || captureInput) return;
   event.preventDefault();
+  const action = actionForBinding(state.bindings, `wheel:${wheelDirection(event.deltaX, event.deltaY)}`);
+  if (action) {
+    applyBoundAction(action, true, "wheel", true);
+    return;
+  }
+  // Keep the original browser gesture as a fallback when no wheel direction is explicitly assigned.
   const amount = normalizeWheel(event.deltaY);
   if (event.shiftKey) state.targetX = clamp(state.targetX + amount);
   else state.targetY = clamp(state.targetY + amount);
   recordEvent("wheel", "move", event.shiftKey ? "valence" : "arousal", amount);
+}
+
+function handleGlobalMouseDown(event) {
+  if (targetIsEditable(event) || captureInput || elements.widget.contains(event.target)) return;
+  const action = actionForBinding(state.bindings, `mouse:${mouseButtonName(event.button)}`);
+  if (action) applyBoundAction(action, true, "mouse");
+}
+
+function handleGlobalMouseUp(event) {
+  if (captureInput) return;
+  const action = actionForBinding(state.bindings, `mouse:${mouseButtonName(event.button)}`);
+  if (action) applyBoundAction(action, false, "mouse");
 }
 
 function handleDirectionPointerDown(event) {
@@ -352,7 +549,7 @@ function handleDirectionButtonKeyUp(event) {
 }
 
 function handleWidgetPointerDown(event) {
-  if (event.button !== 0) return;
+  if (event.button !== 0 || !state.widgetDragEnabled) return;
   state.dragging = true;
   dragOffsetX = event.clientX - state.widgetX;
   dragOffsetY = event.clientY - state.widgetY;
@@ -394,6 +591,29 @@ function exportLog() {
   announce(`CSV exported with ${logger.buffer.length.toLocaleString()} records.`);
 }
 
+function exportSettings() {
+  const blob = new Blob([portableSettingsJson(settingsFromState())], { type: "application/json;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = "affect-tracker-settings-v1.json";
+  document.body.append(anchor);
+  anchor.click();
+  anchor.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 0);
+  recordEvent("settings", "export", "json", 1);
+  announce("Portable settings JSON exported.");
+}
+
+async function importSettings(file) {
+  if (!file) return;
+  if (file.size > 256 * 1024) throw new Error("Settings JSON must be smaller than 256 KB.");
+  const imported = normalizePortableSettings(JSON.parse(await file.text()));
+  applyPortableSettings(imported, true);
+  recordEvent("settings", "import", "json", 1);
+  announce("Portable settings JSON imported and applied.");
+}
+
 function clearLog() {
   if (!window.confirm("Clear all buffered affect samples and input events? This cannot be undone.")) return;
   logger.resetSession();
@@ -407,6 +627,8 @@ function clearLog() {
 function initializeEvents() {
   window.addEventListener("keydown", handleGlobalKeyDown);
   window.addEventListener("keyup", handleGlobalKeyUp);
+  window.addEventListener("mousedown", handleGlobalMouseDown);
+  window.addEventListener("mouseup", handleGlobalMouseUp);
   window.addEventListener("wheel", handleWheel, { passive: false });
   window.addEventListener("resize", () => {
     constrainAndRenderWidget();
@@ -433,6 +655,72 @@ function initializeEvents() {
       updateFeatureSpace();
       savePreferences();
       recordEvent("panel", "palette-change", input.dataset.palette, input.value);
+    });
+  }
+  for (const [element, key] of [
+    [elements.stepSize, "stepSize"],
+    [elements.continuousSpeed, "continuousSpeed"],
+    [elements.response, "response"],
+    [elements.widgetSize, "widgetSize"],
+  ]) {
+    element.addEventListener("change", () => {
+      if (!element.checkValidity()) {
+        updateCustomizationControls();
+        announce("Enter a value within the displayed range.");
+        return;
+      }
+      state[key] = Number(element.value);
+      constrainAndRenderWidget();
+      savePreferences();
+    });
+  }
+  elements.transparency.addEventListener("input", () => {
+    state.widgetOpacity = transparencyPercentToOpacity(elements.transparency.value);
+    elements.transparencyOutput.value = `${elements.transparency.value}%`;
+    constrainAndRenderWidget();
+    savePreferences();
+  });
+  elements.widgetVisibleButton.addEventListener("click", () => {
+    state.widgetVisible = !state.widgetVisible;
+    updateCustomizationControls();
+    constrainAndRenderWidget();
+    savePreferences();
+  });
+  elements.dragToggleButton.addEventListener("click", () => {
+    state.widgetDragEnabled = !state.widgetDragEnabled;
+    updateCustomizationControls();
+    constrainAndRenderWidget();
+  });
+  elements.settingsExportButton.addEventListener("click", exportSettings);
+  elements.settingsImportButton.addEventListener("click", () => elements.settingsImportFile.click());
+  elements.settingsImportFile.addEventListener("change", async () => {
+    try {
+      await importSettings(elements.settingsImportFile.files?.[0]);
+    } catch (error) {
+      announce(error?.message ?? String(error));
+    } finally {
+      elements.settingsImportFile.value = "";
+    }
+  });
+  for (const [element, key, numeric = false] of [
+    [elements.lslStreamName, "streamName"],
+    [elements.lslStreamType, "streamType"],
+    [elements.lslMarkerName, "markerName"],
+    [elements.lslSampleRate, "sampleRate", true],
+    [elements.lslSourceId, "sourceId"],
+  ]) {
+    element.addEventListener("change", () => {
+      if (!element.checkValidity() || element.value.trim() === "") {
+        updateCustomizationControls();
+        announce("Enter valid settings metadata.");
+        return;
+      }
+      state.lsl[key] = numeric ? Number(element.value) : element.value.trim();
+      try {
+        savePreferences();
+      } catch (error) {
+        announce(error?.message ?? String(error));
+      }
     });
   }
   elements.featureSpace.addEventListener("pointerdown", (event) => {
@@ -488,8 +776,8 @@ function animationFrame(timestamp) {
   previousTimestamp = timestamp;
 
   updateContinuousInput(deltaSeconds);
-  state.currentX = smoothToward(state.currentX, state.targetX, RESPONSE, deltaSeconds);
-  state.currentY = smoothToward(state.currentY, state.targetY, RESPONSE, deltaSeconds);
+  state.currentX = smoothToward(state.currentX, state.targetX, state.response, deltaSeconds);
+  state.currentY = smoothToward(state.currentY, state.targetY, state.response, deltaSeconds);
 
   const currentParameters = affectParameters(state.currentX, state.currentY);
   if (state.animationActive) {
@@ -527,6 +815,7 @@ function initialize() {
   updatePanelState();
   updateModeControls();
   updateFeatureSpace();
+  updateCustomizationControls();
   constrainAndRenderWidget();
   initializeEvents();
   updateLoggerDisplay();
@@ -534,5 +823,30 @@ function initialize() {
   recordEvent("system", "session-start", "session", logger.sessionId);
   requestAnimationFrame(animationFrame);
 }
+
+document.addEventListener("keydown", (event) => {
+  if (!captureInput) return;
+  event.preventDefault();
+  event.stopImmediatePropagation();
+  finishBindingCapture(`key:${event.code}`);
+}, true);
+
+document.addEventListener("mousedown", (event) => {
+  if (!captureInput) return;
+  event.preventDefault();
+  event.stopImmediatePropagation();
+  finishBindingCapture(`mouse:${mouseButtonName(event.button)}`);
+}, true);
+
+document.addEventListener("wheel", (event) => {
+  if (!captureInput) return;
+  event.preventDefault();
+  event.stopImmediatePropagation();
+  finishBindingCapture(`wheel:${wheelDirection(event.deltaX, event.deltaY)}`);
+}, { capture: true, passive: false });
+
+document.addEventListener("contextmenu", (event) => {
+  if (captureInput) event.preventDefault();
+}, true);
 
 initialize();

@@ -20,7 +20,7 @@ The SVG uses 192 angular samples, 16 projections, deterministic seeded phase/amp
 - Hosted completely by GitHub Pages under the repository project path.
 - Works without a build step or runtime dependency after static assets load.
 - Fullscreen black study surface with a draggable affect widget.
-- Arrow/WASD, wheel/trackpad, and accessible on-screen controls.
+- Configurable keyboard, mouse-button, wheel/trackpad, and accessible on-screen controls; arrow keys are the defaults.
 - Interactive 2D color-space coordinate selection and four persisted axis colors.
 - Continuous and step modes, reset, pause, reduced-motion support, and visible focus.
 - Browser-only 10,000-record ring buffer with 20 Hz affect sampling and CSV export.
@@ -40,9 +40,17 @@ The SVG uses 192 angular samples, 16 projections, deterministic seeded phase/amp
 - Native Rust owns affect state, smoothing, timestamps, persisted settings, global raw-input monitoring, and LSL publication.
 - Users assign positive/negative valence, positive/negative arousal, reset, pause, settings, and overlay editing by clicking a field and physically pressing a key, mouse button, or wheel direction.
 - Plain arrow keys are the default affect controls. Assignments remain active while other applications are focused; conflicts and invalid mappings produce actionable errors.
-- Settings include input mode, step size, held-input speed, smoothing response, axis colors, overlay size/opacity/position, persisted LSL names/rate/source, and physical input bindings.
+- Settings include input mode, step size, held-input speed, smoothing response, axis colors, overlay size/transparency/position, persisted LSL names/rate/source, and physical input bindings.
 - The canonical native icon is `desktop/icons/app-icon.svg`; regenerate platform PNG, ICO, and ICNS assets with `pnpm desktop:icons` after changing it.
 - Settings persist in the operating system application configuration directory. Affect history does not silently persist.
+
+## Portable settings
+
+- `site/settings.json` is the canonical version-1 JSON defaults file and must deserialize as native Rust `Settings` without migration.
+- Web and desktop import and export the same complete JSON object. Palette, size, opacity, visibility, coordinates, input behavior, bindings, and LSL metadata must round-trip without visual or semantic loss.
+- The user-facing transparency control spans 0% (fully opaque) through 100% (fully transparent); the JSON stores the inverse `overlay.opacity` in `[0,1]`.
+- The web app exposes every portable customization. It preserves LSL metadata for transfer but cannot publish LSL, and global browser bindings only operate while the page is focused.
+- Browser preferences may override bundled defaults for returning users. Replacing `site/settings.json` changes defaults for new/clean browser profiles; importing applies a file immediately.
 
 ## LSL output
 

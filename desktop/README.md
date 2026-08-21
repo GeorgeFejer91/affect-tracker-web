@@ -30,6 +30,12 @@ cargo test --manifest-path src-tauri/Cargo.toml --no-default-features
 
 That fallback build reports LSL as unavailable and is not a research-ready distribution.
 
+## Portable settings
+
+The settings screen imports and exports the same version-1 JSON used by GitHub Pages. The file includes controls, bindings, palette, overlay geometry/visibility/opacity, and LSL metadata. The transparency slider displays 0–100%, while JSON stores inverse opacity from 1 to 0. Rust validates imported files before applying or persisting them; files larger than 256 KB are rejected by the UI.
+
+An exported file can be imported on the live site or checked in as `site/settings.json`. GitHub Pages preserves the LSL fields for later desktop use but cannot create an LSL outlet.
+
 ## Global input and permissions
 
 Click a binding field in Settings and press a key, mouse button, or wheel direction to capture it. Plain arrow keys control the two affect axes by default. The native hook continues receiving the configured controls while other applications are focused and emits identifiers for all physical key, mouse-button, and wheel events to the marker stream. It deliberately ignores typed-character events and mouse movement.

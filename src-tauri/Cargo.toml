@@ -1,6 +1,6 @@
 [package]
 name = "affect-tracker-desktop"
-version = "0.2.0"
+version = "0.3.0"
 description = "Offline Tauri companion for the Affect Tracker"
 authors = ["George Fejer"]
 edition = "2021"

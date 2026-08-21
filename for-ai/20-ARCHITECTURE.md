@@ -13,11 +13,15 @@ for-ai/               mandatory project contract
 
 `site/src/math.js` is the canonical SVG affect renderer used by both runtimes. Desktop code imports it during the Vite build. Do not fork or copy its formulas into a second JavaScript renderer.
 
+`site/src/portable-settings.js` is the canonical cross-runtime settings validator/serializer for web code, and `site/settings.json` is the checked-in hosted default. Rust has an independent typed deserializer and validator for the identical versioned schema; keep its contract test green whenever either side changes.
+
 ## Runtime ownership
 
 ### Browser
 
 The WebView/browser owns affect state, input timing, logging, preferences, and SVG rendering. It has no native privileges.
+
+The browser can import/export the shared settings JSON. It retains desktop-only LSL metadata unchanged, but must clearly disclose that browsers do not publish LSL. Browser-local preferences override `site/settings.json` after the first customized visit.
 
 ### Desktop
 

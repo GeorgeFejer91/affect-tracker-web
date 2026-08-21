@@ -90,7 +90,9 @@
           <div class="section-heading"><div><p class="eyebrow">Always on top</p><h2 id="overlay-title">Overlay</h2></div></div>
           <div class="field-grid">
             <label>Size (pixels)<input id="overlay-size" type="number" min="120" max="640" step="10"></label>
-            <label>Opacity<input id="overlay-opacity" type="number" min="0.2" max="1" step="0.05"></label>
+            <label>Flubber transparency
+              <span class="range-field"><input id="overlay-transparency" type="range" min="0" max="100" step="1"><output id="overlay-transparency-output">5%</output></span>
+            </label>
           </div>
           <p class="field-help">Enable dragging here or from the tray menu, drag the floating shape to position it, then lock it to restore click-through input.</p>
         </section>
@@ -109,7 +111,12 @@
 
         <div class="save-bar">
           <span id="dirty-status">Settings loaded</span>
-          <button type="submit" class="primary">Save and apply settings</button>
+          <div class="save-actions">
+            <input id="settings-import-file" class="visually-hidden" type="file" accept="application/json,.json">
+            <button id="settings-import-button" type="button">Import JSON</button>
+            <button id="settings-export-button" type="button">Export JSON</button>
+            <button type="submit" class="primary">Save and apply settings</button>
+          </div>
         </div>
       </form>
 

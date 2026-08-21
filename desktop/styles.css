@@ -48,6 +48,9 @@ h3 { margin: 1.25rem 0 0.4rem; font-size: 0.92rem; }
 .field-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr)); gap: 0.75rem; }
 label { display: grid; gap: 0.35rem; color: rgb(255 255 255 / 67%); font-size: 0.75rem; }
 input, select { width: 100%; min-height: 2.4rem; padding: 0.45rem 0.55rem; }
+.range-field { display: grid; grid-template-columns: 1fr 3.25rem; align-items: center; gap: 0.6rem; }
+.range-field input[type="range"] { padding: 0; }
+.range-field output { color: #fff; font: 0.78rem ui-monospace, SFMono-Regular, Consolas, monospace; text-align: right; }
 .checkbox-field { display: flex; align-items: center; gap: 0.55rem; min-height: 2.4rem; padding-top: 1.1rem; }
 .checkbox-field input { width: 1rem; min-height: 1rem; }
 .binding-grid { display: grid; grid-template-columns: repeat(2, minmax(14rem, 1fr)); gap: 0.65rem; }
@@ -93,6 +96,7 @@ input, select { width: 100%; min-height: 2.4rem; padding: 0.45rem 0.55rem; }
 code { color: #bdeaff; }
 .save-bar { position: sticky; bottom: 0.75rem; display: flex; justify-content: space-between; align-items: center; gap: 1rem; padding: 0.75rem; border: 1px solid rgb(255 255 255 / 15%); border-radius: 0.8rem; background: rgb(9 11 13 / 94%); backdrop-filter: blur(12px); }
 .save-bar span { color: rgb(255 255 255 / 58%); font-size: 0.75rem; }
+.save-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 0.5rem; }
 button.primary { border-color: #63cffa; background: #17617f; }
 footer { margin-top: 1rem; color: rgb(255 255 255 / 42%); font-size: 0.7rem; }
 

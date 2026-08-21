@@ -107,7 +107,7 @@ impl Settings {
                 "Overlay size must be between 120 and 640 pixels.",
             ));
         }
-        validate_range("overlay opacity", self.overlay.opacity, 0.2, 1.0)?;
+        validate_range("overlay opacity", self.overlay.opacity, 0.0, 1.0)?;
         if !(1..=240).contains(&self.lsl.sample_rate) {
             return Err(CommandError::new(
                 "invalid_lsl_rate",
@@ -284,5 +284,27 @@ mod tests {
             ..Settings::default()
         };
         assert_eq!(value.validate().unwrap_err().code, "invalid_range");
+    }
+
+    #[test]
+    fn overlay_can_be_fully_transparent() {
+        let value = Settings {
+            overlay: OverlaySettings {
+                opacity: 0.0,
+                ..OverlaySettings::default()
+            },
+            ..Settings::default()
+        };
+        value.validate().unwrap();
+    }
+
+    #[test]
+    fn github_pages_default_json_deserializes_as_desktop_settings() {
+        let value: Settings =
+            serde_json::from_str(include_str!("../../site/settings.json")).unwrap();
+        value.validate().unwrap();
+        assert_eq!(value.overlay.size, 240);
+        assert_eq!(value.bindings[&Action::IncreaseValence], "key:ArrowRight");
+        assert_eq!(value.lsl.stream_name, "AffectTracker");
     }
 }

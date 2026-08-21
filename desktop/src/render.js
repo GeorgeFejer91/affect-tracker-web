@@ -23,6 +23,8 @@ export function createFlubberRenderer(root) {
     });
     for (const path of paths) path.setAttribute("d", rendered.path);
     root.style.setProperty("--affect-color", rendered.color);
+    const svg = paths[0]?.ownerSVGElement;
+    if (svg) svg.style.opacity = String(snapshot.overlayOpacity ?? 1);
     return rendered;
   };
 }
