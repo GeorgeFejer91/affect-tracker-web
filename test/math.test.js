@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  affectPaletteColor,
   affectParameters,
   buildFlubberPath,
   createProfiles,
@@ -25,6 +26,14 @@ test("valence maps to the expected shape and disorder extrema", () => {
     }),
     [[0, 0.8], [0.5, 0.4], [1, 0]],
   );
+});
+
+test("four-anchor palette maps axes, blends diagonals, and stays neutral at center", () => {
+  const palette = { up: "#ff0000", down: "#00ff00", left: "#0000ff", right: "#ffffff" };
+  assert.equal(affectPaletteColor(0, 0, palette), "rgb(183 183 183)");
+  assert.equal(affectPaletteColor(0, 1, palette), "rgb(255 0 0)");
+  assert.equal(affectPaletteColor(-1, 0, palette), "rgb(0 0 255)");
+  assert.equal(affectPaletteColor(1, 1, palette), "rgb(255 128 128)");
 });
 
 test("profiles are finite, normalized, and use requested dimensions", () => {

@@ -41,7 +41,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends build-essential libayatana-appindicator3-dev librsvg2-dev libssl-dev libwebkit2gtk-4.1-dev libxdo-dev
+          sudo apt-get install -y --no-install-recommends build-essential libayatana-appindicator3-dev librsvg2-dev libssl-dev libwebkit2gtk-4.1-dev libx11-dev libxi-dev libxtst-dev libxdo-dev
       - name: Set up pnpm
         uses: pnpm/action-setup@v4
         with:
@@ -72,4 +72,3 @@ jobs:
           name: ${{ matrix.artifact_name }}
           path: ${{ matrix.artifact_paths }}
           if-no-files-found: error
-

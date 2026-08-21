@@ -3,7 +3,7 @@
 A matched pair of 2D affect trackers inspired by [AffectTracker](https://github.com/afourcade/AffectTracker):
 
 - A dependency-free online application hosted on GitHub Pages for browser studies.
-- An offline Tauri v2/Rust desktop companion with configurable global shortcuts, a click-through always-on-top overlay, and local Lab Streaming Layer output.
+- An offline Tauri v2/Rust desktop companion with click-to-capture global key/mouse/wheel bindings, a click-through always-on-top overlay, and always-on local Lab Streaming Layer output.
 
 Both forms use the same canonical SVG renderer and the same valence/arousal mappings.
 
@@ -40,7 +40,7 @@ shape mix = (valence + 1) / 2          (pointy→rounded)
 disorder  = 0.4 × (1 - valence)        (irregular→regular)
 ```
 
-The SVG has 192 radial samples and 16 projections. Polar angle selects the green→red→green color gradient, while distance from neutral controls saturation.
+The SVG has 192 radial samples and 16 projections. Both apps expose a four-anchor Up/Down/Left/Right palette and an exact interactive 2D color-space picker; the neutral center blends outward toward the configured axis colors.
 
 ## Logging and privacy
 
@@ -57,12 +57,12 @@ The widget position, widget size, panel state, and input mode are saved in `loca
 
 **Affect Tracker Desktop** uses the bundle identifier `io.github.georgefejer91.affecttracker`. It contains two local windows:
 
-- A normal settings window for live coordinates, shortcut mappings, input behavior, overlay appearance, and LSL configuration.
+- A normal settings window for live coordinates, physical-input mappings, an interactive color-space picker, overlay appearance, and LSL configuration.
 - A transparent overlay that floats above other applications. It is click-through while locked and draggable only in explicit edit mode.
 
-Rust owns authoritative affect coordinates, smoothing, timestamps, settings, native shortcuts, tray lifecycle, and LSL publication. The desktop WebViews contain presentation only and communicate through narrow typed commands. Closing the settings window quits the process and removes the overlay; the tray menu also provides an explicit Quit action.
+Rust owns authoritative affect coordinates, smoothing, timestamps, settings, global raw-input monitoring, tray lifecycle, and LSL publication. The desktop WebViews contain presentation only and communicate through narrow typed commands. Closing the settings window quits the process and removes the overlay; the tray menu also provides an explicit Quit action.
 
-The safe default bindings use combinations such as `Control+Alt+Right`, avoiding silent capture of ordinary WASD/arrow input in other applications. Users can edit every assignment, and invalid or conflicting shortcuts are rejected.
+The four default affect bindings are the plain arrow keys. Click any binding field and then press a key, click a mouse button, or scroll to assign that physical control. Bindings remain active while another application is focused; duplicate or invalid assignments are rejected. macOS requires Accessibility permission for global input monitoring. The Linux package currently supports global capture under X11; Wayland compositors may block it.
 
 ### Desktop LSL schema
 
@@ -73,7 +73,7 @@ current_valence, current_arousal, target_valence, target_arousal,
 radius, angle_degrees, animation_active, input_active
 ```
 
-The separate `AffectTrackerMarkers` stream carries irregular semantic markers such as press/release, reset, pause, settings changes, and overlay movement. Both streams remain local to LSL; the application does not upload study data to a web service.
+The separate `AffectTrackerMarkers` stream carries irregular markers for every physical key press/release, mouse-button press/release, wheel event, and semantic app action. It records physical identifiers (for example `ArrowUp` or `Left`), never composed characters or typed text. Both streams start automatically whenever the app runs and remain local to LSL; saved stream names, rate, and source ID are reused on later launches. The application does not upload study data to a web service.
 
 ### Build the desktop companion
 
@@ -129,7 +129,7 @@ It covers the affect mappings, normalized profiles, deterministic offsets, path 
 
 Pushes to `main` run the tests and deploy only the contents of `site/` through GitHub Actions and GitHub Pages. In the repository settings, Pages must use **GitHub Actions** as its source.
 
-The separate desktop workflow builds the WebViews and runs Rust formatting, checks, tests, and clippy on Windows, macOS, and Linux. Public installer publication, signing, notarization, and updater configuration remain explicit release steps.
+The separate desktop workflow builds the WebViews and runs Rust formatting, checks, tests, and clippy on Windows, macOS, and Linux. Release tags package the unsigned installers on their matching operating systems.
 
 ## Attribution and license
 

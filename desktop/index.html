@@ -18,7 +18,7 @@
         </div>
         <div class="status-stack" aria-label="Runtime status">
           <span id="engine-status" class="status-pill is-ok">Engine running</span>
-          <span id="lsl-status" class="status-pill">LSL stopped</span>
+          <span id="lsl-status" class="status-pill">LSL starting…</span>
         </div>
       </header>
 
@@ -60,9 +60,30 @@
             <label>Smoothing response<input id="response" type="number" min="0.1" max="30" step="0.1"></label>
           </div>
 
-          <h3>Global shortcut assignments</h3>
-          <p class="field-help">Use Tauri accelerator syntax such as <code>Control+Alt+Right</code>. Every assignment must be unique.</p>
+          <h3>Global keyboard and mouse assignments</h3>
+          <p class="field-help">Click a field, then press a key, click a mouse button, or scroll in the desired direction. Assignments work while other applications are focused.</p>
           <div id="binding-grid" class="binding-grid"></div>
+        </section>
+
+        <section class="dashboard-card" aria-labelledby="feature-space-title">
+          <div class="section-heading"><div><p class="eyebrow">Visual mapping</p><h2 id="feature-space-title">Valence–arousal color space</h2></div></div>
+          <div class="feature-space-layout">
+            <div id="feature-space-map" class="feature-space-map" role="slider" tabindex="0" aria-label="Choose valence and arousal from the color space" aria-valuetext="Neutral">
+              <canvas id="feature-space-canvas" width="160" height="160" aria-hidden="true"></canvas>
+              <span class="axis-label axis-up">High arousal</span>
+              <span class="axis-label axis-down">Low arousal</span>
+              <span class="axis-label axis-left">Negative valence</span>
+              <span class="axis-label axis-right">Positive valence</span>
+              <span id="feature-space-point" class="feature-space-point" aria-hidden="true"></span>
+            </div>
+            <div class="palette-grid">
+              <label>Up / high arousal<input id="palette-up" type="color"></label>
+              <label>Down / low arousal<input id="palette-down" type="color"></label>
+              <label>Left / negative valence<input id="palette-left" type="color"></label>
+              <label>Right / positive valence<input id="palette-right" type="color"></label>
+            </div>
+          </div>
+          <p class="field-help">Click or drag anywhere on the map to choose a coordinate. The map previews the exact blended color space; the live dot follows the smoothed affect coordinate and the center remains neutral.</p>
         </section>
 
         <section class="dashboard-card" aria-labelledby="overlay-title">
@@ -82,12 +103,8 @@
             <label>Marker stream name<input id="lsl-marker-name" maxlength="80"></label>
             <label>Sample rate (Hz)<input id="lsl-sample-rate" type="number" min="1" max="240" step="1"></label>
             <label>Source ID<input id="lsl-source-id" maxlength="120"></label>
-            <label class="checkbox-field"><input id="lsl-start-enabled" type="checkbox"> Start LSL when the app opens</label>
           </div>
-          <div class="button-row">
-            <button id="lsl-toggle-button" type="button">Start LSL</button>
-          </div>
-          <p class="field-help">LSL stays on the local machine/network. It is not an internet upload or analytics service.</p>
+          <p class="field-help">LSL is emitted automatically whenever the app runs. Saved names and rate are reused on the next launch. The marker stream includes physical key IDs, mouse-button presses/releases, and wheel directions—not typed text.</p>
         </section>
 
         <div class="save-bar">

@@ -2,10 +2,8 @@ use crate::domain::{Action, AffectSnapshot};
 use crate::error::CommandError;
 use crate::runtime::Runtime;
 use crate::settings::Settings;
-use std::str::FromStr;
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, State, WebviewWindow};
-use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut};
 
 fn settings_window_only(window: &WebviewWindow) -> Result<(), CommandError> {
     if window.label() == "settings" {
@@ -13,49 +11,6 @@ fn settings_window_only(window: &WebviewWindow) -> Result<(), CommandError> {
     } else {
         Err(CommandError::forbidden())
     }
-}
-
-pub fn parse_shortcuts(settings: &Settings) -> Result<Vec<(Shortcut, Action)>, CommandError> {
-    settings.validate()?;
-    settings
-        .bindings
-        .iter()
-        .map(|(action, value)| {
-            Shortcut::from_str(value)
-                .map(|shortcut| (shortcut, *action))
-                .map_err(|_| {
-                    CommandError::new(
-                        "invalid_shortcut",
-                        format!("‘{value}’ is not a valid global shortcut."),
-                    )
-                })
-        })
-        .collect()
-}
-
-pub fn register_shortcuts(
-    app: &AppHandle,
-    runtime: &Runtime,
-    settings: &Settings,
-) -> Result<(), CommandError> {
-    let parsed = parse_shortcuts(settings)?;
-    app.global_shortcut().unregister_all().map_err(|_| {
-        CommandError::new(
-            "shortcut_unregister",
-            "Existing global shortcuts could not be released.",
-        )
-    })?;
-    for (shortcut, _) in &parsed {
-        if app.global_shortcut().register(*shortcut).is_err() {
-            let _ = app.global_shortcut().unregister_all();
-            return Err(CommandError::new(
-                "shortcut_registration",
-                format!("The shortcut ‘{shortcut}’ is unavailable. Another application may already use it."),
-            ));
-        }
-    }
-    runtime.set_shortcuts(parsed);
-    Ok(())
 }
 
 pub fn apply_overlay_geometry(app: &AppHandle, settings: &Settings) -> Result<(), CommandError> {
@@ -160,11 +115,6 @@ pub fn save_settings(
 ) -> Result<Settings, CommandError> {
     settings_window_only(&window)?;
     settings.validate()?;
-    let previous = state.settings();
-    if let Err(error) = register_shortcuts(&app, &state, &settings) {
-        let _ = register_shortcuts(&app, &state, &previous);
-        return Err(error);
-    }
     apply_overlay_geometry(&app, &settings)?;
     state.replace_settings(settings.clone());
     state.persist_settings()?;
@@ -205,23 +155,24 @@ pub fn reset_affect(
 }
 
 #[tauri::command]
+pub fn set_affect_target(
+    window: WebviewWindow,
+    state: State<'_, Arc<Runtime>>,
+    x: f32,
+    y: f32,
+) -> Result<AffectSnapshot, CommandError> {
+    settings_window_only(&window)?;
+    state.set_target(x, y, "feature-space");
+    Ok(state.snapshot())
+}
+
+#[tauri::command]
 pub fn toggle_pause(
     window: WebviewWindow,
     state: State<'_, Arc<Runtime>>,
 ) -> Result<AffectSnapshot, CommandError> {
     settings_window_only(&window)?;
     state.toggle_pause("panel");
-    Ok(state.snapshot())
-}
-
-#[tauri::command]
-pub fn set_lsl_enabled(
-    window: WebviewWindow,
-    state: State<'_, Arc<Runtime>>,
-    enabled: bool,
-) -> Result<AffectSnapshot, CommandError> {
-    settings_window_only(&window)?;
-    state.set_lsl_requested(enabled);
     Ok(state.snapshot())
 }
 

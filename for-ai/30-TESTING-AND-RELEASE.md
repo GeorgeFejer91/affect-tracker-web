@@ -15,14 +15,16 @@
 - Production Vite build.
 - At least one real Tauri launch/build smoke test on every supported OS before calling a release cross-platform.
 
-Pure Rust tests cover affect math, smoothing, target clamping, opposite-action cancellation, settings validation/migration, shortcut collisions, LSL sample schema, marker generation, and lifecycle state. Frontend tests cover the shared renderer and typed IPC adapter behavior.
+Pure Rust tests cover affect math, direct-coordinate and directional clamping, smoothing, opposite-action cancellation, settings validation/migration, binding collisions, physical token naming, LSL sample schema, marker generation, and lifecycle state. Frontend tests cover the shared renderer, four-anchor color mapping, and typed IPC adapter behavior.
 
 ## LSL qualification
 
 - Resolve both streams using an independent LSL consumer.
 - Record with current LabRecorder.
+- Confirm the marker stream receives every physical key/button press and release plus wheel direction while another application is focused, without typed-character payloads.
 - Confirm channel count/type/order, nominal rate tolerance, timestamps, metadata, markers, restart behavior, sleep/wake, and clean shutdown.
 - Test missing or incompatible native LSL dependencies and report a useful status rather than crashing.
+- Grant and verify macOS Accessibility permission; test Linux raw input under X11 and clearly report Wayland limitations.
 - Perform an extended soak test before a research release.
 
 ## Release boundary

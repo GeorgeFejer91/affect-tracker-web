@@ -51,6 +51,44 @@ input, select { width: 100%; min-height: 2.4rem; padding: 0.45rem 0.55rem; }
 .checkbox-field { display: flex; align-items: center; gap: 0.55rem; min-height: 2.4rem; padding-top: 1.1rem; }
 .checkbox-field input { width: 1rem; min-height: 1rem; }
 .binding-grid { display: grid; grid-template-columns: repeat(2, minmax(14rem, 1fr)); gap: 0.65rem; }
+.binding-grid input { cursor: pointer; }
+.binding-grid input.is-capturing { border-color: #74d8ff; background: #123345; color: #bdefff; }
+.feature-space-layout { display: grid; grid-template-columns: minmax(16rem, 1.2fr) minmax(13rem, 0.8fr); align-items: center; gap: 1.25rem; }
+.feature-space-map {
+  --palette-up: #ffd166;
+  --palette-down: #5c7cfa;
+  --palette-left: #ff5b68;
+  --palette-right: #5dffb0;
+  position: relative;
+  width: min(28rem, 100%);
+  aspect-ratio: 1;
+  border: 1px solid rgb(255 255 255 / 24%);
+  border-radius: 0.8rem;
+  background:
+    linear-gradient(to right, transparent calc(50% - 0.5px), rgb(255 255 255 / 35%) 50%, transparent calc(50% + 0.5px)),
+    linear-gradient(to bottom, transparent calc(50% - 0.5px), rgb(255 255 255 / 35%) 50%, transparent calc(50% + 0.5px)),
+    radial-gradient(circle at 50% 0%, var(--palette-up), transparent 62%),
+    radial-gradient(circle at 50% 100%, var(--palette-down), transparent 62%),
+    radial-gradient(circle at 0% 50%, var(--palette-left), transparent 62%),
+    radial-gradient(circle at 100% 50%, var(--palette-right), transparent 62%),
+    #b7b7b7;
+  box-shadow: inset 0 0 3rem rgb(0 0 0 / 15%);
+  cursor: crosshair;
+  overflow: hidden;
+}
+.feature-space-map canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+.feature-space-map::before, .feature-space-map::after { content: ""; position: absolute; z-index: 1; background: rgb(255 255 255 / 38%); pointer-events: none; }
+.feature-space-map::before { left: 50%; top: 0; width: 1px; height: 100%; }
+.feature-space-map::after { left: 0; top: 50%; width: 100%; height: 1px; }
+.feature-space-point { position: absolute; z-index: 3; left: 50%; top: 50%; width: 0.9rem; height: 0.9rem; border: 2px solid #fff; border-radius: 50%; background: #080a0b; box-shadow: 0 0 0 2px rgb(0 0 0 / 45%); transform: translate(-50%, -50%); pointer-events: none; }
+.axis-label { position: absolute; z-index: 1; padding: 0.15rem 0.3rem; border-radius: 0.3rem; background: rgb(0 0 0 / 55%); color: #fff; font-size: 0.58rem; pointer-events: none; }
+.axis-up { left: 50%; top: 0.35rem; transform: translateX(-50%); }
+.axis-down { left: 50%; bottom: 0.35rem; transform: translateX(-50%); }
+.axis-left { left: 0.35rem; top: 50%; transform: translateY(-50%) rotate(-90deg); transform-origin: left center; }
+.axis-right { right: 0.35rem; top: 50%; transform: translateY(-50%) rotate(90deg); transform-origin: right center; }
+.palette-grid { display: grid; gap: 0.7rem; }
+.palette-grid label { grid-template-columns: 1fr 3.5rem; align-items: center; }
+.palette-grid input[type="color"] { width: 3.5rem; padding: 0.2rem; cursor: pointer; }
 .field-help { margin: 0.4rem 0 0.8rem; color: rgb(255 255 255 / 52%); font-size: 0.73rem; line-height: 1.45; }
 code { color: #bdeaff; }
 .save-bar { position: sticky; bottom: 0.75rem; display: flex; justify-content: space-between; align-items: center; gap: 1rem; padding: 0.75rem; border: 1px solid rgb(255 255 255 / 15%); border-radius: 0.8rem; background: rgb(9 11 13 / 94%); backdrop-filter: blur(12px); }
@@ -70,6 +108,6 @@ footer { margin-top: 1rem; color: rgb(255 255 255 / 42%); font-size: 0.7rem; }
 @media (max-width: 700px) {
   .app-header, .section-heading { display: block; }
   .status-stack { grid-template-columns: 1fr 1fr; margin-top: 1rem; }
-  .preview-layout, .binding-grid { grid-template-columns: 1fr; }
+  .preview-layout, .binding-grid, .feature-space-layout { grid-template-columns: 1fr; }
 }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition-duration: 0.01ms !important; } }
