@@ -3,8 +3,10 @@ import assert from "node:assert/strict";
 import {
   AdaptiveRange,
   computeShapeMetrics,
+  FEEDBACK_HOLD_MS,
   fitTracePoints,
   OneEuroFilter,
+  TOUCH_TRACE_ALGORITHM_VERSION,
   TouchTraceAnalyzer,
 } from "../site/src/touch-trace.js";
 
@@ -193,7 +195,27 @@ test("duplicates, non-monotonic times, and long gaps are segmented safely", () =
   assert.ok(Object.values(analyzer.snapshot()).filter((value) => typeof value === "number").every(Number.isFinite));
 });
 
-test("inactivity returns the touch target toward neutral", () => {
+test("a short rapid burst reaches high arousal and remains available as feedback", () => {
+  const analyzer = new TouchTraceAnalyzer({ width: 1_000, height: 1_000 });
+  analyzer.beginStroke("touch");
+  const burst = [
+    { clientX: 50, clientY: 500, time: 0, pointerType: "touch" },
+    { clientX: 500, clientY: 500, time: 20, pointerType: "touch" },
+    { clientX: 950, clientY: 500, time: 40, pointerType: "touch" },
+  ];
+  burst.forEach((point) => analyzer.ingest(point));
+  for (let now = 60; now <= 1_000; now += 20) analyzer.update(now, 0.02);
+  const snapshot = analyzer.snapshot();
+
+  assert.equal(TOUCH_TRACE_ALGORITHM_VERSION, "touch-trace-v2");
+  assert.equal(snapshot.motionActive, false);
+  assert.equal(snapshot.feedbackHeld, true);
+  assert.ok(snapshot.speedConfidence >= 0.99);
+  assert.ok(snapshot.mappedY > 0.9);
+  assert.ok(snapshot.targetY > 0.85);
+});
+
+test("inactivity holds the last result before a gradual return to neutral", () => {
   const analyzer = new TouchTraceAnalyzer({ width: 500, height: 500 });
   analyzer.beginStroke("touch");
   for (let index = 0; index < 40; index += 1) {
@@ -201,10 +223,17 @@ test("inactivity returns the touch target toward neutral", () => {
     analyzer.update(index * 20, 0.02);
   }
   const activeMagnitude = Math.hypot(analyzer.targetX, analyzer.targetY);
-  for (let index = 0; index < 120; index += 1) analyzer.update(1_000 + index * 20, 0.02);
+  const lastMovementTime = 39 * 20;
+  for (let now = 800; now <= lastMovementTime + FEEDBACK_HOLD_MS - 20; now += 20) analyzer.update(now, 0.02);
+  const heldMagnitude = Math.hypot(analyzer.targetX, analyzer.targetY);
+  assert.equal(analyzer.motionActive, false);
+  assert.equal(analyzer.feedbackHeld, true);
+  assert.ok(heldMagnitude >= activeMagnitude * 0.9);
+  for (let now = lastMovementTime + FEEDBACK_HOLD_MS + 20; now <= 16_000; now += 20) analyzer.update(now, 0.02);
   assert.ok(activeMagnitude > 0.05);
   assert.ok(Math.hypot(analyzer.targetX, analyzer.targetY) < activeMagnitude * 0.1);
   assert.equal(analyzer.motionActive, false);
+  assert.equal(analyzer.feedbackHeld, false);
 });
 
 test("trace fitting preserves aspect ratio and centers degenerate axes", () => {

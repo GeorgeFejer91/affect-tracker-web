@@ -133,11 +133,12 @@ test("extended CSV distinguishes raw, metric, and displayed state", () => {
   });
   const touchState = { ...state, inputSource: "touch-trace" };
   writer.record("pointer_raw", { pointerTimeMs: 1, normalizedX: 0.2, normalizedY: 0.3 }, touchState);
-  writer.record("touch_metric", { shapeFeature: -0.4, speedFeature: 0.6, mappedX: -0.8, mappedY: 0.7 }, touchState);
+  writer.record("touch_metric", { shapeFeature: -0.4, speedFeature: 0.6, mappedX: -0.8, mappedY: 0.7, feedbackHeld: true }, touchState);
   writer.record("sample", { source: "timer" }, touchState);
   const rows = writer.exportCsv().split("\r\n");
   assert.match(rows[1], /pointer_raw/);
   assert.match(rows[2], /touch_metric/);
   assert.match(rows[3], /sample/);
   assert.match(rows[1], /touch-trace/);
+  assert.match(rows[0], /feedback_held/);
 });

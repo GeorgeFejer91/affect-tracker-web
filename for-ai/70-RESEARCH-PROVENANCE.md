@@ -19,3 +19,8 @@ Add a ledger row before merging any source-derived algorithm, compatibility beha
 | WACOM-WEB | Wacom, web device drawing examples; [repository](https://github.com/Wacom-Developer/wacom-device-kit-web) | Public example repository; repository-specific licenses | Compatibility example for mouse/touch/pen handling. | Reviewed only; no code copied. |
 
 The shape feature is an engineering synthesis. No cited source validates `shapeFeature` as emotional valence, and no study result should be claimed until this exact implementation is empirically evaluated.
+
+## Algorithm version history
+
+- `touch-trace-v1`: initial research-informed prototype recorded in the ledger above.
+- `touch-trace-v2`: project usability revision prompted by direct playground feedback. Speed uses the larger of five-sample medians from raw-distance and 1€-filtered-position estimates, confidence reaches full value after two measured segments, target attack is 300 ms, and the last result is held for 1.8 seconds before a 3-second release. This change is independently designed, introduces no external source or copied code, and is logged through the revised `raw_speed`/`filtered_speed` meaning plus the new `feedback_held` CSV field.

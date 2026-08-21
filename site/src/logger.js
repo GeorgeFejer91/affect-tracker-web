@@ -56,6 +56,7 @@ export const CSV_FIELDS = [
   "speed_confidence",
   "shape_confidence",
   "motion_active",
+  "feedback_held",
   "trace_feedback_visible",
 ];
 
@@ -136,6 +137,7 @@ function createRecord({ sessionId, sequence, startedAt, now, wallClock, context,
     speed_confidence: details.speedConfidence ?? "",
     shape_confidence: details.shapeConfidence ?? "",
     motion_active: details.motionActive ?? "",
+    feedback_held: details.feedbackHeld ?? "",
     trace_feedback_visible: details.traceFeedbackVisible ?? "",
   };
 }
