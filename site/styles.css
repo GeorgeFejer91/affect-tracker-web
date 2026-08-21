@@ -245,7 +245,7 @@ body.is-experiment-running .touch-trace-panel { z-index: 40; }
   backdrop-filter: blur(14px);
 }
 
-.experiment-panel .panel-content { max-height: calc(100vh - 9rem); }
+.panel-stack .panel-content { max-height: calc(100vh - 11rem); }
 
 .panel-toggle {
   display: flex;
@@ -264,6 +264,14 @@ body.is-experiment-running .touch-trace-panel { z-index: 40; }
 .toggle-symbol {
   color: rgb(255 255 255 / 64%);
   font-size: 1.15rem;
+}
+
+.panel-title-group {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.5rem;
+  text-align: left;
 }
 
 .panel-content {
@@ -397,19 +405,103 @@ body.is-touch-source .panel-content { touch-action: pan-y; }
   font: 0.68rem ui-monospace, SFMono-Regular, Consolas, monospace;
 }
 
-.touch-trace-settings {
-  margin: -0.2rem 0 0.75rem;
-  padding: 0.55rem 0.65rem;
-  border: 1px solid rgb(120 215 255 / 28%);
-  border-radius: 0.55rem;
-  background: rgb(45 118 150 / 9%);
+.touch-playground-panel.is-tracking {
+  border-color: rgb(120 215 255 / 44%);
+  box-shadow: 0 0 0 1px rgb(120 215 255 / 8%), 0 1rem 3rem rgb(0 0 0 / 48%);
 }
 
-.touch-trace-settings p {
-  margin: 0.25rem 0;
+.touch-playground-intro {
+  padding: 0.75rem;
+  border: 1px solid rgb(120 215 255 / 24%);
+  border-radius: 0.65rem;
+  background: rgb(25 51 66 / 24%);
+}
+
+.touch-playground-intro h3 {
+  margin: 0 0 0.35rem;
+}
+
+.touch-playground-intro p {
+  margin: 0.4rem 0 0.65rem;
   color: rgb(255 255 255 / 66%);
-  font-size: 0.68rem;
-  line-height: 1.4;
+  font-size: 0.7rem;
+  line-height: 1.45;
+}
+
+.touch-tracking-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  margin: 0.75rem 0;
+  padding: 0.7rem;
+  border: 1px solid rgb(120 215 255 / 38%);
+  border-radius: 0.55rem;
+  background: rgb(120 215 255 / 9%);
+  cursor: pointer;
+}
+
+.touch-tracking-toggle input {
+  flex: 0 0 auto;
+  width: 1.15rem;
+  height: 1.15rem;
+  margin: 0;
+  accent-color: #78d7ff;
+}
+
+.touch-tracking-toggle span,
+.touch-tracking-toggle small {
+  display: block;
+}
+
+.touch-tracking-toggle strong {
+  font-size: 0.78rem;
+}
+
+.touch-tracking-toggle small {
+  margin-top: 0.12rem;
+  color: rgb(255 255 255 / 54%);
+  font-size: 0.62rem;
+}
+
+.touch-playground-surface {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  border: 1px solid rgb(255 255 255 / 22%);
+  border-radius: 0.55rem;
+  background:
+    linear-gradient(to right, transparent calc(50% - 0.5px), rgb(255 255 255 / 12%) 50%, transparent calc(50% + 0.5px)),
+    linear-gradient(to bottom, transparent calc(50% - 0.5px), rgb(255 255 255 / 12%) 50%, transparent calc(50% + 0.5px)),
+    #030407;
+  touch-action: none;
+}
+
+.touch-playground-surface canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.touch-playground-surface p {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  margin: 0;
+  padding: 1rem;
+  background: rgb(3 4 7 / 70%);
+  color: rgb(255 255 255 / 72%);
+  text-align: center;
+  pointer-events: none;
+}
+
+.touch-playground-surface.is-active p {
+  display: none;
+}
+
+.touch-playground-metrics {
+  padding-inline: 0;
 }
 
 .experimental-badge {
@@ -422,12 +514,6 @@ body.is-touch-source .panel-content { touch-action: pan-y; }
   font-size: 0.58rem;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-}
-
-.input-source-control {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 0.35rem;
 }
 
 .experiment-warning {

@@ -64,13 +64,20 @@ const elements = {
   experimentPanel: document.querySelector("#experiment-panel"),
   experimentPanelToggle: document.querySelector("#experiment-panel-toggle"),
   experimentToggleSymbol: document.querySelector("#experiment-toggle-symbol"),
+  touchPlaygroundPanel: document.querySelector("#touch-playground-panel"),
+  touchPlaygroundPanelToggle: document.querySelector("#touch-playground-panel-toggle"),
+  touchPlaygroundToggleSymbol: document.querySelector("#touch-playground-toggle-symbol"),
   valenceOutput: document.querySelector("#valence-output"),
   arousalOutput: document.querySelector("#arousal-output"),
   modeInputs: [...document.querySelectorAll("input[name='input-mode']")],
-  sourceInputs: [...document.querySelectorAll("input[name='input-source']")],
-  touchTraceSettings: document.querySelector("#touch-trace-settings"),
+  touchTrackingToggle: document.querySelector("#touch-tracking-toggle"),
   touchPointerType: document.querySelector("#touch-pointer-type"),
   touchTraceFeedbackToggle: document.querySelector("#touch-trace-feedback-toggle"),
+  touchPlaygroundSurface: document.querySelector("#touch-playground-surface"),
+  touchPlaygroundCanvas: document.querySelector("#touch-playground-canvas"),
+  playgroundShapeOutput: document.querySelector("#playground-shape-output"),
+  playgroundSpeedOutput: document.querySelector("#playground-speed-output"),
+  playgroundConfidenceOutput: document.querySelector("#playground-confidence-output"),
   touchTracePanel: document.querySelector("#touch-trace-panel"),
   touchTraceCanvas: document.querySelector("#touch-trace-canvas"),
   touchShapeOutput: document.querySelector("#touch-shape-output"),
@@ -160,6 +167,7 @@ function readPreferences(bundledSettings) {
       widgetY: Number.isFinite(parsed.widgetY) ? parsed.widgetY : settings.overlay.y + settings.overlay.size / 2,
       panelOpen: typeof parsed.panelOpen === "boolean" ? parsed.panelOpen : !parsed.seenIntro,
       experimentPanelOpen: typeof parsed.experimentPanelOpen === "boolean" ? parsed.experimentPanelOpen : false,
+      touchPlaygroundPanelOpen: typeof parsed.touchPlaygroundPanelOpen === "boolean" ? parsed.touchPlaygroundPanelOpen : false,
       inputSource: parsed.inputSource === "touch-trace" ? "touch-trace" : "manual",
       touchTraceFeedback: parsed.touchTraceFeedback === true,
       settings,
@@ -171,6 +179,7 @@ function readPreferences(bundledSettings) {
       widgetY: bundledSettings.overlay.y + bundledSettings.overlay.size / 2,
       panelOpen: true,
       experimentPanelOpen: false,
+      touchPlaygroundPanelOpen: false,
       inputSource: "manual",
       touchTraceFeedback: false,
       settings: structuredClone(bundledSettings),
@@ -203,6 +212,7 @@ const state = {
   widgetDragEnabled: true,
   panelOpen: preferences.panelOpen,
   experimentPanelOpen: preferences.experimentPanelOpen,
+  touchPlaygroundPanelOpen: preferences.touchPlaygroundPanelOpen,
   palette: preferences.settings.palette,
   lsl: preferences.settings.lsl,
   heldDirections: new Set(),
@@ -210,7 +220,12 @@ const state = {
   dragging: false,
   touchTraceFeedback: preferences.touchTraceFeedback,
 };
-if (state.panelOpen && state.experimentPanelOpen) state.experimentPanelOpen = false;
+if (state.panelOpen) {
+  state.experimentPanelOpen = false;
+  state.touchPlaygroundPanelOpen = false;
+} else if (state.experimentPanelOpen) {
+  state.touchPlaygroundPanelOpen = false;
+}
 
 const experiment = {
   phase: "idle",
@@ -284,6 +299,7 @@ function savePreferences() {
     widgetY: savedY,
     panelOpen: state.panelOpen,
     experimentPanelOpen: state.experimentPanelOpen,
+    touchPlaygroundPanelOpen: state.touchPlaygroundPanelOpen,
     inputSource: state.inputSource,
     touchTraceFeedback: state.touchTraceFeedback,
     settings,
@@ -360,6 +376,7 @@ function recordTouchMetric() {
     speedConfidence: metric.speedConfidence,
     shapeConfidence: metric.shapeConfidence,
     motionActive: metric.motionActive,
+    feedbackHeld: metric.feedbackHeld,
     traceFeedbackVisible: state.touchTraceFeedback,
   }, state);
 }
@@ -385,15 +402,23 @@ function updateExperimentPanelState() {
   elements.experimentToggleSymbol.textContent = state.experimentPanelOpen ? "−" : "+";
 }
 
+function updateTouchPlaygroundPanelState() {
+  elements.touchPlaygroundPanel.classList.toggle("is-collapsed", !state.touchPlaygroundPanelOpen);
+  elements.touchPlaygroundPanelToggle.setAttribute("aria-expanded", String(state.touchPlaygroundPanelOpen));
+  elements.touchPlaygroundToggleSymbol.textContent = state.touchPlaygroundPanelOpen ? "−" : "+";
+}
+
 function updateModeControls() {
   for (const input of elements.modeInputs) input.checked = input.value === state.inputMode;
 }
 
 function updateInputSourceControls() {
   const active = state.inputSource === "touch-trace";
-  for (const input of elements.sourceInputs) input.checked = input.value === state.inputSource;
-  elements.touchTraceSettings.hidden = !active;
+  elements.touchTrackingToggle.checked = active;
   elements.touchTraceFeedbackToggle.checked = state.touchTraceFeedback;
+  elements.touchTraceFeedbackToggle.disabled = !active;
+  elements.touchPlaygroundSurface.classList.toggle("is-active", active);
+  elements.touchPlaygroundPanel.classList.toggle("is-tracking", active);
   elements.touchTracePanel.hidden = !(active && state.touchTraceFeedback && state.widgetVisible);
   elements.featureSpace.setAttribute("aria-disabled", String(active));
   for (const button of elements.directionButtons) button.disabled = false;
@@ -604,20 +629,9 @@ function positionTracePanel() {
   });
 }
 
-function renderTouchTrace(timestamp) {
-  const snapshot = touchTrace.snapshot();
-  elements.touchPointerType.value = snapshot.pointerType === "unknown" ? "waiting" : snapshot.pointerType;
-  elements.touchShapeOutput.value = snapshot.motionActive
-    ? (snapshot.mappedX < -0.15 ? "jagged" : snapshot.mappedX > 0.15 ? "round" : "neutral")
-    : "inactive";
-  elements.touchSpeedOutput.value = snapshot.motionActive
-    ? (snapshot.mappedY < -0.15 ? "slow" : snapshot.mappedY > 0.15 ? "fast" : "mid")
-    : "still";
-  elements.touchConfidenceOutput.value = `${Math.round((snapshot.speedConfidence + snapshot.shapeConfidence) * 50)}%`;
-  if (elements.touchTracePanel.hidden) return;
-  positionTracePanel();
-  const canvas = elements.touchTraceCanvas;
+function drawTouchTraceCanvas(canvas, snapshot, timestamp) {
   const rect = canvas.getBoundingClientRect();
+  if (rect.width < 1 || rect.height < 1) return;
   const ratio = Math.max(1, window.devicePixelRatio || 1);
   const pixelWidth = Math.max(1, Math.round(rect.width * ratio));
   const pixelHeight = Math.max(1, Math.round(rect.height * ratio));
@@ -645,6 +659,36 @@ function renderTouchTrace(timestamp) {
     context.moveTo(before.x, before.y);
     context.lineTo(current.x, current.y);
     context.stroke();
+  }
+}
+
+function renderTouchTrace(timestamp) {
+  const snapshot = touchTrace.snapshot();
+  const pointerType = snapshot.pointerType === "unknown" ? "waiting" : snapshot.pointerType;
+  const feedbackVisible = snapshot.motionActive || snapshot.feedbackHeld;
+  const heldSuffix = !snapshot.motionActive && snapshot.feedbackHeld ? " · held" : "";
+  const shapeLabel = feedbackVisible
+    ? `${snapshot.mappedX < -0.15 ? "jagged" : snapshot.mappedX > 0.15 ? "round" : "neutral"}${heldSuffix}`
+    : "inactive";
+  const speedLabel = feedbackVisible
+    ? `${snapshot.mappedY < -0.15 ? "slow" : snapshot.mappedY > 0.15 ? "fast" : "mid"}${heldSuffix}`
+    : "still";
+  const confidenceLabel = `${Math.round((snapshot.speedConfidence + snapshot.shapeConfidence) * 50)}%`;
+
+  elements.touchPointerType.value = pointerType;
+  elements.touchShapeOutput.value = shapeLabel;
+  elements.touchSpeedOutput.value = speedLabel;
+  elements.touchConfidenceOutput.value = confidenceLabel;
+  elements.playgroundShapeOutput.value = shapeLabel;
+  elements.playgroundSpeedOutput.value = speedLabel;
+  elements.playgroundConfidenceOutput.value = confidenceLabel;
+
+  if (state.touchPlaygroundPanelOpen) {
+    drawTouchTraceCanvas(elements.touchPlaygroundCanvas, snapshot, timestamp);
+  }
+  if (!elements.touchTracePanel.hidden) {
+    positionTracePanel();
+    drawTouchTraceCanvas(elements.touchTraceCanvas, snapshot, timestamp);
   }
 }
 
@@ -928,8 +972,13 @@ function applyBoundAction(action, pressed, source, impulse = false) {
   else if (action === "togglePause") toggleAnimation(source);
   else if (action === "showSettings") {
     state.panelOpen = true;
+    state.experimentPanelOpen = false;
+    state.touchPlaygroundPanelOpen = false;
     elements.customization.open = true;
     updatePanelState();
+    updateExperimentPanelState();
+    updateTouchPlaygroundPanelState();
+    savePreferences();
   } else if (action === "toggleOverlayEditing") {
     state.widgetDragEnabled = !state.widgetDragEnabled;
     updateCustomizationControls();
@@ -1066,6 +1115,7 @@ function finishWidgetDrag(event) {
 
 function touchTraceTargetExcluded(target) {
   if (experiment.phase !== "idle") return false;
+  if (target?.closest?.("#touch-playground-surface")) return false;
   return Boolean(target?.closest?.(".control-panel, .touch-trace-panel, button, input, select, textarea, [contenteditable='true']"));
 }
 
@@ -1693,7 +1743,9 @@ function initializeEvents() {
     state.panelOpen = !state.panelOpen;
     if (state.panelOpen) {
       state.experimentPanelOpen = false;
+      state.touchPlaygroundPanelOpen = false;
       updateExperimentPanelState();
+      updateTouchPlaygroundPanelState();
     }
     updatePanelState();
     savePreferences();
@@ -1703,19 +1755,38 @@ function initializeEvents() {
     state.experimentPanelOpen = !state.experimentPanelOpen;
     if (state.experimentPanelOpen) {
       state.panelOpen = false;
+      state.touchPlaygroundPanelOpen = false;
       updatePanelState();
+      updateTouchPlaygroundPanelState();
     }
     updateExperimentPanelState();
     savePreferences();
     recordEvent("panel", state.experimentPanelOpen ? "expand" : "collapse", "experiment-panel", state.experimentPanelOpen);
   });
+  elements.touchPlaygroundPanelToggle.addEventListener("click", () => {
+    state.touchPlaygroundPanelOpen = !state.touchPlaygroundPanelOpen;
+    if (state.touchPlaygroundPanelOpen) {
+      state.panelOpen = false;
+      state.experimentPanelOpen = false;
+      updatePanelState();
+      updateExperimentPanelState();
+    }
+    updateTouchPlaygroundPanelState();
+    savePreferences();
+    recordEvent(
+      "panel",
+      state.touchPlaygroundPanelOpen ? "expand" : "collapse",
+      "touch-playground-panel",
+      state.touchPlaygroundPanelOpen,
+    );
+  });
 
   for (const input of elements.modeInputs) {
     input.addEventListener("change", () => setMode(input.value));
   }
-  for (const input of elements.sourceInputs) {
-    input.addEventListener("change", () => setInputSource(input.value));
-  }
+  elements.touchTrackingToggle.addEventListener("change", () => {
+    setInputSource(elements.touchTrackingToggle.checked ? "touch-trace" : "manual", "playground");
+  });
   elements.touchTraceFeedbackToggle.addEventListener("change", () => {
     state.touchTraceFeedback = elements.touchTraceFeedbackToggle.checked;
     updateInputSourceControls();
@@ -1947,6 +2018,7 @@ function animationFrame(timestamp) {
 function initialize() {
   updatePanelState();
   updateExperimentPanelState();
+  updateTouchPlaygroundPanelState();
   updateModeControls();
   updateFeatureSpace();
   updateCustomizationControls();

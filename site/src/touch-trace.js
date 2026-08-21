@@ -1,8 +1,11 @@
 import { clamp, smoothToward } from "./math.js";
 
-export const TOUCH_TRACE_ALGORITHM_VERSION = "touch-trace-v1";
+export const TOUCH_TRACE_ALGORITHM_VERSION = "touch-trace-v2";
 export const TRACE_DURATION_MS = 4_000;
 export const MOTION_TIMEOUT_MS = 400;
+export const FEEDBACK_HOLD_MS = 1_800;
+export const TARGET_ATTACK_SECONDS = 0.3;
+export const TARGET_RELEASE_SECONDS = 3;
 export const RESAMPLE_SPACING = 0.005;
 export const RESAMPLED_POINT_LIMIT = 33;
 export const FEATURE_INTERVAL_MS = 50;
@@ -263,6 +266,7 @@ export class TouchTraceAnalyzer {
     this.speedRange.reset();
     this.shapeRange.reset();
     this.speedWindow = [];
+    this.sourceSpeedWindow = [];
     this.resampledPoints = [];
     this.trace = [];
     this.previousFiltered = undefined;
@@ -284,12 +288,14 @@ export class TouchTraceAnalyzer {
     this.targetX = 0;
     this.targetY = 0;
     this.motionActive = false;
+    this.feedbackHeld = false;
   }
 
   resetSegment() {
     this.xFilter.reset();
     this.yFilter.reset();
     this.speedWindow = [];
+    this.sourceSpeedWindow = [];
     this.resampledPoints = [];
     this.previousFiltered = undefined;
     this.previousSource = undefined;
@@ -355,10 +361,16 @@ export class TouchTraceAnalyzer {
     let rawSpeed = 0;
     if (this.previousFiltered && this.lastPointTime !== undefined) {
       const deltaSeconds = (time - this.lastPointTime) / 1_000;
-      rawSpeed = Math.hypot(filtered.x - this.previousFiltered.x, filtered.y - this.previousFiltered.y) / Math.max(deltaSeconds, 0.001);
-      this.speedWindow.push(rawSpeed);
+      rawSpeed = Math.hypot(normalized.x - this.previousSource.x, normalized.y - this.previousSource.y) / Math.max(deltaSeconds, 0.001);
+      const positionFilteredSpeed = Math.hypot(filtered.x - this.previousFiltered.x, filtered.y - this.previousFiltered.y) / Math.max(deltaSeconds, 0.001);
+      this.speedWindow.push(positionFilteredSpeed);
+      this.sourceSpeedWindow.push(rawSpeed);
       if (this.speedWindow.length > 5) this.speedWindow.shift();
-      this.filteredSpeed = median(this.speedWindow);
+      if (this.sourceSpeedWindow.length > 5) this.sourceSpeedWindow.shift();
+      // The coordinate-filtered estimate suppresses jitter during sustained
+      // movement; the raw-distance median preserves the onset of a brief
+      // swipe that the 1€ position filter would otherwise attenuate.
+      this.filteredSpeed = Math.max(median(this.speedWindow), median(this.sourceSpeedWindow));
       this.speedFeature = Math.log1p(this.filteredSpeed);
       this.resampleSegment(this.previousSource, normalized);
       this.shape = computeShapeMetrics(this.resampledPoints);
@@ -403,14 +415,18 @@ export class TouchTraceAnalyzer {
         this.shapeRange.update(boundsDelta);
         this.lastBoundsTime = now;
       }
-      this.speedConfidence = clamp(this.speedWindow.length / 5, 0, 1);
+      // Two measured segments are enough for full burst sensitivity. The
+      // five-sample median still replaces isolated timing spikes as a burst
+      // continues, without making a short fast swipe wait for a long path.
+      this.speedConfidence = clamp(this.speedWindow.length / 2, 0, 1);
       this.shapeConfidence = qualifiedShape ? clamp((this.resampledPoints.length - 8) / 25, 0, 1) : 0;
       this.mappedX = this.shapeRange.normalize(this.shape.shapeFeature) * this.shapeConfidence;
       this.mappedY = this.speedRange.normalize(this.speedFeature) * this.speedConfidence;
     }
-    const response = 1 / (this.motionActive ? 0.45 : 0.6);
-    const desiredX = this.motionActive ? this.mappedX : 0;
-    const desiredY = this.motionActive ? this.mappedY : 0;
+    this.feedbackHeld = this.lastPointTime !== undefined && now - this.lastPointTime <= FEEDBACK_HOLD_MS;
+    const response = 1 / (this.feedbackHeld ? TARGET_ATTACK_SECONDS : TARGET_RELEASE_SECONDS);
+    const desiredX = this.feedbackHeld ? this.mappedX : 0;
+    const desiredY = this.feedbackHeld ? this.mappedY : 0;
     this.targetX = smoothToward(this.targetX, desiredX, response, deltaSeconds);
     this.targetY = smoothToward(this.targetY, desiredY, response, deltaSeconds);
     return this.snapshot();
@@ -440,6 +456,7 @@ export class TouchTraceAnalyzer {
       speedConfidence: this.speedConfidence,
       shapeConfidence: this.shapeConfidence,
       motionActive: this.motionActive,
+      feedbackHeld: this.feedbackHeld,
       tracePoints: this.trace,
     };
   }
