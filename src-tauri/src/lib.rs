@@ -41,8 +41,7 @@ fn build_tray(app: &tauri::App) -> tauri::Result<()> {
         tray = tray.icon(icon.clone());
     }
 
-    tray
-        .tooltip("Affect Tracker Desktop")
+    tray.tooltip("Affect Tracker Desktop")
         .menu(&menu)
         .show_menu_on_left_click(true)
         .on_menu_event(|app, event| {
