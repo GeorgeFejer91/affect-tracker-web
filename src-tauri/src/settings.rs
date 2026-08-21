@@ -224,8 +224,10 @@ mod tests {
 
     #[test]
     fn invalid_numeric_values_are_rejected() {
-        let mut value = Settings::default();
-        value.step_size = f32::NAN;
+        let value = Settings {
+            step_size: f32::NAN,
+            ..Settings::default()
+        };
         assert_eq!(value.validate().unwrap_err().code, "invalid_range");
     }
 }

@@ -46,7 +46,7 @@ pub fn register_shortcuts(
         )
     })?;
     for (shortcut, _) in &parsed {
-        if app.global_shortcut().register(shortcut.clone()).is_err() {
+        if app.global_shortcut().register(*shortcut).is_err() {
             let _ = app.global_shortcut().unregister_all();
             return Err(CommandError::new(
                 "shortcut_registration",
