@@ -1,4 +1,4 @@
-use crate::domain::{Action, AffectEngine, AffectSnapshot, FeatureAction};
+use crate::domain::{Action, AffectEngine, AffectSnapshot, FeatureAction, SnapshotContext};
 use crate::error::CommandError;
 use crate::lsl_service::LslService;
 use crate::settings::{self, Settings};
@@ -209,18 +209,18 @@ impl Runtime {
         self.engine
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .snapshot(
-                self.overlay_visible.load(Ordering::Relaxed),
-                self.overlay_editing.load(Ordering::Relaxed),
-                settings.overlay.opacity,
-                settings.overlay.size,
-                settings.visual.animation_speed,
-                settings.visual.amplitude_scale,
-                settings.visual.disorder_scale,
-                settings.palette,
-                status.state,
-                &status.message,
-            )
+            .snapshot(SnapshotContext {
+                overlay_visible: self.overlay_visible.load(Ordering::Relaxed),
+                overlay_editing: self.overlay_editing.load(Ordering::Relaxed),
+                overlay_opacity: settings.overlay.opacity,
+                overlay_size: settings.overlay.size,
+                animation_speed: settings.visual.animation_speed,
+                amplitude_scale: settings.visual.amplitude_scale,
+                disorder_scale: settings.visual.disorder_scale,
+                palette: settings.palette,
+                lsl_state: status.state,
+                lsl_message: &status.message,
+            })
     }
 
     pub fn set_overlay_visible(&self, visible: bool) {
