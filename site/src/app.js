@@ -15,7 +15,7 @@ import {
   normalizeWheel,
 } from "./input.js";
 import { AffectLogger } from "./logger.js";
-import { pictureInPictureSupported, pictureInPictureWindowSize } from "./picture-in-picture.js";
+import { pictureInPictureOptions, pictureInPictureSupported } from "./picture-in-picture.js";
 import {
   actionForBinding,
   BINDING_LABELS,
@@ -432,8 +432,7 @@ async function openPictureInPicture() {
   if (pictureInPictureWindow && !pictureInPictureWindow.closed) return;
 
   try {
-    const size = pictureInPictureWindowSize(state.widgetSize);
-    const childWindow = await window.documentPictureInPicture.requestWindow({ width: size, height: size });
+    const childWindow = await window.documentPictureInPicture.requestWindow(pictureInPictureOptions(state.widgetSize));
     pictureInPictureWindow = childWindow;
     const childDocument = childWindow.document;
     childDocument.title = "Affect Tracker Flubber";
@@ -463,7 +462,6 @@ async function openPictureInPicture() {
     childWindow.addEventListener("pagehide", () => finishPictureInPicture(childWindow), { once: true });
     elements.pictureInPictureToggle.checked = true;
     constrainAndRenderWidget();
-    root.focus();
     recordEvent("picture-in-picture", "open", "flubber", true);
     announce("Flubber is floating over other applications. Keep this page open.");
   } catch (error) {

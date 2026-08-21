@@ -63,9 +63,9 @@ Repository maintainers can replace [`site/settings.json`](./site/settings.json) 
 
 ### Float over other applications from the browser
 
-In browsers that support Document Picture-in-Picture, enable **Float Flubber over other apps** under Customization. The live SVG then moves into a browser-owned always-on-top window and returns to the page when that window closes. The originating page must remain open, the browser controls the floating window position, and configured controls only work while either Affect Tracker window is focused. Unsupported browsers show a disabled checkbox and can use the desktop companion instead.
+In browsers that support Document Picture-in-Picture, enable **Float Flubber over other apps** under Customization. The live SVG then moves into a browser-owned always-on-top window and returns to the page when that window closes. The originating page must remain open, the browser controls the floating window position, and configured controls only work while either Affect Tracker window is focused. Unsupported browsers show a disabled checkbox and can use the desktop companion instead. The page-controlled Picture-in-Picture surface is transparent, borderless, edge-to-edge, and requests the minimum available browser chrome.
 
-This is intentionally transient and is not stored in the portable settings JSON. Unlike the Tauri overlay, the browser window is not click-through, does not have an OS-transparent background, cannot monitor global input, and cannot publish LSL.
+This is intentionally transient and is not stored in the portable settings JSON. Chromium may still draw an opaque compositor surface and always retains security-critical window controls; a website cannot remove those. Unlike the Tauri overlay, the browser window is not click-through, cannot guarantee OS-level transparency, cannot monitor global input, and cannot publish LSL.
 
 ## Desktop companion
 
