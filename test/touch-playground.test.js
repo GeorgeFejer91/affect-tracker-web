@@ -18,7 +18,24 @@ test("the online interface exposes a third experimental touch playground", async
   assert.match(html, /id="touch-tracking-toggle"[^>]*role="switch"/);
   assert.match(html, /Enable touch\/trackpad tracking/);
   assert.match(html, /id="touch-playground-canvas"/);
+  assert.match(html, /id="touch-affect-space"/);
+  assert.match(html, /id="touch-affect-point"/);
+  assert.match(html, /id="touch-affect-valence-output"/);
+  assert.match(html, /Fast[\s\S]*Slow[\s\S]*Jagged[\s\S]*Round/);
+  assert.match(html, /short touch\/pen strokes beginning within 900 ms share speed evidence/);
   assert.doesNotMatch(html, /name="input-source"/);
+});
+
+test("the settings color map is a draggable live Flubber preview", async () => {
+  const html = await readSiteFile("index.html");
+  const app = await readSiteFile("src/app.js");
+
+  assert.match(html, /id="web-feature-flubber-path"/);
+  assert.match(html, /id="web-feature-valence-output"/);
+  assert.match(html, /id="web-feature-arousal-output"/);
+  assert.match(html, /Click, drag, or use the arrow keys to move the miniature Flubber/);
+  assert.match(app, /featureFlubberPath\.setAttribute\("d", rendered\.path\)/);
+  assert.match(app, /featureSpace\.addEventListener\("pointermove"/);
 });
 
 test("the playground remains a private practice surface with explicit experiment logging limits", async () => {

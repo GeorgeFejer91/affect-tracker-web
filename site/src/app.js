@@ -50,6 +50,8 @@ import {
 const STORAGE_KEY = "affect-tracker-web/preferences-v1";
 const SAMPLE_INTERVAL_SECONDS = 1 / 20;
 const MAX_DELTA_SECONDS = 0.05;
+const FEATURE_FLUBBER_INSET_PERCENT = 7.5;
+const FEATURE_DOT_INSET_PERCENT = 3;
 
 const elements = {
   stage: document.querySelector("#stage"),
@@ -78,6 +80,11 @@ const elements = {
   playgroundShapeOutput: document.querySelector("#playground-shape-output"),
   playgroundSpeedOutput: document.querySelector("#playground-speed-output"),
   playgroundConfidenceOutput: document.querySelector("#playground-confidence-output"),
+  touchAffectSpace: document.querySelector("#touch-affect-space"),
+  touchAffectCanvas: document.querySelector("#touch-affect-space-canvas"),
+  touchAffectPoint: document.querySelector("#touch-affect-point"),
+  touchAffectValenceOutput: document.querySelector("#touch-affect-valence-output"),
+  touchAffectArousalOutput: document.querySelector("#touch-affect-arousal-output"),
   touchTracePanel: document.querySelector("#touch-trace-panel"),
   touchTraceCanvas: document.querySelector("#touch-trace-canvas"),
   touchShapeOutput: document.querySelector("#touch-shape-output"),
@@ -95,6 +102,9 @@ const elements = {
   featureSpace: document.querySelector("#web-feature-space"),
   featureCanvas: document.querySelector("#web-feature-space-canvas"),
   featurePoint: document.querySelector("#web-feature-point"),
+  featureFlubberPath: document.querySelector("#web-feature-flubber-path"),
+  featureValenceOutput: document.querySelector("#web-feature-valence-output"),
+  featureArousalOutput: document.querySelector("#web-feature-arousal-output"),
   paletteInputs: [...document.querySelectorAll("[data-palette]")],
   bindingGrid: document.querySelector("#web-binding-grid"),
   advancedBindingGrid: document.querySelector("#web-advanced-binding-grid"),
@@ -375,6 +385,7 @@ function recordTouchMetric() {
     mappedY: metric.mappedY,
     speedConfidence: metric.speedConfidence,
     shapeConfidence: metric.shapeConfidence,
+    speedContinuityActive: metric.speedContinuityActive,
     motionActive: metric.motionActive,
     feedbackHeld: metric.feedbackHeld,
     traceFeedbackVisible: state.touchTraceFeedback,
@@ -574,25 +585,47 @@ function updateCoordinateDisplay() {
   );
 }
 
-function updateFeatureSpace() {
-  for (const [name, color] of Object.entries(state.palette)) elements.featureSpace.style.setProperty(`--palette-${name}`, color);
-  const paletteKey = JSON.stringify(state.palette);
-  if (elements.featureCanvas.dataset.palette !== paletteKey) {
-    const context = elements.featureCanvas.getContext("2d");
-    const image = context.createImageData(elements.featureCanvas.width, elements.featureCanvas.height);
-    for (let py = 0; py < elements.featureCanvas.height; py += 1) {
-      for (let px = 0; px < elements.featureCanvas.width; px += 1) {
-        const color = affectPaletteColor(px / (elements.featureCanvas.width - 1) * 2 - 1, 1 - py / (elements.featureCanvas.height - 1) * 2, state.palette);
+function renderPaletteCanvas(canvas, paletteKey) {
+  if (canvas.dataset.palette !== paletteKey) {
+    const context = canvas.getContext("2d");
+    const image = context.createImageData(canvas.width, canvas.height);
+    for (let py = 0; py < canvas.height; py += 1) {
+      for (let px = 0; px < canvas.width; px += 1) {
+        const color = affectPaletteColor(px / (canvas.width - 1) * 2 - 1, 1 - py / (canvas.height - 1) * 2, state.palette);
         const [red, green, blue] = color.match(/\d+/g).map(Number);
-        const offset = (py * elements.featureCanvas.width + px) * 4;
+        const offset = (py * canvas.width + px) * 4;
         image.data.set([red, green, blue, 255], offset);
       }
     }
     context.putImageData(image, 0, 0);
-    elements.featureCanvas.dataset.palette = paletteKey;
+    canvas.dataset.palette = paletteKey;
   }
-  elements.featurePoint.style.left = `${(state.currentX + 1) * 50}%`;
-  elements.featurePoint.style.top = `${(1 - state.currentY) * 50}%`;
+}
+
+function coordinateToFeaturePercent(value, insetPercent) {
+  return insetPercent + (clamp(value, -1, 1) + 1) * 0.5 * (100 - insetPercent * 2);
+}
+
+function updateFeatureSpace() {
+  for (const [name, color] of Object.entries(state.palette)) elements.featureSpace.style.setProperty(`--palette-${name}`, color);
+  const paletteKey = JSON.stringify(state.palette);
+  renderPaletteCanvas(elements.featureCanvas, paletteKey);
+  renderPaletteCanvas(elements.touchAffectCanvas, paletteKey);
+  elements.featurePoint.style.left = `${coordinateToFeaturePercent(state.currentX, FEATURE_FLUBBER_INSET_PERCENT)}%`;
+  elements.featurePoint.style.top = `${coordinateToFeaturePercent(-state.currentY, FEATURE_FLUBBER_INSET_PERCENT)}%`;
+  elements.touchAffectPoint.style.left = `${coordinateToFeaturePercent(state.currentX, FEATURE_DOT_INSET_PERCENT)}%`;
+  elements.touchAffectPoint.style.top = `${coordinateToFeaturePercent(-state.currentY, FEATURE_DOT_INSET_PERCENT)}%`;
+  const currentColor = affectPaletteColor(state.currentX, state.currentY, state.palette);
+  elements.featurePoint.style.setProperty("--preview-color", currentColor);
+  elements.touchAffectPoint.style.background = currentColor;
+  elements.featureValenceOutput.value = formatCoordinate(state.currentX);
+  elements.featureArousalOutput.value = formatCoordinate(state.currentY);
+  elements.touchAffectValenceOutput.value = formatCoordinate(state.currentX);
+  elements.touchAffectArousalOutput.value = formatCoordinate(state.currentY);
+  elements.touchAffectSpace.setAttribute(
+    "aria-label",
+    `Experimental movement mapping. Valence ${state.currentX.toFixed(2)}, arousal ${state.currentY.toFixed(2)}.`,
+  );
   for (const input of elements.paletteInputs) input.value = state.palette[input.dataset.palette];
   elements.featureSpace.setAttribute("aria-valuetext", `Valence ${state.targetX.toFixed(2)}, arousal ${state.targetY.toFixed(2)}`);
 }
@@ -1172,7 +1205,8 @@ function ingestPointerEvent(event, phase) {
   }
   if (phase === "down") {
     activeTracePointerId = event.pointerId;
-    touchTrace.beginStroke(event.pointerType);
+    const preserveSpeed = event.pointerType !== "mouse" && touchTrace.shouldPreserveSpeed(event.timeStamp);
+    touchTrace.beginStroke(event.pointerType, { preserveSpeed });
     try { elements.stage.setPointerCapture(event.pointerId); } catch { /* implicit capture remains available */ }
   } else if (phase === "move" && activeTracePointerId === undefined) {
     activeTracePointerId = event.pointerId;
@@ -1892,12 +1926,16 @@ function initializeEvents() {
   }
   elements.featureSpace.addEventListener("pointerdown", (event) => {
     if (state.inputSource !== "manual") return;
+    event.preventDefault();
     featurePointerId = event.pointerId;
     elements.featureSpace.setPointerCapture(event.pointerId);
     chooseFeatureCoordinate(event);
   });
   elements.featureSpace.addEventListener("pointermove", (event) => {
-    if (event.pointerId === featurePointerId) chooseFeatureCoordinate(event);
+    if (event.pointerId === featurePointerId) {
+      event.preventDefault();
+      chooseFeatureCoordinate(event);
+    }
   });
   const finishFeatureSelection = (event) => {
     if (event.pointerId !== featurePointerId) return;
@@ -1998,6 +2036,7 @@ function animationFrame(timestamp) {
   elements.basePath.setAttribute("d", rendered.path);
   elements.outlinePath.setAttribute("d", rendered.path);
   elements.haloPath.setAttribute("d", rendered.path);
+  elements.featureFlubberPath.setAttribute("d", rendered.path);
   elements.widget.style.setProperty("--affect-color", rendered.color);
   renderPictureInPicture(rendered);
   updateCoordinateDisplay();

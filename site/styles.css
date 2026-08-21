@@ -504,6 +504,61 @@ body.is-touch-source .panel-content { touch-action: pan-y; }
   padding-inline: 0;
 }
 
+.touch-affect-map {
+  margin: 0.85rem 0;
+  padding-top: 0.75rem;
+  border-top: 1px solid rgb(120 215 255 / 18%);
+}
+
+.touch-affect-map h4 {
+  margin: 0;
+  font-size: 0.78rem;
+}
+
+.touch-affect-space {
+  position: relative;
+  width: min(12rem, 86%);
+  aspect-ratio: 1;
+  margin: 0.65rem auto;
+  border: 1px solid rgb(255 255 255 / 28%);
+  border-radius: 0.55rem;
+  background: #b7b7b7;
+}
+
+.touch-affect-space canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+}
+
+.touch-affect-space::before,
+.touch-affect-space::after {
+  content: "";
+  position: absolute;
+  z-index: 1;
+  background: rgb(255 255 255 / 42%);
+  pointer-events: none;
+}
+
+.touch-affect-space::before { left: 50%; top: 0; width: 1px; height: 100%; }
+.touch-affect-space::after { left: 0; top: 50%; width: 100%; height: 1px; }
+
+.touch-affect-point {
+  position: absolute;
+  z-index: 3;
+  left: 50%;
+  top: 50%;
+  width: 0.82rem;
+  height: 0.82rem;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  box-shadow: 0 0 0 2px rgb(0 0 0 / 50%), 0 0 0.6rem rgb(255 255 255 / 55%);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
 .experimental-badge {
   display: inline-block;
   margin-right: 0.3rem;
@@ -603,18 +658,22 @@ html:has(.pip-body),
     radial-gradient(circle at 100% 50%, var(--palette-right), transparent 62%),
     #b7b7b7;
   cursor: crosshair;
-  overflow: hidden;
+  touch-action: none;
 }
-.web-feature-space canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+.web-feature-space canvas { position: absolute; inset: 0; width: 100%; height: 100%; border-radius: inherit; }
 .web-feature-space::before, .web-feature-space::after { content: ""; position: absolute; z-index: 1; background: rgb(255 255 255 / 38%); pointer-events: none; }
 .web-feature-space::before { left: 50%; top: 0; width: 1px; height: 100%; }
 .web-feature-space::after { left: 0; top: 50%; width: 100%; height: 1px; }
-.web-feature-point { position: absolute; z-index: 3; left: 50%; top: 50%; width: 0.72rem; height: 0.72rem; border: 2px solid #fff; border-radius: 50%; background: #080a0b; box-shadow: 0 0 0 2px rgb(0 0 0 / 40%); transform: translate(-50%, -50%); pointer-events: none; }
+.web-feature-point { position: absolute; z-index: 3; left: 50%; top: 50%; width: 2.05rem; height: 2.05rem; overflow: visible; filter: drop-shadow(0 0 0.16rem rgb(0 0 0 / 82%)); transform: translate(-50%, -50%); pointer-events: none; }
+.web-feature-point path { fill: var(--preview-color, #b7b7b7); stroke: #fff; stroke-width: 0.1; }
 .space-axis { position: absolute; z-index: 2; padding: 0.08rem 0.22rem; border-radius: 0.2rem; background: rgb(0 0 0 / 52%); font-size: 0.52rem; pointer-events: none; }
 .space-up { left: 50%; top: 0.2rem; transform: translateX(-50%); }
 .space-down { left: 50%; bottom: 0.2rem; transform: translateX(-50%); }
 .space-left { left: 0.2rem; top: 50%; transform: translateY(-50%); }
 .space-right { right: 0.2rem; top: 50%; transform: translateY(-50%); }
+.feature-preview-values { display: grid; grid-template-columns: 1fr 1fr; gap: 0.45rem; margin: 0.45rem 0 0.7rem; }
+.feature-preview-values span { color: rgb(255 255 255 / 60%); font-size: 0.64rem; text-align: center; }
+.feature-preview-values output { display: block; margin-top: 0.08rem; color: #fff; font: 0.7rem ui-monospace, SFMono-Regular, Consolas, monospace; }
 .web-palette-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.4rem 0.65rem; }
 .web-palette-grid label { display: flex; align-items: center; justify-content: space-between; color: rgb(255 255 255 / 64%); font-size: 0.65rem; }
 .web-palette-grid input[type="color"] { width: 2.3rem; height: 1.65rem; padding: 0.12rem; cursor: pointer; }

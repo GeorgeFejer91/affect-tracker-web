@@ -6,6 +6,7 @@ import {
   FEEDBACK_HOLD_MS,
   fitTracePoints,
   OneEuroFilter,
+  STROKE_SPEED_CONTINUITY_MS,
   TOUCH_TRACE_ALGORITHM_VERSION,
   TouchTraceAnalyzer,
 } from "../site/src/touch-trace.js";
@@ -207,12 +208,42 @@ test("a short rapid burst reaches high arousal and remains available as feedback
   for (let now = 60; now <= 1_000; now += 20) analyzer.update(now, 0.02);
   const snapshot = analyzer.snapshot();
 
-  assert.equal(TOUCH_TRACE_ALGORITHM_VERSION, "touch-trace-v2");
+  assert.equal(TOUCH_TRACE_ALGORITHM_VERSION, "touch-trace-v3");
   assert.equal(snapshot.motionActive, false);
   assert.equal(snapshot.feedbackHeld, true);
   assert.ok(snapshot.speedConfidence >= 0.99);
   assert.ok(snapshot.mappedY > 0.9);
   assert.ok(snapshot.targetY > 0.85);
+});
+
+test("rapid lifted-finger micro-strokes share speed evidence without joining their geometry", () => {
+  const analyzer = new TouchTraceAnalyzer({ width: 1_000, height: 1_000 });
+  analyzer.beginStroke("touch");
+  analyzer.ingest({ clientX: 100, clientY: 500, time: 0, pointerType: "touch" });
+  analyzer.ingest({ clientX: 100, clientY: 400, time: 20, pointerType: "touch" });
+  analyzer.update(50, 0.05);
+
+  assert.equal(analyzer.speedWindow.length, 1);
+  assert.equal(analyzer.speedConfidence, 0.5);
+  assert.equal(analyzer.shouldPreserveSpeed(100), true);
+
+  analyzer.beginStroke("touch", { preserveSpeed: true });
+  assert.equal(analyzer.resampledPoints.length, 0);
+  assert.equal(analyzer.speedWindow.length, 1);
+  analyzer.ingest({ clientX: 900, clientY: 400, time: 100, pointerType: "touch" });
+  analyzer.ingest({ clientX: 900, clientY: 500, time: 120, pointerType: "touch" });
+  analyzer.update(120, 0.07);
+  const snapshot = analyzer.snapshot();
+
+  assert.equal(snapshot.speedContinuityActive, true);
+  assert.equal(snapshot.speedConfidence, 1);
+  assert.ok(snapshot.mappedY > 0.9);
+  assert.ok(snapshot.rawSpeed < 4, "the lifted-finger jump must not count as movement speed");
+  assert.equal(analyzer.shouldPreserveSpeed(120 + STROKE_SPEED_CONTINUITY_MS + 1), false);
+
+  analyzer.beginStroke("touch");
+  assert.equal(analyzer.speedWindow.length, 0);
+  assert.equal(analyzer.snapshot().speedContinuityActive, false);
 });
 
 test("inactivity holds the last result before a gradual return to neutral", () => {

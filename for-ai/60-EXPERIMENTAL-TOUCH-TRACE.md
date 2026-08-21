@@ -6,7 +6,7 @@ This file is the normative contract for the browser-only movement-feedback proto
 
 - `inputSource` is either `manual` or `touch-trace` and is distinct from the manual continuous/step `inputMode`.
 - Touch mode is visibly labelled **Experimental Touch/Trackpad**. Shape drives valence (`x`); speed drives arousal (`y`).
-- The online UI exposes a third top-level **Touch/Trackpad Playground** accordion beside Settings and Experiment. It is visibly marked **Experimental** and contains the authoritative **Enable touch/trackpad tracking** switch, an embedded live practice trace, detected pointer type, shape/speed labels, confidence, and the separate floating-trace preference.
+- The online UI exposes a third top-level **Touch/Trackpad Playground** accordion beside Settings and Experiment. It is visibly marked **Experimental** and contains the authoritative **Enable touch/trackpad tracking** switch, an embedded live practice trace, detected pointer type, shape/speed labels, confidence, a read-only live valence–arousal color map with a moving dot/numeric coordinates, and the separate floating-trace preference.
 - Opening the playground collapses the other two accordions, and opening either of them collapses the playground. Movement over the playground trace surface is analyzable; other controls remain excluded.
 - Touch and pen movement are handled using Pointer Events and primary-pointer capture. Mouse hover supplies browser cursor movement, including the OS-accelerated trajectory exposed for laptop touchpads; raw touchpad contacts are unavailable to ordinary webpages.
 - Outside experiments, native controls/settings are excluded. During a fullscreen experiment the entire experiment layer is the capture surface. Only the primary pointer is analyzed; extra simultaneous pointers are ignored and logged.
@@ -18,11 +18,13 @@ This file is the normative contract for the browser-only movement-feedback proto
 
 For each dispatched Pointer Event, use `getCoalescedEvents()` when available and fall back to the event itself. Never use predicted events. Retain pointer/stroke identifiers, phase/type, `performance.now()` time, client and viewport-normalized positions, pressure, button state, coalesced index, and viewport dimensions.
 
-Normalize distance by `D = hypot(viewportWidth, viewportHeight)`. Reject duplicate points, non-monotonic times, and intervals below 1 ms. A gap over 400 ms ends the segment. Resize, orientation, cancellation, visibility, and fullscreen changes reset filters and segmentation so coordinate frames are never mixed.
+Normalize distance by `D = hypot(viewportWidth, viewportHeight)`. Reject duplicate points, non-monotonic times, and intervals below 1 ms. A gap over 400 ms ends an ordinary continuous segment. Resize, orientation, cancellation, visibility, and fullscreen changes reset filters and segmentation so coordinate frames are never mixed.
+
+Each touch/pen `pointerdown` always begins a new shape segment and resets both 1€ filters. If it occurs no more than 900 ms after the prior delivered point and at least one speed segment exists, preserve only the two five-sample speed windows. This lets repeated lifted-finger micro-swipes accumulate the two segments required for full speed confidence. Never calculate speed across the off-surface jump, and never connect separate strokes for shape analysis. A longer inter-stroke gap, pointer cancellation, resize, visibility change, or fullscreen transition clears the carried speed evidence. Mouse/touchpad hover does not use this special stroke bridge; it retains ordinary continuous cursor segmentation.
 
 ## Speed to arousal
 
-Filter normalized x/y independently using a local 1€ filter with `minCutoff=1 Hz`, `beta=0.007`, and `derivativeCutoff=1 Hz`. Compute both unfiltered normalized segment speed and speed between the filtered positions. Maintain a five-sample median for each and use the larger robust estimate as `filteredSpeed`; this preserves the onset of a brief swipe that coordinate filtering would otherwise attenuate while retaining median rejection as the path continues. Use `speedFeature=log1p(filteredSpeed)` for adaptation. Speed confidence reaches 0.5 after one measured segment and 1.0 after two, so short rapid swipes respond without waiting for a five-segment path.
+Filter normalized x/y independently using a local 1€ filter with `minCutoff=1 Hz`, `beta=0.007`, and `derivativeCutoff=1 Hz`. Compute both unfiltered normalized segment speed and speed between the filtered positions. Maintain a five-sample median for each and use the larger robust estimate as `filteredSpeed`; this preserves the onset of a brief swipe that coordinate filtering would otherwise attenuate while retaining median rejection as the path continues. Use `speedFeature=log1p(filteredSpeed)` for adaptation. Speed confidence reaches 0.5 after one measured segment and 1.0 after two, including two close micro-strokes linked by the speed-only rule above.
 
 ## Shape to valence
 
@@ -46,7 +48,7 @@ Map each feature as `2*clamp((raw-lower)/(upper-lower),0,1)-1` and multiply by f
 
 ## Trace and experiment layout
 
-The optional high-DPI canvas displays the last four seconds. Fit the unrestricted path into its rectangle with uniform scale, preserved aspect ratio, centering, and 8% padding. Segment age controls opacity and rainbow hue; reduced-motion uses a static spatial rainbow with ordinary fading. Labels show slow/fast, jagged/round, and calibration confidence.
+The optional high-DPI canvas displays the last four seconds. Fit the unrestricted path into its rectangle with uniform scale, preserved aspect ratio, centering, and 8% padding. Segment age controls opacity and rainbow hue; reduced-motion uses a static spatial rainbow with ordinary fading. Labels show slow/fast, jagged/round, and calibration confidence. The embedded playground also shows the current displayed coordinates on a cached four-anchor palette canvas: left/right are jagged/round, bottom/top are slow/fast, and the dot always represents the smoothed Flubber state rather than an unsmoothed raw feature.
 
 During experiments the vertical order is video, Flubber, then trace. `computeExperimentLayout` must shrink elements as needed on narrow displays, allow the trace to reach 220 px wide, and never overlap the video and Flubber.
 
@@ -57,12 +59,14 @@ Experiments use `ExperimentCsvWriter`, an append-only ~1,000-row chunk serialize
 Record types are:
 
 - `pointer_raw`: every delivered/fallback/coalesced observed point during active playback.
-- `touch_metric`: 20 Hz raw speed/shape features, component metrics, adaptive bounds, normalized targets, confidence, motion state, and `feedback_held` state.
+- `touch_metric`: 20 Hz raw speed/shape features, component metrics, adaptive bounds, normalized targets, confidence, `speed_continuity_active`, motion state, and `feedback_held` state.
 - `sample`: 20 Hz displayed current and target coordinates.
 - `event`: input/lifecycle, buffering, visibility, resize, fullscreen, abort, and completion markers.
 
 All rows retain session/experiment/stimulus identifiers, ISO and monotonic time, `active_elapsed_ms`, stimulus time, source/mode, and animation/widget state. `active_elapsed_ms` advances only during playback. Buffering pauses metric/sample emission and active time. Finish captures a final metric/sample before completion; abort/fullscreen exit/player failure generates a marked partial CSV.
 
-Algorithm identifier: `touch-trace-v2`. Changing formulas, defaults, columns, segmentation, or adaptive behavior requires tests, an algorithm-version decision, and an update to the provenance ledger.
+Algorithm identifier: `touch-trace-v3`. Changing formulas, defaults, columns, segmentation, or adaptive behavior requires tests, an algorithm-version decision, and an update to the provenance ledger.
 
 Version 2 replaces version 1's filtered-position-only speed estimate, five-segment speed-confidence ramp, 450 ms target response, and immediate 600 ms inactivity decay with a dual-median burst-preserving estimate, two-segment ramp, 300 ms attack, 1.8-second result hold, and 3-second release. This project-specific change responds to observed playground usability: short rapid movements were underweighted and feedback returned to neutral before participants could reach or perceive the extremes. No external algorithm or source code was introduced by this version change.
+
+Version 3 preserves the bounded speed evidence across touch/pen strokes beginning within 900 ms, while resetting filters and shape geometry and excluding lifted-finger displacement. It also logs the carry decision as `speed_continuity_active`. This project-specific revision responds to observed alternating micro-swipe usability and introduces no external algorithm or source code.
