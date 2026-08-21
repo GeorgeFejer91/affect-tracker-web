@@ -88,6 +88,16 @@ cargo tauri dev
 
 See [`desktop/README.md`](./desktop/README.md) for the LSL feature fallback and qualification requirements. Unsigned development builds are not a substitute for signed/notarized public installers.
 
+### Desktop downloads
+
+Cross-platform packages are published on the [GitHub Releases page](https://github.com/GeorgeFejer91/affect-tracker-web/releases). Each desktop release includes:
+
+- Windows x64 NSIS installer (`.exe`).
+- Linux x64 AppImage and Debian package (`.AppImage` and `.deb`).
+- Universal macOS disk image for Apple Silicon and Intel (`.dmg`).
+
+The initial packages are unsigned. Windows SmartScreen, macOS Gatekeeper, or Linux desktop security tooling may therefore ask the user to confirm that they trust the download.
+
 ## Accessibility
 
 - All controls use semantic HTML and visible keyboard focus states.

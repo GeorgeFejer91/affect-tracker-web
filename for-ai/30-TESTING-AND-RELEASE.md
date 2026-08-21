@@ -29,6 +29,8 @@ Pure Rust tests cover affect math, smoothing, target clamping, opposite-action c
 
 CI should test pull requests and build unsigned artifacts on Windows, macOS, and Linux. Publishing installers, creating a public GitHub release, enabling an updater, signing, notarizing, or store submission requires explicit authorization. Build each production artifact on the matching OS and preserve lockfiles, checksums, attribution, and license notices.
 
+The `desktop-release.yml` workflow is the canonical packaging path. A `desktop-v*` tag produces Windows x64 NSIS, Linux x64 AppImage/DEB, and universal macOS DMG artifacts from one commit. Do not publish a release unless every matrix job completes successfully.
+
 ## Definition of parity
 
 A change to coordinates, mappings, smoothing defaults, input actions, pause/reset semantics, seed handling, accessibility language, or record meaning must be assessed in both runtimes. Platform-only features such as LSL and click-through overlays need an explicit browser counterpart or an explicit documented exception.
