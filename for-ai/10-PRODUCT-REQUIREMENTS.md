@@ -40,6 +40,7 @@ Polar angle selects the green-to-red-to-green gradient position. Polar radius co
 - Shortcut conflicts and invalid mappings must produce actionable errors. Reconfiguration unregisters replaced shortcuts.
 - Bare-key system-wide capture is not a v1 requirement. Global shortcut combinations are the safe default.
 - Settings include input mode, step size, held-input speed, smoothing response, overlay size/opacity/position, LSL names/rate/autostart, and shortcut bindings.
+- The canonical native icon is `desktop/icons/app-icon.svg`; regenerate platform PNG, ICO, and ICNS assets with `pnpm desktop:icons` after changing it.
 - Settings persist in the operating system application configuration directory. Affect history does not silently persist.
 
 ## LSL output

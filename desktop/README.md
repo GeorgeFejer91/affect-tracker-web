@@ -14,7 +14,6 @@ Prerequisites:
 - Node.js 22 and pnpm 11
 - Current stable Rust
 - Current Tauri v2 operating-system prerequisites
-- CMake and a native C/C++ compiler for the bundled `lsl` crate
 
 ```sh
 pnpm install --frozen-lockfile
@@ -23,7 +22,7 @@ cargo test --manifest-path src-tauri/Cargo.toml
 cargo tauri dev
 ```
 
-The default Cargo feature includes LSL. For domain/UI work on a machine without the LSL native build prerequisites:
+The default Cargo feature includes LSL through the pure-Rust `labstream` protocol implementation. For domain/UI work where network streaming is intentionally excluded:
 
 ```sh
 cargo test --manifest-path src-tauri/Cargo.toml --no-default-features
@@ -35,4 +34,4 @@ That fallback build reports LSL as unavailable and is not a research-ready distr
 
 The desktop app publishes a regular eight-channel float stream and a separate irregular marker stream. Stream settings are validated and persisted by Rust. Publication is performed by the native background loop rather than the SVG animation frame.
 
-The current safe Rust `lsl` binding statically builds liblsl but is old. Before a public research release, qualify the exact locked library against current LabRecorder on Windows, macOS Intel/ARM, Linux X11, and Linux Wayland. See [`../for-ai/30-TESTING-AND-RELEASE.md`](../for-ai/30-TESTING-AND-RELEASE.md).
+The locked `labstream` implementation avoids a platform-specific liblsl binary dependency. Before a public research release, qualify it against current LabRecorder on Windows, macOS Intel/ARM, Linux X11, and Linux Wayland. See [`../for-ai/30-TESTING-AND-RELEASE.md`](../for-ai/30-TESTING-AND-RELEASE.md).

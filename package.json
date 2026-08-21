@@ -10,13 +10,16 @@
     "serve": "python -m http.server 8000 --directory site",
     "desktop:dev": "vite --config desktop/vite.config.js",
     "desktop:build": "vite build --config desktop/vite.config.js",
-    "desktop:preview": "vite preview --config desktop/vite.config.js"
+    "desktop:preview": "vite preview --config desktop/vite.config.js",
+    "desktop:icons": "tauri icon desktop/icons/app-icon.svg -o src-tauri/icons",
+    "desktop:bundle": "tauri build --bundles nsis"
   },
   "engines": {
     "node": ">=22"
   },
   "devDependencies": {
-    "@tauri-apps/api": "2.8.0",
+    "@tauri-apps/api": "2.11.1",
+    "@tauri-apps/cli": "2.11.4",
     "vite": "7.1.3"
   }
 }

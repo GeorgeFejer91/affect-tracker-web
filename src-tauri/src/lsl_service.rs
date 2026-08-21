@@ -28,51 +28,46 @@ pub fn sample_values(snapshot: &AffectSnapshot) -> Vec<f32> {
 #[cfg(feature = "lsl-streaming")]
 mod implementation {
     use super::*;
-    use lsl::{ChannelFormat, Pushable, StreamInfo, StreamOutlet, IRREGULAR_RATE};
+    use labstream::{Channel, Format, Outlet, StreamInfo};
 
     pub struct LslService {
-        state_outlet: StreamOutlet,
-        marker_outlet: StreamOutlet,
+        state_outlet: Outlet,
+        marker_outlet: Outlet,
     }
 
     impl LslService {
-        pub fn start(settings: &LslSettings, session_id: &str) -> Result<Self, String> {
+        pub fn start(settings: &LslSettings, _session_id: &str) -> Result<Self, String> {
             let state_source = format!("{}-state", settings.source_id);
             let marker_source = format!("{}-markers", settings.source_id);
-            let mut state_info = StreamInfo::new(
+            let channels = CHANNEL_LABELS.map(|label| {
+                Channel::new(label)
+                    .unit(if label == "angle_degrees" {
+                        "degrees"
+                    } else {
+                        "normalized"
+                    })
+                    .kind("Affect")
+            });
+            let state_info = StreamInfo::builder(
                 &settings.stream_name,
                 &settings.stream_type,
-                CHANNEL_LABELS.len() as u32,
-                settings.sample_rate as f64,
-                ChannelFormat::Float32,
-                &state_source,
+                Format::Float32,
             )
-            .map_err(|_| "Could not create the LSL state stream metadata.".to_owned())?;
-            add_state_metadata(&mut state_info, settings, session_id);
+            .rate(settings.sample_rate as f64)
+            .source_id(&state_source)
+            .channels(channels)
+            .build()
+            .map_err(|error| format!("Could not create the LSL state metadata: {error}"))?;
+            let marker_info = StreamInfo::builder(&settings.marker_name, "Markers", Format::String)
+                .irregular()
+                .source_id(&marker_source)
+                .channels([Channel::new("marker").kind("Markers")])
+                .build()
+                .map_err(|error| format!("Could not create the LSL marker metadata: {error}"))?;
 
-            let mut marker_info = StreamInfo::new(
-                &settings.marker_name,
-                "Markers",
-                1,
-                IRREGULAR_RATE,
-                ChannelFormat::String,
-                &marker_source,
-            )
-            .map_err(|_| "Could not create the LSL marker stream metadata.".to_owned())?;
-            {
-                let mut desc = marker_info.desc();
-                desc.append_child_value("application", "Affect Tracker Desktop");
-                desc.append_child_value("schema_version", "1");
-                desc.append_child_value("session_id", session_id);
-                let mut channels = desc.append_child("channels");
-                let mut channel = channels.append_child("channel");
-                channel.append_child_value("label", "marker");
-                channel.append_child_value("type", "Markers");
-            }
-
-            let state_outlet = StreamOutlet::new(&state_info, 0, 30)
+            let state_outlet = Outlet::new(state_info)
                 .map_err(|_| "Could not open the LSL state outlet.".to_owned())?;
-            let marker_outlet = StreamOutlet::new(&marker_info, 0, 30)
+            let marker_outlet = Outlet::new(marker_info)
                 .map_err(|_| "Could not open the LSL marker outlet.".to_owned())?;
             Ok(Self {
                 state_outlet,
@@ -82,37 +77,14 @@ mod implementation {
 
         pub fn push_state(&self, snapshot: &AffectSnapshot) -> Result<(), String> {
             self.state_outlet
-                .push_sample(&sample_values(snapshot))
+                .push(&sample_values(snapshot))
                 .map_err(|_| "LSL rejected an affect sample.".to_owned())
         }
 
         pub fn push_marker(&self, marker: &str) -> Result<(), String> {
             self.marker_outlet
-                .push_sample(&vec![marker])
+                .push_text(marker)
                 .map_err(|_| "LSL rejected a marker.".to_owned())
-        }
-    }
-
-    fn add_state_metadata(info: &mut StreamInfo, settings: &LslSettings, session_id: &str) {
-        let mut desc = info.desc();
-        desc.append_child_value("application", "Affect Tracker Desktop");
-        desc.append_child_value("schema_version", "1");
-        desc.append_child_value("session_id", session_id);
-        desc.append_child_value("coordinate_range", "[-1,1]");
-        desc.append_child_value("sample_rate_hz", &settings.sample_rate.to_string());
-        let mut channels = desc.append_child("channels");
-        for label in CHANNEL_LABELS {
-            let mut channel = channels.append_child("channel");
-            channel.append_child_value("label", label);
-            channel.append_child_value("type", "Affect");
-            channel.append_child_value(
-                "unit",
-                if label == "angle_degrees" {
-                    "degrees"
-                } else {
-                    "normalized"
-                },
-            );
         }
     }
 }

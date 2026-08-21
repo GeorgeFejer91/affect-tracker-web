@@ -15,7 +15,7 @@ crate-type = ["lib", "cdylib", "staticlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-lsl = { version = "0.1.1", optional = true }
+labstream = { version = "0.1.0", optional = true }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tauri = { version = "2", features = ["tray-icon"] }
@@ -24,7 +24,7 @@ uuid = { version = "1", features = ["serde", "v4"] }
 
 [features]
 default = ["lsl-streaming"]
-lsl-streaming = ["dep:lsl"]
+lsl-streaming = ["dep:labstream"]
 
 [profile.release]
 codegen-units = 1

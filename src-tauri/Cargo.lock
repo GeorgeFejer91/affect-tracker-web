@@ -12,7 +12,7 @@ checksum = "320119579fcad9c21884f5c4861d16174d0e06250625266f50fe6898340abefa"
 name = "affect-tracker-desktop"
 version = "0.1.0"
 dependencies = [
- "lsl",
+ "labstream",
  "serde",
  "serde_json",
  "tauri",
@@ -332,15 +332,6 @@ dependencies = [
  "num-traits",
  "serde",
  "windows-link 0.2.1",
-]
-
-[[package]]
-name = "cmake"
-version = "0.1.58"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c0f78a02292a74a88ac736019ab962ece0bc380e3f977bf72e376c5d78ff0678"
-dependencies = [
- "cc",
 ]
 
 [[package]]
@@ -1376,7 +1367,7 @@ dependencies = [
  "libc",
  "percent-encoding",
  "pin-project-lite",
- "socket2",
+ "socket2 0.6.5",
  "tokio",
  "tower-service",
  "tracing",
@@ -1735,6 +1726,50 @@ dependencies = [
 ]
 
 [[package]]
+name = "labstream"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6771ce7d03caaaaa89b2510b6a36c5e4aff7119871dabc986b5c9f79fb830746"
+dependencies = [
+ "labstream-net",
+ "labstream-wire",
+]
+
+[[package]]
+name = "labstream-net"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0d54e009a76464fc68f0f3e404bcd8d3ebbbea044230a2abf51d1d4bd425cbce"
+dependencies = [
+ "labstream-proto",
+ "labstream-time",
+ "labstream-wire",
+ "libc",
+ "socket2 0.5.10",
+]
+
+[[package]]
+name = "labstream-proto"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3c72d5795919bf5b4b6b788be8256f62b6a1ee56234fae8bb91b792a15905956"
+dependencies = [
+ "labstream-wire",
+]
+
+[[package]]
+name = "labstream-time"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d08774edb0f4cfd3c0053d128aa6c480fcb214e91b50a000ba2a622d1ba1acbf"
+
+[[package]]
+name = "labstream-wire"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1886efdb22d913a5de78b9af1a740625c036f2d66f7966bdc5eef964f3980300"
+
+[[package]]
 name = "libappindicator"
 version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1818,24 +1853,6 @@ name = "log"
 version = "0.4.33"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0ceec5bc11778974d1bcb055b18002eba7f4b3518b6a0081b3af5f21666da9ad"
-
-[[package]]
-name = "lsl"
-version = "0.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b1853f0e53f4c3f03d0275a146de3cbf57462b0bb8f32fa822f024b17faf9dfa"
-dependencies = [
- "lsl-sys",
-]
-
-[[package]]
-name = "lsl-sys"
-version = "0.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "746a27be6e9798d1baa58033d391b62190e9f6def7fca082362942ae114bfda6"
-dependencies = [
- "cmake",
-]
 
 [[package]]
 name = "markup5ever"
@@ -2911,6 +2928,16 @@ checksum = "8ed6a63f02c8539c91a8685a86f4099661ba3da017932f6ebbea6de3f0fa7c90"
 
 [[package]]
 name = "socket2"
+version = "0.5.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e22376abed350d73dd1cd119b57ffccad95b4e585a7cda43e286245ce23c0678"
+dependencies = [
+ "libc",
+ "windows-sys 0.52.0",
+]
+
+[[package]]
+name = "socket2"
 version = "0.6.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c3d1e2c7f27f8d4cb10542a02c49005dbd6e93095799d6f3be745fae9f8fedd4"
@@ -3494,7 +3521,7 @@ dependencies = [
  "libc",
  "mio",
  "pin-project-lite",
- "socket2",
+ "socket2 0.6.5",
  "windows-sys 0.61.2",
 ]
 
@@ -4259,6 +4286,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "75283be5efb2831d37ea142365f009c02ec203cd29a3ebecbc093d52315b66d0"
 dependencies = [
  "windows-targets 0.42.2",
+]
+
+[[package]]
+name = "windows-sys"
+version = "0.52.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "282be5f36a8ce781fad8c8ae18fa3f9beff57ec1b52cb3de0789201425d9a33d"
+dependencies = [
+ "windows-targets 0.52.6",
 ]
 
 [[package]]
