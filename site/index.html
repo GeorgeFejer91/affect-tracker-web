@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="dark">
+    <meta name="description" content="A draggable, browser-only 2D affect tracker inspired by AffectTracker.">
+    <title>2D Affect Tracker</title>
+    <link rel="stylesheet" href="./styles.css">
+  </head>
+  <body>
+    <main id="stage" aria-label="Interactive affect tracker">
+      <div
+        id="affect-widget"
+        class="affect-widget"
+        role="img"
+        tabindex="0"
+        aria-label="Draggable affect shape. Use arrow keys or WASD to adjust valence and arousal."
+      >
+        <svg viewBox="-1.62 -1.62 3.24 3.24" aria-hidden="true" focusable="false">
+          <defs>
+            <filter id="soft-glow" x="-70%" y="-70%" width="240%" height="240%">
+              <feGaussianBlur stdDeviation="0.10" result="blur"></feGaussianBlur>
+              <feMerge>
+                <feMergeNode in="blur"></feMergeNode>
+                <feMergeNode in="SourceGraphic"></feMergeNode>
+              </feMerge>
+            </filter>
+          </defs>
+          <path id="halo-path" class="shape-halo"></path>
+          <path id="base-path" class="shape-base"></path>
+          <path id="outline-path" class="shape-outline"></path>
+          <circle class="center-dot" cx="0" cy="0" r="0.025"></circle>
+        </svg>
+        <span class="drag-hint" aria-hidden="true">drag</span>
+      </div>
+
+      <section id="control-panel" class="control-panel" aria-labelledby="panel-title">
+        <button
+          id="panel-toggle"
+          class="panel-toggle"
+          type="button"
+          aria-expanded="true"
+          aria-controls="panel-content"
+        >
+          <span id="panel-title">Affect Tracker</span>
+          <span class="toggle-symbol" aria-hidden="true">−</span>
+        </button>
+
+        <div id="panel-content" class="panel-content">
+          <div class="coordinates" aria-label="Current affect coordinates">
+            <div><span>Valence</span><output id="valence-output">+0.000</output></div>
+            <div><span>Arousal</span><output id="arousal-output">+0.000</output></div>
+          </div>
+
+          <fieldset class="mode-control">
+            <legend>Input mode</legend>
+            <label><input type="radio" name="input-mode" value="continuous" checked> Continuous</label>
+            <label><input type="radio" name="input-mode" value="step"> Step</label>
+          </fieldset>
+
+          <div class="direction-pad" aria-label="Directional affect controls">
+            <button class="direction-button up" type="button" data-direction="up" aria-label="Increase arousal">↑</button>
+            <button class="direction-button left" type="button" data-direction="left" aria-label="Decrease valence">←</button>
+            <button class="direction-button neutral" id="reset-button" type="button" aria-label="Return to neutral">●</button>
+            <button class="direction-button right" type="button" data-direction="right" aria-label="Increase valence">→</button>
+            <button class="direction-button down" type="button" data-direction="down" aria-label="Decrease arousal">↓</button>
+          </div>
+
+          <div class="action-row">
+            <button id="pause-button" type="button">Pause motion</button>
+            <button id="export-button" type="button">Download CSV</button>
+            <button id="clear-button" class="subtle-danger" type="button">Clear buffer</button>
+          </div>
+
+          <dl class="buffer-status">
+            <div><dt>Events</dt><dd id="event-count">0</dd></div>
+            <div><dt>Samples</dt><dd id="sample-count">0</dd></div>
+            <div><dt>Buffered</dt><dd id="buffer-count">0 / 10,000</dd></div>
+          </dl>
+
+          <details class="help">
+            <summary>Controls and privacy</summary>
+            <p><kbd>←</kbd><kbd>→</kbd> or <kbd>A</kbd><kbd>D</kbd> change valence. <kbd>↑</kbd><kbd>↓</kbd> or <kbd>W</kbd><kbd>S</kbd> change arousal.</p>
+            <p>Wheel changes arousal; hold <kbd>Shift</kbd> while scrolling to change valence. <kbd>Space</kbd> pauses motion and <kbd>R</kbd> returns to neutral.</p>
+            <p>Records remain in this tab only. Download the CSV before closing or refreshing.</p>
+          </details>
+
+          <p class="attribution">
+            Inspired by
+            <a href="https://github.com/afourcade/AffectTracker" target="_blank" rel="noreferrer">AffectTracker</a>.
+          </p>
+        </div>
+      </section>
+
+      <p id="status-region" class="visually-hidden" aria-live="polite"></p>
+    </main>
+
+    <script type="module" src="./src/app.js"></script>
+  </body>
+</html>

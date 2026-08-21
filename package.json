@@ -1,0 +1,14 @@
+{
+  "name": "affect-tracker-web",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "A browser-only 2D affect tracker inspired by AffectTracker.",
+  "scripts": {
+    "test": "node --test",
+    "serve": "python -m http.server 8000 --directory site"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
