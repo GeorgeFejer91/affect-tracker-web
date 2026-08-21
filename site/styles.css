@@ -251,7 +251,14 @@ button.is-held {
 .web-binding-grid input.is-capturing { border-color: #74d8ff; background: #123345; color: #bdefff; }
 .settings-button-row { display: grid; grid-template-columns: 1fr 1fr; gap: 0.45rem; margin-top: 0.65rem; }
 .settings-button-row button { min-height: 2.15rem; padding: 0.4rem; font-size: 0.7rem; }
+.picture-in-picture-toggle { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.7rem; color: #f4f4f4; font-size: 0.72rem; cursor: pointer; }
+.picture-in-picture-toggle input { width: 1rem; height: 1rem; margin: 0; accent-color: #78d7ff; }
+.picture-in-picture-toggle:has(input:disabled) { color: rgb(255 255 255 / 42%); cursor: not-allowed; }
 .affect-widget.is-drag-disabled { cursor: default; }
+
+.pip-body { display: grid; place-items: center; width: 100%; height: 100%; margin: 0; overflow: hidden; background: #000; }
+.pip-widget { width: min(92vw, 92vh); height: min(92vw, 92vh); filter: drop-shadow(0 0 1.25rem rgb(255 255 255 / 14%)); }
+.pip-widget svg { display: block; width: 100%; height: 100%; overflow: visible; }
 
 .direction-pad {
   display: grid;

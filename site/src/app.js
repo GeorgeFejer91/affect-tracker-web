@@ -15,6 +15,7 @@ import {
   normalizeWheel,
 } from "./input.js";
 import { AffectLogger } from "./logger.js";
+import { pictureInPictureSupported, pictureInPictureWindowSize } from "./picture-in-picture.js";
 import {
   actionForBinding,
   BINDING_LABELS,
@@ -77,6 +78,8 @@ const elements = {
   lslMarkerName: document.querySelector("#web-lsl-marker-name"),
   lslSampleRate: document.querySelector("#web-lsl-sample-rate"),
   lslSourceId: document.querySelector("#web-lsl-source-id"),
+  pictureInPictureToggle: document.querySelector("#picture-in-picture-toggle"),
+  pictureInPictureNote: document.querySelector("#picture-in-picture-note"),
 };
 
 async function loadBundledSettings() {
@@ -160,6 +163,10 @@ let dragOffsetX = 0;
 let dragOffsetY = 0;
 let featurePointerId;
 let captureInput;
+let pictureInPictureWindow;
+let pictureInPictureView;
+let animationFrameOwner;
+let animationFrameId;
 const reducedMotionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
 
 function savePreferences() {
@@ -372,8 +379,110 @@ function constrainAndRenderWidget() {
   elements.widget.style.top = `${state.widgetY}px`;
   elements.widget.style.setProperty("--widget-size", `${state.widgetSize}px`);
   elements.widget.style.opacity = String(state.widgetOpacity);
-  elements.widget.hidden = !state.widgetVisible;
+  elements.widget.hidden = !state.widgetVisible || Boolean(pictureInPictureWindow);
   elements.widget.classList.toggle("is-drag-disabled", !state.widgetDragEnabled);
+  if (pictureInPictureView) {
+    pictureInPictureView.root.hidden = !state.widgetVisible;
+    pictureInPictureView.root.style.opacity = String(state.widgetOpacity);
+  }
+}
+
+function renderPictureInPicture(rendered) {
+  if (!pictureInPictureView) return;
+  for (const path of pictureInPictureView.paths) path.setAttribute("d", rendered.path);
+  pictureInPictureView.root.style.setProperty("--affect-color", rendered.color);
+  pictureInPictureView.root.style.opacity = String(state.widgetOpacity);
+  pictureInPictureView.root.hidden = !state.widgetVisible;
+  pictureInPictureView.root.setAttribute(
+    "aria-label",
+    `Floating affect shape. Valence ${state.currentX.toFixed(2)}, arousal ${state.currentY.toFixed(2)}.`,
+  );
+}
+
+function finishPictureInPicture(childWindow) {
+  if (pictureInPictureWindow !== childWindow) return;
+  pictureInPictureWindow = undefined;
+  pictureInPictureView = undefined;
+  if (animationFrameOwner === childWindow) {
+    childWindow.cancelAnimationFrame(animationFrameId);
+    animationFrameOwner = undefined;
+    animationFrameId = undefined;
+    scheduleAnimationFrame();
+  }
+  elements.pictureInPictureToggle.checked = false;
+  state.heldDirections.clear();
+  clearHeldButtonStyles();
+  constrainAndRenderWidget();
+  recordEvent("picture-in-picture", "close", "flubber", false);
+  announce("Floating Flubber closed and restored to the page.");
+}
+
+function scheduleAnimationFrame() {
+  const owner = pictureInPictureWindow && !pictureInPictureWindow.closed ? pictureInPictureWindow : window;
+  animationFrameOwner = owner;
+  animationFrameId = owner.requestAnimationFrame(animationFrame);
+}
+
+async function openPictureInPicture() {
+  if (!pictureInPictureSupported(window)) {
+    elements.pictureInPictureToggle.checked = false;
+    announce("This browser does not support interactive Picture-in-Picture.");
+    return;
+  }
+  if (pictureInPictureWindow && !pictureInPictureWindow.closed) return;
+
+  try {
+    const size = pictureInPictureWindowSize(state.widgetSize);
+    const childWindow = await window.documentPictureInPicture.requestWindow({ width: size, height: size });
+    pictureInPictureWindow = childWindow;
+    const childDocument = childWindow.document;
+    childDocument.title = "Affect Tracker Flubber";
+    const stylesheet = childDocument.createElement("link");
+    stylesheet.rel = "stylesheet";
+    stylesheet.href = new URL("./styles.css", document.baseURI).href;
+    childDocument.head.append(stylesheet);
+    childDocument.body.className = "pip-body";
+
+    const root = childDocument.createElement("main");
+    root.className = "pip-widget";
+    root.tabIndex = 0;
+    root.setAttribute("role", "img");
+    const svg = elements.widget.querySelector("svg").cloneNode(true);
+    svg.removeAttribute("aria-hidden");
+    root.append(svg);
+    childDocument.body.replaceChildren(root);
+    pictureInPictureView = {
+      root,
+      paths: [root.querySelector("#base-path"), root.querySelector("#outline-path"), root.querySelector("#halo-path")],
+    };
+
+    childWindow.addEventListener("keydown", handleGlobalKeyDown);
+    childWindow.addEventListener("keyup", handleGlobalKeyUp);
+    childWindow.addEventListener("wheel", handleWheel, { passive: false });
+    childWindow.addEventListener("blur", () => state.heldDirections.clear());
+    childWindow.addEventListener("pagehide", () => finishPictureInPicture(childWindow), { once: true });
+    elements.pictureInPictureToggle.checked = true;
+    constrainAndRenderWidget();
+    root.focus();
+    recordEvent("picture-in-picture", "open", "flubber", true);
+    announce("Flubber is floating over other applications. Keep this page open.");
+  } catch (error) {
+    elements.pictureInPictureToggle.checked = false;
+    pictureInPictureWindow = undefined;
+    pictureInPictureView = undefined;
+    constrainAndRenderWidget();
+    announce(error?.name === "NotAllowedError"
+      ? "The browser blocked Picture-in-Picture. Try the checkbox again."
+      : `Picture-in-Picture could not open: ${error?.message ?? String(error)}`);
+  }
+}
+
+function updatePictureInPictureSupport() {
+  const supported = pictureInPictureSupported(window);
+  elements.pictureInPictureToggle.disabled = !supported;
+  elements.pictureInPictureNote.textContent = supported
+    ? "The floating window stays above other apps while this page remains open. Its position is controlled by the browser."
+    : "Interactive Picture-in-Picture is not supported by this browser. Use the desktop app for an always-on-top overlay.";
 }
 
 function resetAffect(source = "keyboard") {
@@ -691,6 +800,10 @@ function initializeEvents() {
     updateCustomizationControls();
     constrainAndRenderWidget();
   });
+  elements.pictureInPictureToggle.addEventListener("change", async () => {
+    if (elements.pictureInPictureToggle.checked) await openPictureInPicture();
+    else if (pictureInPictureWindow && !pictureInPictureWindow.closed) pictureInPictureWindow.close();
+  });
   elements.settingsExportButton.addEventListener("click", exportSettings);
   elements.settingsImportButton.addEventListener("click", () => elements.settingsImportFile.click());
   elements.settingsImportFile.addEventListener("change", async () => {
@@ -771,6 +884,8 @@ function initializeEvents() {
 }
 
 function animationFrame(timestamp) {
+  animationFrameOwner = undefined;
+  animationFrameId = undefined;
   if (previousTimestamp === undefined) previousTimestamp = timestamp;
   const deltaSeconds = Math.min((timestamp - previousTimestamp) / 1000, MAX_DELTA_SECONDS);
   previousTimestamp = timestamp;
@@ -797,10 +912,11 @@ function animationFrame(timestamp) {
   elements.outlinePath.setAttribute("d", rendered.path);
   elements.haloPath.setAttribute("d", rendered.path);
   elements.widget.style.setProperty("--affect-color", rendered.color);
+  renderPictureInPicture(rendered);
   updateCoordinateDisplay();
   updateFeatureSpace();
 
-  if (!document.hidden) {
+  if (!document.hidden || pictureInPictureWindow) {
     sampleAccumulator += deltaSeconds;
     if (sampleAccumulator >= SAMPLE_INTERVAL_SECONDS) {
       sampleAccumulator %= SAMPLE_INTERVAL_SECONDS;
@@ -808,7 +924,7 @@ function animationFrame(timestamp) {
     }
   }
 
-  requestAnimationFrame(animationFrame);
+  scheduleAnimationFrame();
 }
 
 function initialize() {
@@ -816,12 +932,13 @@ function initialize() {
   updateModeControls();
   updateFeatureSpace();
   updateCustomizationControls();
+  updatePictureInPictureSupport();
   constrainAndRenderWidget();
   initializeEvents();
   updateLoggerDisplay();
   savePreferences();
   recordEvent("system", "session-start", "session", logger.sessionId);
-  requestAnimationFrame(animationFrame);
+  scheduleAnimationFrame();
 }
 
 document.addEventListener("keydown", (event) => {
