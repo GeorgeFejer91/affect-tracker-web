@@ -131,7 +131,7 @@ test("extended CSV distinguishes raw, metric, and displayed state", () => {
     wallClock: () => new Date("2026-08-22T00:00:00Z"),
     sessionId: () => "session",
   });
-  const touchState = { ...state, inputSource: "touch-trace" };
+  const touchState = { ...state, inputSource: "touch-trace", touchFeedbackMode: "gated" };
   writer.record("pointer_raw", { pointerTimeMs: 1, normalizedX: 0.2, normalizedY: 0.3 }, touchState);
   writer.record("touch_metric", {
     shapeFeature: -0.4,
@@ -140,6 +140,14 @@ test("extended CSV distinguishes raw, metric, and displayed state", () => {
     mappedY: 0.7,
     speedContinuityActive: true,
     feedbackHeld: true,
+    gateId: 3,
+    gateOpen: false,
+    gateCommitSequence: 2,
+    gateDurationMs: 640,
+    gateDeltaX: -0.1,
+    gateDeltaY: 0.2,
+    speedCalibrationSamples: 2,
+    shapeCalibrationSamples: 1,
   }, touchState);
   writer.record("sample", { source: "timer" }, touchState);
   const rows = writer.exportCsv().split("\r\n");
@@ -150,6 +158,11 @@ test("extended CSV distinguishes raw, metric, and displayed state", () => {
   assert.match(rows[0], /feedback_held/);
   assert.match(rows[0], /speed_continuity_active/);
   assert.match(rows[0], /cursor_hidden/);
+  assert.match(rows[0], /touch_feedback_mode/);
+  assert.match(rows[0], /gate_commit_sequence/);
   const fields = rows[0].replace(/^\uFEFF/, "").split(",");
   assert.equal(rows[2].split(",")[fields.indexOf("speed_continuity_active")], "true");
+  assert.equal(rows[2].split(",")[fields.indexOf("touch_feedback_mode")], "gated");
+  assert.equal(rows[2].split(",")[fields.indexOf("gate_commit_sequence")], "2");
+  assert.equal(rows[2].split(",")[fields.indexOf("gate_delta_y")], "0.2");
 });

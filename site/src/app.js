@@ -27,6 +27,8 @@ import {
 } from "./experiment.js";
 import {
   fitTracePoints,
+  TOUCH_FEEDBACK_CONTINUOUS,
+  TOUCH_FEEDBACK_GATED,
   TOUCH_TRACE_ALGORITHM_VERSION,
   TouchTraceAnalyzer,
   TRACE_DURATION_MS,
@@ -73,7 +75,9 @@ const elements = {
   arousalOutput: document.querySelector("#arousal-output"),
   modeInputs: [...document.querySelectorAll("input[name='input-mode']")],
   touchTrackingToggle: document.querySelector("#touch-tracking-toggle"),
+  touchFeedbackModeInputs: [...document.querySelectorAll("input[name='touch-feedback-mode']")],
   touchPointerType: document.querySelector("#touch-pointer-type"),
+  touchGateStatus: document.querySelector("#touch-gate-status"),
   touchHideCursorToggle: document.querySelector("#touch-hide-cursor-toggle"),
   touchTraceFeedbackToggle: document.querySelector("#touch-trace-feedback-toggle"),
   touchPlaygroundSurface: document.querySelector("#touch-playground-surface"),
@@ -180,6 +184,9 @@ function readPreferences(bundledSettings) {
       experimentPanelOpen: typeof parsed.experimentPanelOpen === "boolean" ? parsed.experimentPanelOpen : false,
       touchPlaygroundPanelOpen: typeof parsed.touchPlaygroundPanelOpen === "boolean" ? parsed.touchPlaygroundPanelOpen : false,
       inputSource: parsed.inputSource === "touch-trace" ? "touch-trace" : "manual",
+      touchFeedbackMode: parsed.touchFeedbackMode === TOUCH_FEEDBACK_CONTINUOUS
+        ? TOUCH_FEEDBACK_CONTINUOUS
+        : TOUCH_FEEDBACK_GATED,
       touchHideCursor: parsed.touchHideCursor === true,
       touchTraceFeedback: parsed.touchTraceFeedback === true,
       settings,
@@ -193,6 +200,7 @@ function readPreferences(bundledSettings) {
       experimentPanelOpen: false,
       touchPlaygroundPanelOpen: false,
       inputSource: "manual",
+      touchFeedbackMode: TOUCH_FEEDBACK_GATED,
       touchHideCursor: false,
       touchTraceFeedback: false,
       settings: structuredClone(bundledSettings),
@@ -210,6 +218,7 @@ const state = {
   targetY: 0,
   inputMode: preferences.settings.inputMode,
   inputSource: preferences.inputSource,
+  touchFeedbackMode: preferences.touchFeedbackMode,
   stepSize: preferences.settings.stepSize,
   continuousSpeed: preferences.settings.continuousSpeed,
   response: preferences.settings.response,
@@ -284,7 +293,11 @@ function experimentRecordContext() {
 }
 
 const logger = new AffectLogger();
-const touchTrace = new TouchTraceAnalyzer({ width: window.innerWidth, height: window.innerHeight });
+const touchTrace = new TouchTraceAnalyzer({
+  width: window.innerWidth,
+  height: window.innerHeight,
+  feedbackMode: state.touchFeedbackMode,
+});
 const profiles = createProfiles();
 let offsets = createProjectionOffsets(logger.sessionId, profiles.waveCount);
 let previousTimestamp;
@@ -298,6 +311,7 @@ let pictureInPictureView;
 let animationFrameOwner;
 let animationFrameId;
 let activeTracePointerId;
+let lastLoggedGateCommitSequence = 0;
 const reducedMotionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
 
 function savePreferences() {
@@ -315,6 +329,7 @@ function savePreferences() {
     experimentPanelOpen: state.experimentPanelOpen,
     touchPlaygroundPanelOpen: state.touchPlaygroundPanelOpen,
     inputSource: state.inputSource,
+    touchFeedbackMode: state.touchFeedbackMode,
     touchHideCursor: state.touchHideCursor,
     touchTraceFeedback: state.touchTraceFeedback,
     settings,
@@ -393,8 +408,63 @@ function recordTouchMetric() {
     speedContinuityActive: metric.speedContinuityActive,
     motionActive: metric.motionActive,
     feedbackHeld: metric.feedbackHeld,
+    gateId: metric.gateId,
+    gateOpen: metric.gateOpen,
+    gateCommitSequence: metric.gateCommitSequence,
+    gateDurationMs: metric.gateDurationMs,
+    gateDeltaX: metric.gateDeltaX,
+    gateDeltaY: metric.gateDeltaY,
+    speedCalibrationSamples: metric.speedCalibrationSamples,
+    shapeCalibrationSamples: metric.shapeCalibrationSamples,
     traceFeedbackVisible: state.touchTraceFeedback,
   }, state);
+}
+
+function recordTouchGateCommit(metric) {
+  activeLogger().record("event", {
+    source: "touch-trace",
+    action: "gate-commit",
+    control: `gate-${metric.gateId}`,
+    value: `dx=${metric.gateDeltaX.toFixed(4)},dy=${metric.gateDeltaY.toFixed(4)}`,
+    algorithmVersion: metric.algorithmVersion,
+    pointerType: metric.pointerType,
+    strokeId: metric.strokeId,
+    speedFeature: metric.speedFeature,
+    shapeFeature: metric.shapeFeature,
+    speedLower: metric.speedLower,
+    speedUpper: metric.speedUpper,
+    shapeLower: metric.shapeLower,
+    shapeUpper: metric.shapeUpper,
+    mappedX: metric.mappedX,
+    mappedY: metric.mappedY,
+    speedConfidence: metric.speedConfidence,
+    shapeConfidence: metric.shapeConfidence,
+    speedContinuityActive: metric.speedContinuityActive,
+    motionActive: metric.motionActive,
+    feedbackHeld: metric.feedbackHeld,
+    gateId: metric.gateId,
+    gateOpen: metric.gateOpen,
+    gateCommitSequence: metric.gateCommitSequence,
+    gateDurationMs: metric.gateDurationMs,
+    gateDeltaX: metric.gateDeltaX,
+    gateDeltaY: metric.gateDeltaY,
+    speedCalibrationSamples: metric.speedCalibrationSamples,
+    shapeCalibrationSamples: metric.shapeCalibrationSamples,
+    traceFeedbackVisible: state.touchTraceFeedback,
+  }, state);
+  updateLoggerDisplay();
+}
+
+function applyTouchTraceState(metric) {
+  state.targetX = clamp(metric.targetX);
+  state.targetY = clamp(metric.targetY);
+  if (metric.gateCommitSequence < lastLoggedGateCommitSequence) {
+    lastLoggedGateCommitSequence = metric.gateCommitSequence;
+  }
+  if (metric.gateCommitSequence > lastLoggedGateCommitSequence) {
+    lastLoggedGateCommitSequence = metric.gateCommitSequence;
+    recordTouchGateCommit(metric);
+  }
 }
 
 function updateLoggerDisplay() {
@@ -431,6 +501,7 @@ function updateModeControls() {
 function updateInputSourceControls() {
   const active = state.inputSource === "touch-trace";
   elements.touchTrackingToggle.checked = active;
+  for (const input of elements.touchFeedbackModeInputs) input.checked = input.value === state.touchFeedbackMode;
   elements.touchHideCursorToggle.checked = state.touchHideCursor;
   elements.touchHideCursorToggle.disabled = !active;
   elements.touchTraceFeedbackToggle.checked = state.touchTraceFeedback;
@@ -706,8 +777,13 @@ function drawTouchTraceCanvas(canvas, snapshot, timestamp) {
 function renderTouchTrace(timestamp) {
   const snapshot = touchTrace.snapshot();
   const pointerType = snapshot.pointerType === "unknown" ? "waiting" : snapshot.pointerType;
-  const feedbackVisible = snapshot.motionActive || snapshot.feedbackHeld;
-  const heldSuffix = !snapshot.motionActive && snapshot.feedbackHeld ? " · held" : "";
+  const gated = state.touchFeedbackMode === TOUCH_FEEDBACK_GATED;
+  const feedbackVisible = gated
+    ? snapshot.gateOpen || snapshot.gateCommitSequence > 0
+    : snapshot.motionActive || snapshot.feedbackHeld;
+  const heldSuffix = gated && !snapshot.gateOpen && snapshot.gateCommitSequence > 0
+    ? " · applied"
+    : !snapshot.motionActive && snapshot.feedbackHeld ? " · held" : "";
   const shapeLabel = feedbackVisible
     ? `${snapshot.mappedX < -0.15 ? "jagged" : snapshot.mappedX > 0.15 ? "round" : "neutral"}${heldSuffix}`
     : "inactive";
@@ -723,6 +799,15 @@ function renderTouchTrace(timestamp) {
   elements.playgroundShapeOutput.value = shapeLabel;
   elements.playgroundSpeedOutput.value = speedLabel;
   elements.playgroundConfidenceOutput.value = confidenceLabel;
+  elements.touchGateStatus.value = state.inputSource !== "touch-trace"
+    ? "tracking off"
+    : !gated
+      ? "continuous response"
+      : snapshot.gateOpen
+        ? `measuring swipe ${snapshot.gateId}…`
+        : snapshot.gateCommitSequence > 0
+          ? `applied ΔV ${snapshot.gateDeltaX >= 0 ? "+" : ""}${snapshot.gateDeltaX.toFixed(2)}, ΔA ${snapshot.gateDeltaY >= 0 ? "+" : ""}${snapshot.gateDeltaY.toFixed(2)} · held`
+          : "ready for an occasional swipe";
 
   if (state.touchPlaygroundPanelOpen) {
     drawTouchTraceCanvas(elements.touchPlaygroundCanvas, snapshot, timestamp);
@@ -880,8 +965,12 @@ function updatePictureInPictureSupport() {
 
 function resetAffect(source = "keyboard") {
   if (state.inputSource === "touch-trace") {
-    recordEvent(source, "ignored-control", "reset", "touch-trace");
-    announce("Reset was logged but movement remains in control while Experimental Touch/Trackpad is selected.");
+    touchTrace.reset({ width: window.innerWidth, height: window.innerHeight });
+    lastLoggedGateCommitSequence = 0;
+    state.targetX = 0;
+    state.targetY = 0;
+    recordEvent(source, "reset", "touch-trace-neutral", 0);
+    announce("Experimental movement feedback and calibration returned to neutral.");
     return;
   }
   state.targetX = 0;
@@ -920,6 +1009,7 @@ function setInputSource(inputSource, source = "panel") {
   state.targetX = 0;
   state.targetY = 0;
   touchTrace.reset({ width: window.innerWidth, height: window.innerHeight });
+  lastLoggedGateCommitSequence = 0;
   updateInputSourceControls();
   updateExperimentSourceControls();
   constrainAndRenderWidget();
@@ -928,6 +1018,20 @@ function setInputSource(inputSource, source = "panel") {
   announce(inputSource === "touch-trace"
     ? "Experimental Touch/Trackpad control selected. Page movement now drives the affect display."
     : "Manual affect controls selected.");
+}
+
+function setTouchFeedbackMode(mode, source = "playground") {
+  if (mode !== TOUCH_FEEDBACK_GATED && mode !== TOUCH_FEEDBACK_CONTINUOUS) return;
+  if (mode === state.touchFeedbackMode) return;
+  state.touchFeedbackMode = mode;
+  touchTrace.setFeedbackMode(mode, { targetX: state.targetX, targetY: state.targetY });
+  lastLoggedGateCommitSequence = 0;
+  updateInputSourceControls();
+  savePreferences();
+  recordEvent(source, "feedback-mode-change", "touch-feedback-mode", mode);
+  announce(mode === TOUCH_FEEDBACK_GATED
+    ? "Gated occasional swipes selected. Each completed movement window applies one lasting nudge."
+    : "Continuous touch feedback selected. Movement is followed live and returns gradually toward neutral.");
 }
 
 function moveTarget(direction, source, amount = state.stepSize) {
@@ -1170,6 +1274,7 @@ function touchTraceCaptureEnabled(event) {
 function recordRawPointer(event, phase, coalescedIndex, result) {
   if (!experiment.writer || experiment.phase !== "running" || !experiment.playbackActive) return;
   const diagonal = Math.hypot(window.innerWidth, window.innerHeight);
+  const metric = touchTrace.snapshot();
   experiment.writer.record("pointer_raw", {
     source: "pointer",
     action: phase,
@@ -1180,7 +1285,7 @@ function recordRawPointer(event, phase, coalescedIndex, result) {
     pointerId: event.pointerId,
     pointerType: event.pointerType,
     pointerPhase: phase,
-    strokeId: touchTrace.strokeId,
+    strokeId: metric.strokeId,
     coalescedIndex,
     clientX: event.clientX,
     clientY: event.clientY,
@@ -1192,6 +1297,14 @@ function recordRawPointer(event, phase, coalescedIndex, result) {
     viewportHeight: window.innerHeight,
     rawSpeed: result.rawSpeed ?? "",
     filteredSpeed: result.filteredSpeed ?? "",
+    gateId: metric.gateId,
+    gateOpen: metric.gateOpen,
+    gateCommitSequence: metric.gateCommitSequence,
+    gateDurationMs: metric.gateDurationMs,
+    gateDeltaX: metric.gateDeltaX,
+    gateDeltaY: metric.gateDeltaY,
+    speedCalibrationSamples: metric.speedCalibrationSamples,
+    shapeCalibrationSamples: metric.shapeCalibrationSamples,
     traceFeedbackVisible: state.touchTraceFeedback,
   }, state);
 }
@@ -1547,6 +1660,10 @@ function finishExperiment(reason = "video-ended") {
   experiment.phase = "finishing";
   clearInterval(experiment.sampleTimer);
   experiment.sampleTimer = undefined;
+  if (state.inputSource === "touch-trace" && state.touchFeedbackMode === TOUCH_FEEDBACK_GATED) {
+    touchTrace.commitGate(performance.now());
+    applyTouchTraceState(touchTrace.snapshot());
+  }
   recordTouchMetric();
   recordSample();
   recordEvent("experiment", "stop", reason, experiment.adapter?.duration?.() ?? "");
@@ -1599,6 +1716,7 @@ async function runExperimentCountdown() {
   state.heldDirections.clear();
   clearHeldButtonStyles();
   touchTrace.reset({ width: window.innerWidth, height: window.innerHeight });
+  lastLoggedGateCommitSequence = 0;
   sampleAccumulator = 0;
   await experiment.adapter.start();
   experiment.phase = "running";
@@ -1829,6 +1947,9 @@ function initializeEvents() {
   elements.touchTrackingToggle.addEventListener("change", () => {
     setInputSource(elements.touchTrackingToggle.checked ? "touch-trace" : "manual", "playground");
   });
+  for (const input of elements.touchFeedbackModeInputs) {
+    input.addEventListener("change", () => setTouchFeedbackMode(input.value));
+  }
   elements.touchHideCursorToggle.addEventListener("change", () => {
     state.touchHideCursor = elements.touchHideCursorToggle.checked;
     updateInputSourceControls();
@@ -2006,6 +2127,7 @@ function initializeEvents() {
 
   document.addEventListener("visibilitychange", () => {
     recordPhysicalInput("document", "visibility-change", "visibility", document.visibilityState);
+    touchTrace.cancelGate();
     touchTrace.beginStroke(touchTrace.pointerType);
     activeTracePointerId = undefined;
   });
@@ -2026,8 +2148,7 @@ function animationFrame(timestamp) {
   updateContinuousInput(deltaSeconds);
   const touchMetric = touchTrace.update(timestamp, deltaSeconds);
   if (state.inputSource === "touch-trace") {
-    state.targetX = clamp(touchMetric.targetX);
-    state.targetY = clamp(touchMetric.targetY);
+    applyTouchTraceState(touchMetric);
   }
   state.currentX = smoothToward(state.currentX, state.targetX, state.response, deltaSeconds);
   state.currentY = smoothToward(state.currentY, state.targetY, state.response, deltaSeconds);
