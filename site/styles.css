@@ -365,6 +365,11 @@ body.is-touch-source .affect-widget { cursor: default; }
 body.is-touch-source .affect-widget .drag-hint { display: none; }
 body.is-touch-source #stage { touch-action: none; }
 body.is-touch-source .panel-content { touch-action: pan-y; }
+body.is-touch-source.is-touch-cursor-hidden { cursor: none; }
+body.is-touch-source.is-touch-cursor-hidden .affect-widget,
+body.is-touch-source.is-touch-cursor-hidden .experiment-layer,
+body.is-touch-source.is-touch-cursor-hidden .touch-playground-surface { cursor: none !important; }
+body.is-touch-source.is-touch-cursor-hidden .panel-stack { cursor: default; }
 
 .touch-trace-panel {
   position: fixed;

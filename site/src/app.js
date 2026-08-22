@@ -74,6 +74,7 @@ const elements = {
   modeInputs: [...document.querySelectorAll("input[name='input-mode']")],
   touchTrackingToggle: document.querySelector("#touch-tracking-toggle"),
   touchPointerType: document.querySelector("#touch-pointer-type"),
+  touchHideCursorToggle: document.querySelector("#touch-hide-cursor-toggle"),
   touchTraceFeedbackToggle: document.querySelector("#touch-trace-feedback-toggle"),
   touchPlaygroundSurface: document.querySelector("#touch-playground-surface"),
   touchPlaygroundCanvas: document.querySelector("#touch-playground-canvas"),
@@ -179,6 +180,7 @@ function readPreferences(bundledSettings) {
       experimentPanelOpen: typeof parsed.experimentPanelOpen === "boolean" ? parsed.experimentPanelOpen : false,
       touchPlaygroundPanelOpen: typeof parsed.touchPlaygroundPanelOpen === "boolean" ? parsed.touchPlaygroundPanelOpen : false,
       inputSource: parsed.inputSource === "touch-trace" ? "touch-trace" : "manual",
+      touchHideCursor: parsed.touchHideCursor === true,
       touchTraceFeedback: parsed.touchTraceFeedback === true,
       settings,
       seenIntro: true,
@@ -191,6 +193,7 @@ function readPreferences(bundledSettings) {
       experimentPanelOpen: false,
       touchPlaygroundPanelOpen: false,
       inputSource: "manual",
+      touchHideCursor: false,
       touchTraceFeedback: false,
       settings: structuredClone(bundledSettings),
       seenIntro: true,
@@ -228,6 +231,7 @@ const state = {
   heldDirections: new Set(),
   phase: 0,
   dragging: false,
+  touchHideCursor: preferences.touchHideCursor,
   touchTraceFeedback: preferences.touchTraceFeedback,
 };
 if (state.panelOpen) {
@@ -311,6 +315,7 @@ function savePreferences() {
     experimentPanelOpen: state.experimentPanelOpen,
     touchPlaygroundPanelOpen: state.touchPlaygroundPanelOpen,
     inputSource: state.inputSource,
+    touchHideCursor: state.touchHideCursor,
     touchTraceFeedback: state.touchTraceFeedback,
     settings,
     seenIntro: true,
@@ -426,6 +431,8 @@ function updateModeControls() {
 function updateInputSourceControls() {
   const active = state.inputSource === "touch-trace";
   elements.touchTrackingToggle.checked = active;
+  elements.touchHideCursorToggle.checked = state.touchHideCursor;
+  elements.touchHideCursorToggle.disabled = !active;
   elements.touchTraceFeedbackToggle.checked = state.touchTraceFeedback;
   elements.touchTraceFeedbackToggle.disabled = !active;
   elements.touchPlaygroundSurface.classList.toggle("is-active", active);
@@ -434,6 +441,7 @@ function updateInputSourceControls() {
   elements.featureSpace.setAttribute("aria-disabled", String(active));
   for (const button of elements.directionButtons) button.disabled = false;
   document.body.classList.toggle("is-touch-source", active);
+  document.body.classList.toggle("is-touch-cursor-hidden", active && state.touchHideCursor);
   elements.experimentLayer.classList.toggle("is-touch-capture-active", active && experiment.phase !== "idle");
   elements.dragToggleButton.disabled = active || experiment.phase !== "idle";
   positionTracePanel();
@@ -1820,6 +1828,13 @@ function initializeEvents() {
   }
   elements.touchTrackingToggle.addEventListener("change", () => {
     setInputSource(elements.touchTrackingToggle.checked ? "touch-trace" : "manual", "playground");
+  });
+  elements.touchHideCursorToggle.addEventListener("change", () => {
+    state.touchHideCursor = elements.touchHideCursorToggle.checked;
+    updateInputSourceControls();
+    savePreferences();
+    recordEvent("panel", "cursor-visibility", "touch-trace", state.touchHideCursor ? "hidden" : "visible");
+    announce(state.touchHideCursor ? "Mouse cursor hidden over tracking areas." : "Mouse cursor visible over tracking areas.");
   });
   elements.touchTraceFeedbackToggle.addEventListener("change", () => {
     state.touchTraceFeedback = elements.touchTraceFeedbackToggle.checked;
