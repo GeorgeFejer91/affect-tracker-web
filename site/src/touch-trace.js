@@ -1,6 +1,6 @@
 import { clamp, smoothToward } from "./math.js";
 
-export const TOUCH_TRACE_ALGORITHM_VERSION = "touch-trace-v7";
+export const TOUCH_TRACE_ALGORITHM_VERSION = "touch-trace-v8";
 export const TRACE_DURATION_MS = 4_000;
 export const MOTION_TIMEOUT_MS = 400;
 export const STROKE_SPEED_CONTINUITY_MS = 900;
@@ -15,7 +15,12 @@ export const GATE_LIVE_ACTIVITY_MS = 80;
 export const GATE_LIVE_MIN_RATE = 0.04;
 export const GATE_LIVE_MAX_RATE = 0.4;
 export const RESAMPLE_SPACING = 0.005;
-export const RESAMPLED_POINT_LIMIT = 33;
+// Keep enough equal-distance geometry to recognize large, screen-spanning
+// zigzags. The previous 32-segment window (0.16 viewport diagonals) often
+// contained only the final straight leg of a phone swipe, so an obviously
+// angular gesture could look neutral or inherit an earlier round result.
+// 512 segments cover 2.56 diagonals while remaining small and deterministic.
+export const RESAMPLED_POINT_LIMIT = 513;
 export const FEATURE_INTERVAL_MS = 50;
 // Literature-informed cold-start anchors in viewport diagonals per second.
 // They approximate deliberate drag and quick swipe performance reported by

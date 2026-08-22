@@ -54,6 +54,38 @@ function backtrackingPoints(count = 33) {
   }));
 }
 
+function fullSurfaceZigzagPoints() {
+  const vertices = [
+    [140, 740],
+    [300, 180],
+    [450, 800],
+    [600, 160],
+    [760, 820],
+    [880, 220],
+  ];
+  const points = [];
+  for (let segment = 0; segment < vertices.length - 1; segment += 1) {
+    const [startX, startY] = vertices[segment];
+    const [endX, endY] = vertices[segment + 1];
+    for (let step = 0; step < 18; step += 1) {
+      const amount = step / 18;
+      points.push({
+        clientX: startX + (endX - startX) * amount,
+        clientY: startY + (endY - startY) * amount,
+        time: points.length * 16,
+        pointerType: "touch",
+      });
+    }
+  }
+  points.push({
+    clientX: vertices.at(-1)[0],
+    clientY: vertices.at(-1)[1],
+    time: points.length * 16,
+    pointerType: "touch",
+  });
+  return points;
+}
+
 test("shape metric separates straight, round, and jagged paths", () => {
   const stationary = computeShapeMetrics(Array.from({ length: 33 }, () => ({ x: 1, y: 1 })));
   const straight = computeShapeMetrics(linePoints());
@@ -159,7 +191,7 @@ test("cold-start speed anchors use literature-informed viewport rates", () => {
   assert.ok(Math.abs(SPEED_PRIOR_NEUTRAL_DPS - 0.4387) < 0.001);
   assert.ok(Math.abs(snapshot.speedLower - Math.log1p(SPEED_PRIOR_LOW_DPS)) < 1e-12);
   assert.ok(Math.abs(snapshot.speedUpper - Math.log1p(SPEED_PRIOR_HIGH_DPS)) < 1e-12);
-  assert.equal(TOUCH_TRACE_ALGORITHM_VERSION, "touch-trace-v7");
+  assert.equal(TOUCH_TRACE_ALGORITHM_VERSION, "touch-trace-v8");
 });
 
 test("gate evidence uses a dead zone and bounded signed live rates", () => {
@@ -287,7 +319,7 @@ test("a short rapid burst reaches high arousal and remains available as feedback
   for (let now = 60; now <= 1_000; now += 20) analyzer.update(now, 0.02);
   const snapshot = analyzer.snapshot();
 
-  assert.equal(TOUCH_TRACE_ALGORITHM_VERSION, "touch-trace-v7");
+  assert.equal(TOUCH_TRACE_ALGORITHM_VERSION, "touch-trace-v8");
   assert.equal(snapshot.motionActive, false);
   assert.equal(snapshot.feedbackHeld, true);
   assert.ok(snapshot.speedConfidence >= 0.99);
@@ -464,6 +496,22 @@ test("gated shape windows move valence round/right and jagged/left", () => {
   const jagged = completeGate(jaggedAnalyzer, jaggedPoints, 900);
   assert.ok(jagged.gateDeltaX < -0.05);
   assert.equal(jagged.shapeCalibrationSamples, 1);
+});
+
+test("screen-spanning angular swipes remain jagged between widely spaced corners", () => {
+  const analyzer = new TouchTraceAnalyzer({ width: 1_000, height: 1_000 });
+  const points = fullSurfaceZigzagPoints();
+  let strongestJagged = 0;
+  for (const point of points) {
+    analyzer.ingest(point);
+    analyzer.update(point.time, 0.016);
+    strongestJagged = Math.min(strongestJagged, analyzer.snapshot().mappedX);
+  }
+  const live = analyzer.snapshot();
+  assert.ok(live.shapeFeature < -0.25, `expected angular path, got ${live.shapeFeature}`);
+  assert.ok(live.mappedX < -0.8, `expected strong live jagged mapping, got ${live.mappedX}`);
+  assert.ok(strongestJagged < -0.8);
+  assert.ok(live.targetX < -0.15, `expected sustained leftward movement, got ${live.targetX}`);
 });
 
 test("sustained gated movement reaches the selected extreme before release", () => {
