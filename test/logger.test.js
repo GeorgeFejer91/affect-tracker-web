@@ -135,6 +135,7 @@ test("extended CSV distinguishes raw, metric, and displayed state", () => {
   writer.record("pointer_raw", { pointerTimeMs: 1, normalizedX: 0.2, normalizedY: 0.3 }, touchState);
   writer.record("touch_metric", {
     shapeFeature: -0.4,
+    directionReversal: 0.75,
     speedFeature: 0.6,
     mappedX: -0.8,
     mappedY: 0.7,
@@ -167,6 +168,7 @@ test("extended CSV distinguishes raw, metric, and displayed state", () => {
   assert.match(rows[0], /gate_commit_sequence/);
   assert.match(rows[0], /gate_live_delta_y/);
   const fields = rows[0].replace(/^\uFEFF/, "").split(",");
+  assert.equal(rows[2].split(",")[fields.indexOf("direction_reversal")], "0.75");
   assert.equal(rows[2].split(",")[fields.indexOf("speed_continuity_active")], "true");
   assert.equal(rows[2].split(",")[fields.indexOf("touch_feedback_mode")], "gated");
   assert.equal(rows[2].split(",")[fields.indexOf("gate_commit_sequence")], "2");

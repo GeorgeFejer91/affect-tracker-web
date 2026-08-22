@@ -10,6 +10,7 @@ import {
   SPEED_PRIOR_HIGH_DPS,
   SPEED_PRIOR_LOW_DPS,
   SPEED_PRIOR_NEUTRAL_DPS,
+  STROKE_DIRECTION_MIN_DISTANCE,
   STROKE_SPEED_CONTINUITY_MS,
   TOUCH_FEEDBACK_CONTINUOUS,
   TOUCH_FEEDBACK_GATED,
@@ -46,6 +47,13 @@ function sinusoidPoints(count = 33) {
   }));
 }
 
+function backtrackingPoints(count = 33) {
+  return Array.from({ length: count }, (_, index) => ({
+    x: 0,
+    y: index % 2 ? 0.08 : 0,
+  }));
+}
+
 test("shape metric separates straight, round, and jagged paths", () => {
   const stationary = computeShapeMetrics(Array.from({ length: 33 }, () => ({ x: 1, y: 1 })));
   const straight = computeShapeMetrics(linePoints());
@@ -53,15 +61,30 @@ test("shape metric separates straight, round, and jagged paths", () => {
   const fullCircle = computeShapeMetrics(fullCirclePoints());
   const jagged = computeShapeMetrics(zigzagPoints());
   const sinusoid = computeShapeMetrics(sinusoidPoints());
+  const backtracking = computeShapeMetrics(backtrackingPoints());
   assert.equal(stationary.shapeFeature, 0);
   assert.ok(Math.abs(straight.shapeFeature) < 0.01);
   assert.ok(round.shapeFeature > 0.7);
   assert.ok(fullCircle.shapeFeature > 0.7);
   assert.ok(jagged.shapeFeature < -0.5);
   assert.ok(sinusoid.shapeFeature < 0);
-  for (const result of [stationary, straight, round, fullCircle, jagged, sinusoid]) {
+  assert.ok(backtracking.shapeFeature < -0.6);
+  assert.ok(backtracking.directionReversal > 0.8);
+  for (const result of [stationary, straight, round, fullCircle, jagged, sinusoid, backtracking]) {
     assert.ok(Object.values(result).every(Number.isFinite));
   }
+});
+
+test("roundness requires sustained coherent curvature rather than a short bend", () => {
+  const shortArc = Array.from({ length: 33 }, (_, index) => {
+    const angle = index / 32 * Math.PI / 2;
+    return { x: Math.cos(angle), y: Math.sin(angle) };
+  });
+  const shortMetric = computeShapeMetrics(shortArc);
+  const longMetric = computeShapeMetrics(circlePoints());
+  assert.ok(shortMetric.shapeFeature > 0);
+  assert.ok(shortMetric.shapeFeature < 0.65);
+  assert.ok(longMetric.shapeFeature > shortMetric.shapeFeature + 0.25);
 });
 
 test("a single abrupt corner is penalized relative to a smooth arc", () => {
@@ -136,7 +159,7 @@ test("cold-start speed anchors use literature-informed viewport rates", () => {
   assert.ok(Math.abs(SPEED_PRIOR_NEUTRAL_DPS - 0.4387) < 0.001);
   assert.ok(Math.abs(snapshot.speedLower - Math.log1p(SPEED_PRIOR_LOW_DPS)) < 1e-12);
   assert.ok(Math.abs(snapshot.speedUpper - Math.log1p(SPEED_PRIOR_HIGH_DPS)) < 1e-12);
-  assert.equal(TOUCH_TRACE_ALGORITHM_VERSION, "touch-trace-v6");
+  assert.equal(TOUCH_TRACE_ALGORITHM_VERSION, "touch-trace-v7");
 });
 
 test("gate evidence uses a dead zone and bounded signed live rates", () => {
@@ -264,7 +287,7 @@ test("a short rapid burst reaches high arousal and remains available as feedback
   for (let now = 60; now <= 1_000; now += 20) analyzer.update(now, 0.02);
   const snapshot = analyzer.snapshot();
 
-  assert.equal(TOUCH_TRACE_ALGORITHM_VERSION, "touch-trace-v6");
+  assert.equal(TOUCH_TRACE_ALGORITHM_VERSION, "touch-trace-v7");
   assert.equal(snapshot.motionActive, false);
   assert.equal(snapshot.feedbackHeld, true);
   assert.ok(snapshot.speedConfidence >= 0.99);
@@ -300,6 +323,61 @@ test("rapid lifted-finger micro-strokes share speed evidence without joining the
   analyzer.beginStroke("touch");
   assert.equal(analyzer.speedWindow.length, 0);
   assert.equal(analyzer.snapshot().speedContinuityActive, false);
+});
+
+test("alternating lifted-finger swipe directions become live jagged evidence", () => {
+  const analyzer = new TouchTraceAnalyzer({ width: 1_000, height: 1_000 });
+  const stroke = (startY, endY, startTime) => {
+    const preserveSpeed = analyzer.shouldPreserveSpeed(startTime);
+    analyzer.beginStroke("touch", { preserveSpeed });
+    const middleY = (startY + endY) / 2;
+    [startY, middleY, endY].forEach((clientY, index) => {
+      const time = startTime + index * 20;
+      analyzer.ingest({ clientX: 500, clientY, time, pointerType: "touch" });
+      analyzer.update(time, 0.02);
+    });
+  };
+
+  stroke(750, 250, 0);
+  analyzer.endStroke();
+  stroke(250, 750, 100);
+  const secondStrokeLive = analyzer.snapshot();
+  assert.ok(secondStrokeLive.directionReversal >= 0.45);
+  assert.ok(secondStrokeLive.shapeFeature < 0);
+  analyzer.endStroke();
+
+  stroke(750, 250, 200);
+  const thirdStrokeLive = analyzer.snapshot();
+  assert.ok(thirdStrokeLive.directionReversal > 0.9);
+  assert.ok(thirdStrokeLive.shapeFeature < -0.7);
+  assert.ok(thirdStrokeLive.shapeConfidence > 0.9);
+  assert.ok(thirdStrokeLive.mappedX < -0.9);
+  assert.ok(analyzer.strokePathDistance >= STROKE_DIRECTION_MIN_DISTANCE);
+  assert.ok(thirdStrokeLive.rawSpeed < 20, "lifted-finger displacement must remain excluded from speed");
+});
+
+test("same-direction strokes and expired stroke context do not become jagged", () => {
+  const analyzer = new TouchTraceAnalyzer({ width: 1_000, height: 1_000 });
+  const stroke = (startTime, preserveSpeed) => {
+    analyzer.beginStroke("touch", { preserveSpeed });
+    analyzer.ingest({ clientX: 500, clientY: 750, time: startTime, pointerType: "touch" });
+    analyzer.ingest({ clientX: 500, clientY: 250, time: startTime + 40, pointerType: "touch" });
+    analyzer.update(startTime + 40, 0.04);
+    analyzer.endStroke();
+  };
+
+  stroke(0, false);
+  stroke(100, true);
+  stroke(200, true);
+  const repeated = analyzer.snapshot();
+  assert.equal(repeated.directionReversal, 0);
+  assert.ok(repeated.shapeFeature >= 0);
+
+  const afterExpiry = 240 + STROKE_SPEED_CONTINUITY_MS + 1;
+  assert.equal(analyzer.shouldPreserveSpeed(afterExpiry), false);
+  stroke(afterExpiry, false);
+  assert.equal(analyzer.recentStrokeDirections.length, 1);
+  assert.equal(analyzer.snapshot().directionReversal, 0);
 });
 
 test("inactivity holds the last result before a gradual return to neutral", () => {

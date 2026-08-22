@@ -1,9 +1,10 @@
 import { clamp, smoothToward } from "./math.js";
 
-export const TOUCH_TRACE_ALGORITHM_VERSION = "touch-trace-v6";
+export const TOUCH_TRACE_ALGORITHM_VERSION = "touch-trace-v7";
 export const TRACE_DURATION_MS = 4_000;
 export const MOTION_TIMEOUT_MS = 400;
 export const STROKE_SPEED_CONTINUITY_MS = 900;
+export const STROKE_DIRECTION_MIN_DISTANCE = 0.01;
 export const FEEDBACK_HOLD_MS = 1_800;
 export const TARGET_ATTACK_SECONDS = 0.3;
 export const TARGET_RELEASE_SECONDS = 3;
@@ -28,6 +29,8 @@ export const SPEED_PRIOR_NEUTRAL_DPS = Math.expm1(
 
 const SPEED_DOMAIN_MAX = Math.log1p(4);
 const TURN_THRESHOLD = 5 * Math.PI / 180;
+const ROUND_TURN_MAX = Math.PI / 3;
+const REVERSAL_TURN_START = 2 * Math.PI / 3;
 
 function finite(value, fallback = 0) {
   return Number.isFinite(value) ? value : fallback;
@@ -193,9 +196,25 @@ export class AdaptiveRange {
   }
 }
 
-export function computeShapeMetrics(points) {
+function emptyShapeMetrics(directionReversal = 0) {
+  const reversal = clamp(finite(directionReversal), 0, 1);
+  return {
+    shapeFeature: reversal === 0 ? 0 : -0.75 * reversal,
+    turnActivity: 0,
+    turnCoherence: 0,
+    signFlipRate: 0,
+    roughness: 0,
+    directionReversal: reversal,
+  };
+}
+
+function reversalStrength(angle) {
+  return clamp((Math.abs(angle) - REVERSAL_TURN_START) / (Math.PI - REVERSAL_TURN_START), 0, 1);
+}
+
+export function computeShapeMetrics(points, { crossStrokeReversal = 0 } = {}) {
   if (!Array.isArray(points) || points.length < 9) {
-    return { shapeFeature: 0, turnActivity: 0, turnCoherence: 0, signFlipRate: 0, roughness: 0 };
+    return emptyShapeMetrics(crossStrokeReversal);
   }
   const turns = [];
   for (let index = 1; index < points.length - 1; index += 1) {
@@ -210,7 +229,7 @@ export function computeShapeMetrics(points) {
     turns.push(Math.atan2(ux * vy - uy * vx, ux * vx + uy * vy));
   }
   if (turns.length === 0) {
-    return { shapeFeature: 0, turnActivity: 0, turnCoherence: 0, signFlipRate: 0, roughness: 0 };
+    return emptyShapeMetrics(crossStrokeReversal);
   }
   const sumAbs = turns.reduce((sum, angle) => sum + Math.abs(angle), 0);
   const signedSum = turns.reduce((sum, angle) => sum + angle, 0);
@@ -228,14 +247,34 @@ export function computeShapeMetrics(points) {
   });
   const turnConcentration = sumAbs > 1e-9 ? Math.max(...turns.map(Math.abs)) / sumAbs : 0;
   const roughness = clamp(Math.max(median(deviations) / (Math.PI / 2), turnConcentration), 0, 1);
-  const roundness = turnActivity * turnCoherence;
-  const jaggedness = turnActivity * (0.65 * signFlipRate + 0.35 * roughness);
+  const reversalValues = turns.map(reversalStrength);
+  const reversalPeak = reversalValues.length ? Math.max(...reversalValues) : 0;
+  const reversalCoverage = reversalValues.length
+    ? reversalValues.filter((value) => value > 0).length / reversalValues.length
+    : 0;
+  const withinStrokeReversal = clamp(0.8 * reversalPeak + 0.2 * reversalCoverage, 0, 1);
+  const directionReversal = Math.max(clamp(finite(crossStrokeReversal), 0, 1), withinStrokeReversal);
+  const smoothTurnSum = turns.reduce(
+    (sum, angle) => sum + (Math.abs(angle) <= ROUND_TURN_MAX ? Math.abs(angle) : 0),
+    0,
+  );
+  // Roundness needs a sustained run of moderate, consistently signed turns.
+  // Hairpins and backtracking are explicit reversal evidence, not coherent
+  // curvature, even when atan2 gives each 180-degree turn the same sign.
+  const roundCoverage = clamp(smoothTurnSum / Math.PI, 0, 1);
+  const roundness = roundCoverage * turnCoherence * (1 - directionReversal);
+  const jaggedness = clamp(
+    turnActivity * (0.65 * signFlipRate + 0.35 * roughness) + 0.75 * directionReversal,
+    0,
+    1,
+  );
   return {
     shapeFeature: clamp(roundness - jaggedness, -1, 1),
     turnActivity,
     turnCoherence,
     signFlipRate,
     roughness,
+    directionReversal,
   };
 }
 
@@ -307,6 +346,11 @@ export class TouchTraceAnalyzer {
     this.shapeRange.reset();
     this.speedWindow = [];
     this.sourceSpeedWindow = [];
+    this.recentStrokeDirections = [];
+    this.strokeStartSource = undefined;
+    this.strokePathDistance = 0;
+    this.strokeAlternation = 0;
+    this.directionTransitionCount = 0;
     this.resampledPoints = [];
     this.trace = [];
     this.previousFiltered = undefined;
@@ -407,18 +451,25 @@ export class TouchTraceAnalyzer {
     this.lastLiveIntegrationTime = undefined;
   }
 
-  resetSegment({ preserveSpeed = false } = {}) {
+  resetSegment({ preserveSpeed = false, preserveDirectionContext = false } = {}) {
     this.xFilter.reset();
     this.yFilter.reset();
     if (!preserveSpeed) {
       this.speedWindow = [];
       this.sourceSpeedWindow = [];
     }
+    if (!preserveDirectionContext) {
+      this.recentStrokeDirections = [];
+      this.strokeAlternation = 0;
+      this.directionTransitionCount = 0;
+    }
+    this.strokeStartSource = undefined;
+    this.strokePathDistance = 0;
     this.resampledPoints = [];
     this.previousFiltered = undefined;
     this.previousSource = undefined;
     this.resampleCarry = 0;
-    this.shape = computeShapeMetrics([]);
+    this.shape = computeShapeMetrics([], { crossStrokeReversal: this.strokeAlternation });
     this.shapeConfidence = 0;
     this.speedContinuityActive = preserveSpeed;
   }
@@ -431,22 +482,95 @@ export class TouchTraceAnalyzer {
       && this.sourceSpeedWindow.length > 0;
   }
 
-  beginStroke(pointerType = "unknown", { preserveSpeed = false } = {}) {
+  beginStroke(
+    pointerType = "unknown",
+    { preserveSpeed = false, preserveDirectionContext = preserveSpeed } = {},
+  ) {
     this.strokeId += 1;
     this.pointerType = pointerType;
     this.liveInputEnded = false;
-    this.resetSegment({ preserveSpeed });
+    this.resetSegment({ preserveSpeed, preserveDirectionContext });
     // A new stroke never measures the lifted-finger displacement. Clearing
     // the timestamp also prevents the gap detector from immediately undoing
     // deliberate short-stroke speed continuity on the first new point.
     this.lastPointTime = undefined;
   }
 
-  endStroke() {
+  endStroke(time = this.lastPointTime) {
+    this.finalizeStrokeDirection(time);
     this.liveInputEnded = true;
     this.gateLiveActive = false;
     this.gateLiveRateX = 0;
     this.gateLiveRateY = 0;
+  }
+
+  pruneStrokeDirections(now) {
+    if (!Number.isFinite(now)) return;
+    const cutoff = now - STROKE_SPEED_CONTINUITY_MS;
+    while (this.recentStrokeDirections.length && this.recentStrokeDirections[0].time < cutoff) {
+      this.recentStrokeDirections.shift();
+    }
+    if (this.recentStrokeDirections.length > 6) {
+      this.recentStrokeDirections.splice(0, this.recentStrokeDirections.length - 6);
+    }
+  }
+
+  currentStrokeDirection(time = this.lastPointTime) {
+    if (!this.strokeStartSource || !this.previousSource || this.strokePathDistance < STROKE_DIRECTION_MIN_DISTANCE) {
+      return undefined;
+    }
+    const dx = this.previousSource.x - this.strokeStartSource.x;
+    const dy = this.previousSource.y - this.strokeStartSource.y;
+    const displacement = Math.hypot(dx, dy);
+    if (displacement < STROKE_DIRECTION_MIN_DISTANCE) return undefined;
+    return { x: dx / displacement, y: dy / displacement, time: finite(time, this.lastPointTime) };
+  }
+
+  strokeReversalEvidence(time = this.lastPointTime) {
+    this.pruneStrokeDirections(time);
+    const directions = [...this.recentStrokeDirections];
+    const current = this.currentStrokeDirection(time);
+    if (current) directions.push(current);
+    const reversals = [];
+    for (let index = 1; index < directions.length; index += 1) {
+      const before = directions[index - 1];
+      const after = directions[index];
+      const dot = clamp(before.x * after.x + before.y * after.y, -1, 1);
+      reversals.push(reversalStrength(Math.acos(dot)));
+    }
+    this.directionTransitionCount = reversals.length;
+    if (reversals.length === 0) {
+      this.strokeAlternation = 0;
+      return 0;
+    }
+    // A second opposing stroke begins to register immediately; a third
+    // establishes full confidence in an alternating command sequence.
+    const transitionConfidence = clamp(reversals.length / 2, 0, 1);
+    this.strokeAlternation = median(reversals) * transitionConfidence;
+    return this.strokeAlternation;
+  }
+
+  finalizeStrokeDirection(time = this.lastPointTime) {
+    const direction = this.currentStrokeDirection(time);
+    if (!direction) return false;
+    this.pruneStrokeDirections(direction.time);
+    this.recentStrokeDirections.push(direction);
+    this.strokeStartSource = undefined;
+    this.strokePathDistance = 0;
+    this.strokeReversalEvidence(direction.time);
+    return true;
+  }
+
+  shapeQualification() {
+    const pathQualified = this.resampledPoints.length >= 9
+      && (this.resampledPoints.length - 1) * RESAMPLE_SPACING >= 0.04;
+    const pathConfidence = pathQualified ? clamp((this.resampledPoints.length - 8) / 25, 0, 1) : 0;
+    const reversalQualified = this.strokeAlternation > 0.05 && this.directionTransitionCount > 0;
+    const reversalConfidence = reversalQualified ? clamp(this.directionTransitionCount / 2, 0, 1) : 0;
+    return {
+      qualified: pathQualified || reversalQualified,
+      confidence: Math.max(pathConfidence, reversalConfidence),
+    };
   }
 
   resize(width, height) {
@@ -502,10 +626,13 @@ export class TouchTraceAnalyzer {
       x: this.xFilter.filter(normalized.x, time),
       y: this.yFilter.filter(normalized.y, time),
     };
+    if (!this.strokeStartSource) this.strokeStartSource = normalized;
     let rawSpeed = 0;
     if (this.previousFiltered && this.lastPointTime !== undefined) {
       const deltaSeconds = (time - this.lastPointTime) / 1_000;
-      rawSpeed = Math.hypot(normalized.x - this.previousSource.x, normalized.y - this.previousSource.y) / Math.max(deltaSeconds, 0.001);
+      const sourceDistance = Math.hypot(normalized.x - this.previousSource.x, normalized.y - this.previousSource.y);
+      this.strokePathDistance += sourceDistance;
+      rawSpeed = sourceDistance / Math.max(deltaSeconds, 0.001);
       const positionFilteredSpeed = Math.hypot(filtered.x - this.previousFiltered.x, filtered.y - this.previousFiltered.y) / Math.max(deltaSeconds, 0.001);
       this.speedWindow.push(positionFilteredSpeed);
       this.sourceSpeedWindow.push(rawSpeed);
@@ -517,9 +644,15 @@ export class TouchTraceAnalyzer {
       this.filteredSpeed = Math.max(median(this.speedWindow), median(this.sourceSpeedWindow));
       this.speedFeature = Math.log1p(this.filteredSpeed);
       this.resampleSegment(this.previousSource, normalized);
-      this.shape = computeShapeMetrics(this.resampledPoints);
+      this.previousSource = normalized;
+      this.shape = computeShapeMetrics(this.resampledPoints, {
+        crossStrokeReversal: this.strokeReversalEvidence(time),
+      });
     } else {
       this.appendResampledPoint(normalized);
+      this.shape = computeShapeMetrics(this.resampledPoints, {
+        crossStrokeReversal: this.strokeReversalEvidence(time),
+      });
     }
     this.rawSpeed = rawSpeed;
     this.previousFiltered = filtered;
@@ -576,8 +709,8 @@ export class TouchTraceAnalyzer {
     if (this.motionActive && (this.lastFeatureTime === undefined || now - this.lastFeatureTime >= FEATURE_INTERVAL_MS)) {
       this.lastFeatureTime = now;
       if (this.speedWindow.length > 0) this.speedRange.add(this.speedFeature);
-      const qualifiedShape = this.resampledPoints.length >= 9 && (this.resampledPoints.length - 1) * RESAMPLE_SPACING >= 0.04;
-      if (qualifiedShape) this.shapeRange.add(this.shape.shapeFeature);
+      const shapeQualification = this.shapeQualification();
+      if (shapeQualification.qualified) this.shapeRange.add(this.shape.shapeFeature);
       const boundsDelta = this.lastBoundsTime === undefined ? FEATURE_INTERVAL_MS / 1_000 : (now - this.lastBoundsTime) / 1_000;
       if (this.lastBoundsTime === undefined || now - this.lastBoundsTime >= 500) {
         this.speedRange.update(boundsDelta);
@@ -588,7 +721,7 @@ export class TouchTraceAnalyzer {
       // five-sample median still replaces isolated timing spikes as a burst
       // continues, without making a short fast swipe wait for a long path.
       this.speedConfidence = clamp(this.speedWindow.length / 2, 0, 1);
-      this.shapeConfidence = qualifiedShape ? clamp((this.resampledPoints.length - 8) / 25, 0, 1) : 0;
+      this.shapeConfidence = shapeQualification.confidence;
       this.mappedX = this.shapeRange.normalize(this.shape.shapeFeature) * this.shapeConfidence;
       this.mappedY = this.speedRange.normalize(this.speedFeature) * this.speedConfidence;
     }
@@ -602,12 +735,12 @@ export class TouchTraceAnalyzer {
   }
 
   refreshFeatureMetrics() {
-    const qualifiedShape = this.resampledPoints.length >= 9 && (this.resampledPoints.length - 1) * RESAMPLE_SPACING >= 0.04;
+    const shapeQualification = this.shapeQualification();
     this.speedConfidence = clamp(this.speedWindow.length / 2, 0, 1);
-    this.shapeConfidence = qualifiedShape ? clamp((this.resampledPoints.length - 8) / 25, 0, 1) : 0;
+    this.shapeConfidence = shapeQualification.confidence;
     this.mappedX = this.shapeRange.normalize(this.shape.shapeFeature) * this.shapeConfidence;
     this.mappedY = this.speedRange.normalize(this.speedFeature) * this.speedConfidence;
-    return qualifiedShape;
+    return shapeQualification.qualified;
   }
 
   captureGateFeature() {
@@ -696,6 +829,7 @@ export class TouchTraceAnalyzer {
       turnCoherence: this.shape.turnCoherence,
       signFlipRate: this.shape.signFlipRate,
       roughness: this.shape.roughness,
+      directionReversal: this.shape.directionReversal,
       speedLower: this.speedRange.low,
       speedUpper: this.speedRange.high,
       shapeLower: this.shapeRange.low,

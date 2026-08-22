@@ -21,7 +21,7 @@ For each dispatched Pointer Event, use `getCoalescedEvents()` when available and
 
 Normalize distance by `D = hypot(viewportWidth, viewportHeight)`. Reject duplicate points, non-monotonic times, and intervals below 1 ms. A gap over 400 ms ends an ordinary continuous segment. Resize, orientation, cancellation, visibility, and fullscreen changes reset filters and segmentation so coordinate frames are never mixed.
 
-Each touch/pen `pointerdown` always begins a new shape segment and resets both 1€ filters. If it occurs no more than 900 ms after the prior delivered point and at least one speed segment exists, preserve only the two five-sample speed windows. This lets repeated lifted-finger micro-swipes accumulate the two segments required for full speed confidence. Never calculate speed across the off-surface jump, and never connect separate strokes for shape analysis. A longer inter-stroke gap, pointer cancellation, resize, visibility change, or fullscreen transition clears the carried speed evidence. Mouse/touchpad hover does not use this special stroke bridge; it retains ordinary continuous cursor segmentation.
+Each touch/pen `pointerdown` always begins a new within-stroke geometry segment and resets both 1€ filters. If it occurs no more than 900 ms after the prior delivered point and at least one speed segment exists, preserve the two five-sample speed windows plus up to six qualified per-stroke direction summaries. A direction summary uses only one stroke's on-surface start/end unit vector after both path length and displacement reach `0.01D`. Adjacent summaries may be compared, but no segment is ever created across the off-surface jump. This lets lifted-finger micro-swipes accumulate the two segments required for full speed confidence and lets an up/down/up sequence become live jagged evidence during the active third stroke. A longer inter-stroke gap, pointer cancellation, resize, visibility change, or fullscreen transition clears both continuity contexts. Mouse/touchpad hover retains ordinary continuous cursor segmentation and detects backtracking from within-path turns.
 
 ## Speed to arousal
 
@@ -44,17 +44,21 @@ These values initialize the adaptive mapping; they are not permanent bins. They 
 
 ## Shape to valence
 
-Resample geometry every `0.005D` and retain the latest 32 resampled segments. For consecutive unit vectors use `theta=atan2(cross(u,v),dot(u,v))`, then compute:
+Resample geometry every `0.005D` and retain the latest 32 resampled segments. For consecutive unit vectors use `theta=atan2(cross(u,v),dot(u,v))`. Turns of at least 120 degrees produce a linearly increasing within-stroke reversal strength that reaches 1 at 180 degrees. For close touch/pen strokes, the angle between adjacent per-stroke direction summaries uses the same reversal transform; use the median transition strength multiplied by `min(transitionCount/2,1)` so the second opposing stroke begins feedback and the third establishes full alternating confidence. Then compute:
 
 ```text
 turnActivity = clamp(sum(abs(theta)) / (pi/2), 0, 1)
 turnCoherence = abs(sum(theta)) / max(sum(abs(theta)), epsilon)
-roundness = turnActivity * turnCoherence
-jaggedness = turnActivity * (0.65 * signFlipRate + 0.35 * roughness)
+withinStrokeReversal = 0.8 * peakReversal + 0.2 * reversalTurnFraction
+directionReversal = max(withinStrokeReversal, crossStrokeReversal)
+roundCoverage = clamp(sum(abs(theta) where abs(theta) <= pi/3) / pi, 0, 1)
+roundness = roundCoverage * turnCoherence * (1 - directionReversal)
+jaggedness = clamp(turnActivity * (0.65 * signFlipRate + 0.35 * roughness)
+                   + 0.75 * directionReversal, 0, 1)
 shapeFeature = clamp(roundness - jaggedness, -1, 1)
 ```
 
-Ignore turns under 5 degrees for sign flips. Roughness is the median normalized deviation from a local five-turn median, with turn concentration preventing a single abrupt corner from masquerading as a smooth curve. Shape confidence is zero until at least eight resampled segments and `0.04D` accumulated distance are available. Straight paths are near neutral, coherent arcs/circles are round/positive, and alternating zigzags are jagged/negative.
+Ignore turns under 5 degrees for sign flips. Roughness is the median normalized deviation from a local five-turn median, with turn concentration preventing a single abrupt corner from masquerading as a smooth curve. Ordinary within-stroke shape confidence is zero until at least eight resampled segments and `0.04D` accumulated distance are available. Cross-stroke reversal confidence may instead qualify shape after one strong transition at 0.5 confidence and reaches 1 after two transitions. Straight paths remain near neutral; a short bend is only mildly round; sustained moderate coherent curvature is strongly round/positive; alternating zigzags, hairpins, exact backtracking, and rapid opposing stroke sequences are jagged/negative. This explicit reversal term prevents repeated 180-degree turns from being mistaken for coherent roundness merely because `atan2` gives them the same sign.
 
 ## Adaptive participant range and feedback behavior
 
@@ -64,7 +68,7 @@ Map each feature as `2*clamp((raw-lower)/(upper-lower),0,1)-1` and multiply by f
 
 ### Gated move-and-hold (default)
 
-A gate opens on the first accepted point and closes after 400 ms without a valid point. A later touch/pen micro-stroke beginning within the 900 ms speed-continuity allowance may inherit only the bounded speed window from the preceding stroke/gate; it never connects geometry or measures lifted-finger distance. Incoming points refresh live confidence-weighted metrics immediately for feedback. Representative observations used by the gate and logger remain limited to 20 Hz and bounded to the latest 32 per active gate. At close, use the median speed feature, median qualified shape feature, and maximum observed confidence for each dimension.
+A gate opens on the first accepted point and closes after 400 ms without a valid point. A later touch/pen micro-stroke beginning within the 900 ms continuity allowance may inherit the bounded speed window and on-surface direction summaries from preceding strokes; it never connects their geometry or measures lifted-finger distance. Incoming points refresh live confidence-weighted metrics immediately for feedback, including reversal evidence as soon as the current stroke has a qualifying direction. Representative observations used by the gate and logger remain limited to 20 Hz and bounded to the latest 32 per active gate. At close, use the median speed feature, median qualified shape feature, and maximum observed confidence for each dimension.
 
 Each completed gate contributes at most one representative value to each adaptive range, preventing long gestures from receiving more calibration weight than short gestures. Gated ranges retain 120 completed windows and blend from priors over the first 20 qualified gate samples. Map the representative against the pre-update bounds, then add it once for future calibration.
 
@@ -92,7 +96,7 @@ The optional high-DPI canvas displays the last four seconds. Fit the unrestricte
 
 The web-only compact viewer activates for portrait widths through 600 CSS px and for coarse-pointer phone landscape viewports no taller than 500 CSS px. It uses three ≥44 px top tabs and a viewport-relative content sheet with `viewport-fit=cover`, `100dvh`, safe-area offsets, contained vertical scrolling, and no horizontal overflow. A clean touch-capable phone visit opens Touch Lab once for discovery and persists `mobileTouchIntroSeen`; `inputSource` remains manual until the participant explicitly enables tracking.
 
-The primary view order is enable switch, pointer/gate status, canonical live Flubber preview beside the 2D mapping grid, large swipe surface, then live shape/speed/confidence. The swipe surface is 12–18 rem high depending on dynamic viewport height, has `touch-action:none`, prevents overscroll, and is the only settings-panel region exempt from pointer-analysis exclusion. Secondary behavior, calibration, cursor/trace, and privacy controls are collapsed below it. The preview receives the existing generated path/color and adds no renderer or signal-processing fork. Smartphone presentation does not change `touch-trace-v6`, the adaptive ranges, gate behavior, logging fields, or raw-pointer privacy limits.
+The primary view order is enable switch, pointer/gate status, canonical live Flubber preview beside the 2D mapping grid, large swipe surface, then live shape/speed/confidence. The swipe surface is 12–18 rem high depending on dynamic viewport height, has `touch-action:none`, prevents overscroll, and is the only settings-panel region exempt from pointer-analysis exclusion. Secondary behavior, calibration, cursor/trace, and privacy controls are collapsed below it. The preview receives the existing generated path/color and adds no renderer or signal-processing fork. Smartphone presentation uses the same `touch-trace-v7` classifier, adaptive ranges, gate behavior, logging fields, and raw-pointer privacy limits as larger browsers.
 
 During experiments the vertical order is video, Flubber, then trace. `computeExperimentLayout` must shrink elements as needed on narrow displays, allow the trace to reach 220 px wide, and never overlap the video and Flubber.
 
@@ -109,7 +113,7 @@ Record types are:
 
 All rows retain session/experiment/stimulus identifiers, ISO and monotonic time, `active_elapsed_ms`, stimulus time, source/mode, `touch_feedback_mode`, effective `cursor_hidden`, and animation/widget state. Gate-aware rows expose `gate_id`, `gate_open`, `gate_commit_sequence`, `gate_duration_ms`, total `gate_delta_x/y`, `gate_live_active`, `gate_live_rate_x/y`, accumulated `gate_live_delta_x/y`, `speed_calibration_samples`, and `shape_calibration_samples`; every close also emits one `event` row with action `gate-commit`. `active_elapsed_ms` advances only during playback. Buffering pauses metric/sample emission and active time. Finish closes any still-open gated window without changing its live-selected target, then captures the final metric/sample before completion; abort/fullscreen exit/player failure generates a marked partial CSV.
 
-Algorithm identifier: `touch-trace-v6`. Changing formulas, defaults, columns, segmentation, or adaptive behavior requires tests, an algorithm-version decision, and an update to the provenance ledger.
+Algorithm identifier: `touch-trace-v7`. Changing formulas, defaults, columns, segmentation, or adaptive behavior requires tests, an algorithm-version decision, and an update to the provenance ledger.
 
 Version 2 replaces version 1's filtered-position-only speed estimate, five-segment speed-confidence ramp, 450 ms target response, and immediate 600 ms inactivity decay with a dual-median burst-preserving estimate, two-segment ramp, 300 ms attack, 1.8-second result hold, and 3-second release. This project-specific change responds to observed playground usability: short rapid movements were underweighted and feedback returned to neutral before participants could reach or perceive the extremes. No external algorithm or source code was introduced by this version change.
 
@@ -120,3 +124,5 @@ Version 4 adds the default gated occasional-swipe behavior while retaining versi
 Version 5 changes the default gate from release-triggered nudges to live move-and-hold control. Confidence-weighted mapped evidence outside the existing dead zone becomes a bounded signed velocity integrated while input remains fresh. The participant can keep drawing until the displayed point reaches the intended position; closing freezes that exact target and never applies a release-time correction. Calibration remains one representative vote per completed gate. Live-active, rate, and accumulated-delta columns make the online movement reconstructable. This project-specific revision responds to direct usability clarification and introduces no external source or copied code.
 
 Version 6 replaces the original `0.02 D/s` lower speed prior with a literature-informed `0.15 D/s` deliberate-movement anchor, retains the conservative `0.80 D/s` quick-movement anchor, exposes their approximately `0.4387 D/s` log-space midpoint, and shows lower/hold/higher-arousal command wording plus live D/s. Participant-adaptive p10/p90 calibration remains unchanged and progressively replaces the priors. The provenance ledger records the empirical direction evidence, physical benchmark, individual/task/device limitations, and the absence of universal diagnostic speed thresholds.
+
+Version 7 corrects a shape-classification bias identified through direct playground use. Near-180-degree within-path reversals are explicit jagged evidence instead of potentially coherent round evidence, and close lifted-finger strokes retain bounded on-surface direction summaries so an up/down/up sequence becomes live jagged evidence without joining paths or measuring the finger-up gap. Strong roundness now requires at least a sustained accumulation of moderate turns; a short bend cannot saturate roundness after only 90 degrees. Experiment CSV adds `direction_reversal` so the new evidence is reconstructable. This project-specific usability revision introduces no external source or copied code.
