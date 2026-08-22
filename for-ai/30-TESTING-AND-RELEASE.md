@@ -22,6 +22,7 @@
 
 ## Desktop gates
 
+- `pnpm audit --audit-level=moderate`
 - `cargo fmt --all -- --check`
 - `cargo check --manifest-path src-tauri/Cargo.toml`
 - `cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings`

@@ -26,6 +26,8 @@ jobs:
           cache: pnpm
       - name: Install locked frontend dependencies
         run: pnpm install --frozen-lockfile
+      - name: Audit frontend dependencies
+        run: pnpm audit --audit-level=moderate
       - name: Test browser implementation
         run: pnpm test
       - name: Build desktop WebViews
