@@ -14,12 +14,17 @@ test("the online interface exposes a third experimental touch playground", async
   assert.ok(experimentIndex > settingsIndex);
   assert.ok(playgroundIndex > experimentIndex);
   assert.match(html, /Touch\/Trackpad Playground/);
-  assert.match(html, /class="experimental-badge">Experimental</);
+  assert.match(html, /aria-label="Touch\/Trackpad Playground — Experimental"/);
+  assert.match(html, /class="experimental-badge" aria-hidden="true"/);
   assert.match(html, /id="touch-tracking-toggle"[^>]*role="switch"/);
   assert.match(html, /Enable touch\/trackpad tracking/);
   assert.match(html, /id="touch-hide-cursor-toggle"/);
   assert.match(html, /Hide mouse cursor while tracking/);
   assert.match(html, /id="touch-playground-canvas"/);
+  assert.match(html, /id="touch-preview-flubber"/);
+  assert.match(html, /id="touch-preview-base-path"/);
+  assert.match(html, /Draw or swipe here to control the experimental Flubber/);
+  assert.match(html, /class="touch-playground-options"/);
   assert.match(html, /id="touch-affect-space"/);
   assert.match(html, /id="touch-affect-point"/);
   assert.match(html, /id="touch-affect-valence-output"/);
@@ -76,6 +81,7 @@ test("the settings color map is a draggable live Flubber preview", async () => {
   assert.match(html, /id="web-feature-arousal-output"/);
   assert.match(html, /Click, drag, or use the arrow keys to move the miniature Flubber/);
   assert.match(app, /featureFlubberPath\.setAttribute\("d", rendered\.path\)/);
+  assert.match(app, /touchPreviewBasePath\.setAttribute\("d", rendered\.path\)/);
   assert.match(app, /featureSpace\.addEventListener\("pointermove"/);
 });
 

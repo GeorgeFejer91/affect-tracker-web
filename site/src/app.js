@@ -34,6 +34,7 @@ import {
   TRACE_DURATION_MS,
 } from "./touch-trace.js";
 import { pictureInPictureOptions, pictureInPictureSupported } from "./picture-in-picture.js";
+import { isSmartphoneTouchViewport } from "./mobile.js";
 import {
   actionForBinding,
   ADVANCED_BINDING_LABELS,
@@ -90,6 +91,10 @@ const elements = {
   touchAffectPoint: document.querySelector("#touch-affect-point"),
   touchAffectValenceOutput: document.querySelector("#touch-affect-valence-output"),
   touchAffectArousalOutput: document.querySelector("#touch-affect-arousal-output"),
+  touchPreviewFlubber: document.querySelector("#touch-preview-flubber"),
+  touchPreviewBasePath: document.querySelector("#touch-preview-base-path"),
+  touchPreviewOutlinePath: document.querySelector("#touch-preview-outline-path"),
+  touchPreviewHaloPath: document.querySelector("#touch-preview-halo-path"),
   touchTracePanel: document.querySelector("#touch-trace-panel"),
   touchTraceCanvas: document.querySelector("#touch-trace-canvas"),
   touchShapeOutput: document.querySelector("#touch-shape-output"),
@@ -189,6 +194,7 @@ function readPreferences(bundledSettings) {
         : TOUCH_FEEDBACK_GATED,
       touchHideCursor: parsed.touchHideCursor === true,
       touchTraceFeedback: parsed.touchTraceFeedback === true,
+      mobileTouchIntroSeen: parsed.mobileTouchIntroSeen === true,
       settings,
       seenIntro: true,
     };
@@ -203,6 +209,7 @@ function readPreferences(bundledSettings) {
       touchFeedbackMode: TOUCH_FEEDBACK_GATED,
       touchHideCursor: false,
       touchTraceFeedback: false,
+      mobileTouchIntroSeen: false,
       settings: structuredClone(bundledSettings),
       seenIntro: true,
     };
@@ -242,12 +249,24 @@ const state = {
   dragging: false,
   touchHideCursor: preferences.touchHideCursor,
   touchTraceFeedback: preferences.touchTraceFeedback,
+  mobileTouchIntroSeen: preferences.mobileTouchIntroSeen,
 };
 if (state.panelOpen) {
   state.experimentPanelOpen = false;
   state.touchPlaygroundPanelOpen = false;
 } else if (state.experimentPanelOpen) {
   state.touchPlaygroundPanelOpen = false;
+}
+if (isSmartphoneTouchViewport({
+  width: window.innerWidth,
+  height: window.innerHeight,
+  coarsePointer: window.matchMedia("(pointer: coarse)").matches,
+  maxTouchPoints: navigator.maxTouchPoints,
+}) && !state.mobileTouchIntroSeen) {
+  state.panelOpen = false;
+  state.experimentPanelOpen = false;
+  state.touchPlaygroundPanelOpen = true;
+  state.mobileTouchIntroSeen = true;
 }
 
 const experiment = {
@@ -332,6 +351,7 @@ function savePreferences() {
     touchFeedbackMode: state.touchFeedbackMode,
     touchHideCursor: state.touchHideCursor,
     touchTraceFeedback: state.touchTraceFeedback,
+    mobileTouchIntroSeen: state.mobileTouchIntroSeen,
     settings,
     seenIntro: true,
   }));
@@ -2203,7 +2223,12 @@ function animationFrame(timestamp) {
   elements.outlinePath.setAttribute("d", rendered.path);
   elements.haloPath.setAttribute("d", rendered.path);
   elements.featureFlubberPath.setAttribute("d", rendered.path);
+  elements.touchPreviewBasePath.setAttribute("d", rendered.path);
+  elements.touchPreviewOutlinePath.setAttribute("d", rendered.path);
+  elements.touchPreviewHaloPath.setAttribute("d", rendered.path);
   elements.widget.style.setProperty("--affect-color", rendered.color);
+  elements.touchPreviewFlubber.style.setProperty("--affect-color", rendered.color);
+  elements.touchPreviewFlubber.style.opacity = state.widgetVisible ? state.widgetOpacity : 0;
   renderPictureInPicture(rendered);
   updateCoordinateDisplay();
   updateFeatureSpace();

@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <meta name="color-scheme" content="dark">
     <meta name="description" content="A draggable, browser-only 2D affect tracker inspired by AffectTracker.">
     <title>2D Affect Tracker</title>
@@ -50,10 +50,14 @@
           id="panel-toggle"
           class="panel-toggle"
           type="button"
+          aria-label="Affect Tracker Settings"
           aria-expanded="true"
           aria-controls="panel-content"
         >
-          <span id="panel-title">Affect Tracker Settings</span>
+          <span id="panel-title" class="panel-title-group">
+            <span class="panel-label-full">Affect Tracker Settings</span>
+            <span class="panel-label-mobile">Affect</span>
+          </span>
           <span class="toggle-symbol" aria-hidden="true">−</span>
         </button>
 
@@ -181,8 +185,11 @@
       </section>
 
       <section id="experiment-panel" class="control-panel experiment-panel is-collapsed" aria-labelledby="experiment-panel-title">
-        <button id="experiment-panel-toggle" class="panel-toggle" type="button" aria-expanded="false" aria-controls="experiment-panel-content">
-          <span id="experiment-panel-title">Experiment</span>
+        <button id="experiment-panel-toggle" class="panel-toggle" type="button" aria-label="Experiment" aria-expanded="false" aria-controls="experiment-panel-content">
+          <span id="experiment-panel-title" class="panel-title-group">
+            <span class="panel-label-full">Experiment</span>
+            <span class="panel-label-mobile">Study</span>
+          </span>
           <span id="experiment-toggle-symbol" class="toggle-symbol" aria-hidden="true">+</span>
         </button>
         <div id="experiment-panel-content" class="panel-content">
@@ -209,10 +216,14 @@
       </section>
 
       <section id="touch-playground-panel" class="control-panel touch-playground-panel is-collapsed" aria-labelledby="touch-playground-panel-title">
-        <button id="touch-playground-panel-toggle" class="panel-toggle" type="button" aria-expanded="false" aria-controls="touch-playground-panel-content">
+        <button id="touch-playground-panel-toggle" class="panel-toggle" type="button" aria-label="Touch/Trackpad Playground — Experimental" aria-expanded="false" aria-controls="touch-playground-panel-content">
           <span id="touch-playground-panel-title" class="panel-title-group">
-            <span>Touch/Trackpad Playground</span>
-            <span class="experimental-badge">Experimental</span>
+            <span class="panel-label-full">Touch/Trackpad Playground</span>
+            <span class="panel-label-mobile">Touch Lab</span>
+            <span class="experimental-badge" aria-hidden="true">
+              <span class="panel-label-full">Experimental</span>
+              <span class="panel-label-mobile">EXP</span>
+            </span>
           </span>
           <span id="touch-playground-toggle-symbol" class="toggle-symbol" aria-hidden="true">+</span>
         </button>
@@ -228,59 +239,81 @@
                 <small>Replaces manual affect control while enabled</small>
               </span>
             </label>
-            <p id="touch-tracking-note">Detected input: <output id="touch-pointer-type">waiting</output>. Laptop touchpads expose the OS-accelerated cursor path, not raw finger contacts.</p>
-            <fieldset class="touch-feedback-mode-control">
-              <legend>Feedback behavior</legend>
-              <label>
-                <input type="radio" name="touch-feedback-mode" value="gated" checked>
-                <span><strong>Gated move-and-hold</strong><small>Move the Flubber continuously while drawing, then hold the exact position when you stop.</small></span>
-              </label>
-              <label>
-                <input type="radio" name="touch-feedback-mode" value="continuous">
-                <span><strong>Continuous live response</strong><small>Follow movement continuously, hold briefly, then drift back toward neutral.</small></span>
-              </label>
-            </fieldset>
-            <p>In gated mode, keep swiping until the point reaches the state you want: fast/slow movement continuously raises/lowers arousal and round/jagged movement continuously moves valence right/left. When you stop, the point stays exactly where it reached. Each completed movement window still contributes only once to personal calibration.</p>
-            <p class="touch-calibration-note"><strong>Speed calibration:</strong> cold-start anchors are 0.15 viewport diagonals/s for deliberate slow movement, about 0.44 D/s for the midpoint/hold command, and 0.80 D/s for a quick swipe. Your completed movements progressively personalize that range. These are control commands—not claims that a speed diagnoses calmness or emotional arousal.</p>
-            <p class="touch-gate-status">Window: <output id="touch-gate-status">tracking off</output></p>
-            <p>Repeated short touch/pen strokes beginning within 900 ms share speed evidence, but never join their shapes or count the lifted-finger jump.</p>
-            <label class="picture-in-picture-toggle">
-              <input id="touch-hide-cursor-toggle" type="checkbox">
-              <span>Hide mouse cursor while tracking</span>
-            </label>
-            <p>The cursor remains visible over settings controls so this option can always be turned off.</p>
 
-            <div id="touch-playground-surface" class="touch-playground-surface" aria-label="Live experimental movement-path playground">
-              <canvas id="touch-playground-canvas" width="320" height="180" aria-hidden="true"></canvas>
-              <p id="touch-playground-inactive">Turn tracking on, then move here or anywhere outside the controls.</p>
-            </div>
-            <div class="touch-trace-metrics touch-playground-metrics" aria-live="off">
-              <span>Shape <output id="playground-shape-output">inactive</output></span>
-              <span>Speed <output id="playground-speed-output">still</output></span>
-              <span>Confidence <output id="playground-confidence-output">0%</output></span>
+            <div class="touch-live-status" aria-live="off">
+              <span>Input <output id="touch-pointer-type">waiting</output></span>
+              <span>Window <output id="touch-gate-status">tracking off</output></span>
             </div>
 
-            <section class="touch-affect-map" aria-labelledby="touch-affect-map-title">
-              <h4 id="touch-affect-map-title">Live movement mapping</h4>
-              <p>The dot shows how the current finger or cursor path is driving the displayed Flubber.</p>
-              <div id="touch-affect-space" class="touch-affect-space" role="img" aria-label="Experimental mapping at neutral valence and neutral arousal">
-                <canvas id="touch-affect-space-canvas" width="160" height="160" aria-hidden="true"></canvas>
-                <span class="space-axis space-up">Fast ↑ A</span><span class="space-axis space-down">Slow ↓ A</span>
-                <span class="space-axis space-left">Jagged</span><span class="space-axis space-right">Round</span>
-                <span id="touch-affect-point" class="touch-affect-point" aria-hidden="true"></span>
-              </div>
-              <div class="feature-preview-values" aria-live="off">
-                <span>Valence <output id="touch-affect-valence-output">+0.000</output></span>
-                <span>Arousal <output id="touch-affect-arousal-output">+0.000</output></span>
-              </div>
-            </section>
+            <div class="touch-live-viewer">
+              <div class="touch-live-summary">
+                <section class="touch-flubber-card" aria-label="Live movement-responsive Flubber preview">
+                  <h4>Live Flubber</h4>
+                  <svg id="touch-preview-flubber" class="touch-preview-flubber" viewBox="-1.62 -1.62 3.24 3.24" aria-hidden="true" focusable="false">
+                    <path id="touch-preview-halo-path" class="shape-halo"></path>
+                    <path id="touch-preview-base-path" class="shape-base"></path>
+                    <path id="touch-preview-outline-path" class="shape-outline"></path>
+                    <circle class="center-dot" cx="0" cy="0" r="0.025"></circle>
+                  </svg>
+                </section>
 
-            <label class="picture-in-picture-toggle">
-              <input id="touch-trace-feedback-toggle" type="checkbox">
-              <span>Show movement trace beneath Flubber</span>
-            </label>
-            <p>The optional floating trace mirrors the same recent page-wide path and remains beneath the Flubber during experiments.</p>
-            <p class="experiment-privacy">This prototype describes movement—not emotion. Practice movement is not stored. Raw pointer coordinates are recorded only while an experiment is actively playing.</p>
+                <section class="touch-affect-map" aria-labelledby="touch-affect-map-title">
+                  <h4 id="touch-affect-map-title">2D movement map</h4>
+                  <p>The dot shows how the current finger path drives the displayed Flubber.</p>
+                  <div id="touch-affect-space" class="touch-affect-space" role="img" aria-label="Experimental mapping at neutral valence and neutral arousal">
+                    <canvas id="touch-affect-space-canvas" width="160" height="160" aria-hidden="true"></canvas>
+                    <span class="space-axis space-up">Fast ↑ A</span><span class="space-axis space-down">Slow ↓ A</span>
+                    <span class="space-axis space-left">Jagged</span><span class="space-axis space-right">Round</span>
+                    <span id="touch-affect-point" class="touch-affect-point" aria-hidden="true"></span>
+                  </div>
+                  <div class="feature-preview-values" aria-live="off">
+                    <span>V <output id="touch-affect-valence-output">+0.000</output></span>
+                    <span>A <output id="touch-affect-arousal-output">+0.000</output></span>
+                  </div>
+                </section>
+              </div>
+
+              <div id="touch-playground-surface" class="touch-playground-surface" aria-label="Draw or swipe here to control the experimental Flubber">
+                <canvas id="touch-playground-canvas" width="320" height="180" aria-hidden="true"></canvas>
+                <p id="touch-playground-inactive">Turn tracking on, then draw or swipe here.</p>
+                <span class="touch-surface-label" aria-hidden="true">Swipe area</span>
+              </div>
+              <div class="touch-trace-metrics touch-playground-metrics" aria-live="off">
+                <span>Shape <output id="playground-shape-output">inactive</output></span>
+                <span class="touch-speed-metric">Speed <output id="playground-speed-output">still</output></span>
+                <span>Confidence <output id="playground-confidence-output">0%</output></span>
+              </div>
+            </div>
+
+            <details class="touch-playground-options">
+              <summary>Response, calibration & display options</summary>
+              <p id="touch-tracking-note">Touchscreens provide direct finger trajectories. Laptop touchpads expose an OS-accelerated cursor path rather than raw contacts.</p>
+              <fieldset class="touch-feedback-mode-control">
+                <legend>Feedback behavior</legend>
+                <label>
+                  <input type="radio" name="touch-feedback-mode" value="gated" checked>
+                  <span><strong>Gated move-and-hold</strong><small>Move the Flubber continuously while drawing, then hold the exact position when you stop.</small></span>
+                </label>
+                <label>
+                  <input type="radio" name="touch-feedback-mode" value="continuous">
+                  <span><strong>Continuous live response</strong><small>Follow movement continuously, hold briefly, then drift back toward neutral.</small></span>
+                </label>
+              </fieldset>
+              <p>In gated mode, keep swiping until the point reaches the state you want: fast/slow movement continuously raises/lowers arousal and round/jagged movement continuously moves valence right/left. When you stop, the point stays exactly where it reached. Each completed movement window still contributes only once to personal calibration.</p>
+              <p class="touch-calibration-note"><strong>Speed calibration:</strong> cold-start anchors are 0.15 viewport diagonals/s for deliberate slow movement, about 0.44 D/s for the midpoint/hold command, and 0.80 D/s for a quick swipe. Your completed movements progressively personalize that range. These are control commands—not claims that a speed diagnoses calmness or emotional arousal.</p>
+              <p>Repeated short touch/pen strokes beginning within 900 ms share speed evidence, but never join their shapes or count the lifted-finger jump.</p>
+              <label class="picture-in-picture-toggle pointer-only-option">
+                <input id="touch-hide-cursor-toggle" type="checkbox">
+                <span>Hide mouse cursor while tracking</span>
+              </label>
+              <p class="pointer-only-option">The cursor remains visible over settings controls so this option can always be turned off.</p>
+              <label class="picture-in-picture-toggle">
+                <input id="touch-trace-feedback-toggle" type="checkbox">
+                <span>Show movement trace beneath Flubber</span>
+              </label>
+              <p>The optional floating trace mirrors the same recent page-wide path and remains beneath the Flubber during experiments.</p>
+              <p class="experiment-privacy">This prototype describes movement—not emotion. Practice movement is not stored. Raw pointer coordinates are recorded only while an experiment is actively playing.</p>
+            </details>
           </section>
         </div>
       </section>

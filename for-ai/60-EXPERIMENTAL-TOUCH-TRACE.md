@@ -88,6 +88,12 @@ Maintain the earlier 1,200-feature/60-second range and blend from priors over 10
 
 The optional high-DPI canvas displays the last four seconds. Fit the unrestricted path into its rectangle with uniform scale, preserved aspect ratio, centering, and 8% padding. Segment age controls opacity and rainbow hue; reduced-motion uses a static spatial rainbow with ordinary fading. Labels show slow/fast, jagged/round, and calibration confidence. The embedded playground also shows the current displayed coordinates on a cached four-anchor palette canvas: left/right are jagged/round, bottom/top are slow/fast, and the dot always represents the smoothed Flubber state rather than an unsmoothed raw feature.
 
+### Smartphone viewer
+
+The web-only compact viewer activates for portrait widths through 600 CSS px and for coarse-pointer phone landscape viewports no taller than 500 CSS px. It uses three ≥44 px top tabs and a viewport-relative content sheet with `viewport-fit=cover`, `100dvh`, safe-area offsets, contained vertical scrolling, and no horizontal overflow. A clean touch-capable phone visit opens Touch Lab once for discovery and persists `mobileTouchIntroSeen`; `inputSource` remains manual until the participant explicitly enables tracking.
+
+The primary view order is enable switch, pointer/gate status, canonical live Flubber preview beside the 2D mapping grid, large swipe surface, then live shape/speed/confidence. The swipe surface is 12–18 rem high depending on dynamic viewport height, has `touch-action:none`, prevents overscroll, and is the only settings-panel region exempt from pointer-analysis exclusion. Secondary behavior, calibration, cursor/trace, and privacy controls are collapsed below it. The preview receives the existing generated path/color and adds no renderer or signal-processing fork. Smartphone presentation does not change `touch-trace-v6`, the adaptive ranges, gate behavior, logging fields, or raw-pointer privacy limits.
+
 During experiments the vertical order is video, Flubber, then trace. `computeExperimentLayout` must shrink elements as needed on narrow displays, allow the trace to reach 220 px wide, and never overlap the video and Flubber.
 
 ## Logging contract

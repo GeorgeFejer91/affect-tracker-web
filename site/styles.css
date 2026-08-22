@@ -274,6 +274,10 @@ body.is-experiment-running .touch-trace-panel { z-index: 40; }
   text-align: left;
 }
 
+.panel-label-mobile {
+  display: none;
+}
+
 .panel-content {
   max-height: calc(100vh - 5.5rem);
   padding: 0 0.85rem 0.85rem;
@@ -507,6 +511,88 @@ body.is-touch-source.is-touch-cursor-hidden .panel-stack { cursor: default; }
 .touch-feedback-mode-control small { margin-top: 0.1rem; color: rgb(255 255 255 / 58%); font-size: 0.61rem; line-height: 1.35; }
 .touch-playground-intro .touch-gate-status { color: #a8e5ff; font: 0.66rem ui-monospace, SFMono-Regular, Consolas, monospace; }
 
+.touch-live-status {
+  display: grid;
+  grid-template-columns: minmax(0, 0.65fr) minmax(0, 1.35fr);
+  gap: 0.4rem;
+  margin: 0.55rem 0;
+}
+
+.touch-live-status span {
+  min-width: 0;
+  padding: 0.42rem 0.5rem;
+  overflow: hidden;
+  border: 1px solid rgb(120 215 255 / 18%);
+  border-radius: 0.45rem;
+  background: rgb(0 0 0 / 24%);
+  color: rgb(255 255 255 / 55%);
+  font-size: 0.58rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.touch-live-status output {
+  display: block;
+  margin-top: 0.08rem;
+  overflow: hidden;
+  color: #c8f1ff;
+  font: 0.64rem ui-monospace, SFMono-Regular, Consolas, monospace;
+  text-overflow: ellipsis;
+}
+
+.touch-live-viewer {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.touch-live-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.55rem;
+}
+
+.touch-flubber-card,
+.touch-affect-map {
+  min-width: 0;
+  margin: 0;
+  padding: 0.55rem;
+  border: 1px solid rgb(120 215 255 / 18%);
+  border-radius: 0.55rem;
+  background: rgb(0 0 0 / 26%);
+}
+
+.touch-flubber-card {
+  display: grid;
+  align-content: start;
+  justify-items: center;
+}
+
+.touch-flubber-card h4,
+.touch-affect-map h4 {
+  justify-self: start;
+  width: 100%;
+  margin: 0;
+  color: rgb(255 255 255 / 72%);
+  font-size: 0.68rem;
+}
+
+.touch-preview-flubber {
+  display: block;
+  width: min(9rem, 100%);
+  margin: 0.3rem auto 0;
+  overflow: visible;
+  filter: drop-shadow(0 0 0.85rem rgb(255 255 255 / 12%));
+}
+
+.touch-preview-flubber .shape-outline {
+  stroke-width: 0.055;
+}
+
+.touch-preview-flubber .shape-halo {
+  stroke-width: 0.16;
+  filter: none;
+}
+
 .touch-playground-surface {
   position: relative;
   width: 100%;
@@ -519,6 +605,9 @@ body.is-touch-source.is-touch-cursor-hidden .panel-stack { cursor: default; }
     linear-gradient(to bottom, transparent calc(50% - 0.5px), rgb(255 255 255 / 12%) 50%, transparent calc(50% + 0.5px)),
     #030407;
   touch-action: none;
+  overscroll-behavior: contain;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 .touch-playground-surface canvas {
@@ -538,10 +627,26 @@ body.is-touch-source.is-touch-cursor-hidden .panel-stack { cursor: default; }
   color: rgb(255 255 255 / 72%);
   text-align: center;
   pointer-events: none;
+  z-index: 2;
 }
 
 .touch-playground-surface.is-active p {
   display: none;
+}
+
+.touch-surface-label {
+  position: absolute;
+  z-index: 1;
+  right: 0.45rem;
+  bottom: 0.4rem;
+  padding: 0.12rem 0.32rem;
+  border-radius: 999px;
+  background: rgb(0 0 0 / 52%);
+  color: rgb(255 255 255 / 48%);
+  font-size: 0.52rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  pointer-events: none;
 }
 
 .touch-playground-metrics {
@@ -549,21 +654,25 @@ body.is-touch-source.is-touch-cursor-hidden .panel-stack { cursor: default; }
 }
 
 .touch-affect-map {
-  margin: 0.85rem 0;
-  padding-top: 0.75rem;
-  border-top: 1px solid rgb(120 215 255 / 18%);
+  display: grid;
+  align-content: start;
 }
 
 .touch-affect-map h4 {
-  margin: 0;
-  font-size: 0.78rem;
+  font-size: 0.68rem;
+}
+
+.touch-affect-map p {
+  margin: 0.25rem 0 0;
+  font-size: 0.58rem;
+  line-height: 1.35;
 }
 
 .touch-affect-space {
   position: relative;
-  width: min(12rem, 86%);
+  width: min(9rem, 100%);
   aspect-ratio: 1;
-  margin: 0.65rem auto;
+  margin: 0.35rem auto;
   border: 1px solid rgb(255 255 255 / 28%);
   border-radius: 0.55rem;
   background: #b7b7b7;
@@ -601,6 +710,28 @@ body.is-touch-source.is-touch-cursor-hidden .panel-stack { cursor: default; }
   box-shadow: 0 0 0 2px rgb(0 0 0 / 50%), 0 0 0.6rem rgb(255 255 255 / 55%);
   transform: translate(-50%, -50%);
   pointer-events: none;
+}
+
+.touch-playground-options {
+  margin-top: 0.65rem;
+  padding: 0.1rem 0.6rem 0.6rem;
+  border: 1px solid rgb(255 255 255 / 13%);
+  border-radius: 0.55rem;
+  background: rgb(0 0 0 / 20%);
+}
+
+.touch-playground-options summary {
+  display: flex;
+  min-height: 2.75rem;
+  align-items: center;
+  color: #e9f7ff;
+  cursor: pointer;
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
+.touch-playground-options > p {
+  margin: 0.55rem 0;
 }
 
 .experimental-badge {
@@ -786,15 +917,175 @@ kbd {
   border: 0 !important;
 }
 
-@media (max-width: 520px) {
-  .panel-stack {
-    top: 0.65rem;
-    left: 0.65rem;
-    width: min(19rem, calc(100vw - 1.3rem));
+@media (max-width: 600px), (max-height: 500px) and (pointer: coarse) {
+  html,
+  body,
+  #stage {
+    height: 100dvh;
+    min-height: 100%;
+    overscroll-behavior: none;
   }
 
-  .panel-content {
-    max-height: calc(100vh - 4.5rem);
+  .panel-stack {
+    top: calc(env(safe-area-inset-top, 0px) + 0.5rem);
+    right: calc(env(safe-area-inset-right, 0px) + 0.5rem);
+    left: calc(env(safe-area-inset-left, 0px) + 0.5rem);
+    width: auto;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.35rem;
+  }
+
+  .control-panel {
+    min-width: 0;
+    border-radius: 0.65rem;
+    background: rgb(12 12 15 / 94%);
+    /* A backdrop filter makes fixed descendants use this narrow tab as their
+       containing block in mobile browsers. The full-screen sheet must remain
+       viewport-relative, so phone tabs deliberately avoid that effect. */
+    backdrop-filter: none;
+  }
+
+  .control-panel:not(.is-collapsed) {
+    border-color: rgb(120 215 255 / 46%);
+    background: rgb(24 43 54 / 92%);
+  }
+
+  .panel-toggle {
+    min-height: 3rem;
+    justify-content: center;
+    padding: 0.4rem 0.3rem;
+    border-radius: 0.65rem;
+    font-size: 0.72rem;
+  }
+
+  .panel-title-group {
+    width: 100%;
+    justify-content: center;
+    gap: 0.25rem;
+    text-align: center;
+  }
+
+  .panel-label-full,
+  .toggle-symbol {
+    display: none;
+  }
+
+  .panel-label-mobile {
+    display: inline;
+  }
+
+  .experimental-badge {
+    margin: 0;
+    padding: 0.08rem 0.2rem;
+    font-size: 0.43rem;
+  }
+
+  .panel-stack .panel-content {
+    position: fixed;
+    top: calc(env(safe-area-inset-top, 0px) + 3.85rem);
+    right: calc(env(safe-area-inset-right, 0px) + 0.5rem);
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 0.5rem);
+    left: calc(env(safe-area-inset-left, 0px) + 0.5rem);
+    max-height: none;
+    padding: 0.55rem;
+    overscroll-behavior: contain;
+    border: 1px solid rgb(255 255 255 / 14%);
+    border-radius: 0.75rem;
+    background: rgb(5 7 10 / 97%);
+    box-shadow: 0 1rem 3rem rgb(0 0 0 / 62%);
+  }
+
+  .touch-playground-intro {
+    padding: 0.5rem;
+    border: 0;
+    background: transparent;
+  }
+
+  .touch-playground-intro h3 {
+    font-size: 1rem;
+  }
+
+  .touch-playground-intro > h3 + p {
+    margin: 0.2rem 0 0.45rem;
+    font-size: 0.66rem;
+  }
+
+  .touch-tracking-toggle {
+    min-height: 3.15rem;
+    margin: 0.45rem 0;
+    padding: 0.55rem 0.65rem;
+  }
+
+  .touch-tracking-toggle input,
+  .picture-in-picture-toggle input,
+  .touch-feedback-mode-control input {
+    width: 1.25rem;
+    height: 1.25rem;
+  }
+
+  .touch-live-status {
+    margin: 0.4rem 0;
+  }
+
+  .touch-live-summary {
+    gap: 0.4rem;
+  }
+
+  .touch-flubber-card,
+  .touch-affect-map {
+    min-height: 7.5rem;
+    padding: 0.42rem;
+  }
+
+  .touch-preview-flubber,
+  .touch-affect-space {
+    width: min(7.2rem, 100%);
+  }
+
+  .touch-affect-map p {
+    display: none;
+  }
+
+  .touch-affect-map .feature-preview-values {
+    margin: 0.15rem 0 0;
+  }
+
+  .touch-playground-surface {
+    height: clamp(12rem, 32dvh, 18rem);
+    min-height: 0;
+    aspect-ratio: auto;
+    border-color: rgb(120 215 255 / 44%);
+    border-radius: 0.7rem;
+    box-shadow: inset 0 0 2rem rgb(120 215 255 / 5%);
+  }
+
+  .touch-playground-metrics {
+    grid-template-columns: 0.8fr 1.6fr 0.8fr;
+    min-height: 2.7rem;
+    align-items: start;
+  }
+
+  .touch-playground-options summary,
+  .touch-feedback-mode-control label,
+  .picture-in-picture-toggle {
+    min-height: 2.75rem;
+  }
+
+  .experiment-settings,
+  .web-settings-grid,
+  .web-binding-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .experiment-settings .wide-field,
+  .web-settings-grid .wide-field {
+    grid-column: auto;
+  }
+}
+
+@media (max-width: 600px) and (pointer: coarse), (max-height: 500px) and (pointer: coarse) {
+  .pointer-only-option {
+    display: none;
   }
 }
 

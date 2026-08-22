@@ -41,6 +41,7 @@ The web and desktop applications must feel like the same instrument. Shared affe
 - `src-tauri/`: authoritative Rust state, validation, persistence, input monitoring, lifecycle, and LSL implementation.
 - `site/`: dependency-free online application and online-only experiment module.
 - `site/src/touch-trace.js`: browser-only trajectory filtering, equal-distance geometry, direct continuous and gated live move-and-hold feedback, adaptive calibration, and trace fitting.
+- `site/src/mobile.js`: browser-only narrow touch-capable viewport detection for one-time smartphone Touch Lab discovery; responsive presentation remains in `site/styles.css`.
 - `for-ai/70-RESEARCH-PROVENANCE.md` and `for-ai/references.bib`: source-decision ledger and citation-ready bibliography.
 - `desktop/`: Tauri WebView presentation and typed native adapter.
 - `.github/workflows/`: deployment, verification, and native packaging automation.

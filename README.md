@@ -45,6 +45,12 @@ The default **Gated move-and-hold** behavior lets the participant keep drawing u
 
 This is an experimental movement-feedback prototype, not validated emotion recognition or diagnosis. Its algorithm, limitations, calibration rationale, and research provenance are documented in [`for-ai/60-EXPERIMENTAL-TOUCH-TRACE.md`](./for-ai/60-EXPERIMENTAL-TOUCH-TRACE.md) and [`for-ai/70-RESEARCH-PROVENANCE.md`](./for-ai/70-RESEARCH-PROVENANCE.md).
 
+### Smartphone web viewer
+
+The GitHub Pages application has a touch-first phone layout; no native smartphone app is required. On the first visit from a narrow touch-capable device, **Touch Lab** opens automatically but tracking remains off until the participant explicitly enables it. The phone viewer provides three compact 48 px tabs, safe-area/notch support, dynamic viewport height, a live Flubber preview beside the 2D valence–arousal map, and a large non-scrolling swipe pad. Secondary response, calibration, privacy, and display controls remain available in a collapsed options section. Portrait phones up to 600 CSS px wide and coarse-pointer phone landscape viewports up to 500 CSS px tall receive the compact layout.
+
+Direct finger input uses primary W3C Pointer Events and pointer capture. The active swipe pad has `touch-action: none`, while surrounding settings remain vertically scrollable. Coalesced points are used when the browser supplies them and ordinary dispatched points remain the Safari-compatible fallback. Additional simultaneous touches are ignored. Phone layout changes presentation and discovery only; the `touch-trace-v6` signal algorithm, privacy boundary, adaptive calibration, and experiment CSV schema are unchanged.
+
 ## Visual mapping
 
 The animation preserves the default AffectTracker mapping while using deterministic seeded irregularity and frame-rate-independent input smoothing:
