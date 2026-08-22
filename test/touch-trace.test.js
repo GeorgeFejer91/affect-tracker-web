@@ -5,7 +5,7 @@ import {
   computeShapeMetrics,
   FEEDBACK_HOLD_MS,
   fitTracePoints,
-  gateDeltaForEvidence,
+  gateRateForEvidence,
   OneEuroFilter,
   STROKE_SPEED_CONTINUITY_MS,
   TOUCH_FEEDBACK_CONTINUOUS,
@@ -124,13 +124,42 @@ test("adaptive bounds expand quickly and contract slowly", () => {
   assert.ok(range.high - range.low >= 0.2);
 });
 
-test("gate evidence uses a dead zone and bounded signed steps", () => {
-  assert.equal(gateDeltaForEvidence(0.1), 0);
-  assert.equal(gateDeltaForEvidence(-0.1), 0);
-  assert.ok(gateDeltaForEvidence(0.6) > 0.05);
-  assert.ok(gateDeltaForEvidence(-0.6) < -0.05);
-  assert.equal(gateDeltaForEvidence(1), 0.25);
-  assert.equal(gateDeltaForEvidence(-1), -0.25);
+test("gate evidence uses a dead zone and bounded signed live rates", () => {
+  assert.equal(gateRateForEvidence(0.1), 0);
+  assert.equal(gateRateForEvidence(-0.1), 0);
+  assert.ok(gateRateForEvidence(0.6) > 0.04);
+  assert.ok(gateRateForEvidence(-0.6) < -0.04);
+  assert.equal(gateRateForEvidence(1), 0.4);
+  assert.equal(gateRateForEvidence(-1), -0.4);
+});
+
+test("gated live target integration is frame-rate independent", () => {
+  const targets = [30, 60, 120, 240].map((rate) => {
+    const analyzer = new TouchTraceAnalyzer({ width: 1_000, height: 1_000 });
+    analyzer.startGate(0);
+    analyzer.mappedY = 1;
+    const delta = 1 / rate;
+    for (let index = 1; index <= rate; index += 1) {
+      const now = index * delta * 1_000;
+      analyzer.lastPointTime = now;
+      analyzer.applyLiveGateFeedback(now);
+    }
+    return analyzer.targetY;
+  });
+  for (const target of targets) assert.ok(Math.abs(target - 0.4) < 1e-9);
+});
+
+test("ending a direct pointer stroke stops gated motion immediately", () => {
+  const analyzer = new TouchTraceAnalyzer({ width: 1_000, height: 1_000 });
+  analyzer.startGate(0);
+  analyzer.mappedY = 1;
+  analyzer.lastPointTime = 20;
+  analyzer.applyLiveGateFeedback(20);
+  const reached = analyzer.targetY;
+  analyzer.endStroke();
+  analyzer.applyLiveGateFeedback(40);
+  assert.equal(analyzer.targetY, reached);
+  assert.equal(analyzer.gateLiveActive, false);
 });
 
 test("equal-distance resampling produces the configured spatial interval", () => {
@@ -220,7 +249,7 @@ test("a short rapid burst reaches high arousal and remains available as feedback
   for (let now = 60; now <= 1_000; now += 20) analyzer.update(now, 0.02);
   const snapshot = analyzer.snapshot();
 
-  assert.equal(TOUCH_TRACE_ALGORITHM_VERSION, "touch-trace-v4");
+  assert.equal(TOUCH_TRACE_ALGORITHM_VERSION, "touch-trace-v5");
   assert.equal(snapshot.motionActive, false);
   assert.equal(snapshot.feedbackHeld, true);
   assert.ok(snapshot.speedConfidence >= 0.99);
@@ -288,7 +317,7 @@ function completeGate(analyzer, points, endTime) {
   return analyzer.snapshot();
 }
 
-test("gated occasional swipes apply persistent fast and slow arousal nudges", () => {
+test("gated occasional swipes move live and hold their resulting arousal", () => {
   const analyzer = new TouchTraceAnalyzer({ width: 1_000, height: 1_000 });
   const fast = completeGate(analyzer, [
     { clientX: 50, clientY: 500, time: 0, pointerType: "touch" },
@@ -298,8 +327,8 @@ test("gated occasional swipes apply persistent fast and slow arousal nudges", ()
   assert.equal(fast.feedbackMode, TOUCH_FEEDBACK_GATED);
   assert.equal(fast.gateOpen, false);
   assert.equal(fast.gateCommitSequence, 1);
-  assert.ok(fast.gateDeltaY > 0.2);
-  assert.ok(fast.targetY > 0.2);
+  assert.ok(fast.gateDeltaY > 0.005);
+  assert.equal(fast.targetY, fast.gateLiveDeltaY);
   assert.equal(fast.speedCalibrationSamples, 1, "one completed movement window contributes one calibration sample");
 
   const heldTarget = fast.targetY;
@@ -312,7 +341,7 @@ test("gated occasional swipes apply persistent fast and slow arousal nudges", ()
     { clientX: 310, clientY: 500, time: 16_200, pointerType: "touch" },
     { clientX: 320, clientY: 500, time: 16_400, pointerType: "touch" },
   ], 16_850);
-  assert.ok(slow.gateDeltaY < -0.05);
+  assert.ok(slow.gateDeltaY < 0);
   assert.ok(slow.targetY < heldTarget);
   assert.equal(slow.speedCalibrationSamples, 2);
 });
@@ -344,7 +373,35 @@ test("gated shape windows move valence round/right and jagged/left", () => {
   assert.equal(jagged.shapeCalibrationSamples, 1);
 });
 
-test("repeated gated windows accumulate to extrema and reset clears the held result", () => {
+test("sustained gated movement reaches the selected extreme before release", () => {
+  const analyzer = new TouchTraceAnalyzer({ width: 1_000, height: 1_000 });
+  for (let index = 0; index < 130; index += 1) {
+    const time = index * 20;
+    analyzer.ingest({
+      clientX: index % 2 ? 900 : 100,
+      clientY: 500,
+      time,
+      pointerType: "touch",
+    });
+    analyzer.update(time, 0.02);
+  }
+  const live = analyzer.snapshot();
+  assert.equal(live.gateOpen, true);
+  assert.equal(live.gateCommitSequence, 0);
+  assert.equal(live.gateLiveActive, true);
+  assert.equal(live.targetY, 1);
+  assert.equal(live.speedCalibrationSamples, 0, "an open gate must not bias calibration by duration");
+
+  analyzer.update(3_100, 0.05);
+  const held = analyzer.snapshot();
+  assert.equal(held.gateOpen, false);
+  assert.equal(held.gateCommitSequence, 1);
+  assert.equal(held.targetY, live.targetY, "release must not add a step or move the chosen point");
+  assert.equal(held.gateDeltaY, 1);
+  assert.equal(held.speedCalibrationSamples, 1);
+});
+
+test("repeated short gated windows accumulate and reset clears the held result", () => {
   const analyzer = new TouchTraceAnalyzer({ width: 1_000, height: 1_000 });
   for (let gate = 0; gate < 6; gate += 1) {
     const start = gate * 1_000;
@@ -355,7 +412,8 @@ test("repeated gated windows accumulate to extrema and reset clears the held res
       { clientX: 950, clientY: 500, time: start + 40, pointerType: "touch" },
     ], start + 500);
   }
-  assert.equal(analyzer.targetY, 1);
+  assert.ok(analyzer.targetY > 0.05);
+  assert.ok(analyzer.targetY < 1, "short windows should move less than sustained interaction");
   assert.equal(analyzer.speedRange.count, 6, "gesture duration must not multiply calibration votes");
   analyzer.reset({ width: 1_000, height: 1_000 });
   const reset = analyzer.snapshot();

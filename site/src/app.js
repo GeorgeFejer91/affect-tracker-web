@@ -414,6 +414,11 @@ function recordTouchMetric() {
     gateDurationMs: metric.gateDurationMs,
     gateDeltaX: metric.gateDeltaX,
     gateDeltaY: metric.gateDeltaY,
+    gateLiveActive: metric.gateLiveActive,
+    gateLiveRateX: metric.gateLiveRateX,
+    gateLiveRateY: metric.gateLiveRateY,
+    gateLiveDeltaX: metric.gateLiveDeltaX,
+    gateLiveDeltaY: metric.gateLiveDeltaY,
     speedCalibrationSamples: metric.speedCalibrationSamples,
     shapeCalibrationSamples: metric.shapeCalibrationSamples,
     traceFeedbackVisible: state.touchTraceFeedback,
@@ -425,7 +430,7 @@ function recordTouchGateCommit(metric) {
     source: "touch-trace",
     action: "gate-commit",
     control: `gate-${metric.gateId}`,
-    value: `dx=${metric.gateDeltaX.toFixed(4)},dy=${metric.gateDeltaY.toFixed(4)}`,
+    value: `live-dx=${metric.gateLiveDeltaX.toFixed(4)},live-dy=${metric.gateLiveDeltaY.toFixed(4)}`,
     algorithmVersion: metric.algorithmVersion,
     pointerType: metric.pointerType,
     strokeId: metric.strokeId,
@@ -448,6 +453,11 @@ function recordTouchGateCommit(metric) {
     gateDurationMs: metric.gateDurationMs,
     gateDeltaX: metric.gateDeltaX,
     gateDeltaY: metric.gateDeltaY,
+    gateLiveActive: metric.gateLiveActive,
+    gateLiveRateX: metric.gateLiveRateX,
+    gateLiveRateY: metric.gateLiveRateY,
+    gateLiveDeltaX: metric.gateLiveDeltaX,
+    gateLiveDeltaY: metric.gateLiveDeltaY,
     speedCalibrationSamples: metric.speedCalibrationSamples,
     shapeCalibrationSamples: metric.shapeCalibrationSamples,
     traceFeedbackVisible: state.touchTraceFeedback,
@@ -782,7 +792,7 @@ function renderTouchTrace(timestamp) {
     ? snapshot.gateOpen || snapshot.gateCommitSequence > 0
     : snapshot.motionActive || snapshot.feedbackHeld;
   const heldSuffix = gated && !snapshot.gateOpen && snapshot.gateCommitSequence > 0
-    ? " · applied"
+    ? " · held"
     : !snapshot.motionActive && snapshot.feedbackHeld ? " · held" : "";
   const shapeLabel = feedbackVisible
     ? `${snapshot.mappedX < -0.15 ? "jagged" : snapshot.mappedX > 0.15 ? "round" : "neutral"}${heldSuffix}`
@@ -804,9 +814,11 @@ function renderTouchTrace(timestamp) {
     : !gated
       ? "continuous response"
       : snapshot.gateOpen
-        ? `measuring swipe ${snapshot.gateId}…`
+        ? snapshot.gateLiveActive
+          ? `live ΔV ${snapshot.gateLiveDeltaX >= 0 ? "+" : ""}${snapshot.gateLiveDeltaX.toFixed(2)}, ΔA ${snapshot.gateLiveDeltaY >= 0 ? "+" : ""}${snapshot.gateLiveDeltaY.toFixed(2)} · keep moving`
+          : `measuring swipe ${snapshot.gateId}…`
         : snapshot.gateCommitSequence > 0
-          ? `applied ΔV ${snapshot.gateDeltaX >= 0 ? "+" : ""}${snapshot.gateDeltaX.toFixed(2)}, ΔA ${snapshot.gateDeltaY >= 0 ? "+" : ""}${snapshot.gateDeltaY.toFixed(2)} · held`
+          ? `held · last movement ΔV ${snapshot.gateDeltaX >= 0 ? "+" : ""}${snapshot.gateDeltaX.toFixed(2)}, ΔA ${snapshot.gateDeltaY >= 0 ? "+" : ""}${snapshot.gateDeltaY.toFixed(2)}`
           : "ready for an occasional swipe";
 
   if (state.touchPlaygroundPanelOpen) {
@@ -1030,7 +1042,7 @@ function setTouchFeedbackMode(mode, source = "playground") {
   savePreferences();
   recordEvent(source, "feedback-mode-change", "touch-feedback-mode", mode);
   announce(mode === TOUCH_FEEDBACK_GATED
-    ? "Gated occasional swipes selected. Each completed movement window applies one lasting nudge."
+    ? "Gated move-and-hold selected. Keep drawing to move the point, then stop to hold its exact position."
     : "Continuous touch feedback selected. Movement is followed live and returns gradually toward neutral.");
 }
 
@@ -1303,6 +1315,11 @@ function recordRawPointer(event, phase, coalescedIndex, result) {
     gateDurationMs: metric.gateDurationMs,
     gateDeltaX: metric.gateDeltaX,
     gateDeltaY: metric.gateDeltaY,
+    gateLiveActive: metric.gateLiveActive,
+    gateLiveRateX: metric.gateLiveRateX,
+    gateLiveRateY: metric.gateLiveRateY,
+    gateLiveDeltaX: metric.gateLiveDeltaX,
+    gateLiveDeltaY: metric.gateLiveDeltaY,
     speedCalibrationSamples: metric.speedCalibrationSamples,
     shapeCalibrationSamples: metric.shapeCalibrationSamples,
     traceFeedbackVisible: state.touchTraceFeedback,
@@ -1347,7 +1364,8 @@ function ingestPointerEvent(event, phase) {
   if (phase === "up" || phase === "cancel") {
     if (elements.stage.hasPointerCapture?.(event.pointerId)) elements.stage.releasePointerCapture(event.pointerId);
     activeTracePointerId = undefined;
-    if (phase === "cancel") touchTrace.beginStroke(event.pointerType);
+    touchTrace.endStroke();
+    if (phase === "cancel") touchTrace.resetSegment();
   }
 }
 
@@ -2150,8 +2168,15 @@ function animationFrame(timestamp) {
   if (state.inputSource === "touch-trace") {
     applyTouchTraceState(touchMetric);
   }
-  state.currentX = smoothToward(state.currentX, state.targetX, state.response, deltaSeconds);
-  state.currentY = smoothToward(state.currentY, state.targetY, state.response, deltaSeconds);
+  if (state.inputSource === "touch-trace" && state.touchFeedbackMode === TOUCH_FEEDBACK_GATED) {
+    // The bounded live gate velocity is already the smoothing layer. Rendering
+    // it directly lets participants stop on the exact visible grid position.
+    state.currentX = state.targetX;
+    state.currentY = state.targetY;
+  } else {
+    state.currentX = smoothToward(state.currentX, state.targetX, state.response, deltaSeconds);
+    state.currentY = smoothToward(state.currentY, state.targetY, state.response, deltaSeconds);
+  }
 
   const currentParameters = affectParameters(state.currentX, state.currentY);
   if (state.animationActive) {

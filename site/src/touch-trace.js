@@ -1,6 +1,6 @@
 import { clamp, smoothToward } from "./math.js";
 
-export const TOUCH_TRACE_ALGORITHM_VERSION = "touch-trace-v4";
+export const TOUCH_TRACE_ALGORITHM_VERSION = "touch-trace-v5";
 export const TRACE_DURATION_MS = 4_000;
 export const MOTION_TIMEOUT_MS = 400;
 export const STROKE_SPEED_CONTINUITY_MS = 900;
@@ -10,7 +10,9 @@ export const TARGET_RELEASE_SECONDS = 3;
 export const TOUCH_FEEDBACK_GATED = "gated";
 export const TOUCH_FEEDBACK_CONTINUOUS = "continuous";
 export const GATE_DEAD_ZONE = 0.12;
-export const GATE_MAX_STEP = 0.25;
+export const GATE_LIVE_ACTIVITY_MS = 80;
+export const GATE_LIVE_MIN_RATE = 0.04;
+export const GATE_LIVE_MAX_RATE = 0.4;
 export const RESAMPLE_SPACING = 0.005;
 export const RESAMPLED_POINT_LIMIT = 33;
 export const FEATURE_INTERVAL_MS = 50;
@@ -33,12 +35,17 @@ function normalizeFeedbackMode(mode) {
   return mode === TOUCH_FEEDBACK_CONTINUOUS ? TOUCH_FEEDBACK_CONTINUOUS : TOUCH_FEEDBACK_GATED;
 }
 
-export function gateDeltaForEvidence(value, deadZone = GATE_DEAD_ZONE, maximumStep = GATE_MAX_STEP) {
+export function gateRateForEvidence(
+  value,
+  deadZone = GATE_DEAD_ZONE,
+  minimumRate = GATE_LIVE_MIN_RATE,
+  maximumRate = GATE_LIVE_MAX_RATE,
+) {
   const evidence = clamp(finite(value), -1, 1);
   const magnitude = Math.abs(evidence);
   if (magnitude <= deadZone) return 0;
   const strength = (magnitude - deadZone) / Math.max(1 - deadZone, 1e-9);
-  return Math.sign(evidence) * (0.05 + (maximumStep - 0.05) * strength);
+  return Math.sign(evidence) * (minimumRate + (maximumRate - minimumRate) * strength);
 }
 
 class LowPassFilter {
@@ -312,10 +319,13 @@ export class TouchTraceAnalyzer {
     this.targetX = 0;
     this.targetY = 0;
     this.motionActive = false;
+    this.liveInputEnded = false;
     this.feedbackHeld = false;
     this.speedContinuityActive = false;
     this.pointSequence = 0;
     this.lastGateFeaturePointSequence = -1;
+    this.lastLiveFeaturePointSequence = -1;
+    this.lastLiveIntegrationTime = undefined;
     this.gateId = 0;
     this.gateOpen = false;
     this.gateStartedAt = undefined;
@@ -327,6 +337,11 @@ export class TouchTraceAnalyzer {
     this.gateCommitSequence = 0;
     this.gateDeltaX = 0;
     this.gateDeltaY = 0;
+    this.gateLiveActive = false;
+    this.gateLiveRateX = 0;
+    this.gateLiveRateY = 0;
+    this.gateLiveDeltaX = 0;
+    this.gateLiveDeltaY = 0;
   }
 
   setFeedbackMode(mode, { targetX = this.targetX, targetY = this.targetY } = {}) {
@@ -355,7 +370,16 @@ export class TouchTraceAnalyzer {
     this.gateShapeFeatures = [];
     this.gateSpeedConfidence = 0;
     this.gateShapeConfidence = 0;
+    this.gateDeltaX = 0;
+    this.gateDeltaY = 0;
+    this.gateLiveActive = false;
+    this.gateLiveRateX = 0;
+    this.gateLiveRateY = 0;
+    this.gateLiveDeltaX = 0;
+    this.gateLiveDeltaY = 0;
     this.lastGateFeaturePointSequence = -1;
+    this.lastLiveFeaturePointSequence = -1;
+    this.lastLiveIntegrationTime = time;
     this.lastFeatureTime = undefined;
   }
 
@@ -366,7 +390,12 @@ export class TouchTraceAnalyzer {
     this.gateShapeFeatures = [];
     this.gateSpeedConfidence = 0;
     this.gateShapeConfidence = 0;
+    this.gateLiveActive = false;
+    this.gateLiveRateX = 0;
+    this.gateLiveRateY = 0;
     this.lastGateFeaturePointSequence = -1;
+    this.lastLiveFeaturePointSequence = -1;
+    this.lastLiveIntegrationTime = undefined;
   }
 
   resetSegment({ preserveSpeed = false } = {}) {
@@ -396,11 +425,19 @@ export class TouchTraceAnalyzer {
   beginStroke(pointerType = "unknown", { preserveSpeed = false } = {}) {
     this.strokeId += 1;
     this.pointerType = pointerType;
+    this.liveInputEnded = false;
     this.resetSegment({ preserveSpeed });
     // A new stroke never measures the lifted-finger displacement. Clearing
     // the timestamp also prevents the gap detector from immediately undoing
     // deliberate short-stroke speed continuity on the first new point.
     this.lastPointTime = undefined;
+  }
+
+  endStroke() {
+    this.liveInputEnded = true;
+    this.gateLiveActive = false;
+    this.gateLiveRateX = 0;
+    this.gateLiveRateY = 0;
   }
 
   resize(width, height) {
@@ -481,7 +518,13 @@ export class TouchTraceAnalyzer {
     this.lastPointTime = time;
     this.pointSequence += 1;
     this.pointerType = point.pointerType ?? this.pointerType;
+    this.liveInputEnded = false;
     this.motionActive = true;
+    if (this.feedbackMode === TOUCH_FEEDBACK_GATED && this.gateOpen) {
+      this.refreshFeatureMetrics();
+      this.lastLiveFeaturePointSequence = this.pointSequence;
+      this.applyLiveGateFeedback(time);
+    }
     this.trace.push({ x: clientX, y: clientY, time, strokeId: this.strokeId });
     this.pruneTrace(time);
     return {
@@ -504,6 +547,10 @@ export class TouchTraceAnalyzer {
     this.pruneTrace(now);
     this.motionActive = this.lastPointTime !== undefined && now - this.lastPointTime <= MOTION_TIMEOUT_MS;
     if (this.feedbackMode === TOUCH_FEEDBACK_GATED) {
+      if (this.gateOpen && this.pointSequence !== this.lastLiveFeaturePointSequence) {
+        this.refreshFeatureMetrics();
+        this.lastLiveFeaturePointSequence = this.pointSequence;
+      }
       if (
         this.gateOpen
         && this.pointSequence !== this.lastGateFeaturePointSequence
@@ -512,6 +559,7 @@ export class TouchTraceAnalyzer {
         this.captureGateFeature();
         this.lastFeatureTime = now;
       }
+      this.applyLiveGateFeedback(now);
       if (this.gateOpen && !this.motionActive) this.commitGate(now);
       this.feedbackHeld = false;
       return this.snapshot();
@@ -568,6 +616,31 @@ export class TouchTraceAnalyzer {
     this.lastGateFeaturePointSequence = this.pointSequence;
   }
 
+  applyLiveGateFeedback(now) {
+    const integrationTime = finite(now, NaN);
+    if (!Number.isFinite(integrationTime)) return;
+    const elapsedSeconds = this.lastLiveIntegrationTime === undefined
+      ? 0
+      : clamp((integrationTime - this.lastLiveIntegrationTime) / 1_000, 0, 0.1);
+    this.lastLiveIntegrationTime = integrationTime;
+    const recentlyMoving = !this.liveInputEnded
+      && this.lastPointTime !== undefined
+      && integrationTime - this.lastPointTime <= GATE_LIVE_ACTIVITY_MS;
+    this.gateLiveRateX = this.gateOpen && recentlyMoving ? gateRateForEvidence(this.mappedX) : 0;
+    this.gateLiveRateY = this.gateOpen && recentlyMoving ? gateRateForEvidence(this.mappedY) : 0;
+    this.gateLiveActive = this.gateLiveRateX !== 0 || this.gateLiveRateY !== 0;
+    if (!this.gateLiveActive) return;
+
+    const beforeX = this.targetX;
+    const beforeY = this.targetY;
+    this.targetX = clamp(this.targetX + this.gateLiveRateX * elapsedSeconds, -1, 1);
+    this.targetY = clamp(this.targetY + this.gateLiveRateY * elapsedSeconds, -1, 1);
+    this.gateLiveDeltaX += this.targetX - beforeX;
+    this.gateLiveDeltaY += this.targetY - beforeY;
+    this.gateDeltaX = this.gateLiveDeltaX;
+    this.gateDeltaY = this.gateLiveDeltaY;
+  }
+
   commitGate(now) {
     if (!this.gateOpen) return false;
     if (this.pointSequence !== this.lastGateFeaturePointSequence) this.captureGateFeature();
@@ -579,10 +652,11 @@ export class TouchTraceAnalyzer {
     this.mappedY = mappedY;
     this.speedConfidence = this.gateSpeedConfidence;
     this.shapeConfidence = this.gateShapeConfidence;
-    this.gateDeltaX = gateDeltaForEvidence(mappedX);
-    this.gateDeltaY = gateDeltaForEvidence(mappedY);
-    this.targetX = clamp(this.targetX + this.gateDeltaX, -1, 1);
-    this.targetY = clamp(this.targetY + this.gateDeltaY, -1, 1);
+    // Closing a gate freezes the exact live-controlled target. It must not add
+    // a release-time step, because the participant stops moving when the
+    // displayed point reaches the position they want to keep.
+    this.gateDeltaX = this.gateLiveDeltaX;
+    this.gateDeltaY = this.gateLiveDeltaY;
     this.gateDurationMs = Math.max(0, finite(now) - finite(this.gateStartedAt));
     this.gateCommitSequence += 1;
     if (speedFeature !== undefined) this.speedRange.add(speedFeature);
@@ -593,6 +667,9 @@ export class TouchTraceAnalyzer {
     this.lastBoundsTime = now;
     this.gateOpen = false;
     this.gateStartedAt = undefined;
+    this.gateLiveActive = false;
+    this.gateLiveRateX = 0;
+    this.gateLiveRateY = 0;
     return true;
   }
 
@@ -629,6 +706,11 @@ export class TouchTraceAnalyzer {
       gateDurationMs: this.gateDurationMs,
       gateDeltaX: this.gateDeltaX,
       gateDeltaY: this.gateDeltaY,
+      gateLiveActive: this.gateLiveActive,
+      gateLiveRateX: this.gateLiveRateX,
+      gateLiveRateY: this.gateLiveRateY,
+      gateLiveDeltaX: this.gateLiveDeltaX,
+      gateLiveDeltaY: this.gateLiveDeltaY,
       speedCalibrationSamples: this.speedRange.count,
       shapeCalibrationSamples: this.shapeRange.count,
       tracePoints: this.trace,

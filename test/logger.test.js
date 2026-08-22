@@ -146,6 +146,11 @@ test("extended CSV distinguishes raw, metric, and displayed state", () => {
     gateDurationMs: 640,
     gateDeltaX: -0.1,
     gateDeltaY: 0.2,
+    gateLiveActive: false,
+    gateLiveRateX: 0,
+    gateLiveRateY: 0,
+    gateLiveDeltaX: -0.1,
+    gateLiveDeltaY: 0.2,
     speedCalibrationSamples: 2,
     shapeCalibrationSamples: 1,
   }, touchState);
@@ -160,9 +165,11 @@ test("extended CSV distinguishes raw, metric, and displayed state", () => {
   assert.match(rows[0], /cursor_hidden/);
   assert.match(rows[0], /touch_feedback_mode/);
   assert.match(rows[0], /gate_commit_sequence/);
+  assert.match(rows[0], /gate_live_delta_y/);
   const fields = rows[0].replace(/^\uFEFF/, "").split(",");
   assert.equal(rows[2].split(",")[fields.indexOf("speed_continuity_active")], "true");
   assert.equal(rows[2].split(",")[fields.indexOf("touch_feedback_mode")], "gated");
   assert.equal(rows[2].split(",")[fields.indexOf("gate_commit_sequence")], "2");
   assert.equal(rows[2].split(",")[fields.indexOf("gate_delta_y")], "0.2");
+  assert.equal(rows[2].split(",")[fields.indexOf("gate_live_delta_y")], "0.2");
 });

@@ -233,14 +233,14 @@
               <legend>Feedback behavior</legend>
               <label>
                 <input type="radio" name="touch-feedback-mode" value="gated" checked>
-                <span><strong>Gated occasional swipes</strong><small>Analyze one short movement window, apply a lasting nudge, then wait for the next swipe.</small></span>
+                <span><strong>Gated move-and-hold</strong><small>Move the Flubber continuously while drawing, then hold the exact position when you stop.</small></span>
               </label>
               <label>
                 <input type="radio" name="touch-feedback-mode" value="continuous">
                 <span><strong>Continuous live response</strong><small>Follow movement continuously, hold briefly, then drift back toward neutral.</small></span>
               </label>
             </fieldset>
-            <p>In gated mode, fast/slow windows move arousal up/down and round/jagged windows move valence right/left. Each completed window contributes once to personal calibration, so an occasional short swipe is enough and the result stays put.</p>
+            <p>In gated mode, keep swiping until the point reaches the state you want: fast/slow movement continuously raises/lowers arousal and round/jagged movement continuously moves valence right/left. When you stop, the point stays exactly where it reached. Each completed movement window still contributes only once to personal calibration.</p>
             <p class="touch-gate-status">Window: <output id="touch-gate-status">tracking off</output></p>
             <p>Repeated short touch/pen strokes beginning within 900 ms share speed evidence, but never join their shapes or count the lifted-finger jump.</p>
             <label class="picture-in-picture-toggle">

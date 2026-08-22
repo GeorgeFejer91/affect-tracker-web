@@ -5,7 +5,7 @@ This file is the normative contract for the browser-only movement-feedback proto
 ## Product behavior and privacy
 
 - `inputSource` is either `manual` or `touch-trace` and is distinct from the manual continuous/step `inputMode`.
-- `touchFeedbackMode` is a separate browser-local preference: `gated` is the default for occasional swipes and `continuous` preserves the earlier live-response behavior. It is not part of portable settings.
+- `touchFeedbackMode` is a separate browser-local preference: `gated` is the default live move-until-satisfied/hold behavior and `continuous` preserves the earlier direct-mapped response that later decays toward neutral. It is not part of portable settings.
 - Touch mode is visibly labelled **Experimental Touch/Trackpad**. Shape drives valence (`x`); speed drives arousal (`y`).
 - The online UI exposes a third top-level **Touch/Trackpad Playground** accordion beside Settings and Experiment. It is visibly marked **Experimental** and contains the authoritative **Enable touch/trackpad tracking** switch, an embedded live practice trace, detected pointer type, shape/speed labels, confidence, a read-only live valence–arousal color map with a moving dot/numeric coordinates, and the separate floating-trace preference.
 - Opening the playground collapses the other two accordions, and opening either of them collapses the playground. Movement over the playground trace surface is analyzable; other controls remain excluded.
@@ -47,22 +47,23 @@ Both behaviors use 128-bin adaptive ranges: speed from `0` to `log1p(4 diagonals
 
 Map each feature as `2*clamp((raw-lower)/(upper-lower),0,1)-1` and multiply by feature confidence. Inactivity is never labelled slow movement. Reset filters, histories, trace, gate state, and affect target at actual stimulus playback start so countdown practice is excluded.
 
-### Gated occasional swipes (default)
+### Gated move-and-hold (default)
 
-A gate opens on the first accepted point and closes after 400 ms without a valid point. A later touch/pen micro-stroke beginning within the 900 ms speed-continuity allowance may inherit only the bounded speed window from the preceding stroke/gate; it never connects geometry or measures lifted-finger distance. Feature observations are limited to 20 Hz and bounded to the latest 32 per active gate. At close, use the median speed feature, median qualified shape feature, and maximum observed confidence for each dimension.
+A gate opens on the first accepted point and closes after 400 ms without a valid point. A later touch/pen micro-stroke beginning within the 900 ms speed-continuity allowance may inherit only the bounded speed window from the preceding stroke/gate; it never connects geometry or measures lifted-finger distance. Incoming points refresh live confidence-weighted metrics immediately for feedback. Representative observations used by the gate and logger remain limited to 20 Hz and bounded to the latest 32 per active gate. At close, use the median speed feature, median qualified shape feature, and maximum observed confidence for each dimension.
 
 Each completed gate contributes at most one representative value to each adaptive range, preventing long gestures from receiving more calibration weight than short gestures. Gated ranges retain 120 completed windows and blend from priors over the first 20 qualified gate samples. Map the representative against the pre-update bounds, then add it once for future calibration.
 
-Convert each confidence-weighted mapped axis into a signed nudge:
+Convert each confidence-weighted mapped axis into a signed target velocity while a point has arrived within the last 80 ms:
 
 ```text
-if abs(mapped) <= 0.12: delta = 0
+if abs(mapped) <= 0.12: rate = 0
 otherwise:
   strength = (abs(mapped) - 0.12) / (1 - 0.12)
-  delta = sign(mapped) * (0.05 + 0.20 * strength)
+  rate = sign(mapped) * (0.04 + 0.36 * strength) units/second
+  target = clamp(target + rate * dt, -1, 1)
 ```
 
-Add each delta to the existing target and clamp it to `[-1,1]`. Thus a strong gate moves at most 0.25 per axis and four strong same-direction gestures can reach an extreme. The target remains fixed indefinitely between gates; no automatic neutral decay runs in gated mode. A later gate adjusts it further, and Reset returns the analyzer and target to neutral. Changing feedback behavior resets calibration but seeds the newly selected behavior from the current target.
+This makes the 2D point move steadily for as long as the participant draws, so one sustained interaction can reach an extreme. A gate's accumulated live delta is the actual clamped target change. The rendered Flubber and grid dot follow this bounded gated target directly, avoiding a second smoothing lag after input stops. Touch/pen pointer-up disables live integration immediately; mouse/touchpad cursor motion uses the 80 ms freshness allowance because browsers expose no raw touchpad contact lifecycle. Closing the gate never adds a residual nudge: the exact position visible when the participant stops remains fixed indefinitely. No automatic neutral decay runs in gated mode. A later gate adjusts the held position, and Reset returns the analyzer and target to neutral. Changing feedback behavior resets calibration but seeds the newly selected behavior from the current target.
 
 ### Continuous live response
 
@@ -81,16 +82,18 @@ Experiments use `ExperimentCsvWriter`, an append-only ~1,000-row chunk serialize
 Record types are:
 
 - `pointer_raw`: every delivered/fallback/coalesced observed point during active playback.
-- `touch_metric`: 20 Hz raw speed/shape features, component metrics, adaptive bounds, normalized targets, confidence, `speed_continuity_active`, motion state, continuous `feedback_held` state, and gated state.
+- `touch_metric`: 20 Hz raw speed/shape features, component metrics, adaptive bounds, normalized targets, confidence, `speed_continuity_active`, motion state, continuous `feedback_held` state, and gated live-control state.
 - `sample`: 20 Hz displayed current and target coordinates.
 - `event`: input/lifecycle, buffering, visibility, resize, fullscreen, abort, and completion markers.
 
-All rows retain session/experiment/stimulus identifiers, ISO and monotonic time, `active_elapsed_ms`, stimulus time, source/mode, `touch_feedback_mode`, effective `cursor_hidden`, and animation/widget state. Gate-aware rows expose `gate_id`, `gate_open`, `gate_commit_sequence`, `gate_duration_ms`, `gate_delta_x`, `gate_delta_y`, `speed_calibration_samples`, and `shape_calibration_samples`; every commit also emits one `event` row with action `gate-commit`. `active_elapsed_ms` advances only during playback. Buffering pauses metric/sample emission and active time. Finish commits any still-open gated window, then captures the final metric/sample before completion; abort/fullscreen exit/player failure generates a marked partial CSV.
+All rows retain session/experiment/stimulus identifiers, ISO and monotonic time, `active_elapsed_ms`, stimulus time, source/mode, `touch_feedback_mode`, effective `cursor_hidden`, and animation/widget state. Gate-aware rows expose `gate_id`, `gate_open`, `gate_commit_sequence`, `gate_duration_ms`, total `gate_delta_x/y`, `gate_live_active`, `gate_live_rate_x/y`, accumulated `gate_live_delta_x/y`, `speed_calibration_samples`, and `shape_calibration_samples`; every close also emits one `event` row with action `gate-commit`. `active_elapsed_ms` advances only during playback. Buffering pauses metric/sample emission and active time. Finish closes any still-open gated window without changing its live-selected target, then captures the final metric/sample before completion; abort/fullscreen exit/player failure generates a marked partial CSV.
 
-Algorithm identifier: `touch-trace-v4`. Changing formulas, defaults, columns, segmentation, or adaptive behavior requires tests, an algorithm-version decision, and an update to the provenance ledger.
+Algorithm identifier: `touch-trace-v5`. Changing formulas, defaults, columns, segmentation, or adaptive behavior requires tests, an algorithm-version decision, and an update to the provenance ledger.
 
 Version 2 replaces version 1's filtered-position-only speed estimate, five-segment speed-confidence ramp, 450 ms target response, and immediate 600 ms inactivity decay with a dual-median burst-preserving estimate, two-segment ramp, 300 ms attack, 1.8-second result hold, and 3-second release. This project-specific change responds to observed playground usability: short rapid movements were underweighted and feedback returned to neutral before participants could reach or perceive the extremes. No external algorithm or source code was introduced by this version change.
 
 Version 3 preserves the bounded speed evidence across touch/pen strokes beginning within 900 ms, while resetting filters and shape geometry and excluding lifted-finger displacement. It also logs the carry decision as `speed_continuity_active`. This project-specific revision responds to observed alternating micro-swipe usability and introduces no external algorithm or source code.
 
 Version 4 adds the default gated occasional-swipe behavior while retaining version 3 as the selectable continuous behavior. A 400 ms movement window commits one persistent, dead-zoned, bounded delta per axis and contributes one representative sample to 20-gate/120-window adaptive calibration. The new CSV fields make feedback behavior, gates, deltas, and calibration counts reconstructable. This project-specific revision responds to the requirement that participants provide occasional intentional gestures rather than continuous swiping; it introduces no external algorithm or source code.
+
+Version 5 changes the default gate from release-triggered nudges to live move-and-hold control. Confidence-weighted mapped evidence outside the existing dead zone becomes a bounded signed velocity integrated while input remains fresh. The participant can keep drawing until the displayed point reaches the intended position; closing freezes that exact target and never applies a release-time correction. Calibration remains one representative vote per completed gate. Live-active, rate, and accumulated-delta columns make the online movement reconstructable. This project-specific revision responds to direct usability clarification and introduces no external source or copied code.
