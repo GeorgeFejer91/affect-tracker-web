@@ -26,6 +26,9 @@ test("the online interface exposes a third experimental touch playground", async
   assert.match(html, /Fast[\s\S]*Slow[\s\S]*Jagged[\s\S]*Round/);
   assert.match(html, /name="touch-feedback-mode" value="gated" checked/);
   assert.match(html, /Gated move-and-hold/);
+  assert.match(html, /cold-start anchors are 0\.15 viewport diagonals\/s/);
+  assert.match(html, /0\.44 D\/s for the midpoint\/hold command/);
+  assert.match(html, /control commands—not claims that a speed diagnoses calmness/);
   assert.match(html, /name="touch-feedback-mode" value="continuous"/);
   assert.match(html, /id="touch-gate-status"/);
   assert.match(html, /short touch\/pen strokes beginning within 900 ms share speed evidence/);

@@ -1,6 +1,6 @@
 import { clamp, smoothToward } from "./math.js";
 
-export const TOUCH_TRACE_ALGORITHM_VERSION = "touch-trace-v5";
+export const TOUCH_TRACE_ALGORITHM_VERSION = "touch-trace-v6";
 export const TRACE_DURATION_MS = 4_000;
 export const MOTION_TIMEOUT_MS = 400;
 export const STROKE_SPEED_CONTINUITY_MS = 900;
@@ -16,6 +16,15 @@ export const GATE_LIVE_MAX_RATE = 0.4;
 export const RESAMPLE_SPACING = 0.005;
 export const RESAMPLED_POINT_LIMIT = 33;
 export const FEATURE_INTERVAL_MS = 50;
+// Literature-informed cold-start anchors in viewport diagonals per second.
+// They approximate deliberate drag and quick swipe performance reported by
+// Wolf, Schleicher & Rohs (MobileHCI 2014, doi:10.1145/2628363.2634214).
+// Participant-adaptive p10/p90 bounds replace their influence over time.
+export const SPEED_PRIOR_LOW_DPS = 0.15;
+export const SPEED_PRIOR_HIGH_DPS = 0.8;
+export const SPEED_PRIOR_NEUTRAL_DPS = Math.expm1(
+  (Math.log1p(SPEED_PRIOR_LOW_DPS) + Math.log1p(SPEED_PRIOR_HIGH_DPS)) / 2,
+);
 
 const SPEED_DOMAIN_MAX = Math.log1p(4);
 const TURN_THRESHOLD = 5 * Math.PI / 180;
@@ -268,8 +277,8 @@ export class TouchTraceAnalyzer {
     this.speedRange = new AdaptiveRange({
       minimum: 0,
       maximum: SPEED_DOMAIN_MAX,
-      priorLow: Math.log1p(0.02),
-      priorHigh: Math.log1p(0.8),
+      priorLow: Math.log1p(SPEED_PRIOR_LOW_DPS),
+      priorHigh: Math.log1p(SPEED_PRIOR_HIGH_DPS),
       minimumSpan: 0.15,
       capacity: this.feedbackMode === TOUCH_FEEDBACK_GATED ? 120 : 1_200,
       bootstrapSamples: this.feedbackMode === TOUCH_FEEDBACK_GATED ? 20 : 100,

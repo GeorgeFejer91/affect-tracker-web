@@ -27,6 +27,21 @@ Each touch/pen `pointerdown` always begins a new shape segment and resets both 1
 
 Filter normalized x/y independently using a local 1€ filter with `minCutoff=1 Hz`, `beta=0.007`, and `derivativeCutoff=1 Hz`. Compute both unfiltered normalized segment speed and speed between the filtered positions. Maintain a five-sample median for each and use the larger robust estimate as `filteredSpeed`; this preserves the onset of a brief swipe that coordinate filtering would otherwise attenuate while retaining median rejection as the path continues. Use `speedFeature=log1p(filteredSpeed)` for adaptation. Speed confidence reaches 0.5 after one measured segment and 1.0 after two, including two close micro-strokes linked by the speed-only rule above.
 
+### Literature-informed speed orientation
+
+The evidence supports the **direction** of the command more strongly than any universal numerical boundary. Gao et al. (2012) found average, maximum, and minimum touchscreen movement speed discriminative of arousal in gameplay, but normalized features to the study database and warned about player/task effects. Hannan et al. (2017) found that participants often used speed to express intensity, while the direction and range varied by emotion and person. Wampfler et al. (2020, 2022) likewise used multifeature models rather than a single portable speed cutoff, and the in-the-wild study improved with personalization. Reviews by Kołakowska et al. (2020) and Yang & Qin (2021) reinforce the device/task/user dependency.
+
+For a reproducible cold start, use the front-screen values reported by Wolf, Schleicher & Rohs (2014) only as physical HCI anchors. Their deliberate drags were roughly 216–251 px/s and quick swipes roughly 1069–1568 px/s on a 1280×742 tablet (diagonal approximately 1479 px). The implementation conservatively rounds these into:
+
+```text
+slow/lower-arousal command anchor = 0.15 viewport diagonals/second
+neutral/hold command anchor        = expm1(mean(log1p(0.15), log1p(0.80)))
+                                   = approximately 0.4387 diagonals/second
+quick/higher-arousal command anchor = 0.80 viewport diagonals/second
+```
+
+These values initialize the adaptive mapping; they are not permanent bins. They also must not be called calm, normal, or high-arousal measurements. Direct touchscreen motion, browser cursor motion, and OS-accelerated touchpad motion are not metrically interchangeable. UI labels say lower/hold/higher-arousal **command** and show D/s so the participant sees the control interpretation without being told the system detected their emotion.
+
 ## Shape to valence
 
 Resample geometry every `0.005D` and retain the latest 32 resampled segments. For consecutive unit vectors use `theta=atan2(cross(u,v),dot(u,v))`, then compute:
@@ -43,7 +58,7 @@ Ignore turns under 5 degrees for sign flips. Roughness is the median normalized 
 
 ## Adaptive participant range and feedback behavior
 
-Both behaviors use 128-bin adaptive ranges: speed from `0` to `log1p(4 diagonals/s)` and shape from `-1` to `+1`. Compute p10/p90, smooth outward expansion with a 1.5 s time constant and inward contraction with a 45 s time constant, start from speed priors `log1p(0.02)..log1p(0.8)` and shape priors `-0.35..0.35`, and enforce minimum spans of 0.15 and 0.20 respectively.
+Both behaviors use 128-bin adaptive ranges: speed from `0` to `log1p(4 diagonals/s)` and shape from `-1` to `+1`. Compute p10/p90, smooth outward expansion with a 1.5 s time constant and inward contraction with a 45 s time constant, start from speed priors `log1p(0.15)..log1p(0.8)` and shape priors `-0.35..0.35`, and enforce minimum spans of 0.15 and 0.20 respectively.
 
 Map each feature as `2*clamp((raw-lower)/(upper-lower),0,1)-1` and multiply by feature confidence. Inactivity is never labelled slow movement. Reset filters, histories, trace, gate state, and affect target at actual stimulus playback start so countdown practice is excluded.
 
@@ -88,7 +103,7 @@ Record types are:
 
 All rows retain session/experiment/stimulus identifiers, ISO and monotonic time, `active_elapsed_ms`, stimulus time, source/mode, `touch_feedback_mode`, effective `cursor_hidden`, and animation/widget state. Gate-aware rows expose `gate_id`, `gate_open`, `gate_commit_sequence`, `gate_duration_ms`, total `gate_delta_x/y`, `gate_live_active`, `gate_live_rate_x/y`, accumulated `gate_live_delta_x/y`, `speed_calibration_samples`, and `shape_calibration_samples`; every close also emits one `event` row with action `gate-commit`. `active_elapsed_ms` advances only during playback. Buffering pauses metric/sample emission and active time. Finish closes any still-open gated window without changing its live-selected target, then captures the final metric/sample before completion; abort/fullscreen exit/player failure generates a marked partial CSV.
 
-Algorithm identifier: `touch-trace-v5`. Changing formulas, defaults, columns, segmentation, or adaptive behavior requires tests, an algorithm-version decision, and an update to the provenance ledger.
+Algorithm identifier: `touch-trace-v6`. Changing formulas, defaults, columns, segmentation, or adaptive behavior requires tests, an algorithm-version decision, and an update to the provenance ledger.
 
 Version 2 replaces version 1's filtered-position-only speed estimate, five-segment speed-confidence ramp, 450 ms target response, and immediate 600 ms inactivity decay with a dual-median burst-preserving estimate, two-segment ramp, 300 ms attack, 1.8-second result hold, and 3-second release. This project-specific change responds to observed playground usability: short rapid movements were underweighted and feedback returned to neutral before participants could reach or perceive the extremes. No external algorithm or source code was introduced by this version change.
 
@@ -97,3 +112,5 @@ Version 3 preserves the bounded speed evidence across touch/pen strokes beginnin
 Version 4 adds the default gated occasional-swipe behavior while retaining version 3 as the selectable continuous behavior. A 400 ms movement window commits one persistent, dead-zoned, bounded delta per axis and contributes one representative sample to 20-gate/120-window adaptive calibration. The new CSV fields make feedback behavior, gates, deltas, and calibration counts reconstructable. This project-specific revision responds to the requirement that participants provide occasional intentional gestures rather than continuous swiping; it introduces no external algorithm or source code.
 
 Version 5 changes the default gate from release-triggered nudges to live move-and-hold control. Confidence-weighted mapped evidence outside the existing dead zone becomes a bounded signed velocity integrated while input remains fresh. The participant can keep drawing until the displayed point reaches the intended position; closing freezes that exact target and never applies a release-time correction. Calibration remains one representative vote per completed gate. Live-active, rate, and accumulated-delta columns make the online movement reconstructable. This project-specific revision responds to direct usability clarification and introduces no external source or copied code.
+
+Version 6 replaces the original `0.02 D/s` lower speed prior with a literature-informed `0.15 D/s` deliberate-movement anchor, retains the conservative `0.80 D/s` quick-movement anchor, exposes their approximately `0.4387 D/s` log-space midpoint, and shows lower/hold/higher-arousal command wording plus live D/s. Participant-adaptive p10/p90 calibration remains unchanged and progressively replaces the priors. The provenance ledger records the empirical direction evidence, physical benchmark, individual/task/device limitations, and the absence of universal diagnostic speed thresholds.

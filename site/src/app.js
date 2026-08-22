@@ -797,8 +797,13 @@ function renderTouchTrace(timestamp) {
   const shapeLabel = feedbackVisible
     ? `${snapshot.mappedX < -0.15 ? "jagged" : snapshot.mappedX > 0.15 ? "round" : "neutral"}${heldSuffix}`
     : "inactive";
+  const speedCommand = snapshot.mappedY < -0.15
+    ? "slow → lower arousal"
+    : snapshot.mappedY > 0.15
+      ? "fast → higher arousal"
+      : "mid → hold arousal";
   const speedLabel = feedbackVisible
-    ? `${snapshot.mappedY < -0.15 ? "slow" : snapshot.mappedY > 0.15 ? "fast" : "mid"}${heldSuffix}`
+    ? `${speedCommand} · ${snapshot.filteredSpeed.toFixed(2)} D/s${heldSuffix}`
     : "still";
   const confidenceLabel = `${Math.round((snapshot.speedConfidence + snapshot.shapeConfidence) * 50)}%`;
 

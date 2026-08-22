@@ -241,6 +241,7 @@
               </label>
             </fieldset>
             <p>In gated mode, keep swiping until the point reaches the state you want: fast/slow movement continuously raises/lowers arousal and round/jagged movement continuously moves valence right/left. When you stop, the point stays exactly where it reached. Each completed movement window still contributes only once to personal calibration.</p>
+            <p class="touch-calibration-note"><strong>Speed calibration:</strong> cold-start anchors are 0.15 viewport diagonals/s for deliberate slow movement, about 0.44 D/s for the midpoint/hold command, and 0.80 D/s for a quick swipe. Your completed movements progressively personalize that range. These are control commands—not claims that a speed diagnoses calmness or emotional arousal.</p>
             <p class="touch-gate-status">Window: <output id="touch-gate-status">tracking off</output></p>
             <p>Repeated short touch/pen strokes beginning within 900 ms share speed evidence, but never join their shapes or count the lifted-finger jump.</p>
             <label class="picture-in-picture-toggle">
@@ -264,7 +265,7 @@
               <p>The dot shows how the current finger or cursor path is driving the displayed Flubber.</p>
               <div id="touch-affect-space" class="touch-affect-space" role="img" aria-label="Experimental mapping at neutral valence and neutral arousal">
                 <canvas id="touch-affect-space-canvas" width="160" height="160" aria-hidden="true"></canvas>
-                <span class="space-axis space-up">Fast</span><span class="space-axis space-down">Slow</span>
+                <span class="space-axis space-up">Fast ↑ A</span><span class="space-axis space-down">Slow ↓ A</span>
                 <span class="space-axis space-left">Jagged</span><span class="space-axis space-right">Round</span>
                 <span id="touch-affect-point" class="touch-affect-point" aria-hidden="true"></span>
               </div>

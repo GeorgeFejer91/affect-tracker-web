@@ -7,6 +7,9 @@ import {
   fitTracePoints,
   gateRateForEvidence,
   OneEuroFilter,
+  SPEED_PRIOR_HIGH_DPS,
+  SPEED_PRIOR_LOW_DPS,
+  SPEED_PRIOR_NEUTRAL_DPS,
   STROKE_SPEED_CONTINUITY_MS,
   TOUCH_FEEDBACK_CONTINUOUS,
   TOUCH_FEEDBACK_GATED,
@@ -122,6 +125,18 @@ test("adaptive bounds expand quickly and contract slowly", () => {
   assert.ok(expandedHigh - range.high < 0.1);
   assert.ok(range.low < -0.5);
   assert.ok(range.high - range.low >= 0.2);
+});
+
+test("cold-start speed anchors use literature-informed viewport rates", () => {
+  const analyzer = new TouchTraceAnalyzer({ width: 1_000, height: 1_000 });
+  const snapshot = analyzer.snapshot();
+
+  assert.equal(SPEED_PRIOR_LOW_DPS, 0.15);
+  assert.equal(SPEED_PRIOR_HIGH_DPS, 0.8);
+  assert.ok(Math.abs(SPEED_PRIOR_NEUTRAL_DPS - 0.4387) < 0.001);
+  assert.ok(Math.abs(snapshot.speedLower - Math.log1p(SPEED_PRIOR_LOW_DPS)) < 1e-12);
+  assert.ok(Math.abs(snapshot.speedUpper - Math.log1p(SPEED_PRIOR_HIGH_DPS)) < 1e-12);
+  assert.equal(TOUCH_TRACE_ALGORITHM_VERSION, "touch-trace-v6");
 });
 
 test("gate evidence uses a dead zone and bounded signed live rates", () => {
@@ -249,7 +264,7 @@ test("a short rapid burst reaches high arousal and remains available as feedback
   for (let now = 60; now <= 1_000; now += 20) analyzer.update(now, 0.02);
   const snapshot = analyzer.snapshot();
 
-  assert.equal(TOUCH_TRACE_ALGORITHM_VERSION, "touch-trace-v5");
+  assert.equal(TOUCH_TRACE_ALGORITHM_VERSION, "touch-trace-v6");
   assert.equal(snapshot.motionActive, false);
   assert.equal(snapshot.feedbackHeld, true);
   assert.ok(snapshot.speedConfidence >= 0.99);
