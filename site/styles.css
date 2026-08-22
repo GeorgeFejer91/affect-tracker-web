@@ -468,6 +468,45 @@ body.is-touch-source.is-touch-cursor-hidden .panel-stack { cursor: default; }
   font-size: 0.62rem;
 }
 
+.touch-feedback-mode-control {
+  display: grid;
+  gap: 0.4rem;
+  margin: 0.7rem 0;
+  padding: 0.55rem;
+  border: 1px solid rgb(255 255 255 / 16%);
+  border-radius: 0.55rem;
+}
+
+.touch-feedback-mode-control legend {
+  padding-inline: 0.25rem;
+  color: #f4f4f4;
+  font-size: 0.68rem;
+  font-weight: 700;
+}
+
+.touch-feedback-mode-control label {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.5rem;
+  align-items: start;
+  padding: 0.48rem;
+  border: 1px solid transparent;
+  border-radius: 0.45rem;
+  cursor: pointer;
+}
+
+.touch-feedback-mode-control label:has(input:checked) {
+  border-color: rgb(120 215 255 / 48%);
+  background: rgb(120 215 255 / 10%);
+}
+
+.touch-feedback-mode-control input { margin-top: 0.12rem; accent-color: #78d7ff; }
+.touch-feedback-mode-control span,
+.touch-feedback-mode-control small { display: block; }
+.touch-feedback-mode-control strong { font-size: 0.72rem; }
+.touch-feedback-mode-control small { margin-top: 0.1rem; color: rgb(255 255 255 / 58%); font-size: 0.61rem; line-height: 1.35; }
+.touch-playground-intro .touch-gate-status { color: #a8e5ff; font: 0.66rem ui-monospace, SFMono-Regular, Consolas, monospace; }
+
 .touch-playground-surface {
   position: relative;
   width: 100%;

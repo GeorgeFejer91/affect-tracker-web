@@ -24,8 +24,28 @@ test("the online interface exposes a third experimental touch playground", async
   assert.match(html, /id="touch-affect-point"/);
   assert.match(html, /id="touch-affect-valence-output"/);
   assert.match(html, /Fast[\s\S]*Slow[\s\S]*Jagged[\s\S]*Round/);
+  assert.match(html, /name="touch-feedback-mode" value="gated" checked/);
+  assert.match(html, /Gated occasional swipes/);
+  assert.match(html, /name="touch-feedback-mode" value="continuous"/);
+  assert.match(html, /id="touch-gate-status"/);
   assert.match(html, /short touch\/pen strokes beginning within 900 ms share speed evidence/);
   assert.doesNotMatch(html, /name="input-source"/);
+});
+
+test("gated occasional swipes are a local preference with explicit commit logging", async () => {
+  const app = await readSiteFile("src/app.js");
+  const logger = await readSiteFile("src/logger.js");
+
+  assert.match(app, /touchFeedbackMode: parsed\.touchFeedbackMode === TOUCH_FEEDBACK_CONTINUOUS/);
+  assert.match(app, /touchFeedbackMode: state\.touchFeedbackMode/);
+  assert.match(app, /"feedback-mode-change"/);
+  assert.match(app, /"gate-commit"/);
+  assert.match(logger, /"touch_feedback_mode"/);
+  assert.match(logger, /"gate_commit_sequence"/);
+  assert.match(logger, /"gate_delta_x"/);
+  assert.match(logger, /"gate_delta_y"/);
+  assert.match(logger, /"speed_calibration_samples"/);
+  assert.match(logger, /"shape_calibration_samples"/);
 });
 
 test("the playground hide-cursor preference is local, reversible, and logged", async () => {

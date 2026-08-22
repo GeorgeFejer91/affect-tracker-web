@@ -1,12 +1,16 @@
 import { clamp, smoothToward } from "./math.js";
 
-export const TOUCH_TRACE_ALGORITHM_VERSION = "touch-trace-v3";
+export const TOUCH_TRACE_ALGORITHM_VERSION = "touch-trace-v4";
 export const TRACE_DURATION_MS = 4_000;
 export const MOTION_TIMEOUT_MS = 400;
 export const STROKE_SPEED_CONTINUITY_MS = 900;
 export const FEEDBACK_HOLD_MS = 1_800;
 export const TARGET_ATTACK_SECONDS = 0.3;
 export const TARGET_RELEASE_SECONDS = 3;
+export const TOUCH_FEEDBACK_GATED = "gated";
+export const TOUCH_FEEDBACK_CONTINUOUS = "continuous";
+export const GATE_DEAD_ZONE = 0.12;
+export const GATE_MAX_STEP = 0.25;
 export const RESAMPLE_SPACING = 0.005;
 export const RESAMPLED_POINT_LIMIT = 33;
 export const FEATURE_INTERVAL_MS = 50;
@@ -23,6 +27,18 @@ function median(values) {
   const sorted = [...values].sort((a, b) => a - b);
   const middle = Math.floor(sorted.length / 2);
   return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
+}
+
+function normalizeFeedbackMode(mode) {
+  return mode === TOUCH_FEEDBACK_CONTINUOUS ? TOUCH_FEEDBACK_CONTINUOUS : TOUCH_FEEDBACK_GATED;
+}
+
+export function gateDeltaForEvidence(value, deadZone = GATE_DEAD_ZONE, maximumStep = GATE_MAX_STEP) {
+  const evidence = clamp(finite(value), -1, 1);
+  const magnitude = Math.abs(evidence);
+  if (magnitude <= deadZone) return 0;
+  const strength = (magnitude - deadZone) / Math.max(1 - deadZone, 1e-9);
+  return Math.sign(evidence) * (0.05 + (maximumStep - 0.05) * strength);
 }
 
 class LowPassFilter {
@@ -85,6 +101,7 @@ export class AdaptiveRange {
     minimumSpan,
     bins = 128,
     capacity = 1_200,
+    bootstrapSamples = 100,
   }) {
     this.minimum = minimum;
     this.maximum = maximum;
@@ -93,6 +110,7 @@ export class AdaptiveRange {
     this.minimumSpan = minimumSpan;
     this.binCount = bins;
     this.capacity = capacity;
+    this.bootstrapSamples = Math.max(1, bootstrapSamples);
     this.histogram = new Uint16Array(bins);
     this.samples = new Uint16Array(capacity);
     this.reset();
@@ -141,7 +159,7 @@ export class AdaptiveRange {
   }
 
   update(deltaSeconds) {
-    const confidence = clamp(this.count / 100, 0, 1);
+    const confidence = clamp(this.count / this.bootstrapSamples, 0, 1);
     const candidateLow = this.priorLow + (this.quantile(0.1) - this.priorLow) * confidence;
     const candidateHigh = this.priorHigh + (this.quantile(0.9) - this.priorHigh) * confidence;
     const smoothBound = (current, target, outward) => smoothToward(current, target, 1 / (outward ? 1.5 : 45), deltaSeconds);
@@ -238,13 +256,16 @@ export function fitTracePoints(points, width, height, paddingRatio = 0.08) {
 }
 
 export class TouchTraceAnalyzer {
-  constructor({ width = 1, height = 1 } = {}) {
+  constructor({ width = 1, height = 1, feedbackMode = TOUCH_FEEDBACK_GATED } = {}) {
+    this.feedbackMode = normalizeFeedbackMode(feedbackMode);
     this.speedRange = new AdaptiveRange({
       minimum: 0,
       maximum: SPEED_DOMAIN_MAX,
       priorLow: Math.log1p(0.02),
       priorHigh: Math.log1p(0.8),
       minimumSpan: 0.15,
+      capacity: this.feedbackMode === TOUCH_FEEDBACK_GATED ? 120 : 1_200,
+      bootstrapSamples: this.feedbackMode === TOUCH_FEEDBACK_GATED ? 20 : 100,
     });
     this.shapeRange = new AdaptiveRange({
       minimum: -1,
@@ -252,6 +273,8 @@ export class TouchTraceAnalyzer {
       priorLow: -0.35,
       priorHigh: 0.35,
       minimumSpan: 0.2,
+      capacity: this.feedbackMode === TOUCH_FEEDBACK_GATED ? 120 : 1_200,
+      bootstrapSamples: this.feedbackMode === TOUCH_FEEDBACK_GATED ? 20 : 100,
     });
     this.xFilter = new OneEuroFilter();
     this.yFilter = new OneEuroFilter();
@@ -291,6 +314,59 @@ export class TouchTraceAnalyzer {
     this.motionActive = false;
     this.feedbackHeld = false;
     this.speedContinuityActive = false;
+    this.pointSequence = 0;
+    this.lastGateFeaturePointSequence = -1;
+    this.gateId = 0;
+    this.gateOpen = false;
+    this.gateStartedAt = undefined;
+    this.gateDurationMs = 0;
+    this.gateSpeedFeatures = [];
+    this.gateShapeFeatures = [];
+    this.gateSpeedConfidence = 0;
+    this.gateShapeConfidence = 0;
+    this.gateCommitSequence = 0;
+    this.gateDeltaX = 0;
+    this.gateDeltaY = 0;
+  }
+
+  setFeedbackMode(mode, { targetX = this.targetX, targetY = this.targetY } = {}) {
+    const normalized = normalizeFeedbackMode(mode);
+    if (normalized === this.feedbackMode) return;
+    this.feedbackMode = normalized;
+    const rangeCapacity = normalized === TOUCH_FEEDBACK_GATED ? 120 : 1_200;
+    const bootstrapSamples = normalized === TOUCH_FEEDBACK_GATED ? 20 : 100;
+    this.speedRange.capacity = rangeCapacity;
+    this.speedRange.samples = new Uint16Array(rangeCapacity);
+    this.speedRange.bootstrapSamples = bootstrapSamples;
+    this.shapeRange.capacity = rangeCapacity;
+    this.shapeRange.samples = new Uint16Array(rangeCapacity);
+    this.shapeRange.bootstrapSamples = bootstrapSamples;
+    this.reset({ width: this.width, height: this.height });
+    this.targetX = clamp(finite(targetX), -1, 1);
+    this.targetY = clamp(finite(targetY), -1, 1);
+  }
+
+  startGate(time) {
+    this.gateId += 1;
+    this.gateOpen = true;
+    this.gateStartedAt = time;
+    this.gateDurationMs = 0;
+    this.gateSpeedFeatures = [];
+    this.gateShapeFeatures = [];
+    this.gateSpeedConfidence = 0;
+    this.gateShapeConfidence = 0;
+    this.lastGateFeaturePointSequence = -1;
+    this.lastFeatureTime = undefined;
+  }
+
+  cancelGate() {
+    this.gateOpen = false;
+    this.gateStartedAt = undefined;
+    this.gateSpeedFeatures = [];
+    this.gateShapeFeatures = [];
+    this.gateSpeedConfidence = 0;
+    this.gateShapeConfidence = 0;
+    this.lastGateFeaturePointSequence = -1;
   }
 
   resetSegment({ preserveSpeed = false } = {}) {
@@ -331,6 +407,7 @@ export class TouchTraceAnalyzer {
     this.width = Math.max(1, finite(width, 1));
     this.height = Math.max(1, finite(height, 1));
     this.diagonal = Math.hypot(this.width, this.height);
+    this.cancelGate();
     this.beginStroke(this.pointerType);
   }
 
@@ -363,7 +440,10 @@ export class TouchTraceAnalyzer {
     const clientY = finite(point.clientY, NaN);
     if (![time, clientX, clientY].every(Number.isFinite)) return { accepted: false, reason: "non-finite" };
     if (this.lastPointTime !== undefined && time - this.lastPointTime < 1) return { accepted: false, reason: "sub-millisecond" };
-    if (this.lastPointTime !== undefined && time - this.lastPointTime > MOTION_TIMEOUT_MS) this.beginStroke(point.pointerType);
+    if (this.lastPointTime !== undefined && time - this.lastPointTime > MOTION_TIMEOUT_MS) {
+      if (this.feedbackMode === TOUCH_FEEDBACK_GATED && this.gateOpen) this.commitGate(time);
+      this.beginStroke(point.pointerType);
+    }
     if (this.strokeId === 0) this.beginStroke(point.pointerType);
 
     const normalized = { x: clientX / this.diagonal, y: clientY / this.diagonal };
@@ -371,6 +451,7 @@ export class TouchTraceAnalyzer {
       this.lastPointTime = time;
       return { accepted: false, reason: "duplicate" };
     }
+    if (this.feedbackMode === TOUCH_FEEDBACK_GATED && !this.gateOpen) this.startGate(time);
     const filtered = {
       x: this.xFilter.filter(normalized.x, time),
       y: this.yFilter.filter(normalized.y, time),
@@ -398,6 +479,7 @@ export class TouchTraceAnalyzer {
     this.previousFiltered = filtered;
     this.previousSource = normalized;
     this.lastPointTime = time;
+    this.pointSequence += 1;
     this.pointerType = point.pointerType ?? this.pointerType;
     this.motionActive = true;
     this.trace.push({ x: clientX, y: clientY, time, strokeId: this.strokeId });
@@ -421,6 +503,19 @@ export class TouchTraceAnalyzer {
   update(now, deltaSeconds) {
     this.pruneTrace(now);
     this.motionActive = this.lastPointTime !== undefined && now - this.lastPointTime <= MOTION_TIMEOUT_MS;
+    if (this.feedbackMode === TOUCH_FEEDBACK_GATED) {
+      if (
+        this.gateOpen
+        && this.pointSequence !== this.lastGateFeaturePointSequence
+        && (this.lastFeatureTime === undefined || now - this.lastFeatureTime >= FEATURE_INTERVAL_MS)
+      ) {
+        this.captureGateFeature();
+        this.lastFeatureTime = now;
+      }
+      if (this.gateOpen && !this.motionActive) this.commitGate(now);
+      this.feedbackHeld = false;
+      return this.snapshot();
+    }
     if (this.motionActive && (this.lastFeatureTime === undefined || now - this.lastFeatureTime >= FEATURE_INTERVAL_MS)) {
       this.lastFeatureTime = now;
       if (this.speedWindow.length > 0) this.speedRange.add(this.speedFeature);
@@ -449,9 +544,62 @@ export class TouchTraceAnalyzer {
     return this.snapshot();
   }
 
+  refreshFeatureMetrics() {
+    const qualifiedShape = this.resampledPoints.length >= 9 && (this.resampledPoints.length - 1) * RESAMPLE_SPACING >= 0.04;
+    this.speedConfidence = clamp(this.speedWindow.length / 2, 0, 1);
+    this.shapeConfidence = qualifiedShape ? clamp((this.resampledPoints.length - 8) / 25, 0, 1) : 0;
+    this.mappedX = this.shapeRange.normalize(this.shape.shapeFeature) * this.shapeConfidence;
+    this.mappedY = this.speedRange.normalize(this.speedFeature) * this.speedConfidence;
+    return qualifiedShape;
+  }
+
+  captureGateFeature() {
+    const qualifiedShape = this.refreshFeatureMetrics();
+    if (this.speedWindow.length > 0) {
+      this.gateSpeedFeatures.push(this.speedFeature);
+      if (this.gateSpeedFeatures.length > 32) this.gateSpeedFeatures.shift();
+      this.gateSpeedConfidence = Math.max(this.gateSpeedConfidence, this.speedConfidence);
+    }
+    if (qualifiedShape) {
+      this.gateShapeFeatures.push(this.shape.shapeFeature);
+      if (this.gateShapeFeatures.length > 32) this.gateShapeFeatures.shift();
+      this.gateShapeConfidence = Math.max(this.gateShapeConfidence, this.shapeConfidence);
+    }
+    this.lastGateFeaturePointSequence = this.pointSequence;
+  }
+
+  commitGate(now) {
+    if (!this.gateOpen) return false;
+    if (this.pointSequence !== this.lastGateFeaturePointSequence) this.captureGateFeature();
+    const speedFeature = this.gateSpeedFeatures.length ? median(this.gateSpeedFeatures) : undefined;
+    const shapeFeature = this.gateShapeFeatures.length ? median(this.gateShapeFeatures) : undefined;
+    const mappedY = speedFeature === undefined ? 0 : this.speedRange.normalize(speedFeature) * this.gateSpeedConfidence;
+    const mappedX = shapeFeature === undefined ? 0 : this.shapeRange.normalize(shapeFeature) * this.gateShapeConfidence;
+    this.mappedX = mappedX;
+    this.mappedY = mappedY;
+    this.speedConfidence = this.gateSpeedConfidence;
+    this.shapeConfidence = this.gateShapeConfidence;
+    this.gateDeltaX = gateDeltaForEvidence(mappedX);
+    this.gateDeltaY = gateDeltaForEvidence(mappedY);
+    this.targetX = clamp(this.targetX + this.gateDeltaX, -1, 1);
+    this.targetY = clamp(this.targetY + this.gateDeltaY, -1, 1);
+    this.gateDurationMs = Math.max(0, finite(now) - finite(this.gateStartedAt));
+    this.gateCommitSequence += 1;
+    if (speedFeature !== undefined) this.speedRange.add(speedFeature);
+    if (shapeFeature !== undefined) this.shapeRange.add(shapeFeature);
+    const boundsDelta = this.lastBoundsTime === undefined ? FEATURE_INTERVAL_MS / 1_000 : Math.max(0, (now - this.lastBoundsTime) / 1_000);
+    this.speedRange.update(boundsDelta);
+    this.shapeRange.update(boundsDelta);
+    this.lastBoundsTime = now;
+    this.gateOpen = false;
+    this.gateStartedAt = undefined;
+    return true;
+  }
+
   snapshot() {
     return {
       algorithmVersion: TOUCH_TRACE_ALGORITHM_VERSION,
+      feedbackMode: this.feedbackMode,
       pointerType: this.pointerType,
       strokeId: this.strokeId,
       rawSpeed: this.rawSpeed,
@@ -475,6 +623,14 @@ export class TouchTraceAnalyzer {
       motionActive: this.motionActive,
       feedbackHeld: this.feedbackHeld,
       speedContinuityActive: this.speedContinuityActive,
+      gateId: this.gateId,
+      gateOpen: this.gateOpen,
+      gateCommitSequence: this.gateCommitSequence,
+      gateDurationMs: this.gateDurationMs,
+      gateDeltaX: this.gateDeltaX,
+      gateDeltaY: this.gateDeltaY,
+      speedCalibrationSamples: this.speedRange.count,
+      shapeCalibrationSamples: this.shapeRange.count,
       tracePoints: this.trace,
     };
   }

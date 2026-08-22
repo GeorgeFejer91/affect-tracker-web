@@ -5,8 +5,11 @@ import {
   computeShapeMetrics,
   FEEDBACK_HOLD_MS,
   fitTracePoints,
+  gateDeltaForEvidence,
   OneEuroFilter,
   STROKE_SPEED_CONTINUITY_MS,
+  TOUCH_FEEDBACK_CONTINUOUS,
+  TOUCH_FEEDBACK_GATED,
   TOUCH_TRACE_ALGORITHM_VERSION,
   TouchTraceAnalyzer,
 } from "../site/src/touch-trace.js";
@@ -121,6 +124,15 @@ test("adaptive bounds expand quickly and contract slowly", () => {
   assert.ok(range.high - range.low >= 0.2);
 });
 
+test("gate evidence uses a dead zone and bounded signed steps", () => {
+  assert.equal(gateDeltaForEvidence(0.1), 0);
+  assert.equal(gateDeltaForEvidence(-0.1), 0);
+  assert.ok(gateDeltaForEvidence(0.6) > 0.05);
+  assert.ok(gateDeltaForEvidence(-0.6) < -0.05);
+  assert.equal(gateDeltaForEvidence(1), 0.25);
+  assert.equal(gateDeltaForEvidence(-1), -0.25);
+});
+
 test("equal-distance resampling produces the configured spatial interval", () => {
   const analyzer = new TouchTraceAnalyzer({ width: 800, height: 600 });
   for (let index = 0; index <= 20; index += 1) {
@@ -197,7 +209,7 @@ test("duplicates, non-monotonic times, and long gaps are segmented safely", () =
 });
 
 test("a short rapid burst reaches high arousal and remains available as feedback", () => {
-  const analyzer = new TouchTraceAnalyzer({ width: 1_000, height: 1_000 });
+  const analyzer = new TouchTraceAnalyzer({ width: 1_000, height: 1_000, feedbackMode: TOUCH_FEEDBACK_CONTINUOUS });
   analyzer.beginStroke("touch");
   const burst = [
     { clientX: 50, clientY: 500, time: 0, pointerType: "touch" },
@@ -208,7 +220,7 @@ test("a short rapid burst reaches high arousal and remains available as feedback
   for (let now = 60; now <= 1_000; now += 20) analyzer.update(now, 0.02);
   const snapshot = analyzer.snapshot();
 
-  assert.equal(TOUCH_TRACE_ALGORITHM_VERSION, "touch-trace-v3");
+  assert.equal(TOUCH_TRACE_ALGORITHM_VERSION, "touch-trace-v4");
   assert.equal(snapshot.motionActive, false);
   assert.equal(snapshot.feedbackHeld, true);
   assert.ok(snapshot.speedConfidence >= 0.99);
@@ -247,7 +259,7 @@ test("rapid lifted-finger micro-strokes share speed evidence without joining the
 });
 
 test("inactivity holds the last result before a gradual return to neutral", () => {
-  const analyzer = new TouchTraceAnalyzer({ width: 500, height: 500 });
+  const analyzer = new TouchTraceAnalyzer({ width: 500, height: 500, feedbackMode: TOUCH_FEEDBACK_CONTINUOUS });
   analyzer.beginStroke("touch");
   for (let index = 0; index < 40; index += 1) {
     analyzer.ingest({ clientX: 20 + index * 5, clientY: 50 + (index % 2) * 15, time: index * 20, pointerType: "touch" });
@@ -265,6 +277,91 @@ test("inactivity holds the last result before a gradual return to neutral", () =
   assert.ok(Math.hypot(analyzer.targetX, analyzer.targetY) < activeMagnitude * 0.1);
   assert.equal(analyzer.motionActive, false);
   assert.equal(analyzer.feedbackHeld, false);
+});
+
+function completeGate(analyzer, points, endTime) {
+  for (const point of points) {
+    analyzer.ingest(point);
+    analyzer.update(point.time, 0.02);
+  }
+  analyzer.update(endTime, Math.min((endTime - points.at(-1).time) / 1_000, 0.05));
+  return analyzer.snapshot();
+}
+
+test("gated occasional swipes apply persistent fast and slow arousal nudges", () => {
+  const analyzer = new TouchTraceAnalyzer({ width: 1_000, height: 1_000 });
+  const fast = completeGate(analyzer, [
+    { clientX: 50, clientY: 500, time: 0, pointerType: "touch" },
+    { clientX: 500, clientY: 500, time: 20, pointerType: "touch" },
+    { clientX: 950, clientY: 500, time: 40, pointerType: "touch" },
+  ], 500);
+  assert.equal(fast.feedbackMode, TOUCH_FEEDBACK_GATED);
+  assert.equal(fast.gateOpen, false);
+  assert.equal(fast.gateCommitSequence, 1);
+  assert.ok(fast.gateDeltaY > 0.2);
+  assert.ok(fast.targetY > 0.2);
+  assert.equal(fast.speedCalibrationSamples, 1, "one completed movement window contributes one calibration sample");
+
+  const heldTarget = fast.targetY;
+  for (let now = 520; now <= 15_000; now += 20) analyzer.update(now, 0.02);
+  assert.equal(analyzer.targetY, heldTarget, "gated feedback must not decay without another swipe");
+
+  analyzer.beginStroke("touch");
+  const slow = completeGate(analyzer, [
+    { clientX: 300, clientY: 500, time: 16_000, pointerType: "touch" },
+    { clientX: 310, clientY: 500, time: 16_200, pointerType: "touch" },
+    { clientX: 320, clientY: 500, time: 16_400, pointerType: "touch" },
+  ], 16_850);
+  assert.ok(slow.gateDeltaY < -0.05);
+  assert.ok(slow.targetY < heldTarget);
+  assert.equal(slow.speedCalibrationSamples, 2);
+});
+
+test("gated shape windows move valence round/right and jagged/left", () => {
+  const roundAnalyzer = new TouchTraceAnalyzer({ width: 1_000, height: 1_000 });
+  const roundPoints = Array.from({ length: 25 }, (_, index) => {
+    const angle = index / 24 * Math.PI * 1.25;
+    return {
+      clientX: 500 + Math.cos(angle) * 220,
+      clientY: 500 + Math.sin(angle) * 220,
+      time: index * 20,
+      pointerType: "pen",
+    };
+  });
+  const round = completeGate(roundAnalyzer, roundPoints, 900);
+  assert.ok(round.gateDeltaX > 0.05);
+  assert.equal(round.shapeCalibrationSamples, 1);
+
+  const jaggedAnalyzer = new TouchTraceAnalyzer({ width: 1_000, height: 1_000 });
+  const jaggedPoints = Array.from({ length: 25 }, (_, index) => ({
+    clientX: 300 + index * 7,
+    clientY: index % 2 ? 507 : 493,
+    time: index * 20,
+    pointerType: "pen",
+  }));
+  const jagged = completeGate(jaggedAnalyzer, jaggedPoints, 900);
+  assert.ok(jagged.gateDeltaX < -0.05);
+  assert.equal(jagged.shapeCalibrationSamples, 1);
+});
+
+test("repeated gated windows accumulate to extrema and reset clears the held result", () => {
+  const analyzer = new TouchTraceAnalyzer({ width: 1_000, height: 1_000 });
+  for (let gate = 0; gate < 6; gate += 1) {
+    const start = gate * 1_000;
+    analyzer.beginStroke("touch");
+    completeGate(analyzer, [
+      { clientX: 50, clientY: 500, time: start, pointerType: "touch" },
+      { clientX: 500, clientY: 500, time: start + 20, pointerType: "touch" },
+      { clientX: 950, clientY: 500, time: start + 40, pointerType: "touch" },
+    ], start + 500);
+  }
+  assert.equal(analyzer.targetY, 1);
+  assert.equal(analyzer.speedRange.count, 6, "gesture duration must not multiply calibration votes");
+  analyzer.reset({ width: 1_000, height: 1_000 });
+  const reset = analyzer.snapshot();
+  assert.equal(reset.targetY, 0);
+  assert.equal(reset.gateCommitSequence, 0);
+  assert.equal(reset.speedCalibrationSamples, 0);
 });
 
 test("trace fitting preserves aspect ratio and centers degenerate axes", () => {
