@@ -30,6 +30,17 @@ object SpatialPlacement {
     )
   }
 
+  /** Places the panel on the current head-gaze ray while keeping it comfortably upright. */
+  fun gazeCenteredFlubberPose(viewer: Pose, distanceMeters: Float): Pose {
+    val tracked = viewer.forward()
+    val trackedLength = length(tracked)
+    val gaze = if (trackedLength > 0.001f) tracked * (1f / trackedLength) else uprightForward(viewer)
+    return Pose(
+        viewer.t + gaze * distanceMeters.coerceIn(0.35f, 5f),
+        Quaternion.lookRotationAroundY(uprightForward(viewer)),
+    )
+  }
+
   fun distance(a: Vector3, b: Vector3): Float = length(a - b)
 
   fun uprightForward(viewer: Pose): Vector3 {

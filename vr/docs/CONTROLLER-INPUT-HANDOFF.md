@@ -25,7 +25,8 @@ Host tests and exact APK installation/readback pass. The final correction has no
 - The selected hand comes from the one universal profile in `active-session.json`, so choosing another video cannot change it. The contract continues to support either `left` or `right`.
 - The same stick must not display a teleport cursor/ray, teleport, snap-turn, or move the video/world.
 - Controller tracking/models and pointer-trigger grabbing must continue working.
-- Trigger grabbing must work anywhere on the 2.5× transparent Flubber surface, not only on visible colored pixels. The entity carries explicit metric `IsdkPanelDimensions`, `IsdkGrabbable`, and overlapping complete-width edge colliders in addition to `Hittable` and toolkit `Grabbable`.
+- Trigger grabbing must work anywhere on the tight transparent Flubber rectangle, not only on visible colored pixels. The entity uses the registered panel scene object's toolkit `Grabbable` listener and synchronized `PanelDimensions`; it deliberately omits the giant overlapping manual ISDK edge colliders that made the target oversized and inconsistent.
+- With the default X reset/Y pause mapping, A recenters Flubber on the current head-gaze ray at its current clamped distance. Imported profiles that explicitly assign A to reset or pause keep that older action and do not also recenter.
 - One activity owns every controller route and feeds one `AffectEngine`; video and Flubber are not competing applications.
 
 ## What the wearer observed
@@ -198,16 +199,16 @@ This prevents repeatedly recompiling the APK while diagnosing a headset-only inp
 
 ## Verification completed for the current correction
 
-- Shared Node suite: 83/83 passed.
+- Shared Node suite: 84/84 passed.
 - Native Rust LSL schema test: passed.
-- Android/Kotlin unit tests: 30/30 passed.
+- Android/Kotlin unit tests: 31/31 passed.
 - Direct pinned-SDK locomotion policy test: passed.
 - Android lint: passed.
 - Locked offline debug build: passed.
 - APK identity, permission, ABI, and admission inspection: passed.
 - Exact APK installed through QuestIonAble File Manager.
 - Installed-byte hash and size matched the host-admitted artifact.
-- Installed APK SHA-256: `972f16503cd48c6f692eb814adc483dfd80958e13f57c47149f694dcf443b5a9`.
+- Installed APK SHA-256: `9ca68f463843039aeb86f1d8311c06199376e3bde2547eda07b237cd06a6d92e`.
 - App-owned launcher evidence catalogued all five headset videos with the universal right-stick profile and zero final loader issues; no fatal runtime entry was present.
 
 The APK launcher was started for bounded loader/readiness diagnosis, but the experiment itself was not started unattended because physical Touch acceptance requires a wearer. No raw device log, headset serial, private machine path, or APK binary is committed to Git.
@@ -223,9 +224,11 @@ The controller goal remains open until a real Touch-controller run proves all of
 5. Repeat the sweep during video playback.
 6. Pause the whole session and repeat the sweep; Flubber input must remain live while the engine/video pause policy remains internally consistent.
 7. Throughout the complete sweep, confirm there is no teleport ray/cursor, teleport, snap-turn, or video/world movement.
-8. Point at the center and each visually empty quadrant of the transparent Flubber panel. Hold either trigger, move the panel laterally and in depth by at least 2 cm, and release.
-9. Preserve the app-owned controller-source receipt, input edge, changed target/current affect values, post-input canvas draw receipt, and grab start/move/end markers.
-10. Exit and relaunch the immersive activity once after the pass and reject any `DataModel` assertion, entity teardown race, or native exception.
+8. Confirm the maximum Flubber outline and optional X/Y line fit inside the tight panel without clipping or an oversized invisible target.
+9. Point at the center, each visually empty quadrant, and all four corners of the transparent Flubber panel. Hold either trigger, move the panel laterally and in depth by at least 2 cm, and release.
+10. Look away from Flubber and press an unassigned A button. Confirm Flubber moves to the current gaze center without changing its distance.
+11. Preserve the app-owned controller-source receipt, input edge, changed target/current affect values, post-input canvas draw receipt, grab start/move/end markers, and gaze-recenter marker.
+12. Exit and relaunch the immersive activity once after the pass and reject any `DataModel` assertion, entity teardown race, or native exception.
 
 If the physical stick still fails, capture the complete app-owned receipt chain before changing code. The first missing link identifies the next boundary:
 

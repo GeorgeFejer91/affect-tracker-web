@@ -7,7 +7,6 @@ import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.Typeface
 import android.view.View
-import kotlin.math.min
 
 class FlubberView(context: Context, private val onShapeDrawn: (Float, Float) -> Unit = { _, _ -> }) : View(context) {
   private val path = Path()
@@ -71,9 +70,9 @@ class FlubberView(context: Context, private val onShapeDrawn: (Float, Float) -> 
     super.onDraw(canvas)
     val points = geometry ?: return
     if (!visibleShape || points.x.isEmpty()) return
-    val scale = min(width, height) * FlubberPanelLayout.CONTENT_SCALE_FRACTION
+    val scale = width * FlubberPanelLayout.CONTENT_SCALE_FRACTION
     val centerX = width * 0.5f
-    val centerY = height * 0.5f
+    val centerY = width * FlubberPanelLayout.CONTENT_CENTER_Y_TO_WIDTH
     path.rewind()
     path.moveTo(centerX + points.x[0] * scale, centerY + points.y[0] * scale)
     for (index in 1 until points.x.size) path.lineTo(centerX + points.x[index] * scale, centerY + points.y[index] * scale)
@@ -94,8 +93,8 @@ class FlubberView(context: Context, private val onShapeDrawn: (Float, Float) -> 
   }
 
   private fun drawTelemetry(canvas: Canvas) {
-    val textSize = width * 0.052f
-    val baseline = height - textSize * 0.75f
+    val textSize = width * FlubberPanelLayout.TELEMETRY_TEXT_SIZE_TO_WIDTH
+    val baseline = height - width * FlubberPanelLayout.TELEMETRY_BASELINE_BOTTOM_MARGIN_TO_WIDTH
     telemetryStroke.textSize = textSize
     telemetryStroke.strokeWidth = textSize * 0.19f
     telemetryFill.textSize = textSize

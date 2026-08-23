@@ -5,12 +5,18 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class FlubberPanelLayoutTest {
-  @Test fun defaultSurfaceIsLargeEnoughToGrabAcrossTransparentPadding() {
-    assertEquals(0.75f, FlubberPanelLayout.surfaceWidthMeters(0.3f), 0.0001f)
+  @Test fun defaultSurfaceTightlyFitsFlubberAndReadout() {
+    assertEquals(0.345f, FlubberPanelLayout.surfaceWidthMeters(0.3f), 0.0001f)
+    assertEquals(0.3864f, FlubberPanelLayout.surfaceHeightMeters(0.3f), 0.0001f)
   }
 
-  @Test fun worstCaseCanonicalOutlineAndHaloRemainInsideCanvas() {
+  @Test fun worstCaseOutlineAndReadoutHaveSeparateUnclippedBands() {
     assertTrue(FlubberPanelLayout.maximumCanvasRadiusFraction() < 0.5f)
     assertTrue(0.5f - FlubberPanelLayout.maximumCanvasRadiusFraction() > 0.04f)
+    assertTrue(
+        FlubberPanelLayout.telemetryTopFractionOfWidth() -
+            (FlubberPanelLayout.CONTENT_CENTER_Y_TO_WIDTH +
+                FlubberPanelLayout.maximumCanvasRadiusFraction()) > 0.07f,
+    )
   }
 }

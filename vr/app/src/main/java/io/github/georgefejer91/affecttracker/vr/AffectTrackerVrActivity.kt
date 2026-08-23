@@ -39,11 +39,8 @@ import com.meta.spatial.core.SpatialFeature
 import com.meta.spatial.core.SpatialSDKExperimentalAPI
 import com.meta.spatial.core.Vector2
 import com.meta.spatial.core.Vector3
-import com.meta.spatial.core.Vector4
 import com.meta.spatial.isdk.IsdkGrabState
 import com.meta.spatial.isdk.IsdkGrabbable
-import com.meta.spatial.isdk.IsdkPanelDimensions
-import com.meta.spatial.isdk.IsdkPanelGrabHandle
 import com.meta.spatial.isdk.IsdkSystem
 import com.meta.spatial.runtime.ButtonBits
 import com.meta.spatial.runtime.PanelShapeLayerBlendType
@@ -54,8 +51,6 @@ import com.meta.spatial.toolkit.AvatarSystem
 import com.meta.spatial.toolkit.DpPerMeterDisplayOptions
 import com.meta.spatial.toolkit.Grabbable
 import com.meta.spatial.toolkit.GrabbableType
-import com.meta.spatial.toolkit.Hittable
-import com.meta.spatial.toolkit.Panel
 import com.meta.spatial.toolkit.PanelDimensions
 import com.meta.spatial.toolkit.PanelInputOptions
 import com.meta.spatial.toolkit.PanelRegistration
@@ -288,6 +283,9 @@ class AffectTrackerVrActivity : AppSystemActivity() {
     val controls = staged?.session?.controls ?: return false
     if (token == controls.resetButton) { engine?.reset(); lsl.marker("input:controller:reset"); return true }
     if (token == controls.pauseButton && sessionActive) { togglePause(); return true }
+    if (token == "a" && aButtonIsAvailableForRecenter(controls)) {
+      return recenterFlubberToGaze("spatial_game_controller_a")
+    }
     return false
   }
 
@@ -320,7 +318,7 @@ class AffectTrackerVrActivity : AppSystemActivity() {
     telemetryStickY = 0f
     flubberView?.resetTelemetry()
     status = "Preparing ${next.session.video.file}"
-    details = "LSL is running. Waiting for the video decoder…"
+    details = "LSL is running. A recenters Flubber on your gaze. Waiting for the video decoder…"
     Log.i(
         ExperimentRuntime.READINESS_TAG,
         "runtime_profile source=active-session.json video=${next.session.video.file} " +
@@ -340,21 +338,17 @@ class AffectTrackerVrActivity : AppSystemActivity() {
     if (create || flubberEntity == null) {
       val configuredWidth = next.session.flubber.widthMeters
       val surfaceWidth = FlubberPanelLayout.surfaceWidthMeters(configuredWidth)
+      val surfaceHeight = FlubberPanelLayout.surfaceHeightMeters(configuredWidth)
       flubberEntity?.destroy()
-      flubberEntity = Entity.create(
-          Panel(R.id.flubber_panel),
-          PanelDimensions(Vector2(surfaceWidth, surfaceWidth)),
+      // Registered panel scene objects already receive input across their complete quad. Use the
+      // toolkit-managed Grabbable path so dimensions and input stay synchronized; manually adding
+      // giant ISDK edge-handle widths made four overlapping edge colliders fight that normal path.
+      flubberEntity = Entity.createPanelEntity(
+          R.id.flubber_panel,
           Transform(pose),
-          Visible(next.session.affect.overlay.visible),
+          PanelDimensions(Vector2(surfaceWidth, surfaceHeight)),
           Grabbable(enabled = true, type = GrabbableType.PIVOT_Y, minHeight = 0.25f, maxHeight = 2.5f),
-          Hittable(),
-          IsdkPanelDimensions(Vector2(surfaceWidth, surfaceWidth)),
-          IsdkGrabbable(),
-          // The SDK default uses narrow edge handles. Each edge collider spans the complete
-          // enlarged transparent quad, so the center and all empty corners initiate the same grab.
-          IsdkPanelGrabHandle(
-              grabHandleCollisionWidths = Vector4(surfaceWidth, surfaceWidth, surfaceWidth, surfaceWidth),
-          ),
+          Visible(next.session.affect.overlay.visible),
       )
       lastGrabbed = false
       grabStartPosition = null
@@ -364,7 +358,8 @@ class AffectTrackerVrActivity : AppSystemActivity() {
       Log.i(
           ExperimentRuntime.READINESS_TAG,
           "flubber_full_surface_grab configured_width_m=$configuredWidth surface_width_m=$surfaceWidth " +
-              "isdk_dimensions=true isdk_grabbable=true",
+              "surface_height_m=$surfaceHeight route=toolkit_panel_scene_object " +
+              "manual_isdk_edge_handles=false recenter_button=a",
       )
       Log.i(
           ExperimentRuntime.READINESS_TAG,
@@ -513,10 +508,13 @@ class AffectTrackerVrActivity : AppSystemActivity() {
         }
       } },
       settingsCreator = {
-        val configuredWidth = staged?.session?.flubber?.widthMeters ?: 0.3f
+        val configuredWidth = staged?.session?.flubber?.widthMeters
+            ?: runtime.armedSession?.session?.flubber?.widthMeters
+            ?: 0.3f
         val surfaceWidth = FlubberPanelLayout.surfaceWidthMeters(configuredWidth)
+        val surfaceHeight = FlubberPanelLayout.surfaceHeightMeters(configuredWidth)
         UIPanelSettings(
-            shape = QuadShapeOptions(width = surfaceWidth, height = surfaceWidth),
+            shape = QuadShapeOptions(width = surfaceWidth, height = surfaceHeight),
             style = PanelStyleOptions(themeResourceId = R.style.TransparentSpatialPanelTheme),
             display = DpPerMeterDisplayOptions(dpPerMeter = 1200f),
             rendering = UIPanelRenderOptions(
@@ -620,6 +618,10 @@ class AffectTrackerVrActivity : AppSystemActivity() {
       lsl.marker("input:controller:reset")
     }
     if (sessionActive && TouchControllerInput.pressed(frame.buttonState, frame.changedButtons, buttonBit(controls.pauseButton))) togglePause()
+    if (aButtonIsAvailableForRecenter(controls) &&
+        TouchControllerInput.pressed(frame.buttonState, frame.changedButtons, ButtonBits.ButtonA)) {
+      recenterFlubberToGaze("spatial_touch_a")
+    }
   }
 
   private fun pollSpatialControllers() {
@@ -753,6 +755,28 @@ class AffectTrackerVrActivity : AppSystemActivity() {
 
   private fun effectiveShowAffectValues(session: VrSession): Boolean =
       showAffectValuesOverride ?: session.flubber.showAffectValues
+
+  private fun aButtonIsAvailableForRecenter(controls: ControllerBindings): Boolean =
+      controls.resetButton != "a" && controls.pauseButton != "a"
+
+  private fun recenterFlubberToGaze(source: String): Boolean {
+    val entity = flubberEntity ?: return false
+    val viewer = runCatching { scene.getViewerPose() }.getOrNull() ?: return false
+    val current = entity.tryGetComponent<Transform>()?.transform
+    val fallbackDistance = staged?.session?.flubber?.distanceMeters ?: 1.25f
+    val distance = current?.let { SpatialPlacement.distance(viewer.t, it.t) }
+        ?.coerceIn(0.35f, 5f) ?: fallbackDistance
+    val pose = SpatialPlacement.gazeCenteredFlubberPose(viewer, distance)
+    entity.setComponent(Transform(pose))
+    lsl.marker("flubber:recentered:a")
+    Log.i(
+        ExperimentRuntime.READINESS_TAG,
+        "flubber_recentered source=$source button=a distance_m=$distance " +
+            "viewer=${viewer.t.x},${viewer.t.y},${viewer.t.z} " +
+            "flubber=${pose.t.x},${pose.t.y},${pose.t.z}",
+    )
+    return true
+  }
 
   private fun buttonBit(token: String): Int = when (token) {
     "x" -> ButtonBits.ButtonX

@@ -70,15 +70,24 @@ test("Quest exposes a per-run two-coordinate affect readout without making model
   assert.doesNotMatch(telemetry, /target|rate|Stick/);
 });
 
-test("Quest applies one active controller profile to every video and grabs the enlarged full surface", () => {
+test("Quest applies one active profile and uses the registered panel's complete surface", () => {
   assert.match(loader, /session\.withRuntimeProfile\(it\.session\)/);
   assert.match(loader, /VideoChoiceSource\.ACTIVE_LAYOUT_DEFAULTS/);
-  assert.match(activity, /IsdkPanelDimensions\(Vector2\(surfaceWidth, surfaceWidth\)\)/);
-  assert.match(activity, /IsdkGrabbable\(\)/);
-  assert.match(
-    activity,
-    /grabHandleCollisionWidths = Vector4\(surfaceWidth, surfaceWidth, surfaceWidth, surfaceWidth\)/,
-  );
-  assert.match(panelLayout, /SURFACE_SIZE_MULTIPLIER = 2\.5f/);
+  assert.match(activity, /Entity\.createPanelEntity\(\s*R\.id\.flubber_panel/);
+  assert.match(activity, /PanelDimensions\(Vector2\(surfaceWidth, surfaceHeight\)\)/);
+  assert.match(activity, /Grabbable\(enabled = true, type = GrabbableType\.PIVOT_Y/);
+  assert.match(activity, /manual_isdk_edge_handles=false recenter_button=a/);
+  assert.doesNotMatch(activity, /IsdkPanelGrabHandle/);
+  assert.doesNotMatch(activity, /grabHandleCollisionWidths/);
+  assert.match(panelLayout, /SURFACE_WIDTH_MULTIPLIER = 1\.15f/);
+  assert.match(panelLayout, /SURFACE_HEIGHT_TO_WIDTH = 1\.12f/);
   assert.match(panelLayout, /MAX_CANONICAL_RADIUS = 3\.08f/);
+});
+
+test("Quest recenters Flubber on the current gaze ray with the free A button", () => {
+  assert.match(activity, /ButtonBits\.ButtonA/);
+  assert.match(activity, /aButtonIsAvailableForRecenter\(controls\)/);
+  assert.match(activity, /SpatialPlacement\.gazeCenteredFlubberPose\(viewer, distance\)/);
+  assert.match(activity, /flubber:recentered:a/);
+  assert.match(activity, /flubber_recentered source=\$source button=a/);
 });
