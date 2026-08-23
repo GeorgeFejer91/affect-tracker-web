@@ -11,6 +11,11 @@ export const VR_DEFAULTS = Object.freeze({
     horizontalOffsetMeters: 0,
     verticalOffsetMeters: -0.3,
     showAffectValues: false,
+    controllerFollow: Object.freeze({
+      enabled: false,
+      hand: "left",
+      distanceMeters: 0.18,
+    }),
   }),
   controls: Object.freeze({
     stick: "right",
@@ -25,6 +30,7 @@ const PROJECTIONS = new Set(["flat", "equirect-180", "equirect-360"]);
 const STEREO_LAYOUTS = new Set(["mono", "side-by-side-left-right", "top-bottom"]);
 const STICKS = new Set(["left", "right"]);
 const BUTTONS = new Set(["x", "y", "a", "b", "none"]);
+const ENVIRONMENTS = new Set(["dark", "passthrough"]);
 const SHA256 = /^[a-f0-9]{64}$/;
 
 function numberInRange(value, label, minimum, maximum) {
@@ -82,6 +88,13 @@ export function normalizeVrSession(value) {
   if (flubber.showAffectValues !== undefined && typeof flubber.showAffectValues !== "boolean") {
     throw new Error("Show X/Y affect coordinates must be true or false.");
   }
+  const controllerFollow = flubber.controllerFollow ?? VR_DEFAULTS.flubber.controllerFollow;
+  if (!controllerFollow || typeof controllerFollow !== "object" || Array.isArray(controllerFollow)) {
+    throw new Error("Controller-follow settings must contain one object.");
+  }
+  if (controllerFollow.enabled !== undefined && typeof controllerFollow.enabled !== "boolean") {
+    throw new Error("Follow a controller must be true or false.");
+  }
   if (resetButton !== "none" && resetButton === pauseButton) {
     throw new Error("Reset and pause must not use the same controller button.");
   }
@@ -100,13 +113,27 @@ export function normalizeVrSession(value) {
     },
     affectSettings: normalizePortableSettings(value.affectSettings),
     vr: {
-      environment: enumValue(vr.environment ?? VR_DEFAULTS.environment, "VR environment", new Set(["dark"])),
+      environment: enumValue(vr.environment ?? VR_DEFAULTS.environment, "VR environment", ENVIRONMENTS),
       flubber: {
         widthMeters: numberInRange(flubber.widthMeters, "Flubber width", 0.12, 1.2),
         distanceMeters: numberInRange(flubber.distanceMeters, "Flubber distance", 0.35, 5),
         horizontalOffsetMeters: numberInRange(flubber.horizontalOffsetMeters, "Flubber horizontal offset", -2, 2),
         verticalOffsetMeters: numberInRange(flubber.verticalOffsetMeters, "Flubber vertical offset", -2, 2),
         showAffectValues: flubber.showAffectValues ?? VR_DEFAULTS.flubber.showAffectValues,
+        controllerFollow: {
+          enabled: controllerFollow.enabled ?? VR_DEFAULTS.flubber.controllerFollow.enabled,
+          hand: enumValue(
+            controllerFollow.hand ?? VR_DEFAULTS.flubber.controllerFollow.hand,
+            "Controller-follow hand",
+            STICKS,
+          ),
+          distanceMeters: numberInRange(
+            controllerFollow.distanceMeters ?? VR_DEFAULTS.flubber.controllerFollow.distanceMeters,
+            "Controller-follow distance",
+            0.05,
+            0.6,
+          ),
+        },
       },
       controls: {
         stick: enumValue(controls.stick ?? VR_DEFAULTS.controls.stick, "Controller stick", STICKS),
@@ -127,6 +154,7 @@ export function createVrSession({
   stereo,
   loop = false,
   affectSettings,
+  environment = VR_DEFAULTS.environment,
   flubber = VR_DEFAULTS.flubber,
   controls = VR_DEFAULTS.controls,
 }) {
@@ -139,7 +167,7 @@ export function createVrSession({
     sessionId,
     video: { file: file.name, byteLength: file.size, sha256, projection, stereo, loop },
     affectSettings,
-    vr: { environment: "dark", flubber, controls },
+    vr: { environment, flubber, controls },
   });
 }
 

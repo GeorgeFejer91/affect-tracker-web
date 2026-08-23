@@ -147,6 +147,10 @@ const elements = {
   questFlubberDistance: document.querySelector("#quest-flubber-distance"),
   questFlubberX: document.querySelector("#quest-flubber-x"),
   questFlubberY: document.querySelector("#quest-flubber-y"),
+  questMixedReality: document.querySelector("#quest-mixed-reality"),
+  questFollowController: document.querySelector("#quest-follow-controller"),
+  questFollowControllerHand: document.querySelector("#quest-follow-controller-hand"),
+  questFollowControllerDistance: document.querySelector("#quest-follow-controller-distance"),
   questStick: document.querySelector("#quest-stick"),
   questResetButton: document.querySelector("#quest-reset-button"),
   questPauseButton: document.querySelector("#quest-pause-button"),
@@ -1895,6 +1899,12 @@ function downloadJson(contents, filename) {
   setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
+function updateQuestControllerFollowControls() {
+  const disabled = !elements.questFollowController.checked;
+  elements.questFollowControllerHand.disabled = disabled;
+  elements.questFollowControllerDistance.disabled = disabled;
+}
+
 async function exportQuestSession() {
   const file = elements.questVideoFile.files?.[0];
   if (!file) throw new Error("Select the video that will be copied to the headset.");
@@ -1911,12 +1921,18 @@ async function exportQuestSession() {
       stereo: elements.questVideoStereo.value,
       loop: elements.questVideoLoop.checked,
       affectSettings: settingsFromState(),
+      environment: elements.questMixedReality.checked ? "passthrough" : "dark",
       flubber: {
         widthMeters: Number(elements.questFlubberWidth.value),
         distanceMeters: Number(elements.questFlubberDistance.value),
         horizontalOffsetMeters: Number(elements.questFlubberX.value),
         verticalOffsetMeters: Number(elements.questFlubberY.value),
         showAffectValues: elements.questShowAffectValues.checked,
+        controllerFollow: {
+          enabled: elements.questFollowController.checked,
+          hand: elements.questFollowControllerHand.value,
+          distanceMeters: Number(elements.questFollowControllerDistance.value),
+        },
       },
       controls: {
         stick: elements.questStick.value,
@@ -2139,6 +2155,8 @@ function initializeEvents() {
     else if (pictureInPictureWindow && !pictureInPictureWindow.closed) pictureInPictureWindow.close();
   });
   elements.settingsExportButton.addEventListener("click", exportSettings);
+  elements.questFollowController.addEventListener("change", updateQuestControllerFollowControls);
+  updateQuestControllerFollowControls();
   elements.questExportButton.addEventListener("click", async () => {
     try {
       await exportQuestSession();

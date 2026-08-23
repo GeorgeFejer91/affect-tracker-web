@@ -37,6 +37,11 @@ const panelLayout = readFileSync(
   ),
   "utf8",
 );
+const webIndex = readFileSync(new URL("../site/index.html", import.meta.url), "utf8");
+const androidManifest = readFileSync(
+  new URL("../vr/app/src/main/AndroidManifest.xml", import.meta.url),
+  "utf8",
+);
 
 test("Quest keeps the ISDK input bridge scheduled while disabling its locomotion behavior", () => {
   const superCreate = activity.indexOf("super.onCreate(savedInstanceState)");
@@ -75,8 +80,8 @@ test("Quest applies one active profile and uses the registered panel's complete 
   assert.match(loader, /VideoChoiceSource\.ACTIVE_LAYOUT_DEFAULTS/);
   assert.match(activity, /Entity\.createPanelEntity\(\s*R\.id\.flubber_panel/);
   assert.match(activity, /PanelDimensions\(Vector2\(surfaceWidth, surfaceHeight\)\)/);
-  assert.match(activity, /Grabbable\(enabled = true, type = GrabbableType\.PIVOT_Y/);
-  assert.match(activity, /manual_isdk_edge_handles=false recenter_button=a/);
+  assert.match(activity, /Grabbable\(enabled = grabEnabled, type = GrabbableType\.PIVOT_Y/);
+  assert.match(activity, /manual_isdk_edge_handles=false grab_enabled=\$grabEnabled recenter_button=a/);
   assert.doesNotMatch(activity, /IsdkPanelGrabHandle/);
   assert.doesNotMatch(activity, /grabHandleCollisionWidths/);
   assert.match(panelLayout, /SURFACE_WIDTH_MULTIPLIER = 1\.15f/);
@@ -86,8 +91,21 @@ test("Quest applies one active profile and uses the registered panel's complete 
 
 test("Quest recenters Flubber on the current gaze ray with the free A button", () => {
   assert.match(activity, /ButtonBits\.ButtonA/);
-  assert.match(activity, /aButtonIsAvailableForRecenter\(controls\)/);
+  assert.match(activity, /isAButtonAvailableForRecenter\(staged\?\.session\)/);
   assert.match(activity, /SpatialPlacement\.gazeCenteredFlubberPose\(viewer, distance\)/);
   assert.match(activity, /flubber:recentered:a/);
   assert.match(activity, /flubber_recentered source=\$source button=a/);
+});
+
+test("Quest passthrough and controller-follow stay in the single immersive frame loop", () => {
+  assert.match(webIndex, /id="quest-mixed-reality" type="checkbox"/);
+  assert.match(webIndex, /id="quest-follow-controller" type="checkbox"/);
+  assert.match(webIndex, /id="quest-follow-controller-hand"/);
+  assert.match(androidManifest, /com\.oculus\.feature\.PASSTHROUGH/);
+  assert.match(activity, /scene\.enablePassthrough\(passthrough\)/);
+  assert.match(activity, /camera_frames=system_compositor_only/);
+  assert.match(activity, /updateControllerFollow\(session\)/);
+  assert.match(activity, /SpatialPlacement\.controllerFollowFlubberPose\(viewer, it, follow\.distanceMeters\)/);
+  assert.match(activity, /flubber:controller_follow:\$state:\$\{follow\.hand\.token\}/);
+  assert.match(activity, /val grabEnabled = !next\.session\.flubber\.controllerFollow\.enabled/);
 });

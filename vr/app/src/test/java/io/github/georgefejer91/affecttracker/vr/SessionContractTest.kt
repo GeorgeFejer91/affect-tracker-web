@@ -13,6 +13,10 @@ class SessionContractTest {
     assertEquals("y", session.controls.pauseButton)
     assertEquals(true, session.controls.showControllerModels)
     assertEquals(false, session.flubber.showAffectValues)
+    assertEquals(false, session.flubber.controllerFollow.enabled)
+    assertEquals(StickHand.LEFT, session.flubber.controllerFollow.hand)
+    assertEquals(0.18f, session.flubber.controllerFollow.distanceMeters, 0.0001f)
+    assertEquals(VrEnvironment.DARK, session.environment)
   }
 
   @Test fun traversalAndUnknownControllerFieldsAreRejected() {
@@ -42,6 +46,24 @@ class SessionContractTest {
     }
   }
 
+  @Test fun passthroughAndControllerFollowAreAcceptedAndTypeChecked() {
+    val follow = JSONObject()
+        .put("enabled", true).put("hand", "left").put("distanceMeters", 0.22)
+    val session = SessionContract.parse(
+        manifest(JSONObject(), environment = "passthrough", controllerFollow = follow),
+    )
+    assertEquals(VrEnvironment.PASSTHROUGH, session.environment)
+    assertEquals(true, session.flubber.controllerFollow.enabled)
+    assertEquals(StickHand.LEFT, session.flubber.controllerFollow.hand)
+    assertEquals(0.22f, session.flubber.controllerFollow.distanceMeters, 0.0001f)
+    assertThrows(IllegalArgumentException::class.java) {
+      SessionContract.parse(manifest(JSONObject(), controllerFollow = JSONObject().put("enabled", "true")))
+    }
+    assertThrows(IllegalStateException::class.java) {
+      SessionContract.parse(manifest(JSONObject(), environment = "camera"))
+    }
+  }
+
   @Test fun activeRuntimeProfileSupersedesEveryOptionalVideoProfile() {
     val active = SessionContract.parse(
         manifest(JSONObject().put("stick", "right"), filename = "primary.mp4", showAffectValues = true),
@@ -57,6 +79,8 @@ class SessionContractTest {
     assertEquals(StickHand.RIGHT, effective.controls.stick)
     assertEquals(true, effective.flubber.showAffectValues)
     assertEquals(active.affect, effective.affect)
+    assertEquals(active.environment, effective.environment)
+    assertEquals(active.flubber.controllerFollow, effective.flubber.controllerFollow)
   }
 
   @Test fun discoveredMediaFilenameSafetyMatchesManifestSafety() {
@@ -70,12 +94,15 @@ class SessionContractTest {
       filename: String = "stimulus.mp4",
       showAffectValues: Boolean? = null,
       rawShowAffectValues: Any? = null,
+      environment: String = "dark",
+      controllerFollow: JSONObject? = null,
   ): String {
     val flubber = JSONObject()
         .put("widthMeters", 0.3).put("distanceMeters", 1.25)
         .put("horizontalOffsetMeters", 0).put("verticalOffsetMeters", -0.3)
     if (showAffectValues != null) flubber.put("showAffectValues", showAffectValues)
     if (rawShowAffectValues != null) flubber.put("showAffectValues", rawShowAffectValues)
+    if (controllerFollow != null) flubber.put("controllerFollow", controllerFollow)
     return JSONObject()
       .put("schema", "affect-tracker-vr-session")
       .put("version", 1)
@@ -85,7 +112,7 @@ class SessionContractTest {
           .put("projection", "flat").put("stereo", "mono").put("loop", false))
       .put("affectSettings", JSONObject(AFFECT_SETTINGS))
       .put("vr", JSONObject()
-          .put("environment", "dark")
+          .put("environment", environment)
           .put("flubber", flubber)
           .put("controls", controls))
       .toString()

@@ -145,6 +145,12 @@ controller_owner activity=affect_tracker input_system=interaction_sdk locomotion
 
 The activity fails startup if the system is not disabled or still claims controllers. The late poll calls `enableLocomotion(false)` again if a later lifecycle transition changes the state. Do not replace this with `unregisterSystem<LocomotionSystem>()` without a new SDK-level proof and an attended regression run.
 
+### Optional controller-follow placement
+
+The same selected-hand controller query also retains live world-space poses for both local Touch attachments, with player-avatar pose fallback. `vr.flubber.controllerFollow` can independently choose either hand (left by default) and `0.05–0.6 m` spacing. While enabled, the activity places Flubber just beyond that controller on the viewer-to-controller ray and recomputes full viewer-facing orientation every scene tick. It emits acquired/lost tracking edges and one measured-movement receipt after 2 cm. It does not change joystick ownership or affect routing.
+
+Controller-follow, ordinary world dragging, and A-button gaze recentering must not write the same transform concurrently. Follow mode therefore becomes the sole placement authority; the registered panel's `Grabbable` is disabled and A recenter is unavailable until a profile with follow disabled is loaded. Passthrough is orthogonal and remains compositor-owned.
+
 ### Controller-to-Flubber receipt chain
 
 A valid physical acceptance receipt must contain all relevant links, not merely one input-looking event:
@@ -170,7 +176,7 @@ The Flubber response marker is emitted only after the Android drawing surface re
 - `LocomotionPolicyTest.kt` loads the pinned SDK classes and verifies that `enableLocomotion(false)` produces `Disabled` and does not claim controllers.
 - `TouchControllerInputTest.kt` covers hand-specific direction mapping, attachment/avatar/fallback merging, diagonal input, dead zones, and ISDK scroll normalization.
 - `AffectTelemetryTextTest.kt` verifies the locale-stable bounded current `X`/`Y` pair, 10 Hz throttling, and session reset.
-- Session tests validate `left`/`right` mappings, controller button uniqueness, `showControllerModels`, and the optional `showAffectValues` field.
+- Session tests validate `left`/`right` mappings, controller button uniqueness, `showControllerModels`, optional `showAffectValues`, `dark`/`passthrough`, and the controller-follow object/defaults.
 
 ### Debug CLI
 
@@ -199,17 +205,17 @@ This prevents repeatedly recompiling the APK while diagnosing a headset-only inp
 
 ## Verification completed for the current correction
 
-- Shared Node suite: 84/84 passed.
+- Shared Node suite: 86/86 passed.
 - Native Rust LSL schema test: passed.
-- Android/Kotlin unit tests: 31/31 passed.
+- Android/Kotlin unit tests: 33/33 passed.
 - Direct pinned-SDK locomotion policy test: passed.
 - Android lint: passed.
 - Locked offline debug build: passed.
 - APK identity, permission, ABI, and admission inspection: passed.
 - Exact APK installed through QuestIonAble File Manager.
 - Installed-byte hash and size matched the host-admitted artifact.
-- Installed APK SHA-256: `9ca68f463843039aeb86f1d8311c06199376e3bde2547eda07b237cd06a6d92e`.
-- App-owned launcher evidence catalogued all five headset videos with the universal right-stick profile and zero final loader issues; no fatal runtime entry was present.
+- Installed APK SHA-256: `a32f0fe37f42e2d1baf26d4d3dd4ecb2330ff355a7bf3c8afdc623896537f074`.
+- App-owned launcher evidence reached `launcher_rendered` and revalidated the existing headset session as `session_ready`; this also proves the new optional fields remain backward-compatible when omitted. No fatal runtime entry was present.
 
 The APK launcher was started for bounded loader/readiness diagnosis, but the experiment itself was not started unattended because physical Touch acceptance requires a wearer. No raw device log, headset serial, private machine path, or APK binary is committed to Git.
 
@@ -229,6 +235,8 @@ The controller goal remains open until a real Touch-controller run proves all of
 10. Look away from Flubber and press an unassigned A button. Confirm Flubber moves to the current gaze center without changing its distance.
 11. Preserve the app-owned controller-source receipt, input edge, changed target/current affect values, post-input canvas draw receipt, grab start/move/end markers, and gaze-recenter marker.
 12. Exit and relaunch the immersive activity once after the pass and reject any `DataModel` assertion, entity teardown race, or native exception.
+
+For a second manifest with controller-follow and passthrough enabled, replace steps 9–10 with: confirm see-through around a flat video; move the configured controller laterally, vertically, and in depth by at least 2 cm; confirm Flubber follows at the configured spacing while facing the wearer; and retain `flubber_controller_follow_tracking` plus `flubber_controller_follow_moved` receipts. In this mode grab and A recenter are deliberately inactive so they cannot fight the tracking transform.
 
 If the physical stick still fails, capture the complete app-owned receipt chain before changing code. The first missing link identifies the next boundary:
 

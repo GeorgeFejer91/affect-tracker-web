@@ -25,7 +25,14 @@ class SpatialPlacementTest {
 
   @Test fun flubberStartsBelowAndCloserThanTheFlatVideo() {
     val viewer = Pose(Vector3(0f, 1.6f, 0f), Quaternion())
-    val placement = FlubberPlacement(0.3f, 1.25f, 0f, -0.3f, false)
+    val placement = FlubberPlacement(
+        0.3f,
+        1.25f,
+        0f,
+        -0.3f,
+        false,
+        ControllerFollowSettings(false, StickHand.LEFT, 0.18f),
+    )
     val flubber = SpatialPlacement.flubberPose(viewer, placement)
 
     assertTrue(flubber.t.y < viewer.t.y)
@@ -46,4 +53,28 @@ class SpatialPlacementTest {
     assertTrue(alignment > 0.999f)
     assertTrue(abs(delta.y) > 0.01f)
   }
+
+  @Test fun controllerFollowStaysBeyondTheControllerAndFacesTheViewer() {
+    val viewer = Pose(Vector3(0f, 1.65f, 0f), Quaternion())
+    val controller = Pose(Vector3(-0.28f, 1.25f, 0.65f), Quaternion(20f, 10f, 5f))
+    val followed = SpatialPlacement.controllerFollowFlubberPose(viewer, controller, 0.18f)
+    val controllerDistance = SpatialPlacement.distance(viewer.t, controller.t)
+    val flubberDistance = SpatialPlacement.distance(viewer.t, followed.t)
+    val controllerDirection = controller.t - viewer.t
+    val flubberDirection = followed.t - viewer.t
+    val alignment = dot(controllerDirection, flubberDirection) /
+        (vectorLength(controllerDirection) * vectorLength(flubberDirection))
+    val facing = followed.forward()
+    val facingAlignment = dot(facing, flubberDirection) /
+        (vectorLength(facing) * vectorLength(flubberDirection))
+
+    assertEquals(controllerDistance + 0.18f, flubberDistance, 0.001f)
+    assertTrue(alignment > 0.999f)
+    assertTrue(facingAlignment > 0.999f)
+  }
+
+  private fun dot(a: Vector3, b: Vector3): Float = a.x * b.x + a.y * b.y + a.z * b.z
+
+  private fun vectorLength(value: Vector3): Float =
+      sqrt(value.x * value.x + value.y * value.y + value.z * value.z)
 }

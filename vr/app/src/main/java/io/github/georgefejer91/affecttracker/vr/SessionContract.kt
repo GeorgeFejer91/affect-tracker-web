@@ -5,6 +5,7 @@ import org.json.JSONObject
 enum class Projection(val token: String) { FLAT("flat"), EQUIRECT_180("equirect-180"), EQUIRECT_360("equirect-360") }
 enum class StereoLayout(val token: String) { MONO("mono"), SIDE_BY_SIDE("side-by-side-left-right"), TOP_BOTTOM("top-bottom") }
 enum class StickHand(val token: String) { LEFT("left"), RIGHT("right") }
+enum class VrEnvironment(val token: String) { DARK("dark"), PASSTHROUGH("passthrough") }
 
 data class VideoSpec(
     val file: String,
@@ -43,6 +44,13 @@ data class FlubberPlacement(
     val horizontalOffsetMeters: Float,
     val verticalOffsetMeters: Float,
     val showAffectValues: Boolean,
+    val controllerFollow: ControllerFollowSettings,
+)
+
+data class ControllerFollowSettings(
+    val enabled: Boolean,
+    val hand: StickHand,
+    val distanceMeters: Float,
 )
 
 data class ControllerBindings(
@@ -56,6 +64,7 @@ data class VrSession(
     val sessionId: String,
     val video: VideoSpec,
     val affect: AffectSettings,
+    val environment: VrEnvironment,
     val flubber: FlubberPlacement,
     val controls: ControllerBindings,
 )
@@ -68,6 +77,7 @@ data class VrSession(
  */
 internal fun VrSession.withRuntimeProfile(profile: VrSession): VrSession = copy(
     affect = profile.affect,
+    environment = profile.environment,
     flubber = profile.flubber,
     controls = profile.controls,
 )
@@ -95,8 +105,15 @@ object SessionContract {
     val affect = parseAffect(root.getJSONObject("affectSettings"))
     val vr = root.getJSONObject("vr")
     vr.requireExact("environment", "flubber", "controls")
-    require(vr.getString("environment") == "dark") { "unsupported_environment" }
-    return VrSession(sessionId, video, affect, parseFlubber(vr.getJSONObject("flubber")), parseControls(vr.getJSONObject("controls")))
+    val environment = enumValue(vr.getString("environment"), VrEnvironment.entries) { it.token }
+    return VrSession(
+        sessionId,
+        video,
+        affect,
+        environment,
+        parseFlubber(vr.getJSONObject("flubber")),
+        parseControls(vr.getJSONObject("controls")),
+    )
   }
 
   private fun parseVideo(value: JSONObject): VideoSpec {
@@ -158,18 +175,40 @@ object SessionContract {
 
   private fun parseFlubber(value: JSONObject): FlubberPlacement {
     val required = setOf("widthMeters", "distanceMeters", "horizontalOffsetMeters", "verticalOffsetMeters")
-    value.requireKnown(*required.toTypedArray(), "showAffectValues")
+    value.requireKnown(*required.toTypedArray(), "showAffectValues", "controllerFollow")
     require(required.all(value::has)) { "unknown_or_missing_fields" }
     val showAffectValues = if (value.has("showAffectValues")) {
       require(value.get("showAffectValues") is Boolean) { "invalid_show_affect_values" }
       value.getBoolean("showAffectValues")
     } else false
+    val controllerFollow = if (value.has("controllerFollow")) {
+      require(value.get("controllerFollow") is JSONObject) { "invalid_controller_follow" }
+      parseControllerFollow(value.getJSONObject("controllerFollow"))
+    } else {
+      ControllerFollowSettings(false, StickHand.LEFT, 0.18f)
+    }
     return FlubberPlacement(
         value.number("widthMeters", 0.12, 1.2).toFloat(),
         value.number("distanceMeters", 0.35, 5.0).toFloat(),
         value.number("horizontalOffsetMeters", -2.0, 2.0).toFloat(),
         value.number("verticalOffsetMeters", -2.0, 2.0).toFloat(),
         showAffectValues,
+        controllerFollow,
+    )
+  }
+
+  private fun parseControllerFollow(value: JSONObject): ControllerFollowSettings {
+    value.requireKnown("enabled", "hand", "distanceMeters")
+    val enabled = if (value.has("enabled")) {
+      require(value.get("enabled") is Boolean) { "invalid_controller_follow_enabled" }
+      value.getBoolean("enabled")
+    } else false
+    return ControllerFollowSettings(
+        enabled,
+        enumValue(value.optString("hand", "left"), StickHand.entries) { it.token },
+        if (value.has("distanceMeters")) {
+          value.number("distanceMeters", 0.05, 0.6).toFloat()
+        } else 0.18f,
     )
   }
 

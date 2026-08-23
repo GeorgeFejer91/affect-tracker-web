@@ -37,6 +37,11 @@ test("Quest session preserves portable settings without extending version 1", ()
   assert.equal(JSON.parse(vrSessionJson(normalized)).video.file, "stimulus.mp4");
   assert.equal(normalized.vr.controls.showControllerModels, true);
   assert.equal(normalized.vr.flubber.showAffectValues, false);
+  assert.deepEqual(normalized.vr.flubber.controllerFollow, {
+    enabled: false,
+    hand: "left",
+    distanceMeters: 0.18,
+  });
 });
 
 test("Quest session accepts an optional headset affect-value readout", () => {
@@ -53,6 +58,25 @@ test("Quest session accepts an explicit controller-model visibility switch", () 
   assert.equal(normalizeVrSession(visible).vr.controls.showControllerModels, false);
   visible.vr.controls.showControllerModels = "false";
   assert.throws(() => normalizeVrSession(visible), /true or false/);
+});
+
+test("Quest session accepts passthrough and optional controller-follow rigging", () => {
+  const session = example();
+  session.vr.environment = "passthrough";
+  session.vr.flubber.controllerFollow = { enabled: true, hand: "left", distanceMeters: 0.22 };
+  const normalized = normalizeVrSession(session);
+  assert.equal(normalized.vr.environment, "passthrough");
+  assert.deepEqual(normalized.vr.flubber.controllerFollow, {
+    enabled: true,
+    hand: "left",
+    distanceMeters: 0.22,
+  });
+
+  session.vr.flubber.controllerFollow.enabled = "true";
+  assert.throws(() => normalizeVrSession(session), /true or false/);
+  session.vr.flubber.controllerFollow.enabled = true;
+  session.vr.flubber.controllerFollow.hand = "head";
+  assert.throws(() => normalizeVrSession(session), /hand/);
 });
 
 test("Quest session fails closed on paths, hashes, layouts, and duplicate actions", () => {
@@ -72,7 +96,16 @@ test("web-selected video metadata creates the activation manifest", () => {
     sha256: HASH,
     projection: "equirect-180",
     stereo: "side-by-side-left-right",
+    environment: "passthrough",
     affectSettings: cloneDefaultSettings(),
+    flubber: {
+      widthMeters: 0.3,
+      distanceMeters: 1.25,
+      horizontalOffsetMeters: 0,
+      verticalOffsetMeters: -0.3,
+      showAffectValues: true,
+      controllerFollow: { enabled: true, hand: "left", distanceMeters: 0.2 },
+    },
   });
   assert.deepEqual(session.video, {
     file: "trial.webm",
@@ -83,5 +116,7 @@ test("web-selected video metadata creates the activation manifest", () => {
     loop: false,
   });
   assert.equal(session.vr.controls.stick, "right");
-  assert.equal(session.vr.flubber.showAffectValues, false);
+  assert.equal(session.vr.environment, "passthrough");
+  assert.equal(session.vr.flubber.showAffectValues, true);
+  assert.equal(session.vr.flubber.controllerFollow.enabled, true);
 });

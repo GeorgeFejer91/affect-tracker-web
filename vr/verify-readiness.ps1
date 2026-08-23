@@ -164,7 +164,10 @@ $immersiveLog = Wait-ForMarker 'scene_ready'
 [void](Wait-ForMarker 'controller_owner activity=affect_tracker input_system=interaction_sdk locomotion_registered=true locomotion_enabled=false locomotion_state=Disabled locomotion_claims_controllers=false input_bridge=retained polling_phase=late_feature')
 [void](Wait-ForMarker 'flubber_entity_visible')
 [void](Wait-ForMarker 'runtime_profile source=active-session.json video=[^ ]+ layout_source=(active_manifest|optional_manifest|active_layout_defaults) stick=(left|right)')
-[void](Wait-ForMarker 'flubber_full_surface_grab configured_width_m=[^ ]+ surface_width_m=[^ ]+ surface_height_m=[^ ]+ route=toolkit_panel_scene_object manual_isdk_edge_handles=false recenter_button=a')
+[void](Wait-ForMarker 'environment mode=(dark|passthrough) passthrough_enabled=(true|false) camera_frames=system_compositor_only')
+[void](Wait-ForMarker 'flubber_full_surface_grab configured_width_m=[^ ]+ surface_width_m=[^ ]+ surface_height_m=[^ ]+ route=toolkit_panel_scene_object manual_isdk_edge_handles=false grab_enabled=(true|false) recenter_button=a')
+$followLog = Wait-ForMarker 'flubber_controller_follow enabled=(true|false) hand=(left|right) distance_m=[^ ]+ faces_viewer=true'
+$controllerFollowEnabled = $followLog -match 'flubber_controller_follow enabled=true'
 [void](Wait-ForMarker 'affect_value_readout visible=(true|false) location=flubber_bottom refresh_hz=10 fields=x,y')
 [void](Wait-ForMarker 'joystick_route active=true stick=(left|right) sources=spatial_standard_system,spatial_isdk_scroll,spatial_vractivity_game_controller hand_precedence=attachment_avatar_fallback android_fallback=true')
 [void](Wait-ForMarker 'isdk_pointer_observer registered=true')
@@ -190,18 +193,24 @@ if ($physicalResponse -match 'route=spatial_standard_system') {
 } else {
   [void](Wait-ForMarker 'spatial_game_controller_motion route=(vractivity_pinned|activity_dispatch) selected=(left|right) x=')
 }
-Write-Host 'ATTENDED ACTION REQUIRED: point at a visually empty corner of the transparent Flubber panel, hold either physical trigger, move the panel at least 2 cm (including some depth), then release.'
-[void](Wait-ForMarker 'flubber_grab_started full_surface=true')
-[void](Wait-ForMarker 'flubber_grab_moved')
-[void](Wait-ForMarker 'flubber_grab_ended moved=true')
-Write-Host 'ATTENDED ACTION REQUIRED: look away from Flubber and press A. If A is assigned to reset/pause in the imported profile, this step is intentionally unavailable.'
-[void](Wait-ForMarker 'flubber_recentered source=(spatial_touch_a|spatial_game_controller_a) button=a distance_m=')
+if ($controllerFollowEnabled) {
+  [void](Wait-ForMarker 'flubber_controller_follow_tracking state=acquired hand=(left|right)')
+  Write-Host 'ATTENDED ACTION REQUIRED: move the configured tracked controller at least 2 cm through translation/depth; Flubber must remain nearby and face you.'
+  [void](Wait-ForMarker 'flubber_controller_follow_moved hand=(left|right) distance_m=')
+} else {
+  Write-Host 'ATTENDED ACTION REQUIRED: point at a visually empty corner of the transparent Flubber panel, hold either physical trigger, move the panel at least 2 cm (including some depth), then release.'
+  [void](Wait-ForMarker 'flubber_grab_started full_surface=true')
+  [void](Wait-ForMarker 'flubber_grab_moved')
+  [void](Wait-ForMarker 'flubber_grab_ended moved=true')
+  Write-Host 'ATTENDED ACTION REQUIRED: look away from Flubber and press A. If A is assigned to reset/pause in the imported profile, this step is intentionally unavailable.'
+  [void](Wait-ForMarker 'flubber_recentered source=(spatial_touch_a|spatial_game_controller_a) button=a distance_m=')
+}
 $immersiveLog = Read-ReadinessLog
 $immersiveLog | Set-Content -LiteralPath (Join-Path $EvidenceDirectory 'immersive-log.txt') -Encoding utf8
 Save-Screenshot (Join-Path $EvidenceDirectory 'first-video-frame.png')
 if ($immersiveLog -match 'fatal ') { throw 'App-owned fatal marker observed.' }
 
-if ($Gate -eq 'Full') { Write-Host "READINESS PASS: launcher → always-on Touch response → full-surface Flubber grab → A-button gaze recenter → countdown → first rendered video frame. Evidence: $EvidenceDirectory"; exit 0 }
+if ($Gate -eq 'Full') { Write-Host "READINESS PASS: launcher → environment selection → always-on Touch response → configured Flubber placement authority → countdown → first rendered video frame. Evidence: $EvidenceDirectory"; exit 0 }
 
 $deadline = (Get-Date).AddMinutes($SoakMinutes)
 while ((Get-Date) -lt $deadline) {

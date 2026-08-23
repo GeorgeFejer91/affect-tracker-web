@@ -1,6 +1,7 @@
 package io.github.georgefejer91.affecttracker.vr
 
 import com.meta.spatial.core.Query
+import com.meta.spatial.core.Pose
 import com.meta.spatial.core.SpatialFeature
 import com.meta.spatial.core.SystemBase
 import com.meta.spatial.runtime.Scene
@@ -8,6 +9,7 @@ import com.meta.spatial.toolkit.AvatarAttachment
 import com.meta.spatial.toolkit.AvatarBody
 import com.meta.spatial.toolkit.Controller
 import com.meta.spatial.toolkit.ControllerType
+import com.meta.spatial.toolkit.Transform
 
 /**
  * Registers controller polling in Spatial SDK's late-system phase.
@@ -40,6 +42,8 @@ internal data class TouchControllerFrame(
     val directTouchState: Int,
     val leftSource: String,
     val rightSource: String,
+    val leftPose: Pose? = null,
+    val rightPose: Pose? = null,
 ) {
   val buttonState: Int get() = leftButtonState or rightButtonState
   val changedButtons: Int get() = leftChangedButtons or rightChangedButtons
@@ -55,6 +59,8 @@ internal object TouchControllerAdapter {
     var localRightChanged = 0
     var localLeftFound = false
     var localRightFound = false
+    var localLeftPose: Pose? = null
+    var localRightPose: Pose? = null
     var attachmentState = 0
     var fallbackState = 0
     var fallbackChanged = 0
@@ -88,12 +94,14 @@ internal object TouchControllerAdapter {
           localLeftState = localLeftState or completeState
           localLeftChanged = localLeftChanged or controller.changedButtons
           attachmentState = attachmentState or completeState
+          if (controller.isActive) localLeftPose = entity.tryGetComponent<Transform>()?.transform
         }
         "right_controller", "right_hand" -> {
           localRightFound = true
           localRightState = localRightState or completeState
           localRightChanged = localRightChanged or controller.changedButtons
           attachmentState = attachmentState or completeState
+          if (controller.isActive) localRightPose = entity.tryGetComponent<Transform>()?.transform
         }
       }
     }
@@ -108,12 +116,18 @@ internal object TouchControllerAdapter {
     }
     // A default AvatarBody uses entity id 0 for an unavailable hand. Reading a component from that
     // sentinel enters native code and produces one Spatial SDK stack trace per frame.
-    val avatarLeft = playerBody?.leftHand
-        ?.takeIf { it.id != 0L }
+    val avatarLeftEntity = playerBody?.leftHand?.takeIf { it.id != 0L }
+    val avatarRightEntity = playerBody?.rightHand?.takeIf { it.id != 0L }
+    val avatarLeft = avatarLeftEntity
         ?.let { runCatching { it.tryGetComponent<Controller>() }.getOrNull() }
-    val avatarRight = playerBody?.rightHand
-        ?.takeIf { it.id != 0L }
+    val avatarRight = avatarRightEntity
         ?.let { runCatching { it.tryGetComponent<Controller>() }.getOrNull() }
+    val avatarLeftPose = avatarLeftEntity
+        ?.takeIf { avatarLeft?.isActive == true }
+        ?.let { runCatching { it.tryGetComponent<Transform>()?.transform }.getOrNull() }
+    val avatarRightPose = avatarRightEntity
+        ?.takeIf { avatarRight?.isActive == true }
+        ?.let { runCatching { it.tryGetComponent<Transform>()?.transform }.getOrNull() }
     val avatarLeftState = (avatarLeft?.buttonState ?: 0) or (avatarLeft?.directTouchButtonState ?: 0)
     val avatarRightState = (avatarRight?.buttonState ?: 0) or (avatarRight?.directTouchButtonState ?: 0)
     val avatarState = avatarLeftState or avatarRightState
@@ -165,6 +179,8 @@ internal object TouchControllerAdapter {
           avatarRightUsable -> "spatial_sdk_right_avatar"
           else -> "spatial_sdk_controller_fallback"
         },
+        leftPose = localLeftPose ?: avatarLeftPose,
+        rightPose = localRightPose ?: avatarRightPose,
     )
   }
 

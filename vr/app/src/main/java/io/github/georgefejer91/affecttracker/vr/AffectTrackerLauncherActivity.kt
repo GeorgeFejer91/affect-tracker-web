@@ -80,13 +80,26 @@ data class LauncherPresentation(
       return "%d:%02d".format(seconds / 60, seconds % 60)
     }
 
-    internal fun choiceDetail(staged: StagedSession, duration: String): String =
-        "${staged.session.video.projection.token} · ${staged.session.video.stereo.token} · $duration · " +
-            when (staged.choiceSource) {
-              VideoChoiceSource.ACTIVE_MANIFEST -> "active layout"
-              VideoChoiceSource.OPTIONAL_MANIFEST -> "declared layout"
-              VideoChoiceSource.ACTIVE_LAYOUT_DEFAULTS -> "active default layout"
-            }
+    internal fun choiceDetail(staged: StagedSession, duration: String): String {
+      val flubberPlacement = if (staged.session.flubber.controllerFollow.enabled) {
+        "Flubber follows ${staged.session.flubber.controllerFollow.hand.token} Touch"
+      } else {
+        "world-anchored Flubber"
+      }
+      val layout = when (staged.choiceSource) {
+        VideoChoiceSource.ACTIVE_MANIFEST -> "active layout"
+        VideoChoiceSource.OPTIONAL_MANIFEST -> "declared layout"
+        VideoChoiceSource.ACTIVE_LAYOUT_DEFAULTS -> "active default layout"
+      }
+      return listOf(
+          staged.session.video.projection.token,
+          staged.session.video.stereo.token,
+          duration,
+          staged.session.environment.token,
+          flubberPlacement,
+          layout,
+      ).joinToString(" · ")
+    }
   }
 }
 
@@ -307,7 +320,7 @@ private fun LauncherScreen(
               if (state.choices.isNotEmpty()) {
                 Text("Choose a validated video", color = Color(0xFF9DE5B3))
                 Text(
-                    "Flubber, controller, display, and LSL settings always come from active-session.json.",
+                    "Environment, Flubber, controller, display, and LSL settings always come from active-session.json.",
                     style = MaterialTheme.typography.bodySmall,
                     color = Color(0xFFAAB4C2),
                 )

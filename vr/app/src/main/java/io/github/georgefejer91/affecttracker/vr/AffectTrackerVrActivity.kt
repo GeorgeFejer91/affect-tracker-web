@@ -105,6 +105,10 @@ class AffectTrackerVrActivity : AppSystemActivity() {
   private var reactiveFlubberDrawLogged = false
   private var lastControllerInventory = ""
   private var lastControllerButtonState = Int.MIN_VALUE
+  private var latestControllerFrame: TouchControllerFrame? = null
+  private var controllerFollowTracking: Boolean? = null
+  private var controllerFollowStartPosition: Vector3? = null
+  private var controllerFollowMoveLogged = false
   private var isdkSystem: IsdkSystem? = null
   private lateinit var locomotionInputBridge: LocomotionSystem
   private var spatialStickX = 0f
@@ -226,6 +230,7 @@ class AffectTrackerVrActivity : AppSystemActivity() {
     applyControllerStick(localEngine, now)
     val snapshot = localEngine.tick(dt)
     val session = staged?.session ?: return
+    updateControllerFollow(session)
     if (!localEngine.isPaused()) {
       phase = advanceFlubberPhase(
           phase,
@@ -283,7 +288,7 @@ class AffectTrackerVrActivity : AppSystemActivity() {
     val controls = staged?.session?.controls ?: return false
     if (token == controls.resetButton) { engine?.reset(); lsl.marker("input:controller:reset"); return true }
     if (token == controls.pauseButton && sessionActive) { togglePause(); return true }
-    if (token == "a" && aButtonIsAvailableForRecenter(controls)) {
+    if (token == "a" && isAButtonAvailableForRecenter(staged?.session)) {
       return recenterFlubberToGaze("spatial_game_controller_a")
     }
     return false
@@ -312,13 +317,20 @@ class AffectTrackerVrActivity : AppSystemActivity() {
   private fun stage(next: StagedSession) {
     if (staged?.fingerprint == next.fingerprint) return
     staged = next
+    controllerFollowTracking = null
+    controllerFollowStartPosition = null
+    controllerFollowMoveLogged = false
     engine = AffectEngine(next.session.affect)
     geometry = FlubberGeometry(next.session.sessionId)
     telemetryStickX = 0f
     telemetryStickY = 0f
     flubberView?.resetTelemetry()
     status = "Preparing ${next.session.video.file}"
-    details = "LSL is running. A recenters Flubber on your gaze. Waiting for the video decoder…"
+    details = if (next.session.flubber.controllerFollow.enabled) {
+      "LSL is running. Flubber follows ${next.session.flubber.controllerFollow.hand.token} Touch. Waiting for the video decoder…"
+    } else {
+      "LSL is running. A recenters Flubber on your gaze. Waiting for the video decoder…"
+    }
     Log.i(
         ExperimentRuntime.READINESS_TAG,
         "runtime_profile source=active-session.json video=${next.session.video.file} " +
@@ -327,6 +339,7 @@ class AffectTrackerVrActivity : AppSystemActivity() {
     lslSamplingActive = true
     if (sceneReady) {
       val viewer = scene.getViewerPose()
+      configureEnvironment(next)
       videoCoordinator.present(next, viewer)
       placeFlubber(next, viewer, create = true)
       configureControllerModels(next)
@@ -334,11 +347,13 @@ class AffectTrackerVrActivity : AppSystemActivity() {
   }
 
   private fun placeFlubber(next: StagedSession, viewer: Pose, create: Boolean): Pose {
-    val pose = SpatialPlacement.flubberPose(viewer, next.session.flubber)
+    val pose = controllerFollowPose(next.session, viewer)
+        ?: SpatialPlacement.flubberPose(viewer, next.session.flubber)
     if (create || flubberEntity == null) {
       val configuredWidth = next.session.flubber.widthMeters
       val surfaceWidth = FlubberPanelLayout.surfaceWidthMeters(configuredWidth)
       val surfaceHeight = FlubberPanelLayout.surfaceHeightMeters(configuredWidth)
+      val grabEnabled = !next.session.flubber.controllerFollow.enabled
       flubberEntity?.destroy()
       // Registered panel scene objects already receive input across their complete quad. Use the
       // toolkit-managed Grabbable path so dimensions and input stay synchronized; manually adding
@@ -347,7 +362,7 @@ class AffectTrackerVrActivity : AppSystemActivity() {
           R.id.flubber_panel,
           Transform(pose),
           PanelDimensions(Vector2(surfaceWidth, surfaceHeight)),
-          Grabbable(enabled = true, type = GrabbableType.PIVOT_Y, minHeight = 0.25f, maxHeight = 2.5f),
+          Grabbable(enabled = grabEnabled, type = GrabbableType.PIVOT_Y, minHeight = 0.25f, maxHeight = 2.5f),
           Visible(next.session.affect.overlay.visible),
       )
       lastGrabbed = false
@@ -359,7 +374,13 @@ class AffectTrackerVrActivity : AppSystemActivity() {
           ExperimentRuntime.READINESS_TAG,
           "flubber_full_surface_grab configured_width_m=$configuredWidth surface_width_m=$surfaceWidth " +
               "surface_height_m=$surfaceHeight route=toolkit_panel_scene_object " +
-              "manual_isdk_edge_handles=false recenter_button=a",
+              "manual_isdk_edge_handles=false grab_enabled=$grabEnabled recenter_button=a",
+      )
+      Log.i(
+          ExperimentRuntime.READINESS_TAG,
+          "flubber_controller_follow enabled=${next.session.flubber.controllerFollow.enabled} " +
+              "hand=${next.session.flubber.controllerFollow.hand.token} " +
+              "distance_m=${next.session.flubber.controllerFollow.distanceMeters} faces_viewer=true",
       )
       Log.i(
           ExperimentRuntime.READINESS_TAG,
@@ -376,6 +397,17 @@ class AffectTrackerVrActivity : AppSystemActivity() {
       flubberEntity?.setComponent(Transform(pose))
     }
     return pose
+  }
+
+  private fun configureEnvironment(next: StagedSession) {
+    val passthrough = next.session.environment == VrEnvironment.PASSTHROUGH
+    scene.enablePassthrough(passthrough)
+    lsl.marker("environment:${next.session.environment.token}")
+    Log.i(
+        ExperimentRuntime.READINESS_TAG,
+        "environment mode=${next.session.environment.token} passthrough_enabled=$passthrough " +
+            "camera_frames=system_compositor_only",
+    )
   }
 
   private fun maybeBeginCountdown() {
@@ -585,6 +617,7 @@ class AffectTrackerVrActivity : AppSystemActivity() {
 
   private fun onSpatialControllerFrame(frame: TouchControllerFrame) {
     val controls = staged?.session?.controls ?: return
+    latestControllerFrame = frame
     val inventory = "entities=${frame.controllerEntities} active=${frame.activeControllerEntities} " +
         "controller_type=${frame.controllerTypeEntities} hand_type=${frame.handTypeEntities} " +
         "left_source=${frame.leftSource} right_source=${frame.rightSource}"
@@ -618,7 +651,7 @@ class AffectTrackerVrActivity : AppSystemActivity() {
       lsl.marker("input:controller:reset")
     }
     if (sessionActive && TouchControllerInput.pressed(frame.buttonState, frame.changedButtons, buttonBit(controls.pauseButton))) togglePause()
-    if (aButtonIsAvailableForRecenter(controls) &&
+    if (isAButtonAvailableForRecenter(staged?.session) &&
         TouchControllerInput.pressed(frame.buttonState, frame.changedButtons, ButtonBits.ButtonA)) {
       recenterFlubberToGaze("spatial_touch_a")
     }
@@ -756,8 +789,55 @@ class AffectTrackerVrActivity : AppSystemActivity() {
   private fun effectiveShowAffectValues(session: VrSession): Boolean =
       showAffectValuesOverride ?: session.flubber.showAffectValues
 
-  private fun aButtonIsAvailableForRecenter(controls: ControllerBindings): Boolean =
-      controls.resetButton != "a" && controls.pauseButton != "a"
+  private fun isAButtonAvailableForRecenter(session: VrSession?): Boolean =
+      session != null && !session.flubber.controllerFollow.enabled &&
+          session.controls.resetButton != "a" && session.controls.pauseButton != "a"
+
+  private fun controllerFollowPose(session: VrSession, viewer: Pose): Pose? {
+    val follow = session.flubber.controllerFollow
+    if (!follow.enabled) return null
+    val frame = latestControllerFrame ?: return null
+    val controllerPose = if (follow.hand == StickHand.LEFT) frame.leftPose else frame.rightPose
+    return controllerPose?.let {
+      SpatialPlacement.controllerFollowFlubberPose(viewer, it, follow.distanceMeters)
+    }
+  }
+
+  private fun updateControllerFollow(session: VrSession) {
+    val follow = session.flubber.controllerFollow
+    if (!follow.enabled) {
+      controllerFollowTracking = null
+      return
+    }
+    val viewer = runCatching { scene.getViewerPose() }.getOrNull() ?: return
+    val pose = controllerFollowPose(session, viewer)
+    val tracking = pose != null
+    if (tracking != controllerFollowTracking) {
+      controllerFollowTracking = tracking
+      val state = if (tracking) "acquired" else "lost"
+      lsl.marker("flubber:controller_follow:$state:${follow.hand.token}")
+      Log.i(
+          ExperimentRuntime.READINESS_TAG,
+          "flubber_controller_follow_tracking state=$state hand=${follow.hand.token}",
+      )
+      controllerFollowStartPosition = pose?.t
+      controllerFollowMoveLogged = false
+    }
+    if (pose != null) {
+      flubberEntity?.setComponent(Transform(pose))
+      val start = controllerFollowStartPosition
+      if (!controllerFollowMoveLogged && start != null &&
+          SpatialPlacement.distance(start, pose.t) >= 0.02f) {
+        controllerFollowMoveLogged = true
+        lsl.marker("flubber:controller_follow:moved:${follow.hand.token}")
+        Log.i(
+            ExperimentRuntime.READINESS_TAG,
+            "flubber_controller_follow_moved hand=${follow.hand.token} distance_m=" +
+                SpatialPlacement.distance(start, pose.t),
+        )
+      }
+    }
+  }
 
   private fun recenterFlubberToGaze(source: String): Boolean {
     val entity = flubberEntity ?: return false

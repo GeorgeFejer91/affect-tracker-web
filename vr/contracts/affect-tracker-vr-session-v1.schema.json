@@ -118,7 +118,7 @@
       "type": "object", "additionalProperties": false,
       "required": ["environment", "flubber", "controls"],
       "properties": {
-        "environment": { "const": "dark" },
+        "environment": { "enum": ["dark", "passthrough"] },
         "flubber": {
           "type": "object", "additionalProperties": false,
           "required": ["widthMeters", "distanceMeters", "horizontalOffsetMeters", "verticalOffsetMeters"],
@@ -127,7 +127,16 @@
             "distanceMeters": { "type": "number", "minimum": 0.35, "maximum": 5 },
             "horizontalOffsetMeters": { "type": "number", "minimum": -2, "maximum": 2 },
             "verticalOffsetMeters": { "type": "number", "minimum": -2, "maximum": 2 },
-            "showAffectValues": { "type": "boolean", "default": false }
+            "showAffectValues": { "type": "boolean", "default": false },
+            "controllerFollow": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "enabled": { "type": "boolean", "default": false },
+                "hand": { "enum": ["left", "right"], "default": "left" },
+                "distanceMeters": { "type": "number", "minimum": 0.05, "maximum": 0.6, "default": 0.18 }
+              }
+            }
           }
         },
         "controls": {
