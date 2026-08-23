@@ -161,6 +161,8 @@ test("experimental page is local-first and wires the selectable WebXR study libr
   assert.match(runtime, /"immersive-ar"/);
   assert.match(runtime, /new XRWebGLLayer/);
   assert.match(runtime, /alpha: passthrough/);
+  assert.match(runtime, /makeXRCompatible/);
+  assert.match(runtime, /experimental-webgl/);
   assert.match(runtime, /readQuestControllerState/);
   assert.match(runtime, /frame\.getPose\(source\.gripSpace, state\.referenceSpace\)/);
   assert.match(runtime, /controllerFacingModelMatrix/);

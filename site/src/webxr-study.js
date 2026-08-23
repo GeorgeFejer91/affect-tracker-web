@@ -387,6 +387,9 @@ async function startStudy() {
     requestedSession = session;
     await mediaUnlock;
     if (!renderer) renderer = createRenderer(elements.canvas, elements.video);
+    if (typeof renderer.gl.makeXRCompatible === "function") {
+      await renderer.gl.makeXRCompatible();
+    }
     const layer = new XRWebGLLayer(session, renderer.gl, { alpha: passthrough, antialias: true });
     session.updateRenderState({ baseLayer: layer });
     const [referenceSpace, viewerSpace] = await Promise.all([
@@ -486,8 +489,13 @@ function createTexture(gl) {
 }
 
 function createRenderer(canvas, video) {
-  const gl = canvas.getContext("webgl", { alpha: true, antialias: true, xrCompatible: true });
-  if (!gl) throw new Error("WebGL is unavailable in this browser.");
+  const contextOptions = { alpha: true, antialias: true, premultipliedAlpha: true };
+  const gl = canvas.getContext("webgl", contextOptions) ??
+    canvas.getContext("experimental-webgl", contextOptions) ??
+    canvas.getContext("webgl");
+  if (!gl) {
+    throw new Error("A WebGL rendering context could not be created. Close other immersive tabs and restart Meta Quest Browser.");
+  }
   const vertexShader = compileShader(gl, gl.VERTEX_SHADER, `
     attribute vec3 a_position;
     attribute vec2 a_tex_coord;
