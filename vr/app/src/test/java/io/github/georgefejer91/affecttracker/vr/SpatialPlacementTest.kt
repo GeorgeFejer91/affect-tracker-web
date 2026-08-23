@@ -23,7 +23,7 @@ class SpatialPlacementTest {
 
   @Test fun flubberStartsBelowAndCloserThanTheFlatVideo() {
     val viewer = Pose(Vector3(0f, 1.6f, 0f), Quaternion())
-    val placement = FlubberPlacement(0.3f, 1.25f, 0f, -0.3f)
+    val placement = FlubberPlacement(0.3f, 1.25f, 0f, -0.3f, false)
     val flubber = SpatialPlacement.flubberPose(viewer, placement)
 
     assertTrue(flubber.t.y < viewer.t.y)

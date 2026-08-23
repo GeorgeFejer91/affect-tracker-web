@@ -126,13 +126,14 @@
             "widthMeters": { "type": "number", "minimum": 0.12, "maximum": 1.2 },
             "distanceMeters": { "type": "number", "minimum": 0.35, "maximum": 5 },
             "horizontalOffsetMeters": { "type": "number", "minimum": -2, "maximum": 2 },
-            "verticalOffsetMeters": { "type": "number", "minimum": -2, "maximum": 2 }
+            "verticalOffsetMeters": { "type": "number", "minimum": -2, "maximum": 2 },
+            "showAffectValues": { "type": "boolean", "default": false }
           }
         },
         "controls": {
           "type": "object", "additionalProperties": false,
           "properties": {
-            "stick": { "enum": ["left", "right"] },
+            "stick": { "enum": ["left", "right"], "default": "right" },
             "resetButton": { "enum": ["x", "y", "a", "b", "none"] },
             "pauseButton": { "enum": ["x", "y", "a", "b", "none"] },
             "grabTrigger": { "const": "either" },

@@ -10,9 +10,10 @@ export const VR_DEFAULTS = Object.freeze({
     distanceMeters: 1.25,
     horizontalOffsetMeters: 0,
     verticalOffsetMeters: -0.3,
+    showAffectValues: false,
   }),
   controls: Object.freeze({
-    stick: "left",
+    stick: "right",
     resetButton: "x",
     pauseButton: "y",
     grabTrigger: "either",
@@ -78,6 +79,9 @@ export function normalizeVrSession(value) {
   if (controls.showControllerModels !== undefined && typeof controls.showControllerModels !== "boolean") {
     throw new Error("Show controller models must be true or false.");
   }
+  if (flubber.showAffectValues !== undefined && typeof flubber.showAffectValues !== "boolean") {
+    throw new Error("Show numerical affect values must be true or false.");
+  }
   if (resetButton !== "none" && resetButton === pauseButton) {
     throw new Error("Reset and pause must not use the same controller button.");
   }
@@ -102,6 +106,7 @@ export function normalizeVrSession(value) {
         distanceMeters: numberInRange(flubber.distanceMeters, "Flubber distance", 0.35, 5),
         horizontalOffsetMeters: numberInRange(flubber.horizontalOffsetMeters, "Flubber horizontal offset", -2, 2),
         verticalOffsetMeters: numberInRange(flubber.verticalOffsetMeters, "Flubber vertical offset", -2, 2),
+        showAffectValues: flubber.showAffectValues ?? VR_DEFAULTS.flubber.showAffectValues,
       },
       controls: {
         stick: enumValue(controls.stick ?? VR_DEFAULTS.controls.stick, "Controller stick", STICKS),

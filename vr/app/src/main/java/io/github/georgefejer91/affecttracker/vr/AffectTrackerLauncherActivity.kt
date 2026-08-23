@@ -20,12 +20,14 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
@@ -103,12 +105,24 @@ class AffectTrackerLauncherActivity : ComponentActivity() {
   private var staged: StagedSession? = null
   private var choices: List<StagedSession> = emptyList()
   private var selectedFingerprint: String? = null
+  private var telemetrySelectionFingerprint: String? = null
   private var starting by mutableStateOf(false)
+  private var showAffectValues by mutableStateOf(false)
   private var presentation by mutableStateOf(LauncherPresentation.from(LoadResult.NoFolder))
 
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
-    setContent { LauncherScreen(presentation, starting, ::chooseFolder, ::selectSession, ::startExperiment) }
+    setContent {
+      LauncherScreen(
+          presentation,
+          starting,
+          showAffectValues,
+          ::chooseFolder,
+          ::selectSession,
+          { showAffectValues = it },
+          ::startExperiment,
+      )
+    }
     Log.i(ExperimentRuntime.READINESS_TAG, "launcher_rendered")
   }
 
@@ -140,6 +154,12 @@ class AffectTrackerLauncherActivity : ComponentActivity() {
         choices = ready?.choices.orEmpty()
         staged = ready?.choices?.firstOrNull { it.fingerprint == selectedFingerprint } ?: ready?.staged
         selectedFingerprint = staged?.fingerprint
+        staged?.let {
+          if (telemetrySelectionFingerprint != it.fingerprint) {
+            telemetrySelectionFingerprint = it.fingerprint
+            showAffectValues = it.session.flubber.showAffectValues
+          }
+        }
         presentation = LauncherPresentation.from(result, selectedFingerprint)
         staged?.let {
           Log.i(ExperimentRuntime.READINESS_TAG, "session_ready session=${it.session.sessionId} fingerprint=${it.fingerprint}")
@@ -153,6 +173,8 @@ class AffectTrackerLauncherActivity : ComponentActivity() {
     val next = choices.firstOrNull { it.fingerprint == fingerprint } ?: return
     staged = next
     selectedFingerprint = fingerprint
+    telemetrySelectionFingerprint = fingerprint
+    showAffectValues = next.session.flubber.showAffectValues
     presentation = presentation.copy(
         detail = "${next.session.video.projection.token} · ${next.session.video.stereo.token} · ${next.durationMs / 1_000}s",
         selectedFingerprint = fingerprint,
@@ -198,6 +220,7 @@ class AffectTrackerLauncherActivity : ComponentActivity() {
         action = Intent.ACTION_MAIN
         addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         putExtra(AffectTrackerVrActivity.EXTRA_FINGERPRINT, next.fingerprint)
+        putExtra(AffectTrackerVrActivity.EXTRA_SHOW_AFFECT_VALUES, showAffectValues)
       })
     }
     if (!queued) {
@@ -216,8 +239,10 @@ class AffectTrackerLauncherActivity : ComponentActivity() {
 private fun LauncherScreen(
     state: LauncherPresentation,
     starting: Boolean,
+    showAffectValues: Boolean,
     chooseFolder: () -> Unit,
     selectSession: (String) -> Unit,
+    setShowAffectValues: (Boolean) -> Unit,
     startExperiment: () -> Unit,
 ) {
   MaterialTheme(colorScheme = darkColorScheme(primary = Color(0xFF78D7FF), background = Color(0xFF080B10))) {
@@ -258,6 +283,21 @@ private fun LauncherScreen(
             }
           }
           Text("PC folder: Documents/AffectTrackerVR — videos in media/, optional manifests in sessions/", color = Color(0xFFAAB4C2))
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+          Column(modifier = Modifier.weight(1f)) {
+            Text("Show live affect values")
+            Text("Current, target, response rate, and stick X/Y", style = MaterialTheme.typography.bodySmall, color = Color(0xFFAAB4C2))
+          }
+          Switch(
+              checked = showAffectValues,
+              onCheckedChange = setShowAffectValues,
+              enabled = state.ready && !starting,
+          )
         }
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
           Button(onClick = chooseFolder, modifier = Modifier.weight(1f)) { Text("Authorize / change folder") }

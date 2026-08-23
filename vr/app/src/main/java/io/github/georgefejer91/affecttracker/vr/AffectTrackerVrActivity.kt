@@ -89,6 +89,7 @@ class AffectTrackerVrActivity : AppSystemActivity() {
   private var engine: AffectEngine? = null
   private var geometry: FlubberGeometry? = null
   private var staged: StagedSession? = null
+  private var showAffectValuesOverride: Boolean? = null
   private var flubberView: FlubberView? = null
   private var flubberEntity: Entity? = null
   private var controlEntity: Entity? = null
@@ -120,6 +121,8 @@ class AffectTrackerVrActivity : AppSystemActivity() {
   private var androidStickY = 0f
   private var androidStickUpdatedNanos = 0L
   private var androidStickRoute = "spatial_vractivity_game_controller"
+  private var telemetryStickX = 0f
+  private var telemetryStickY = 0f
   private val pinnedGameControllerIds = mutableSetOf<Int>()
   private var nextGameControllerScanNanos = 0L
   private var lastStickRoute = ""
@@ -152,6 +155,9 @@ class AffectTrackerVrActivity : AppSystemActivity() {
   )
 
   override fun onCreate(savedInstanceState: Bundle?) {
+    showAffectValuesOverride = if (intent.hasExtra(EXTRA_SHOW_AFFECT_VALUES)) {
+      intent.getBooleanExtra(EXTRA_SHOW_AFFECT_VALUES, false)
+    } else null
     videoCoordinator = SpatialVideoCoordinator { next, surface -> player.attach(next, surface) }
     super.onCreate(savedInstanceState)
     // LocomotionSystem is also VRFeature's ExternalControllerInputHandler state bridge. Removing it
@@ -234,6 +240,12 @@ class AffectTrackerVrActivity : AppSystemActivity() {
           true,
           snapshot.currentX,
           snapshot.currentY,
+          snapshot.targetX,
+          snapshot.targetY,
+          telemetryStickX,
+          telemetryStickY,
+          effectiveShowAffectValues(session),
+          now,
       )
     }
     if (lslSamplingActive && lsl.status == "running") {
@@ -300,6 +312,9 @@ class AffectTrackerVrActivity : AppSystemActivity() {
     staged = next
     engine = AffectEngine(next.session.affect)
     geometry = FlubberGeometry(next.session.sessionId)
+    telemetryStickX = 0f
+    telemetryStickY = 0f
+    flubberView?.resetTelemetry()
     status = "Preparing ${next.session.video.file}"
     details = "LSL is running. Waiting for the video decoder…"
     lslSamplingActive = true
@@ -338,6 +353,11 @@ class AffectTrackerVrActivity : AppSystemActivity() {
           "joystick_route active=${next.session.affect.overlay.visible} stick=${next.session.controls.stick.token} " +
               "sources=spatial_standard_system,spatial_isdk_scroll,spatial_vractivity_game_controller " +
               "hand_precedence=attachment_avatar_fallback android_fallback=true",
+      )
+      Log.i(
+          ExperimentRuntime.READINESS_TAG,
+          "affect_value_readout visible=${effectiveShowAffectValues(next.session)} " +
+              "location=flubber_bottom refresh_hz=10 fields=current,target,rate,stick",
       )
     } else {
       flubberEntity?.setComponent(Transform(pose))
@@ -652,6 +672,8 @@ class AffectTrackerVrActivity : AppSystemActivity() {
 
   private fun applyControllerStick(activeEngine: AffectEngine, now: Long) {
     if (!isFlubberInputActive()) {
+      telemetryStickX = 0f
+      telemetryStickY = 0f
       activeEngine.setStick(0f, 0f)
       return
     }
@@ -689,6 +711,8 @@ class AffectTrackerVrActivity : AppSystemActivity() {
       Log.i(ExperimentRuntime.READINESS_TAG, "joystick_source route=$route")
       if (route != "neutral") armFlubberDrawReceipt(route)
     }
+    telemetryStickX = x
+    telemetryStickY = -y
     activeEngine.setStick(x, y)
     emitDirectionMarker(x, -y)
   }
@@ -707,6 +731,9 @@ class AffectTrackerVrActivity : AppSystemActivity() {
 
   private fun isFlubberInputActive(): Boolean =
       engine != null && flubberEntity != null && staged?.session?.affect?.overlay?.visible == true
+
+  private fun effectiveShowAffectValues(session: VrSession): Boolean =
+      showAffectValuesOverride ?: session.flubber.showAffectValues
 
   private fun buttonBit(token: String): Int = when (token) {
     "x" -> ButtonBits.ButtonX
@@ -857,6 +884,7 @@ class AffectTrackerVrActivity : AppSystemActivity() {
 
   companion object {
     const val EXTRA_FINGERPRINT = "session_fingerprint"
+    const val EXTRA_SHOW_AFFECT_VALUES = "show_affect_values"
     private const val ANDROID_STICK_FRESH_NANOS = 250_000_000L
     private const val GAME_CONTROLLER_SCAN_NANOS = 1_000_000_000L
     private const val ISDK_SCROLL_FRESH_NANOS = 250_000_000L

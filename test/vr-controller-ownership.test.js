@@ -9,6 +9,20 @@ const activity = readFileSync(
   ),
   "utf8",
 );
+const launcher = readFileSync(
+  new URL(
+    "../vr/app/src/main/java/io/github/georgefejer91/affecttracker/vr/AffectTrackerLauncherActivity.kt",
+    import.meta.url,
+  ),
+  "utf8",
+);
+const telemetry = readFileSync(
+  new URL(
+    "../vr/app/src/main/java/io/github/georgefejer91/affecttracker/vr/AffectTelemetryText.kt",
+    import.meta.url,
+  ),
+  "utf8",
+);
 
 test("Quest keeps the ISDK input bridge scheduled while disabling its locomotion behavior", () => {
   const superCreate = activity.indexOf("super.onCreate(savedInstanceState)");
@@ -30,4 +44,14 @@ test("Quest keeps the ISDK input bridge scheduled while disabling its locomotion
   assert.match(activity, /check\(!it\.areControllersInUse\(\)\)/);
   assert.match(activity, /locomotionInputBridge\.locomoteState != LocomoteState\.Disabled/);
   assert.doesNotMatch(activity, /unregisterSystem<LocomotionSystem>/);
+});
+
+test("Quest exposes a per-run numerical affect readout without making model animation authoritative", () => {
+  assert.match(launcher, /Text\("Show live affect values"\)/);
+  assert.match(launcher, /putExtra\(AffectTrackerVrActivity\.EXTRA_SHOW_AFFECT_VALUES, showAffectValues\)/);
+  assert.match(activity, /effectiveShowAffectValues\(session\)/);
+  assert.match(activity, /affect_value_readout visible=\$\{effectiveShowAffectValues\(next\.session\)\}/);
+  assert.match(telemetry, /refreshNanos: Long = 100_000_000L/);
+  assert.match(telemetry, /V current %\+\.3f  target %\+\.3f  rate %\+\.2f\/s/);
+  assert.match(telemetry, /Stick X %\+\.2f  Y %\+\.2f/);
 });

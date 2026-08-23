@@ -42,6 +42,7 @@ data class FlubberPlacement(
     val distanceMeters: Float,
     val horizontalOffsetMeters: Float,
     val verticalOffsetMeters: Float,
+    val showAffectValues: Boolean,
 )
 
 data class ControllerBindings(
@@ -140,12 +141,19 @@ object SessionContract {
   }
 
   private fun parseFlubber(value: JSONObject): FlubberPlacement {
-    value.requireExact("widthMeters", "distanceMeters", "horizontalOffsetMeters", "verticalOffsetMeters")
+    val required = setOf("widthMeters", "distanceMeters", "horizontalOffsetMeters", "verticalOffsetMeters")
+    value.requireKnown(*required.toTypedArray(), "showAffectValues")
+    require(required.all(value::has)) { "unknown_or_missing_fields" }
+    val showAffectValues = if (value.has("showAffectValues")) {
+      require(value.get("showAffectValues") is Boolean) { "invalid_show_affect_values" }
+      value.getBoolean("showAffectValues")
+    } else false
     return FlubberPlacement(
         value.number("widthMeters", 0.12, 1.2).toFloat(),
         value.number("distanceMeters", 0.35, 5.0).toFloat(),
         value.number("horizontalOffsetMeters", -2.0, 2.0).toFloat(),
         value.number("verticalOffsetMeters", -2.0, 2.0).toFloat(),
+        showAffectValues,
     )
   }
 
@@ -160,7 +168,7 @@ object SessionContract {
     } else true
     require(reset in buttons && pause in buttons && (reset == "none" || reset != pause)) { "invalid_controller_bindings" }
     return ControllerBindings(
-        enumValue(value.optString("stick", "left"), StickHand.entries) { it.token },
+        enumValue(value.optString("stick", "right"), StickHand.entries) { it.token },
         reset,
         pause,
         showControllerModels,

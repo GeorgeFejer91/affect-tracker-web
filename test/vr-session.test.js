@@ -36,6 +36,15 @@ test("Quest session preserves portable settings without extending version 1", ()
   assert.equal(normalized.affectSettings.lsl.streamName, "AffectTracker");
   assert.equal(JSON.parse(vrSessionJson(normalized)).video.file, "stimulus.mp4");
   assert.equal(normalized.vr.controls.showControllerModels, true);
+  assert.equal(normalized.vr.flubber.showAffectValues, false);
+});
+
+test("Quest session accepts an optional headset affect-value readout", () => {
+  const session = example();
+  session.vr.flubber.showAffectValues = true;
+  assert.equal(normalizeVrSession(session).vr.flubber.showAffectValues, true);
+  session.vr.flubber.showAffectValues = "true";
+  assert.throws(() => normalizeVrSession(session), /true or false/);
 });
 
 test("Quest session accepts an explicit controller-model visibility switch", () => {
@@ -73,4 +82,6 @@ test("web-selected video metadata creates the activation manifest", () => {
     stereo: "side-by-side-left-right",
     loop: false,
   });
+  assert.equal(session.vr.controls.stick, "right");
+  assert.equal(session.vr.flubber.showAffectValues, false);
 });

@@ -8,10 +8,11 @@ import org.junit.Test
 class SessionContractTest {
   @Test fun omittedControllerFieldsUseDocumentedDefaults() {
     val session = SessionContract.parse(manifest(JSONObject()))
-    assertEquals(StickHand.LEFT, session.controls.stick)
+    assertEquals(StickHand.RIGHT, session.controls.stick)
     assertEquals("x", session.controls.resetButton)
     assertEquals("y", session.controls.pauseButton)
     assertEquals(true, session.controls.showControllerModels)
+    assertEquals(false, session.flubber.showAffectValues)
   }
 
   @Test fun traversalAndUnknownControllerFieldsAreRejected() {
@@ -33,7 +34,26 @@ class SessionContractTest {
     assertEquals(false, session.controls.showControllerModels)
   }
 
-  private fun manifest(controls: JSONObject, filename: String = "stimulus.mp4"): String = JSONObject()
+  @Test fun explicitAffectValueReadoutIsAcceptedAndTypeChecked() {
+    val enabled = SessionContract.parse(manifest(JSONObject(), showAffectValues = true))
+    assertEquals(true, enabled.flubber.showAffectValues)
+    assertThrows(IllegalArgumentException::class.java) {
+      SessionContract.parse(manifest(JSONObject(), rawShowAffectValues = "true"))
+    }
+  }
+
+  private fun manifest(
+      controls: JSONObject,
+      filename: String = "stimulus.mp4",
+      showAffectValues: Boolean? = null,
+      rawShowAffectValues: Any? = null,
+  ): String {
+    val flubber = JSONObject()
+        .put("widthMeters", 0.3).put("distanceMeters", 1.25)
+        .put("horizontalOffsetMeters", 0).put("verticalOffsetMeters", -0.3)
+    if (showAffectValues != null) flubber.put("showAffectValues", showAffectValues)
+    if (rawShowAffectValues != null) flubber.put("showAffectValues", rawShowAffectValues)
+    return JSONObject()
       .put("schema", "affect-tracker-vr-session")
       .put("version", 1)
       .put("sessionId", "contract-test")
@@ -43,11 +63,10 @@ class SessionContractTest {
       .put("affectSettings", JSONObject(AFFECT_SETTINGS))
       .put("vr", JSONObject()
           .put("environment", "dark")
-          .put("flubber", JSONObject()
-              .put("widthMeters", 0.3).put("distanceMeters", 1.25)
-              .put("horizontalOffsetMeters", 0).put("verticalOffsetMeters", -0.3))
+          .put("flubber", flubber)
           .put("controls", controls))
       .toString()
+  }
 
   companion object {
     private val AFFECT_SETTINGS = """

@@ -164,6 +164,7 @@ $immersiveLog = Wait-ForMarker 'scene_ready'
 [void](Wait-ForMarker 'controller_owner activity=affect_tracker input_system=interaction_sdk locomotion_registered=true locomotion_enabled=false locomotion_state=Disabled locomotion_claims_controllers=false input_bridge=retained polling_phase=late_feature')
 [void](Wait-ForMarker 'flubber_entity_visible')
 [void](Wait-ForMarker 'flubber_full_surface_grab width_m=')
+[void](Wait-ForMarker 'affect_value_readout visible=(true|false) location=flubber_bottom refresh_hz=10 fields=current,target,rate,stick')
 [void](Wait-ForMarker 'joystick_route active=true stick=(left|right) sources=spatial_standard_system,spatial_isdk_scroll,spatial_vractivity_game_controller hand_precedence=attachment_avatar_fallback android_fallback=true')
 [void](Wait-ForMarker 'isdk_pointer_observer registered=true')
 [void](Wait-ForMarker 'controller_inventory entities=[1-9][0-9]* active=[0-9]+ controller_type=[0-9]+ hand_type=[0-9]+ left_source=spatial_sdk_(left_attachment|left_avatar|controller_fallback) right_source=spatial_sdk_(right_attachment|right_avatar|controller_fallback)')

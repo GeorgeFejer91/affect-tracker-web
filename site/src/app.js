@@ -151,6 +151,7 @@ const elements = {
   questResetButton: document.querySelector("#quest-reset-button"),
   questPauseButton: document.querySelector("#quest-pause-button"),
   questShowControllerModels: document.querySelector("#quest-show-controller-models"),
+  questShowAffectValues: document.querySelector("#quest-show-affect-values"),
   questExportButton: document.querySelector("#quest-export-button"),
   questExportStatus: document.querySelector("#quest-export-status"),
   pictureInPictureToggle: document.querySelector("#picture-in-picture-toggle"),
@@ -1915,6 +1916,7 @@ async function exportQuestSession() {
         distanceMeters: Number(elements.questFlubberDistance.value),
         horizontalOffsetMeters: Number(elements.questFlubberX.value),
         verticalOffsetMeters: Number(elements.questFlubberY.value),
+        showAffectValues: elements.questShowAffectValues.checked,
       },
       controls: {
         stick: elements.questStick.value,
