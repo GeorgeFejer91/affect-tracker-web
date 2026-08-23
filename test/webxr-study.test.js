@@ -4,6 +4,7 @@ import { readFileSync, statSync } from "node:fs";
 import {
   advanceWebXrAffect,
   controllerAxes,
+  controllerFacingModelMatrix,
   createEquirectSphereVertices,
   matrixWithoutTranslation,
   modelMatrix,
@@ -86,6 +87,27 @@ test("WebXR matrix helpers preserve model transforms through identity", () => {
   assert.deepEqual(Array.from(multiplyMatrices(identity, model)), Array.from(model));
 });
 
+test("WebXR controller rig places Flubber toward the headset and survives degenerate poses", () => {
+  const model = controllerFacingModelMatrix(
+    { x: 1, y: 1.2, z: -1 },
+    { x: 1, y: 1.6, z: 0 },
+    0.18,
+    0.62,
+    0.7,
+  );
+  assert.ok(Array.from(model).every(Number.isFinite));
+  assert.equal(Number(model[12].toFixed(6)), 1);
+  assert.ok(model[13] > 1.2 && model[14] > -1);
+  const degenerate = controllerFacingModelMatrix(
+    { x: 0, y: 0, z: 0 },
+    { x: 0, y: 0, z: 0 },
+    0.18,
+    0.62,
+    0.7,
+  );
+  assert.ok(Array.from(degenerate).every(Number.isFinite));
+});
+
 test("WebXR equirectangular sphere is finite, complete, and centered on the viewer", () => {
   const sphere = createEquirectSphereVertices(8, 16);
   assert.equal(sphere.length, 8 * 16 * 6 * 5);
@@ -106,6 +128,7 @@ test("WebXR stimulus catalog contains the flat study and eight exact CEAP excerp
   assert.equal(WEBXR_STIMULI.length, 9);
   assert.equal(new Set(WEBXR_STIMULI.map((stimulus) => stimulus.id)).size, WEBXR_STIMULI.length);
   assert.equal(webXrStimulusById("missing").id, "great-dictator");
+  assert.equal(webXrStimulusById("great-dictator").warning, "");
   const ceap = WEBXR_STIMULI.filter((stimulus) => stimulus.collection === "CEAP-360VR");
   assert.equal(ceap.length, 8);
   assert.deepEqual(ceap.map((stimulus) => stimulus.sourceStartSeconds), [0, 10, 65, 3, 0, 0, 127, 41]);
@@ -129,11 +152,16 @@ test("experimental page is local-first and wires the selectable WebXR study libr
   assert.match(page, /preload="metadata"/);
   assert.doesNotMatch(page, /id="study-video"[^>]*\ssrc=/s);
   assert.match(page, /Optional HTTPS webhook/);
+  assert.match(page, /id="controller-follow-enabled"/);
+  assert.match(page, /id="controller-follow-hand"/);
+  assert.match(page, /id="controller-follow-distance"/);
   assert.match(page, /src="\.\/src\/webxr-study\.js"/);
   assert.doesNotMatch(page, /https:\/\/(?!example\.org)/);
   assert.match(runtime, /requestSession\("immersive-vr"/);
   assert.match(runtime, /new XRWebGLLayer/);
   assert.match(runtime, /readQuestControllerState/);
+  assert.match(runtime, /frame\.getPose\(source\.gripSpace, state\.referenceSpace\)/);
+  assert.match(runtime, /controllerFacingModelMatrix/);
   assert.match(runtime, /equirectangular-360/);
   assert.match(runtime, /createEquirectSphereVertices/);
   assert.match(runtime, /type: "text\/csv;charset=utf-8"/);

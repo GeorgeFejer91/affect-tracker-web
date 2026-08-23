@@ -45,6 +45,33 @@
           <div><dt>Meta button</dt><dd>Use the system control to leave immersive mode</dd></div>
         </dl>
 
+        <fieldset class="rigging-options">
+          <legend>Flubber placement</legend>
+          <label class="toggle-field" for="controller-follow-enabled">
+            <input id="controller-follow-enabled" type="checkbox">
+            Follow a tracked controller
+          </label>
+          <div class="rigging-controls" id="controller-follow-controls">
+            <label for="controller-follow-hand">
+              Controller
+              <select id="controller-follow-hand">
+                <option value="left">Left</option>
+                <option value="right" selected>Right</option>
+              </select>
+            </label>
+            <label for="controller-follow-distance">
+              Offset toward headset
+              <span><output id="controller-follow-distance-output">0.18</output> m</span>
+              <input id="controller-follow-distance" type="range" min="0.05" max="0.60" step="0.01" value="0.18">
+            </label>
+          </div>
+          <p class="privacy-note">
+            When enabled, Flubber follows the selected controller and faces the headset. If grip
+            tracking drops briefly, it holds its last tracked pose. The browser controls whether
+            its native controller model remains visible.
+          </p>
+        </fieldset>
+
         <label class="webhook-field" for="webhook-url">
           Optional HTTPS webhook
           <input

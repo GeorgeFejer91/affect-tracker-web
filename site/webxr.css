@@ -108,11 +108,53 @@ dd {
 }
 
 .stimulus-field,
-.webhook-field {
+.webhook-field,
+.rigging-controls label {
   display: grid;
   gap: 8px;
   color: #f4f7fb;
   font-weight: 700;
+}
+
+.rigging-options {
+  margin: 26px 0;
+  padding: 16px;
+  border: 1px solid #273141;
+  border-radius: 14px;
+}
+
+.rigging-options legend {
+  padding: 0 6px;
+  color: #78d7ff;
+  font-weight: 750;
+}
+
+.toggle-field {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  font-weight: 700;
+}
+
+.toggle-field input {
+  width: 22px;
+  min-height: 22px;
+}
+
+.rigging-controls {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.rigging-controls label > span {
+  color: #9babbc;
+  font-weight: 500;
+}
+
+.rigging-controls.is-disabled {
+  opacity: 0.5;
 }
 
 select,
@@ -228,5 +270,9 @@ a {
 
   .actions > * {
     width: 100%;
+  }
+
+  .rigging-controls {
+    grid-template-columns: 1fr;
   }
 }

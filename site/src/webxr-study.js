@@ -6,6 +6,7 @@ import {
 } from "./math.js";
 import {
   advanceWebXrAffect,
+  controllerFacingModelMatrix,
   createEquirectSphereVertices,
   matrixWithoutTranslation,
   modelMatrix,
@@ -39,6 +40,11 @@ const elements = {
   stimulusMetadata: document.querySelector("#stimulus-metadata"),
   stimulusWarning: document.querySelector("#stimulus-warning"),
   webhook: document.querySelector("#webhook-url"),
+  controllerFollow: document.querySelector("#controller-follow-enabled"),
+  controllerFollowControls: document.querySelector("#controller-follow-controls"),
+  controllerFollowHand: document.querySelector("#controller-follow-hand"),
+  controllerFollowDistance: document.querySelector("#controller-follow-distance"),
+  controllerFollowDistanceOutput: document.querySelector("#controller-follow-distance-output"),
   start: document.querySelector("#start-vr"),
   download: document.querySelector("#download-csv"),
   status: document.querySelector("#study-status"),
@@ -63,6 +69,11 @@ const state = {
   stickX: 0,
   stickY: 0,
   controllerHand: "unknown",
+  controllerFollowEnabled: false,
+  controllerFollowHand: "right",
+  controllerFollowDistance: 0.18,
+  controllerTracking: false,
+  controllerRigModel: undefined,
   resetPressed: false,
   pausePressed: false,
   paused: false,
@@ -99,7 +110,8 @@ function applyStimulus(stimulus, updateUrl = true) {
     parts.push(`CEAP pilot V/A ${stimulus.pilotValence.toFixed(2)} / ${stimulus.pilotArousal.toFixed(2)} (1–9)`);
   }
   elements.stimulusMetadata.textContent = parts.join(" • ");
-  elements.stimulusWarning.textContent = `Content note: ${stimulus.warning}`;
+  elements.stimulusWarning.textContent = stimulus.warning ? `Content note: ${stimulus.warning}` : "";
+  elements.stimulusWarning.hidden = !stimulus.warning;
   if (updateUrl) {
     const url = new URL(window.location.href);
     url.searchParams.set("stimulus", stimulus.id);
@@ -146,6 +158,10 @@ function record(recordType, event = "", detail = "") {
     stick_x: rounded(state.stickX),
     stick_y: rounded(state.stickY),
     controller_hand: state.controllerHand,
+    flubber_controller_follow: state.controllerFollowEnabled,
+    flubber_follow_hand: state.controllerFollowEnabled ? state.controllerFollowHand : "",
+    flubber_follow_distance_m: state.controllerFollowEnabled ? rounded(state.controllerFollowDistance, 2) : "",
+    flubber_tracking: state.controllerFollowEnabled ? state.controllerTracking : "",
     paused: state.paused,
     event,
     detail,
@@ -250,6 +266,28 @@ function readControllers() {
   return input;
 }
 
+function updateControllerRig(frame, viewerPose) {
+  if (!state.controllerFollowEnabled) return;
+  const source = Array.from(state.session?.inputSources ?? []).find(
+    (candidate) => candidate.handedness === state.controllerFollowHand && candidate.gripSpace,
+  );
+  const gripPose = source ? frame.getPose(source.gripSpace, state.referenceSpace) : undefined;
+  const tracked = Boolean(gripPose && viewerPose?.transform?.position);
+  if (tracked) {
+    state.controllerRigModel = controllerFacingModelMatrix(
+      gripPose.transform.position,
+      viewerPose.transform.position,
+      state.controllerFollowDistance,
+      0.62,
+      0.7,
+    );
+  }
+  if (tracked !== state.controllerTracking) {
+    state.controllerTracking = tracked;
+    record("event", tracked ? "controller-tracking-acquired" : "controller-tracking-lost", state.controllerFollowHand);
+  }
+}
+
 async function beginPlayback() {
   if (state.phase !== "countdown") return;
   state.phase = "running";
@@ -289,6 +327,7 @@ function renderFrame(now, frame) {
   const deltaSeconds = state.previousFrameAt ? Math.min(0.05, (now - state.previousFrameAt) / 1_000) : 0;
   state.previousFrameAt = now;
   updateStudy(now, deltaSeconds);
+  updateControllerRig(frame, pose);
   if (pose) renderer.render(session, pose, viewerPose, state);
   if (state.phase !== "finished") session.requestAnimationFrame(renderFrame);
 }
@@ -306,6 +345,9 @@ async function startStudy() {
 
   elements.start.disabled = true;
   elements.stimulus.disabled = true;
+  elements.controllerFollow.disabled = true;
+  elements.controllerFollowHand.disabled = true;
+  elements.controllerFollowDistance.disabled = true;
   elements.download.hidden = true;
   setStatus(`Loading ${state.stimulus.title} and requesting immersive access…`);
   let requestedSession;
@@ -332,6 +374,11 @@ async function startStudy() {
     state.viewerSpace = viewerSpace;
     state.sessionId = crypto.randomUUID?.() ?? `webxr-${Date.now()}-${Math.random().toString(16).slice(2)}`;
     state.webhookUrl = webhookUrl;
+    state.controllerFollowEnabled = elements.controllerFollow.checked;
+    state.controllerFollowHand = elements.controllerFollowHand.value;
+    state.controllerFollowDistance = Number(elements.controllerFollowDistance.value);
+    state.controllerTracking = false;
+    state.controllerRigModel = undefined;
     state.phase = "countdown";
     state.countdownEndsAt = performance.now() + COUNTDOWN_MS;
     state.runStartedAt = 0;
@@ -360,6 +407,9 @@ async function startStudy() {
         state.referenceSpace = undefined;
         state.viewerSpace = undefined;
         elements.stimulus.disabled = false;
+        elements.controllerFollow.disabled = false;
+        elements.controllerFollowHand.disabled = !elements.controllerFollow.checked;
+        elements.controllerFollowDistance.disabled = !elements.controllerFollow.checked;
         if (!state.finalizing) elements.start.disabled = false;
       });
     }, { once: true });
@@ -373,6 +423,9 @@ async function startStudy() {
     requestedSession?.end().catch(() => {});
     elements.start.disabled = false;
     elements.stimulus.disabled = false;
+    elements.controllerFollow.disabled = false;
+    elements.controllerFollowHand.disabled = !elements.controllerFollow.checked;
+    elements.controllerFollowDistance.disabled = !elements.controllerFollow.checked;
     setStatus(
       error?.name === "NotSupportedError"
         ? "This browser could not start immersive VR. Open this page in Meta Quest Browser."
@@ -557,12 +610,13 @@ function createRenderer(canvas, video) {
             sphereBuffer,
             sphereVertices.length / 5,
           );
-          const hudView = viewerPose?.views?.[viewIndex] ?? view;
+          const controllerRigged = study.controllerFollowEnabled && study.controllerRigModel;
+          const hudView = controllerRigged ? view : (viewerPose?.views?.[viewIndex] ?? view);
           draw(
             flubberTexture,
             hudView.projectionMatrix,
             hudView.transform.inverse.matrix,
-            IMMERSIVE_FLUBBER_MODEL,
+            controllerRigged ? study.controllerRigModel : IMMERSIVE_FLUBBER_MODEL,
             true,
             quadBuffer,
             6,
@@ -581,7 +635,7 @@ function createRenderer(canvas, video) {
             flubberTexture,
             view.projectionMatrix,
             view.transform.inverse.matrix,
-            FLUBBER_MODEL,
+            study.controllerFollowEnabled && study.controllerRigModel ? study.controllerRigModel : FLUBBER_MODEL,
             true,
             quadBuffer,
             6,
@@ -615,5 +669,15 @@ async function initialize() {
 elements.start.addEventListener("click", startStudy);
 elements.download.addEventListener("click", downloadLastCsv);
 elements.stimulus.addEventListener("change", () => applyStimulus(webXrStimulusById(elements.stimulus.value)));
+function updateRiggingControls() {
+  const enabled = elements.controllerFollow.checked;
+  elements.controllerFollowHand.disabled = !enabled;
+  elements.controllerFollowDistance.disabled = !enabled;
+  elements.controllerFollowControls.classList.toggle("is-disabled", !enabled);
+  elements.controllerFollowDistanceOutput.value = Number(elements.controllerFollowDistance.value).toFixed(2);
+}
+elements.controllerFollow.addEventListener("change", updateRiggingControls);
+elements.controllerFollowDistance.addEventListener("input", updateRiggingControls);
 populateStimulusLibrary();
+updateRiggingControls();
 initialize();

@@ -13,7 +13,7 @@ export const WEBXR_STIMULI = Object.freeze([
     pilotValence: undefined,
     pilotArousal: undefined,
     description: "The original repository-hosted flat-screen study clip.",
-    warning: "Historical political satire and antisemitic imagery in context.",
+    warning: "",
   }),
   Object.freeze({
     id: "ceap-v1-puppies",
