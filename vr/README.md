@@ -23,6 +23,8 @@ Controller input remains in the immersive `VrActivity`. The activity explicitly 
 
 `vr.environment` is `dark` by default. Selecting the exporter checkbox writes `passthrough`, which asks the Quest compositor to show the wearer's normal see-through view behind flat video and spatial panels. The app does not request or record camera frames. An immersive 180°/360° carrier can still cover the passthrough background where the video surface renders.
 
+The headset Ready screen also contains **Mixed reality passthrough** and **Track Flubber near a controller** switches. The follow control reveals explicit **Left** and **Right** choices, with left as the default for a new profile. These controls initialize from `active-session.json`, affect only the next run, and never rewrite the researcher's files.
+
 `vr.flubber.controllerFollow` is additive and backward compatible:
 
 ```json

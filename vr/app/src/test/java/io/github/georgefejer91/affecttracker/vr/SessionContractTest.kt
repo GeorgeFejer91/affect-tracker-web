@@ -83,6 +83,24 @@ class SessionContractTest {
     assertEquals(active.flubber.controllerFollow, effective.flubber.controllerFollow)
   }
 
+  @Test fun headsetLauncherOverridesOnlyEnvironmentAndControllerFollowForOneRun() {
+    val original = SessionContract.parse(manifest(JSONObject()))
+    val effective = original.withLauncherRuntimeOverrides(
+        mixedRealityEnabled = true,
+        controllerFollowEnabled = true,
+        controllerFollowHand = StickHand.RIGHT,
+    )
+
+    assertEquals(VrEnvironment.PASSTHROUGH, effective.environment)
+    assertEquals(true, effective.flubber.controllerFollow.enabled)
+    assertEquals(StickHand.RIGHT, effective.flubber.controllerFollow.hand)
+    assertEquals(original.flubber.controllerFollow.distanceMeters, effective.flubber.controllerFollow.distanceMeters)
+    assertEquals(original.video, effective.video)
+    assertEquals(original.controls, effective.controls)
+    assertEquals(VrEnvironment.DARK, original.environment)
+    assertEquals(false, original.flubber.controllerFollow.enabled)
+  }
+
   @Test fun discoveredMediaFilenameSafetyMatchesManifestSafety() {
     assertEquals(true, SessionContract.isSafeVideoFilename("clip with spaces.webm"))
     assertEquals(false, SessionContract.isSafeVideoFilename("../clip.mp4"))

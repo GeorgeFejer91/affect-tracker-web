@@ -127,10 +127,13 @@ class AffectTrackerLauncherActivity : ComponentActivity() {
   private var staged: StagedSession? = null
   private var choices: List<StagedSession> = emptyList()
   private var selectedFingerprint: String? = null
-  private var telemetrySelectionFingerprint: String? = null
+  private var runtimeSettingsFingerprint: String? = null
   private var lastCatalogReceipt: String? = null
   private var starting by mutableStateOf(false)
   private var showAffectValues by mutableStateOf(false)
+  private var mixedRealityEnabled by mutableStateOf(false)
+  private var controllerFollowEnabled by mutableStateOf(false)
+  private var controllerFollowHand by mutableStateOf(StickHand.LEFT)
   private var presentation by mutableStateOf(LauncherPresentation.from(LoadResult.NoFolder))
 
   override fun onCreate(savedInstanceState: Bundle?) {
@@ -140,13 +143,23 @@ class AffectTrackerLauncherActivity : ComponentActivity() {
           presentation,
           starting,
           showAffectValues,
+          mixedRealityEnabled,
+          controllerFollowEnabled,
+          controllerFollowHand,
           ::chooseFolder,
           ::selectSession,
           { showAffectValues = it },
+          { mixedRealityEnabled = it },
+          { controllerFollowEnabled = it },
+          { controllerFollowHand = it },
           ::startExperiment,
       )
     }
     Log.i(ExperimentRuntime.READINESS_TAG, "launcher_rendered")
+    Log.i(
+        ExperimentRuntime.READINESS_TAG,
+        "launcher_controls_rendered mixed_reality=true controller_follow=true follow_hand_selector=true",
+    )
     // Three bounded passes settle the active file, then optional/automatic media, even when
     // Horizon creates this launcher but has not yet projected it as resumed.
     initialValidation = scope.launch {
@@ -195,9 +208,8 @@ class AffectTrackerLauncherActivity : ComponentActivity() {
     staged = ready?.choices?.firstOrNull { it.fingerprint == selectedFingerprint } ?: ready?.staged
     selectedFingerprint = staged?.fingerprint
     staged?.let {
-      if (telemetrySelectionFingerprint != it.fingerprint) {
-        telemetrySelectionFingerprint = it.fingerprint
-        showAffectValues = it.session.flubber.showAffectValues
+      if (runtimeSettingsFingerprint != it.fingerprint) {
+        applySessionRuntimeDefaults(it)
       }
     }
     presentation = LauncherPresentation.from(result, selectedFingerprint)
@@ -223,8 +235,7 @@ class AffectTrackerLauncherActivity : ComponentActivity() {
     val next = choices.firstOrNull { it.fingerprint == fingerprint } ?: return
     staged = next
     selectedFingerprint = fingerprint
-    telemetrySelectionFingerprint = fingerprint
-    showAffectValues = next.session.flubber.showAffectValues
+    applySessionRuntimeDefaults(next)
     presentation = presentation.copy(
         detail = LauncherPresentation.choiceDetail(next, "${next.durationMs / 1_000}s"),
         selectedFingerprint = fingerprint,
@@ -236,6 +247,14 @@ class AffectTrackerLauncherActivity : ComponentActivity() {
         "runtime_profile source=active-session.json video=${next.session.video.file} " +
             "layout_source=${next.choiceSource.name.lowercase()} stick=${next.session.controls.stick.token}",
     )
+  }
+
+  private fun applySessionRuntimeDefaults(next: StagedSession) {
+    runtimeSettingsFingerprint = next.fingerprint
+    showAffectValues = next.session.flubber.showAffectValues
+    mixedRealityEnabled = next.session.environment == VrEnvironment.PASSTHROUGH
+    controllerFollowEnabled = next.session.flubber.controllerFollow.enabled
+    controllerFollowHand = next.session.flubber.controllerFollow.hand
   }
 
   private fun chooseFolder() {
@@ -261,16 +280,30 @@ class AffectTrackerLauncherActivity : ComponentActivity() {
   private fun startExperiment() {
     val next = staged ?: return
     if (starting) return
+    val effective = next.copy(
+        session = next.session.withLauncherRuntimeOverrides(
+            mixedRealityEnabled,
+            controllerFollowEnabled,
+            controllerFollowHand,
+        ),
+    )
     starting = true
     polling?.cancel()
     presentation = presentation.copy(title = "Starting LSL…", detail = "Opening the state and marker streams before the countdown.")
-    val queued = runtime.arm(next) { ready ->
+    Log.i(
+        ExperimentRuntime.READINESS_TAG,
+        "launcher_runtime_options environment=${effective.session.environment.token} " +
+            "controller_follow=${effective.session.flubber.controllerFollow.enabled} " +
+            "follow_hand=${effective.session.flubber.controllerFollow.hand.token} " +
+            "show_affect_values=$showAffectValues",
+    )
+    val queued = runtime.arm(effective) { ready ->
       if (!ready) {
         starting = false
         presentation = presentation.copy(title = "LSL unavailable", detail = "${runtime.lsl.status}. Experiment start was blocked.")
         return@arm
       }
-      Log.i(ExperimentRuntime.READINESS_TAG, "immersive_requested session=${next.session.sessionId}")
+      Log.i(ExperimentRuntime.READINESS_TAG, "immersive_requested session=${effective.session.sessionId}")
       startActivity(Intent(this, AffectTrackerVrActivity::class.java).apply {
         action = Intent.ACTION_MAIN
         addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -296,9 +329,15 @@ private fun LauncherScreen(
     state: LauncherPresentation,
     starting: Boolean,
     showAffectValues: Boolean,
+    mixedRealityEnabled: Boolean,
+    controllerFollowEnabled: Boolean,
+    controllerFollowHand: StickHand,
     chooseFolder: () -> Unit,
     selectSession: (String) -> Unit,
     setShowAffectValues: (Boolean) -> Unit,
+    setMixedRealityEnabled: (Boolean) -> Unit,
+    setControllerFollowEnabled: (Boolean) -> Unit,
+    setControllerFollowHand: (StickHand) -> Unit,
     startExperiment: () -> Unit,
 ) {
   MaterialTheme(colorScheme = darkColorScheme(primary = Color(0xFF78D7FF), background = Color(0xFF080B10))) {
@@ -363,13 +402,66 @@ private fun LauncherScreen(
               enabled = state.ready && !starting,
           )
         }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+          Column(modifier = Modifier.weight(1f)) {
+            Text("Mixed reality passthrough")
+            Text("Show video and Flubber over the normal see-through view", style = MaterialTheme.typography.bodySmall, color = Color(0xFFAAB4C2))
+          }
+          Switch(
+              checked = mixedRealityEnabled,
+              onCheckedChange = setMixedRealityEnabled,
+              enabled = state.ready && !starting,
+          )
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+          Column(modifier = Modifier.weight(1f)) {
+            Text("Track Flubber near a controller")
+            Text("Left is the default; Flubber faces the headset", style = MaterialTheme.typography.bodySmall, color = Color(0xFFAAB4C2))
+          }
+          Switch(
+              checked = controllerFollowEnabled,
+              onCheckedChange = setControllerFollowEnabled,
+              enabled = state.ready && !starting,
+          )
+        }
+        if (controllerFollowEnabled) {
+          Row(
+              modifier = Modifier.fillMaxWidth(),
+              horizontalArrangement = Arrangement.spacedBy(12.dp),
+              verticalAlignment = Alignment.CenterVertically,
+          ) {
+            Text("Controller to follow", modifier = Modifier.weight(1f))
+            Button(
+                onClick = { setControllerFollowHand(StickHand.LEFT) },
+                enabled = state.ready && !starting,
+            ) { Text(if (controllerFollowHand == StickHand.LEFT) "✓ Left" else "Left") }
+            Button(
+                onClick = { setControllerFollowHand(StickHand.RIGHT) },
+                enabled = state.ready && !starting,
+            ) { Text(if (controllerFollowHand == StickHand.RIGHT) "✓ Right" else "Right") }
+          }
+        }
+        Text(
+            "This run: ${if (mixedRealityEnabled) "passthrough" else "dark room"} · " +
+                if (controllerFollowEnabled) "Flubber follows ${controllerFollowHand.token} controller" else "Flubber is world-anchored",
+            style = MaterialTheme.typography.bodySmall,
+            color = Color(0xFF9DE5B3),
+        )
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
           Button(onClick = chooseFolder, modifier = Modifier.weight(1f)) { Text("Authorize / change folder") }
           Button(onClick = startExperiment, enabled = state.ready && !starting, modifier = Modifier.weight(1f)) {
             Text(if (starting) "Starting…" else "Start experiment")
           }
         }
-        Text("Start opens LSL, shows Flubber and a 3-second countdown, then plays the selected video.", color = Color(0xFFB9C5D4))
+        Text("These switches apply to this run only. Start opens LSL, shows Flubber and a 3-second countdown, then plays the selected video.", color = Color(0xFFB9C5D4))
       }
     }
   }

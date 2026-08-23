@@ -82,6 +82,21 @@ internal fun VrSession.withRuntimeProfile(profile: VrSession): VrSession = copy(
     controls = profile.controls,
 )
 
+/** Applies transient headset-launcher choices without rewriting the admitted JSON profile. */
+internal fun VrSession.withLauncherRuntimeOverrides(
+    mixedRealityEnabled: Boolean,
+    controllerFollowEnabled: Boolean,
+    controllerFollowHand: StickHand,
+): VrSession = copy(
+    environment = if (mixedRealityEnabled) VrEnvironment.PASSTHROUGH else VrEnvironment.DARK,
+    flubber = flubber.copy(
+        controllerFollow = flubber.controllerFollow.copy(
+            enabled = controllerFollowEnabled,
+            hand = controllerFollowHand,
+        ),
+    ),
+)
+
 object SessionContract {
   private val sessionIdPattern = Regex("^[A-Za-z0-9][A-Za-z0-9._-]{0,119}$")
   private val hashPattern = Regex("^[a-f0-9]{64}$")

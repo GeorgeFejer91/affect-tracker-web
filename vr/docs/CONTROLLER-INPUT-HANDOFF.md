@@ -151,6 +151,8 @@ The same selected-hand controller query also retains live world-space poses for 
 
 Controller-follow, ordinary world dragging, and A-button gaze recentering must not write the same transform concurrently. Follow mode therefore becomes the sole placement authority; the registered panel's `Grabbable` is disabled and A recenter is unavailable until a profile with follow disabled is loaded. Passthrough is orthogonal and remains compositor-owned.
 
+The headset Ready screen exposes per-run **Mixed reality passthrough** and **Track Flubber near a controller** switches plus explicit left/right follow selection. They initialize from the active manifest and are applied by copying only the armed in-memory session. The admitted manifest, media files, and staged fingerprint remain unchanged. `launcher_runtime_options` records the effective selection before LSL startup and immersive launch.
+
 ### Controller-to-Flubber receipt chain
 
 A valid physical acceptance receipt must contain all relevant links, not merely one input-looking event:
@@ -207,15 +209,15 @@ This prevents repeatedly recompiling the APK while diagnosing a headset-only inp
 
 - Shared Node suite: 86/86 passed.
 - Native Rust LSL schema test: passed.
-- Android/Kotlin unit tests: 33/33 passed.
+- Android/Kotlin unit tests: 34/34 passed.
 - Direct pinned-SDK locomotion policy test: passed.
 - Android lint: passed.
 - Locked offline debug build: passed.
 - APK identity, permission, ABI, and admission inspection: passed.
 - Exact APK installed through QuestIonAble File Manager.
 - Installed-byte hash and size matched the host-admitted artifact.
-- Installed APK SHA-256: `a32f0fe37f42e2d1baf26d4d3dd4ecb2330ff355a7bf3c8afdc623896537f074`.
-- App-owned launcher evidence reached `launcher_rendered` and revalidated the existing headset session as `session_ready`; this also proves the new optional fields remain backward-compatible when omitted. No fatal runtime entry was present.
+- Installed APK SHA-256: `67f44903c1d90a840a5324e6ae035a657a2b6a8969bed9b21c362f59dca5e492`.
+- App-owned launcher evidence reached `launcher_rendered`, `launcher_controls_rendered mixed_reality=true controller_follow=true follow_hand_selector=true`, and revalidated the existing headset session as `session_ready`. This proves the newly installed process contains the Ready-screen controls and that optional JSON fields remain backward-compatible when omitted. No fatal runtime entry was present.
 
 The APK launcher was started for bounded loader/readiness diagnosis, but the experiment itself was not started unattended because physical Touch acceptance requires a wearer. No raw device log, headset serial, private machine path, or APK binary is committed to Git.
 

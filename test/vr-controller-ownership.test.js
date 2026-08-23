@@ -108,4 +108,10 @@ test("Quest passthrough and controller-follow stay in the single immersive frame
   assert.match(activity, /SpatialPlacement\.controllerFollowFlubberPose\(viewer, it, follow\.distanceMeters\)/);
   assert.match(activity, /flubber:controller_follow:\$state:\$\{follow\.hand\.token\}/);
   assert.match(activity, /val grabEnabled = !next\.session\.flubber\.controllerFollow\.enabled/);
+  assert.match(launcher, /Text\("Mixed reality passthrough"\)/);
+  assert.match(launcher, /Text\("Track Flubber near a controller"\)/);
+  assert.match(launcher, /Left is the default; Flubber faces the headset/);
+  assert.match(launcher, /withLauncherRuntimeOverrides\(/);
+  assert.match(launcher, /launcher_runtime_options environment=/);
+  assert.match(launcher, /launcher_controls_rendered mixed_reality=true controller_follow=true follow_hand_selector=true/);
 });
