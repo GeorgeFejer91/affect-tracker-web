@@ -414,7 +414,6 @@ private fun LauncherScreen(
               "PC folder: Documents/AffectTrackerVR — add videos to media/. Optional sessions/*.json files declare only per-video projection/stereo; videos without one use the active layout defaults.",
               color = Color(0xFFAAB4C2),
           )
-        }
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -483,13 +482,14 @@ private fun LauncherScreen(
             style = MaterialTheme.typography.bodySmall,
             color = Color(0xFF9DE5B3),
         )
+        Text("These switches apply to this run only. Start opens LSL, shows Flubber and a 3-second countdown, then plays the selected video.", color = Color(0xFFB9C5D4))
+        }
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
           Button(onClick = chooseFolder, modifier = Modifier.weight(1f)) { Text("Authorize / change folder") }
           Button(onClick = startExperiment, enabled = state.ready && !starting, modifier = Modifier.weight(1f)) {
             Text(if (starting) "Starting…" else "Start experiment")
           }
         }
-        Text("These switches apply to this run only. Start opens LSL, shows Flubber and a 3-second countdown, then plays the selected video.", color = Color(0xFFB9C5D4))
       }
     }
   }
