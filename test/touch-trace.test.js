@@ -7,6 +7,7 @@ import {
   fitTracePoints,
   gateRateForEvidence,
   OneEuroFilter,
+  projectTracePoints,
   SPEED_PRIOR_HIGH_DPS,
   SPEED_PRIOR_LOW_DPS,
   SPEED_PRIOR_NEUTRAL_DPS,
@@ -22,14 +23,14 @@ function linePoints(count = 33) {
   return Array.from({ length: count }, (_, index) => ({ x: index * 0.005, y: 0 }));
 }
 
-function circlePoints(count = 33) {
+function circlePoints(count = 97) {
   return Array.from({ length: count }, (_, index) => {
     const angle = index / (count - 1) * Math.PI * 1.5;
     return { x: Math.cos(angle), y: Math.sin(angle) };
   });
 }
 
-function fullCirclePoints(count = 65) {
+function fullCirclePoints(count = 129) {
   return Array.from({ length: count }, (_, index) => {
     const angle = index / (count - 1) * Math.PI * 2;
     return { x: Math.cos(angle), y: Math.sin(angle) };
@@ -102,6 +103,9 @@ test("shape metric separates straight, round, and jagged paths", () => {
   assert.ok(sinusoid.shapeFeature < 0);
   assert.ok(backtracking.shapeFeature < -0.6);
   assert.ok(backtracking.directionReversal > 0.8);
+  assert.ok(fullCircle.circleScore > 0.9);
+  assert.equal(fullCircle.dominantCornerCount, 0);
+  assert.ok(jagged.angularScore > 0.9);
   for (const result of [stationary, straight, round, fullCircle, jagged, sinusoid, backtracking]) {
     assert.ok(Object.values(result).every(Number.isFinite));
   }
@@ -191,7 +195,7 @@ test("cold-start speed anchors use literature-informed viewport rates", () => {
   assert.ok(Math.abs(SPEED_PRIOR_NEUTRAL_DPS - 0.4387) < 0.001);
   assert.ok(Math.abs(snapshot.speedLower - Math.log1p(SPEED_PRIOR_LOW_DPS)) < 1e-12);
   assert.ok(Math.abs(snapshot.speedUpper - Math.log1p(SPEED_PRIOR_HIGH_DPS)) < 1e-12);
-  assert.equal(TOUCH_TRACE_ALGORITHM_VERSION, "touch-trace-v8");
+  assert.equal(TOUCH_TRACE_ALGORITHM_VERSION, "touch-trace-v9");
 });
 
 test("gate evidence uses a dead zone and bounded signed live rates", () => {
@@ -319,7 +323,7 @@ test("a short rapid burst reaches high arousal and remains available as feedback
   for (let now = 60; now <= 1_000; now += 20) analyzer.update(now, 0.02);
   const snapshot = analyzer.snapshot();
 
-  assert.equal(TOUCH_TRACE_ALGORITHM_VERSION, "touch-trace-v8");
+  assert.equal(TOUCH_TRACE_ALGORITHM_VERSION, "touch-trace-v9");
   assert.equal(snapshot.motionActive, false);
   assert.equal(snapshot.feedbackHeld, true);
   assert.ok(snapshot.speedConfidence >= 0.99);
@@ -514,6 +518,93 @@ test("screen-spanning angular swipes remain jagged between widely spaced corners
   assert.ok(live.targetX < -0.15, `expected sustained leftward movement, got ${live.targetX}`);
 });
 
+test("thumb-like random direction changes beat curved legs and classify angular", () => {
+  const vertices = [
+    { x: 0.12, y: 0.75 },
+    { x: 0.28, y: 0.16 },
+    { x: 0.42, y: 0.72 },
+    { x: 0.61, y: 0.22 },
+    { x: 0.74, y: 0.78 },
+    { x: 0.88, y: 0.18 },
+  ];
+  const points = [];
+  for (let segment = 0; segment < vertices.length - 1; segment += 1) {
+    const start = vertices[segment];
+    const end = vertices[segment + 1];
+    const dx = end.x - start.x;
+    const dy = end.y - start.y;
+    const length = Math.hypot(dx, dy);
+    for (let step = 0; step < 24; step += 1) {
+      const amount = step / 24;
+      const thumbBow = Math.sin(amount * Math.PI) * 0.018 * (segment % 2 ? -1 : 1);
+      points.push({
+        x: start.x + dx * amount - dy / length * thumbBow,
+        y: start.y + dy * amount + dx / length * thumbBow,
+      });
+    }
+  }
+  points.push(vertices.at(-1));
+  const metric = computeShapeMetrics(points);
+  assert.ok(metric.dominantCornerCount >= 3);
+  assert.ok(metric.angularScore > 0.55);
+  assert.ok(metric.circleScore < 0.15);
+  assert.ok(metric.shapeFeature < -0.5);
+});
+
+test("thumb-like ellipse remains circular after translation and anisotropic reach", () => {
+  const ellipse = Array.from({ length: 129 }, (_, index) => {
+    const angle = index / 128 * Math.PI * 2;
+    return {
+      x: 0.47 + Math.cos(angle) * 0.24,
+      y: 0.55 + Math.sin(angle) * 0.11,
+    };
+  });
+  const metric = computeShapeMetrics(ellipse);
+  assert.ok(metric.windingTurns > 0.95);
+  assert.ok(metric.circleScore > 0.9);
+  assert.ok(metric.angularScore < 0.1);
+  assert.ok(metric.shapeFeature > 0.85);
+});
+
+test("a small phone-surface ellipse stays circular in a larger viewport frame", () => {
+  const analyzer = new TouchTraceAnalyzer({ width: 1_280, height: 720 });
+  for (let index = 0; index <= 96; index += 1) {
+    const angle = index / 48 * Math.PI * 2;
+    const time = (index + 1) * 40;
+    analyzer.ingest({
+      clientX: 168 + Math.cos(angle) * 72,
+      clientY: 528 + Math.sin(angle) * 46,
+      time,
+      pointerType: "touch",
+    });
+    analyzer.update(time, 0.04);
+  }
+  const metric = analyzer.snapshot();
+  assert.equal(metric.dominantCornerCount, 0);
+  assert.ok(metric.circleScore > 0.9);
+  assert.ok(metric.angularScore < 0.1);
+  assert.ok(metric.mappedX > 0.9);
+});
+
+test("a closed angular polyline is not made circular by winding alone", () => {
+  const vertices = [[0, 0], [1, 0], [1, 1], [0, 1], [0, 0]];
+  const points = [];
+  for (let segment = 0; segment < vertices.length - 1; segment += 1) {
+    const [startX, startY] = vertices[segment];
+    const [endX, endY] = vertices[segment + 1];
+    for (let step = 0; step < 30; step += 1) {
+      const amount = step / 30;
+      points.push({ x: startX + (endX - startX) * amount, y: startY + (endY - startY) * amount });
+    }
+  }
+  points.push({ x: 0, y: 0 });
+  const metric = computeShapeMetrics(points);
+  assert.ok(metric.windingTurns > 0.95);
+  assert.ok(metric.dominantCornerCount >= 3);
+  assert.ok(metric.angularScore > metric.circleScore);
+  assert.ok(metric.shapeFeature < 0);
+});
+
 test("sustained gated movement reaches the selected extreme before release", () => {
   const analyzer = new TouchTraceAnalyzer({ width: 1_000, height: 1_000 });
   for (let index = 0; index < 130; index += 1) {
@@ -574,4 +665,15 @@ test("trace fitting preserves aspect ratio and centers degenerate axes", () => {
   assert.ok(Math.abs(vertical[0].x - 100) < 0.01);
   const stationary = fitTracePoints([{ x: 5, y: 10 }], 200, 100);
   assert.deepEqual(stationary.map(({ x, y }) => [x, y]), [[100, 50]]);
+});
+
+test("raw swipe-surface projection preserves viewport geometry without fitting", () => {
+  const points = [
+    { x: 110, y: 220, time: 1 },
+    { x: 150, y: 260, time: 2 },
+    { x: 120, y: 280, time: 3 },
+  ];
+  const projected = projectTracePoints(points, { left: 100, top: 200, width: 300, height: 200 });
+  assert.deepEqual(projected.map(({ x, y }) => [x, y]), [[10, 20], [50, 60], [20, 80]]);
+  assert.equal(projected[1].time, 2);
 });

@@ -27,6 +27,7 @@ import {
 } from "./experiment.js";
 import {
   fitTracePoints,
+  projectTracePoints,
   TOUCH_FEEDBACK_CONTINUOUS,
   TOUCH_FEEDBACK_GATED,
   TOUCH_TRACE_ALGORITHM_VERSION,
@@ -418,6 +419,12 @@ function recordTouchMetric() {
     signFlipRate: metric.signFlipRate,
     roughness: metric.roughness,
     directionReversal: metric.directionReversal,
+    circleScore: metric.circleScore,
+    angularScore: metric.angularScore,
+    windingTurns: metric.windingTurns,
+    radialVariation: metric.radialVariation,
+    directionEntropy: metric.directionEntropy,
+    dominantCornerCount: metric.dominantCornerCount,
     speedLower: metric.speedLower,
     speedUpper: metric.speedUpper,
     shapeLower: metric.shapeLower,
@@ -773,7 +780,7 @@ function positionTracePanel() {
   });
 }
 
-function drawTouchTraceCanvas(canvas, snapshot, timestamp) {
+function drawTouchTraceCanvas(canvas, snapshot, timestamp, { rawSurface = false } = {}) {
   const rect = canvas.getBoundingClientRect();
   if (rect.width < 1 || rect.height < 1) return;
   const ratio = Math.max(1, window.devicePixelRatio || 1);
@@ -786,10 +793,13 @@ function drawTouchTraceCanvas(canvas, snapshot, timestamp) {
   const context = canvas.getContext("2d");
   context.setTransform(ratio, 0, 0, ratio, 0, 0);
   context.clearRect(0, 0, rect.width, rect.height);
-  const points = fitTracePoints(snapshot.tracePoints, rect.width, rect.height);
-  context.lineCap = "round";
-  context.lineJoin = "round";
-  context.lineWidth = 2.25;
+  const points = rawSurface
+    ? projectTracePoints(snapshot.tracePoints, rect)
+    : fitTracePoints(snapshot.tracePoints, rect.width, rect.height);
+  context.lineCap = rawSurface ? "butt" : "round";
+  context.lineJoin = rawSurface ? "miter" : "round";
+  context.miterLimit = 8;
+  context.lineWidth = rawSurface ? 1.75 : 2.25;
   for (let index = 1; index < points.length; index += 1) {
     const before = points[index - 1];
     const current = points[index];
@@ -817,7 +827,7 @@ function renderTouchTrace(timestamp) {
     ? " · held"
     : !snapshot.motionActive && snapshot.feedbackHeld ? " · held" : "";
   const shapeLabel = feedbackVisible
-    ? `${snapshot.mappedX < -0.15 ? "jagged" : snapshot.mappedX > 0.15 ? "round" : "neutral"}${heldSuffix}`
+    ? `${snapshot.mappedX < -0.15 ? "angular/random" : snapshot.mappedX > 0.15 ? "circular" : "neutral"}${heldSuffix}`
     : "inactive";
   const speedCommand = snapshot.mappedY < -0.15
     ? "slow → lower arousal"
@@ -849,7 +859,7 @@ function renderTouchTrace(timestamp) {
           : "ready for an occasional swipe";
 
   if (state.touchPlaygroundPanelOpen) {
-    drawTouchTraceCanvas(elements.touchPlaygroundCanvas, snapshot, timestamp);
+    drawTouchTraceCanvas(elements.touchPlaygroundCanvas, snapshot, timestamp, { rawSurface: true });
   }
   if (!elements.touchTracePanel.hidden) {
     positionTracePanel();

@@ -230,7 +230,24 @@
         <div id="touch-playground-panel-content" class="panel-content">
           <section class="touch-playground-intro" aria-labelledby="touch-playground-title">
             <h3 id="touch-playground-title">Movement playground</h3>
-            <p>Explore how unrestricted two-dimensional movement changes the Flubber. Shape maps to valence; speed maps to arousal.</p>
+            <p>Explore how unrestricted two-dimensional movement changes the Flubber. Angular/random movement maps left; circular movement maps right. Speed maps to arousal.</p>
+
+            <section class="gesture-expectations" aria-labelledby="gesture-expectations-title">
+              <h4 id="gesture-expectations-title">Try these two movement commands</h4>
+              <figure>
+                <svg viewBox="0 0 100 60" role="img" aria-label="Example angular path with unpredictable V and W shaped direction changes">
+                  <polyline points="5,47 22,10 36,51 57,17 70,43 92,8"></polyline>
+                </svg>
+                <figcaption><strong>Angular / random</strong><span>Change direction unpredictably. Curved thumb arcs between turns are normal.</span></figcaption>
+              </figure>
+              <figure>
+                <svg viewBox="0 0 100 60" role="img" aria-label="Example repeated circular thumb path">
+                  <ellipse cx="50" cy="30" rx="35" ry="22"></ellipse>
+                  <path class="gesture-arrow" d="M78 14 L91 14 L86 25"></path>
+                </svg>
+                <figcaption><strong>Circular</strong><span>Circle repeatedly in one direction. Imperfect ellipses are accepted.</span></figcaption>
+              </figure>
+            </section>
 
             <label class="touch-tracking-toggle">
               <input id="touch-tracking-toggle" type="checkbox" role="switch" aria-describedby="touch-tracking-note">
@@ -263,7 +280,7 @@
                   <div id="touch-affect-space" class="touch-affect-space" role="img" aria-label="Experimental mapping at neutral valence and neutral arousal">
                     <canvas id="touch-affect-space-canvas" width="160" height="160" aria-hidden="true"></canvas>
                     <span class="space-axis space-up">Fast ↑ A</span><span class="space-axis space-down">Slow ↓ A</span>
-                    <span class="space-axis space-left">Jagged</span><span class="space-axis space-right">Round</span>
+                    <span class="space-axis space-left">Angular</span><span class="space-axis space-right">Circular</span>
                     <span id="touch-affect-point" class="touch-affect-point" aria-hidden="true"></span>
                   </div>
                   <div class="feature-preview-values" aria-live="off">
@@ -276,7 +293,7 @@
               <div id="touch-playground-surface" class="touch-playground-surface" aria-label="Draw or swipe here to control the experimental Flubber">
                 <canvas id="touch-playground-canvas" width="320" height="180" aria-hidden="true"></canvas>
                 <p id="touch-playground-inactive">Turn tracking on, then draw or swipe here.</p>
-                <span class="touch-surface-label" aria-hidden="true">Swipe area</span>
+                <span class="touch-surface-label" aria-hidden="true">Raw trace · no smoothing</span>
               </div>
               <div class="touch-trace-metrics touch-playground-metrics" aria-live="off">
                 <span>Shape <output id="playground-shape-output">inactive</output></span>
@@ -311,7 +328,7 @@
                 <input id="touch-trace-feedback-toggle" type="checkbox">
                 <span>Show movement trace beneath Flubber</span>
               </label>
-              <p>The optional floating trace mirrors the same recent page-wide path and remains beneath the Flubber during experiments.</p>
+              <p>The optional floating trace is a normalized, uniformly fitted overview of the recent page-wide path and remains beneath the Flubber during experiments. It never affects classification.</p>
               <p class="experiment-privacy">This prototype describes movement—not emotion. Practice movement is not stored. Raw pointer coordinates are recorded only while an experiment is actively playing.</p>
             </details>
           </section>

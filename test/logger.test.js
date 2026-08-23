@@ -136,6 +136,12 @@ test("extended CSV distinguishes raw, metric, and displayed state", () => {
   writer.record("touch_metric", {
     shapeFeature: -0.4,
     directionReversal: 0.75,
+    circleScore: 0.08,
+    angularScore: 0.82,
+    windingTurns: 0.12,
+    radialVariation: 0.44,
+    directionEntropy: 0.71,
+    dominantCornerCount: 4,
     speedFeature: 0.6,
     mappedX: -0.8,
     mappedY: 0.7,
@@ -169,6 +175,12 @@ test("extended CSV distinguishes raw, metric, and displayed state", () => {
   assert.match(rows[0], /gate_live_delta_y/);
   const fields = rows[0].replace(/^\uFEFF/, "").split(",");
   assert.equal(rows[2].split(",")[fields.indexOf("direction_reversal")], "0.75");
+  assert.equal(rows[2].split(",")[fields.indexOf("circle_score")], "0.08");
+  assert.equal(rows[2].split(",")[fields.indexOf("angular_score")], "0.82");
+  assert.equal(rows[2].split(",")[fields.indexOf("winding_turns")], "0.12");
+  assert.equal(rows[2].split(",")[fields.indexOf("radial_variation")], "0.44");
+  assert.equal(rows[2].split(",")[fields.indexOf("direction_entropy")], "0.71");
+  assert.equal(rows[2].split(",")[fields.indexOf("dominant_corner_count")], "4");
   assert.equal(rows[2].split(",")[fields.indexOf("speed_continuity_active")], "true");
   assert.equal(rows[2].split(",")[fields.indexOf("touch_feedback_mode")], "gated");
   assert.equal(rows[2].split(",")[fields.indexOf("gate_commit_sequence")], "2");

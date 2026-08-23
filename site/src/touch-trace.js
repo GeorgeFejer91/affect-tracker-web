@@ -1,6 +1,6 @@
 import { clamp, smoothToward } from "./math.js";
 
-export const TOUCH_TRACE_ALGORITHM_VERSION = "touch-trace-v8";
+export const TOUCH_TRACE_ALGORITHM_VERSION = "touch-trace-v9";
 export const TRACE_DURATION_MS = 4_000;
 export const MOTION_TIMEOUT_MS = 400;
 export const STROKE_SPEED_CONTINUITY_MS = 900;
@@ -34,8 +34,11 @@ export const SPEED_PRIOR_NEUTRAL_DPS = Math.expm1(
 
 const SPEED_DOMAIN_MAX = Math.log1p(4);
 const TURN_THRESHOLD = 5 * Math.PI / 180;
-const ROUND_TURN_MAX = Math.PI / 3;
 const REVERSAL_TURN_START = 2 * Math.PI / 3;
+const DOMINANT_CORNER_WINDOW = 4;
+const DOMINANT_CORNER_THRESHOLD = 35 * Math.PI / 180;
+const DOMINANT_CORNER_MAX_STRAIGHTNESS = 0.85;
+const DIRECTION_BIN_COUNT = 8;
 
 function finite(value, fallback = 0) {
   return Number.isFinite(value) ? value : fallback;
@@ -210,11 +213,134 @@ function emptyShapeMetrics(directionReversal = 0) {
     signFlipRate: 0,
     roughness: 0,
     directionReversal: reversal,
+    circleScore: 0,
+    angularScore: 0.75 * reversal,
+    windingTurns: 0,
+    radialVariation: 1,
+    directionEntropy: 0,
+    dominantCornerCount: 0,
   };
 }
 
 function reversalStrength(angle) {
   return clamp((Math.abs(angle) - REVERSAL_TURN_START) / (Math.PI - REVERSAL_TURN_START), 0, 1);
+}
+
+function wrappedAngle(angle) {
+  return Math.atan2(Math.sin(angle), Math.cos(angle));
+}
+
+function directionEntropy(points) {
+  const bins = new Uint16Array(DIRECTION_BIN_COUNT);
+  let count = 0;
+  for (let index = 1; index < points.length; index += 1) {
+    const dx = points[index].x - points[index - 1].x;
+    const dy = points[index].y - points[index - 1].y;
+    if (Math.hypot(dx, dy) < 1e-9) continue;
+    const angle = (Math.atan2(dy, dx) + Math.PI * 2) % (Math.PI * 2);
+    bins[Math.min(DIRECTION_BIN_COUNT - 1, Math.floor(angle / (Math.PI * 2) * DIRECTION_BIN_COUNT))] += 1;
+    count += 1;
+  }
+  if (count < 2) return 0;
+  let entropy = 0;
+  for (const bin of bins) {
+    if (bin === 0) continue;
+    const probability = bin / count;
+    entropy -= probability * Math.log(probability);
+  }
+  return clamp(entropy / Math.log(DIRECTION_BIN_COUNT), 0, 1);
+}
+
+function dominantCorners(points) {
+  if (points.length < DOMINANT_CORNER_WINDOW * 2 + 1) return [];
+  const candidates = [];
+  for (let index = DOMINANT_CORNER_WINDOW; index < points.length - DOMINANT_CORNER_WINDOW; index += 1) {
+    const before = points[index - DOMINANT_CORNER_WINDOW];
+    const current = points[index];
+    const after = points[index + DOMINANT_CORNER_WINDOW];
+    const ux = current.x - before.x;
+    const uy = current.y - before.y;
+    const vx = after.x - current.x;
+    const vy = after.y - current.y;
+    if (Math.hypot(ux, uy) < 1e-9 || Math.hypot(vx, vy) < 1e-9) continue;
+    const angle = Math.atan2(ux * vy - uy * vx, ux * vx + uy * vy);
+    let localLength = 0;
+    for (let pathIndex = index - DOMINANT_CORNER_WINDOW + 1; pathIndex <= index + DOMINANT_CORNER_WINDOW; pathIndex += 1) {
+      localLength += Math.hypot(
+        points[pathIndex].x - points[pathIndex - 1].x,
+        points[pathIndex].y - points[pathIndex - 1].y,
+      );
+    }
+    const chordLength = Math.hypot(after.x - before.x, after.y - before.y);
+    const straightness = localLength > 1e-9 ? chordLength / localLength : 1;
+    if (
+      Math.abs(angle) >= DOMINANT_CORNER_THRESHOLD
+      && straightness <= DOMINANT_CORNER_MAX_STRAIGHTNESS
+    ) candidates.push({ index, angle, straightness });
+  }
+  candidates.sort((a, b) => Math.abs(b.angle) - Math.abs(a.angle));
+  const selected = [];
+  for (const candidate of candidates) {
+    if (selected.some((corner) => Math.abs(corner.index - candidate.index) <= DOMINANT_CORNER_WINDOW * 2)) continue;
+    selected.push(candidate);
+  }
+  return selected.sort((a, b) => a.index - b.index);
+}
+
+function loopGeometry(points) {
+  const center = points.reduce(
+    (result, point) => ({ x: result.x + point.x / points.length, y: result.y + point.y / points.length }),
+    { x: 0, y: 0 },
+  );
+  let covarianceX = 0;
+  let covarianceY = 0;
+  let covarianceXY = 0;
+  for (const point of points) {
+    const x = point.x - center.x;
+    const y = point.y - center.y;
+    covarianceX += x * x / points.length;
+    covarianceY += y * y / points.length;
+    covarianceXY += x * y / points.length;
+  }
+  const trace = covarianceX + covarianceY;
+  const discriminant = Math.sqrt(Math.max(0, (covarianceX - covarianceY) ** 2 + 4 * covarianceXY ** 2));
+  const major = Math.max((trace + discriminant) / 2, 1e-12);
+  const minor = Math.max((trace - discriminant) / 2, 0);
+  const nonDegenerate = clamp((minor / major) / 0.04, 0, 1);
+  if (nonDegenerate === 0) {
+    return { windingTurns: 0, radialVariation: 1, nonDegenerate: 0 };
+  }
+
+  // Whitening makes the loop check tolerant of the ellipses produced by a
+  // thumb's constrained reach. This coordinate transform is classifier-only;
+  // it is never used to draw or cosmetically smooth the participant trace.
+  const axisAngle = 0.5 * Math.atan2(2 * covarianceXY, covarianceX - covarianceY);
+  const cosine = Math.cos(axisAngle);
+  const sine = Math.sin(axisAngle);
+  const whitened = points.map((point) => {
+    const x = point.x - center.x;
+    const y = point.y - center.y;
+    return {
+      x: (x * cosine + y * sine) / Math.sqrt(major),
+      y: (-x * sine + y * cosine) / Math.sqrt(Math.max(minor, 1e-12)),
+    };
+  });
+  const radii = whitened.map((point) => Math.hypot(point.x, point.y));
+  const meanRadius = radii.reduce((sum, radius) => sum + radius, 0) / radii.length;
+  const radiusVariance = radii.reduce((sum, radius) => sum + (radius - meanRadius) ** 2, 0) / radii.length;
+  const radialVariation = meanRadius > 1e-9 ? Math.sqrt(radiusVariance) / meanRadius : 1;
+  let accumulatedAngle = 0;
+  let previousAngle = Math.atan2(whitened[0].y, whitened[0].x);
+  for (let index = 1; index < whitened.length; index += 1) {
+    const angle = Math.atan2(whitened[index].y, whitened[index].x);
+    accumulatedAngle += wrappedAngle(angle - previousAngle);
+    previousAngle = angle;
+  }
+  return {
+    windingTurns: Math.abs(accumulatedAngle) / (Math.PI * 2),
+    radialVariation: finite(radialVariation, 1),
+    nonDegenerate,
+  };
 }
 
 export function computeShapeMetrics(points, { crossStrokeReversal = 0 } = {}) {
@@ -259,28 +385,74 @@ export function computeShapeMetrics(points, { crossStrokeReversal = 0 } = {}) {
     : 0;
   const withinStrokeReversal = clamp(0.8 * reversalPeak + 0.2 * reversalCoverage, 0, 1);
   const directionReversal = Math.max(clamp(finite(crossStrokeReversal), 0, 1), withinStrokeReversal);
-  const smoothTurnSum = turns.reduce(
-    (sum, angle) => sum + (Math.abs(angle) <= ROUND_TURN_MAX ? Math.abs(angle) : 0),
-    0,
-  );
-  // Roundness needs a sustained run of moderate, consistently signed turns.
-  // Hairpins and backtracking are explicit reversal evidence, not coherent
-  // curvature, even when atan2 gives each 180-degree turn the same sign.
-  const roundCoverage = clamp(smoothTurnSum / Math.PI, 0, 1);
-  const roundness = roundCoverage * turnCoherence * (1 - directionReversal);
-  const jaggedness = clamp(
-    turnActivity * (0.65 * signFlipRate + 0.35 * roughness) + 0.75 * directionReversal,
+  const corners = dominantCorners(points);
+  const cornerDensity = clamp(corners.length / 4, 0, 1);
+  const cornerStrength = corners.length
+    ? median(corners.map(({ angle }) => clamp(
+      (Math.abs(angle) - DOMINANT_CORNER_THRESHOLD) / (Math.PI - DOMINANT_CORNER_THRESHOLD),
+      0,
+      1,
+    )))
+    : 0;
+  const headingEntropy = directionEntropy(points);
+  const loop = loopGeometry(points);
+  // A generous variation tolerance keeps incomplete and thumb-distorted
+  // ellipses responsive while winding/coherence still reject random bends.
+  const radialRegularity = clamp(1 - loop.radialVariation / 0.8, 0, 1);
+  const turnCoverage = clamp(sumAbs / Math.PI, 0, 1);
+  const windingCoverage = clamp(loop.windingTurns, 0, 1);
+  // A circular command must accumulate coherent rotation around a stable
+  // center. Merely bending in one direction is weak evidence; a complete,
+  // possibly elliptical thumb loop is strong evidence.
+  const rawCircleScore = clamp(
+    turnCoherence
+      * (1 - directionReversal)
+      * loop.nonDegenerate
+      * (0.15 * turnCoverage + 0.85 * windingCoverage * radialRegularity),
     0,
     1,
   );
+  // The angular/random command is represented by dominant changes between
+  // movement legs and disordered headings. Natural curvature within a thumb
+  // leg is allowed; only the raw equal-distance path contributes here.
+  const directionalDisorder = headingEntropy * Math.sqrt(Math.max(0, 1 - turnCoherence));
+  const cornerEvidence = corners.length
+    ? 0.55 * cornerDensity + 0.25 * cornerStrength + 0.2 * headingEntropy
+    : 0;
+  // Winding alone must not turn a square or angular closed scribble into a
+  // circular command. Dominant corners attenuate loop evidence directly.
+  const circleScore = rawCircleScore * (1 - 0.7 * cornerDensity);
+  const angularScore = clamp(Math.max(
+    0.9 * directionReversal,
+    directionalDisorder,
+    cornerEvidence,
+    turnActivity * signFlipRate,
+  ), 0, 1);
   return {
-    shapeFeature: clamp(roundness - jaggedness, -1, 1),
+    shapeFeature: clamp(circleScore - angularScore, -1, 1),
     turnActivity,
     turnCoherence,
     signFlipRate,
     roughness,
     directionReversal,
+    circleScore,
+    angularScore,
+    windingTurns: loop.windingTurns,
+    radialVariation: loop.radialVariation,
+    directionEntropy: headingEntropy,
+    dominantCornerCount: corners.length,
   };
+}
+
+export function projectTracePoints(points, viewportRect) {
+  if (!Array.isArray(points) || points.length === 0) return [];
+  const left = finite(viewportRect?.left);
+  const top = finite(viewportRect?.top);
+  return points.map((point) => ({
+    ...point,
+    x: finite(point.x) - left,
+    y: finite(point.y) - top,
+  }));
 }
 
 export function fitTracePoints(points, width, height, paddingRatio = 0.08) {
@@ -835,6 +1007,12 @@ export class TouchTraceAnalyzer {
       signFlipRate: this.shape.signFlipRate,
       roughness: this.shape.roughness,
       directionReversal: this.shape.directionReversal,
+      circleScore: this.shape.circleScore,
+      angularScore: this.shape.angularScore,
+      windingTurns: this.shape.windingTurns,
+      radialVariation: this.shape.radialVariation,
+      directionEntropy: this.shape.directionEntropy,
+      dominantCornerCount: this.shape.dominantCornerCount,
       speedLower: this.speedRange.low,
       speedUpper: this.speedRange.high,
       shapeLower: this.shapeRange.low,

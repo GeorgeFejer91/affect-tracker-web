@@ -28,7 +28,9 @@ test("the online interface exposes a third experimental touch playground", async
   assert.match(html, /id="touch-affect-space"/);
   assert.match(html, /id="touch-affect-point"/);
   assert.match(html, /id="touch-affect-valence-output"/);
-  assert.match(html, /Fast[\s\S]*Slow[\s\S]*Jagged[\s\S]*Round/);
+  assert.match(html, /Fast[\s\S]*Slow[\s\S]*Angular[\s\S]*Circular/);
+  assert.match(html, /Angular \/ random[\s\S]*Circular[\s\S]*Raw trace · no smoothing/);
+  assert.match(html, /normalized, uniformly fitted overview[\s\S]*never affects classification/i);
   assert.match(html, /name="touch-feedback-mode" value="gated" checked/);
   assert.match(html, /Gated move-and-hold/);
   assert.match(html, /cold-start anchors are 0\.15 viewport diagonals\/s/);

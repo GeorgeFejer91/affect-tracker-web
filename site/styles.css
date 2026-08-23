@@ -437,6 +437,65 @@ body.is-touch-source.is-touch-cursor-hidden .panel-stack { cursor: default; }
   line-height: 1.45;
 }
 
+.gesture-expectations {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.45rem;
+  margin: 0.55rem 0 0.7rem;
+}
+
+.gesture-expectations h4 {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: rgb(255 255 255 / 76%);
+  font-size: 0.64rem;
+}
+
+.gesture-expectations figure {
+  display: grid;
+  grid-template-columns: 4.5rem minmax(0, 1fr);
+  gap: 0.45rem;
+  align-items: center;
+  margin: 0;
+  padding: 0.42rem;
+  border: 1px solid rgb(120 215 255 / 18%);
+  border-radius: 0.5rem;
+  background: rgb(0 0 0 / 24%);
+}
+
+.gesture-expectations svg {
+  display: block;
+  width: 100%;
+  overflow: visible;
+  fill: none;
+  stroke: #8de2ff;
+  stroke-linecap: butt;
+  stroke-linejoin: miter;
+  stroke-width: 3;
+}
+
+.gesture-expectations .gesture-arrow {
+  stroke: #e5be56;
+  stroke-width: 3;
+}
+
+.gesture-expectations figcaption,
+.gesture-expectations figcaption span {
+  display: block;
+}
+
+.gesture-expectations figcaption strong {
+  color: #fff;
+  font-size: 0.64rem;
+}
+
+.gesture-expectations figcaption span {
+  margin-top: 0.12rem;
+  color: rgb(255 255 255 / 58%);
+  font-size: 0.57rem;
+  line-height: 1.35;
+}
+
 .touch-tracking-toggle {
   display: flex;
   align-items: center;
@@ -1008,6 +1067,17 @@ kbd {
   .touch-playground-intro > h3 + p {
     margin: 0.2rem 0 0.45rem;
     font-size: 0.66rem;
+  }
+
+  .gesture-expectations {
+    gap: 0.35rem;
+    margin-block: 0.45rem 0.55rem;
+  }
+
+  .gesture-expectations figure {
+    grid-template-columns: 3.5rem minmax(0, 1fr);
+    gap: 0.32rem;
+    padding: 0.35rem;
   }
 
   .touch-tracking-toggle {
