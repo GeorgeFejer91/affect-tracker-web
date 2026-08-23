@@ -87,21 +87,20 @@ test("WebXR matrix helpers preserve model transforms through identity", () => {
   assert.deepEqual(Array.from(multiplyMatrices(identity, model)), Array.from(model));
 });
 
-test("WebXR controller rig places Flubber toward the headset and survives degenerate poses", () => {
+test("WebXR controller rig places Flubber above the controller and survives degenerate poses", () => {
   const model = controllerFacingModelMatrix(
     { x: 1, y: 1.2, z: -1 },
     { x: 1, y: 1.6, z: 0 },
-    0.18,
     0.62,
     0.7,
   );
   assert.ok(Array.from(model).every(Number.isFinite));
   assert.equal(Number(model[12].toFixed(6)), 1);
-  assert.ok(model[13] > 1.2 && model[14] > -1);
+  assert.equal(Number(model[13].toFixed(6)), 1.36);
+  assert.equal(Number(model[14].toFixed(6)), -1);
   const degenerate = controllerFacingModelMatrix(
     { x: 0, y: 0, z: 0 },
     { x: 0, y: 0, z: 0 },
-    0.18,
     0.62,
     0.7,
   );
@@ -154,11 +153,14 @@ test("experimental page is local-first and wires the selectable WebXR study libr
   assert.match(page, /Optional HTTPS webhook/);
   assert.match(page, /id="controller-follow-enabled"/);
   assert.match(page, /id="controller-follow-hand"/);
-  assert.match(page, /id="controller-follow-distance"/);
+  assert.match(page, /id="flubber-size"/);
+  assert.match(page, /id="presentation-mode"/);
   assert.match(page, /src="\.\/src\/webxr-study\.js"/);
   assert.doesNotMatch(page, /https:\/\/(?!example\.org)/);
-  assert.match(runtime, /requestSession\("immersive-vr"/);
+  assert.match(runtime, /navigator\.xr\.requestSession\(sessionMode/);
+  assert.match(runtime, /"immersive-ar"/);
   assert.match(runtime, /new XRWebGLLayer/);
+  assert.match(runtime, /alpha: passthrough/);
   assert.match(runtime, /readQuestControllerState/);
   assert.match(runtime, /frame\.getPose\(source\.gripSpace, state\.referenceSpace\)/);
   assert.match(runtime, /controllerFacingModelMatrix/);

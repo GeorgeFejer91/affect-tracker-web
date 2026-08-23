@@ -38,6 +38,16 @@
           <p id="stimulus-warning" class="content-warning"></p>
         </section>
 
+        <label class="presentation-field" for="presentation-mode">
+          Presentation
+          <select id="presentation-mode">
+            <option value="virtual">Virtual background with selected video</option>
+            <option id="passthrough-video-option" value="passthrough-video">Passthrough behind flat video</option>
+            <option value="passthrough-flubber">Passthrough with Flubber only</option>
+          </select>
+        </label>
+        <p id="presentation-note" class="privacy-note"></p>
+
         <dl class="control-list">
           <div><dt>Right thumbstick</dt><dd>Valence left/right, arousal down/up</dd></div>
           <div><dt>X</dt><dd>Reset to neutral</dd></div>
@@ -51,22 +61,22 @@
             <input id="controller-follow-enabled" type="checkbox">
             Follow a tracked controller
           </label>
-          <div class="rigging-controls" id="controller-follow-controls">
-            <label for="controller-follow-hand">
+          <div class="rigging-controls">
+            <label id="controller-follow-controls" for="controller-follow-hand">
               Controller
               <select id="controller-follow-hand">
                 <option value="left">Left</option>
                 <option value="right" selected>Right</option>
               </select>
             </label>
-            <label for="controller-follow-distance">
-              Offset toward headset
-              <span><output id="controller-follow-distance-output">0.18</output> m</span>
-              <input id="controller-follow-distance" type="range" min="0.05" max="0.60" step="0.01" value="0.18">
+            <label for="flubber-size">
+              Flubber size
+              <span><output id="flubber-size-output">1.00</output>×</span>
+              <input id="flubber-size" type="range" min="0.50" max="2.00" step="0.05" value="1.00">
             </label>
           </div>
           <p class="privacy-note">
-            When enabled, Flubber follows the selected controller and faces the headset. If grip
+            When enabled, Flubber stays just above the selected controller and faces the headset. If grip
             tracking drops briefly, it holds its last tracked pose. The browser controls whether
             its native controller model remains visible.
           </p>

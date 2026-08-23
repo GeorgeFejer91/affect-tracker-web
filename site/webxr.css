@@ -109,6 +109,7 @@ dd {
 
 .stimulus-field,
 .webhook-field,
+.presentation-field,
 .rigging-controls label {
   display: grid;
   gap: 8px;
@@ -153,7 +154,7 @@ dd {
   font-weight: 500;
 }
 
-.rigging-controls.is-disabled {
+#controller-follow-controls.is-disabled {
   opacity: 0.5;
 }
 

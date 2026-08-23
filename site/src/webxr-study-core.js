@@ -4,8 +4,7 @@ export const WEBXR_SAMPLE_INTERVAL_MS = 50;
 export const WEBXR_CONTINUOUS_SPEED = 0.8;
 export const WEBXR_RESPONSE = 8;
 export const WEBXR_STICK_DEAD_ZONE = 0.15;
-export const WEBXR_CONTROLLER_FOLLOW_DISTANCE_MIN = 0.05;
-export const WEBXR_CONTROLLER_FOLLOW_DISTANCE_MAX = 0.6;
+export const WEBXR_CONTROLLER_VERTICAL_OFFSET_M = 0.16;
 
 export function normalizeStickAxis(value, deadZone = WEBXR_STICK_DEAD_ZONE) {
   const numeric = Number(value);
@@ -89,9 +88,10 @@ export const WEBXR_CSV_COLUMNS = Object.freeze([
   "stick_x",
   "stick_y",
   "controller_hand",
+  "presentation_mode",
   "flubber_controller_follow",
   "flubber_follow_hand",
-  "flubber_follow_distance_m",
+  "flubber_size_scale",
   "flubber_tracking",
   "paused",
   "event",
@@ -187,25 +187,24 @@ export function modelMatrix(x, y, z, width, height) {
 export function controllerFacingModelMatrix(
   controllerPosition,
   viewerPosition,
-  distance,
   width,
   height,
+  verticalOffset = WEBXR_CONTROLLER_VERTICAL_OFFSET_M,
 ) {
   const values = [
     controllerPosition?.x, controllerPosition?.y, controllerPosition?.z,
     viewerPosition?.x, viewerPosition?.y, viewerPosition?.z,
-    distance, width, height,
+    width, height, verticalOffset,
   ].map(Number);
   if (!values.every(Number.isFinite)) throw new TypeError("Controller rig values must be finite.");
 
   const [cx, cy, cz, vx, vy, vz] = values;
-  const boundedDistance = Math.min(
-    WEBXR_CONTROLLER_FOLLOW_DISTANCE_MAX,
-    Math.max(WEBXR_CONTROLLER_FOLLOW_DISTANCE_MIN, Number(distance)),
-  );
-  let dx = vx - cx;
-  let dy = vy - cy;
-  let dz = vz - cz;
+  const x = cx;
+  const y = cy + verticalOffset;
+  const z = cz;
+  let dx = vx - x;
+  let dy = vy - y;
+  let dz = vz - z;
   let length = Math.hypot(dx, dy, dz);
   if (length < 1e-6) {
     dx = 0;
@@ -226,9 +225,6 @@ export function controllerFacingModelMatrix(
     forward[2] * right[0] - forward[0] * right[2],
     forward[0] * right[1] - forward[1] * right[0],
   ];
-  const x = cx + forward[0] * boundedDistance;
-  const y = cy + forward[1] * boundedDistance;
-  const z = cz + forward[2] * boundedDistance;
   return new Float32Array([
     right[0] * width, right[1] * width, right[2] * width, 0,
     up[0] * height, up[1] * height, up[2] * height, 0,

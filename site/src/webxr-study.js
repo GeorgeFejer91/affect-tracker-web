@@ -25,7 +25,6 @@ import {
 
 const VIDEO_MODEL = modelMatrix(0, 1.55, -2.8, 2.4, 1.35);
 const SPHERE_MODEL = modelMatrix(0, 0, 0, 1, 1);
-const FLUBBER_MODEL = modelMatrix(0, 0.54, -2.38, 0.62, 0.7);
 const IMMERSIVE_FLUBBER_MODEL = modelMatrix(0, -0.72, -2.2, 0.62, 0.7);
 const FLUBBER_CANVAS_WIDTH = 512;
 const FLUBBER_CANVAS_HEIGHT = 576;
@@ -39,12 +38,15 @@ const elements = {
   stimulusDescription: document.querySelector("#stimulus-description"),
   stimulusMetadata: document.querySelector("#stimulus-metadata"),
   stimulusWarning: document.querySelector("#stimulus-warning"),
+  presentationMode: document.querySelector("#presentation-mode"),
+  passthroughVideoOption: document.querySelector("#passthrough-video-option"),
+  presentationNote: document.querySelector("#presentation-note"),
   webhook: document.querySelector("#webhook-url"),
   controllerFollow: document.querySelector("#controller-follow-enabled"),
   controllerFollowControls: document.querySelector("#controller-follow-controls"),
   controllerFollowHand: document.querySelector("#controller-follow-hand"),
-  controllerFollowDistance: document.querySelector("#controller-follow-distance"),
-  controllerFollowDistanceOutput: document.querySelector("#controller-follow-distance-output"),
+  flubberSize: document.querySelector("#flubber-size"),
+  flubberSizeOutput: document.querySelector("#flubber-size-output"),
   start: document.querySelector("#start-vr"),
   download: document.querySelector("#download-csv"),
   status: document.querySelector("#study-status"),
@@ -71,7 +73,8 @@ const state = {
   controllerHand: "unknown",
   controllerFollowEnabled: false,
   controllerFollowHand: "right",
-  controllerFollowDistance: 0.18,
+  flubberSize: 1,
+  presentationMode: "virtual",
   controllerTracking: false,
   controllerRigModel: undefined,
   resetPressed: false,
@@ -112,6 +115,11 @@ function applyStimulus(stimulus, updateUrl = true) {
   elements.stimulusMetadata.textContent = parts.join(" • ");
   elements.stimulusWarning.textContent = stimulus.warning ? `Content note: ${stimulus.warning}` : "";
   elements.stimulusWarning.hidden = !stimulus.warning;
+  elements.passthroughVideoOption.disabled = stimulus.projection !== "flat";
+  if (stimulus.projection !== "flat" && elements.presentationMode.value === "passthrough-video") {
+    elements.presentationMode.value = "virtual";
+    if (state.vrSupported !== undefined) updatePresentationControls();
+  }
   if (updateUrl) {
     const url = new URL(window.location.href);
     url.searchParams.set("stimulus", stimulus.id);
@@ -136,16 +144,17 @@ function rounded(value, digits = 6) {
 
 function record(recordType, event = "", detail = "") {
   const now = performance.now();
+  const hasStimulus = state.presentationMode !== "passthrough-flubber";
   state.records.push({
     session_id: state.sessionId,
-    stimulus_id: state.stimulus.id,
-    stimulus_title: state.stimulus.title,
-    stimulus_collection: state.stimulus.collection,
-    stimulus_projection: state.stimulus.projection,
-    stimulus_source_start_seconds: state.stimulus.sourceStartSeconds,
-    stimulus_frame_count: state.stimulus.frameCount,
-    stimulus_pilot_valence: state.stimulus.pilotValence,
-    stimulus_pilot_arousal: state.stimulus.pilotArousal,
+    stimulus_id: hasStimulus ? state.stimulus.id : "",
+    stimulus_title: hasStimulus ? state.stimulus.title : "",
+    stimulus_collection: hasStimulus ? state.stimulus.collection : "",
+    stimulus_projection: hasStimulus ? state.stimulus.projection : "none",
+    stimulus_source_start_seconds: hasStimulus ? state.stimulus.sourceStartSeconds : "",
+    stimulus_frame_count: hasStimulus ? state.stimulus.frameCount : "",
+    stimulus_pilot_valence: hasStimulus ? state.stimulus.pilotValence : "",
+    stimulus_pilot_arousal: hasStimulus ? state.stimulus.pilotArousal : "",
     record_type: recordType,
     iso_time: new Date().toISOString(),
     monotonic_ms: rounded(now, 3),
@@ -158,9 +167,10 @@ function record(recordType, event = "", detail = "") {
     stick_x: rounded(state.stickX),
     stick_y: rounded(state.stickY),
     controller_hand: state.controllerHand,
+    presentation_mode: state.presentationMode,
     flubber_controller_follow: state.controllerFollowEnabled,
     flubber_follow_hand: state.controllerFollowEnabled ? state.controllerFollowHand : "",
-    flubber_follow_distance_m: state.controllerFollowEnabled ? rounded(state.controllerFollowDistance, 2) : "",
+    flubber_size_scale: rounded(state.flubberSize, 2),
     flubber_tracking: state.controllerFollowEnabled ? state.controllerTracking : "",
     paused: state.paused,
     event,
@@ -170,7 +180,8 @@ function record(recordType, event = "", detail = "") {
 
 function sessionFilename(partial) {
   const date = new Date().toISOString().replaceAll(":", "-").replace(".", "-");
-  return `affect-webxr-${stimulusFilenameToken(state.stimulus)}-${date}${partial ? "-partial" : ""}.csv`;
+  const stimulus = state.presentationMode === "passthrough-flubber" ? "flubber-only" : stimulusFilenameToken(state.stimulus);
+  return `affect-webxr-${stimulus}-${date}${partial ? "-partial" : ""}.csv`;
 }
 
 function downloadLastCsv() {
@@ -247,8 +258,10 @@ function resetAffect() {
 async function togglePause() {
   if (state.phase !== "running") return;
   state.paused = !state.paused;
-  if (state.paused) elements.video.pause();
-  else await elements.video.play();
+  if (state.presentationMode !== "passthrough-flubber") {
+    if (state.paused) elements.video.pause();
+    else await elements.video.play();
+  }
   record("event", state.paused ? "pause" : "resume", "left-y");
 }
 
@@ -277,9 +290,8 @@ function updateControllerRig(frame, viewerPose) {
     state.controllerRigModel = controllerFacingModelMatrix(
       gripPose.transform.position,
       viewerPose.transform.position,
-      state.controllerFollowDistance,
-      0.62,
-      0.7,
+      0.62 * state.flubberSize,
+      0.7 * state.flubberSize,
     );
   }
   if (tracked !== state.controllerTracking) {
@@ -294,6 +306,10 @@ async function beginPlayback() {
   state.runStartedAt = performance.now();
   state.previousSampleAt = state.runStartedAt;
   state.paused = false;
+  if (state.presentationMode === "passthrough-flubber") {
+    record("event", "flubber-only-start", "passthrough");
+    return;
+  }
   elements.video.currentTime = 0;
   try {
     await elements.video.play();
@@ -345,24 +361,33 @@ async function startStudy() {
 
   elements.start.disabled = true;
   elements.stimulus.disabled = true;
+  elements.presentationMode.disabled = true;
   elements.controllerFollow.disabled = true;
   elements.controllerFollowHand.disabled = true;
-  elements.controllerFollowDistance.disabled = true;
+  elements.flubberSize.disabled = true;
   elements.download.hidden = true;
-  setStatus(`Loading ${state.stimulus.title} and requesting immersive access…`);
+  const presentationMode = elements.presentationMode.value;
+  const passthrough = presentationMode !== "virtual";
+  if (presentationMode === "passthrough-video" && state.stimulus.projection !== "flat") {
+    setStatus("Passthrough behind video is available only for the flat-screen stimulus.", true);
+    restoreControls();
+    return;
+  }
+  const sessionMode = passthrough ? "immersive-ar" : "immersive-vr";
+  setStatus(`Requesting ${passthrough ? "passthrough" : "immersive"} access…`);
   let requestedSession;
   try {
-    const sessionPromise = navigator.xr.requestSession("immersive-vr", {
+    const sessionPromise = navigator.xr.requestSession(sessionMode, {
       requiredFeatures: ["local-floor"],
     });
-    const mediaUnlock = elements.video.play()
+    const mediaUnlock = presentationMode === "passthrough-flubber" ? Promise.resolve() : elements.video.play()
         .then(() => { elements.video.pause(); elements.video.currentTime = 0; })
         .catch(() => {});
     const session = await sessionPromise;
     requestedSession = session;
     await mediaUnlock;
     if (!renderer) renderer = createRenderer(elements.canvas, elements.video);
-    const layer = new XRWebGLLayer(session, renderer.gl, { alpha: false, antialias: true });
+    const layer = new XRWebGLLayer(session, renderer.gl, { alpha: passthrough, antialias: true });
     session.updateRenderState({ baseLayer: layer });
     const [referenceSpace, viewerSpace] = await Promise.all([
       session.requestReferenceSpace("local-floor"),
@@ -376,7 +401,8 @@ async function startStudy() {
     state.webhookUrl = webhookUrl;
     state.controllerFollowEnabled = elements.controllerFollow.checked;
     state.controllerFollowHand = elements.controllerFollowHand.value;
-    state.controllerFollowDistance = Number(elements.controllerFollowDistance.value);
+    state.flubberSize = Number(elements.flubberSize.value);
+    state.presentationMode = presentationMode;
     state.controllerTracking = false;
     state.controllerRigModel = undefined;
     state.phase = "countdown";
@@ -398,18 +424,20 @@ async function startStudy() {
     state.finalizing = false;
     state.records = [];
     offsets = createProjectionOffsets(state.sessionId, profiles.waveCount);
-    record("event", "xr-session-start", `immersive-vr:${state.stimulus.id}:${state.stimulus.projection}`);
+    record("event", "xr-session-start", `${sessionMode}:${presentationMode}:${state.stimulus.id}:${state.stimulus.projection}`);
     session.addEventListener("end", () => {
       const wasFinished = state.phase === "finished";
-      const finalizePromise = wasFinished ? Promise.resolve() : finalize("xr-session-ended", true);
+      const flubberOnly = state.presentationMode === "passthrough-flubber";
+      const finalizePromise = wasFinished ? Promise.resolve() : finalize("xr-session-ended", !flubberOnly);
       finalizePromise.finally(() => {
         state.session = undefined;
         state.referenceSpace = undefined;
         state.viewerSpace = undefined;
-        elements.stimulus.disabled = false;
+        elements.stimulus.disabled = elements.presentationMode.value === "passthrough-flubber";
+        elements.presentationMode.disabled = false;
         elements.controllerFollow.disabled = false;
         elements.controllerFollowHand.disabled = !elements.controllerFollow.checked;
-        elements.controllerFollowDistance.disabled = !elements.controllerFollow.checked;
+        elements.flubberSize.disabled = false;
         if (!state.finalizing) elements.start.disabled = false;
       });
     }, { once: true });
@@ -422,13 +450,14 @@ async function startStudy() {
   } catch (error) {
     requestedSession?.end().catch(() => {});
     elements.start.disabled = false;
-    elements.stimulus.disabled = false;
+    elements.stimulus.disabled = elements.presentationMode.value === "passthrough-flubber";
+    elements.presentationMode.disabled = false;
     elements.controllerFollow.disabled = false;
     elements.controllerFollowHand.disabled = !elements.controllerFollow.checked;
-    elements.controllerFollowDistance.disabled = !elements.controllerFollow.checked;
+    elements.flubberSize.disabled = false;
     setStatus(
       error?.name === "NotSupportedError"
-        ? "This browser could not start immersive VR. Open this page in Meta Quest Browser."
+        ? `This browser could not start ${passthrough ? "passthrough" : "immersive VR"}. Try another presentation mode in Meta Quest Browser.`
         : `Immersive mode could not start: ${error?.message ?? String(error)}`,
       true,
     );
@@ -457,7 +486,7 @@ function createTexture(gl) {
 }
 
 function createRenderer(canvas, video) {
-  const gl = canvas.getContext("webgl", { alpha: false, antialias: true, xrCompatible: true });
+  const gl = canvas.getContext("webgl", { alpha: true, antialias: true, xrCompatible: true });
   if (!gl) throw new Error("WebGL is unavailable in this browser.");
   const vertexShader = compileShader(gl, gl.VERTEX_SHADER, `
     attribute vec3 a_position;
@@ -591,16 +620,18 @@ function createRenderer(canvas, video) {
     gl,
     render(session, pose, viewerPose, study) {
       gl.bindFramebuffer(gl.FRAMEBUFFER, session.renderState.baseLayer.framebuffer);
-      gl.clearColor(0.008, 0.012, 0.02, 1);
+      const passthrough = study.presentationMode !== "virtual";
+      const hasVideo = study.presentationMode !== "passthrough-flubber";
+      gl.clearColor(0.008, 0.012, 0.02, passthrough ? 0 : 1);
       gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
       gl.useProgram(program);
-      uploadVideo();
+      if (hasVideo) uploadVideo();
       uploadFlubber(study);
       for (let viewIndex = 0; viewIndex < pose.views.length; viewIndex += 1) {
         const view = pose.views[viewIndex];
         const viewport = session.renderState.baseLayer.getViewport(view);
         gl.viewport(viewport.x, viewport.y, viewport.width, viewport.height);
-        if (study.stimulus.projection === "equirectangular-360") {
+        if (hasVideo && study.stimulus.projection === "equirectangular-360") {
           draw(
             videoTexture,
             view.projectionMatrix,
@@ -612,30 +643,35 @@ function createRenderer(canvas, video) {
           );
           const controllerRigged = study.controllerFollowEnabled && study.controllerRigModel;
           const hudView = controllerRigged ? view : (viewerPose?.views?.[viewIndex] ?? view);
+          const hudFlubberModel = study.flubberSize === 1 ? IMMERSIVE_FLUBBER_MODEL :
+            modelMatrix(0, -0.72, -2.2, 0.62 * study.flubberSize, 0.7 * study.flubberSize);
           draw(
             flubberTexture,
             hudView.projectionMatrix,
             hudView.transform.inverse.matrix,
-            controllerRigged ? study.controllerRigModel : IMMERSIVE_FLUBBER_MODEL,
+            controllerRigged ? study.controllerRigModel : hudFlubberModel,
             true,
             quadBuffer,
             6,
           );
         } else {
-          draw(
-            videoTexture,
-            view.projectionMatrix,
-            view.transform.inverse.matrix,
-            VIDEO_MODEL,
-            false,
-            quadBuffer,
-            6,
-          );
+          if (hasVideo) {
+            draw(
+              videoTexture,
+              view.projectionMatrix,
+              view.transform.inverse.matrix,
+              VIDEO_MODEL,
+              false,
+              quadBuffer,
+              6,
+            );
+          }
+          const fixedFlubberModel = modelMatrix(0, 0.54, -2.38, 0.62 * study.flubberSize, 0.7 * study.flubberSize);
           draw(
             flubberTexture,
             view.projectionMatrix,
             view.transform.inverse.matrix,
-            study.controllerFollowEnabled && study.controllerRigModel ? study.controllerRigModel : FLUBBER_MODEL,
+            study.controllerFollowEnabled && study.controllerRigModel ? study.controllerRigModel : fixedFlubberModel,
             true,
             quadBuffer,
             6,
@@ -653,14 +689,13 @@ async function initialize() {
     return;
   }
   try {
-    const supported = await navigator.xr.isSessionSupported("immersive-vr");
-    elements.start.disabled = !supported;
-    setStatus(
-      supported
-        ? "Ready. Put on the headset, then enter VR."
-        : "This browser does not provide immersive VR. Open the page in Meta Quest Browser.",
-      !supported,
-    );
+    const [vrSupported, arSupported] = await Promise.all([
+      navigator.xr.isSessionSupported("immersive-vr"),
+      navigator.xr.isSessionSupported("immersive-ar"),
+    ]);
+    state.vrSupported = vrSupported;
+    state.arSupported = arSupported;
+    updatePresentationControls();
   } catch (error) {
     setStatus(`WebXR capability check failed: ${error?.message ?? String(error)}`, true);
   }
@@ -672,12 +707,45 @@ elements.stimulus.addEventListener("change", () => applyStimulus(webXrStimulusBy
 function updateRiggingControls() {
   const enabled = elements.controllerFollow.checked;
   elements.controllerFollowHand.disabled = !enabled;
-  elements.controllerFollowDistance.disabled = !enabled;
   elements.controllerFollowControls.classList.toggle("is-disabled", !enabled);
-  elements.controllerFollowDistanceOutput.value = Number(elements.controllerFollowDistance.value).toFixed(2);
+  elements.flubberSizeOutput.value = Number(elements.flubberSize.value).toFixed(2);
+}
+function restoreControls() {
+  elements.start.disabled = false;
+  elements.stimulus.disabled = elements.presentationMode.value === "passthrough-flubber";
+  elements.presentationMode.disabled = false;
+  elements.controllerFollow.disabled = false;
+  elements.controllerFollowHand.disabled = !elements.controllerFollow.checked;
+  elements.flubberSize.disabled = false;
+}
+function updatePresentationControls() {
+  const passthrough = elements.presentationMode.value !== "virtual";
+  const flubberOnly = elements.presentationMode.value === "passthrough-flubber";
+  const supported = passthrough ? state.arSupported : state.vrSupported;
+  elements.stimulus.disabled = flubberOnly;
+  if (flubberOnly) {
+    elements.video.pause();
+    elements.video.removeAttribute("src");
+    elements.video.load();
+  } else if (elements.video.getAttribute("src") !== state.stimulus.src) {
+    elements.video.setAttribute("src", state.stimulus.src);
+    elements.video.load();
+  }
+  elements.start.disabled = !supported;
+  elements.presentationNote.textContent = flubberOnly
+    ? "No video is loaded or rendered; the study runs until immersive mode is exited."
+    : elements.presentationMode.value === "passthrough-video"
+      ? "The selected flat video and Flubber appear over the headset passthrough view."
+      : "The selected video is presented against the normal virtual background.";
+  setStatus(
+    supported ? "Ready. Put on the headset, then enter the selected mode." :
+      `This browser does not provide ${passthrough ? "immersive passthrough" : "immersive VR"}. Open the page in Meta Quest Browser.`,
+    !supported,
+  );
 }
 elements.controllerFollow.addEventListener("change", updateRiggingControls);
-elements.controllerFollowDistance.addEventListener("input", updateRiggingControls);
+elements.flubberSize.addEventListener("input", updateRiggingControls);
+elements.presentationMode.addEventListener("change", updatePresentationControls);
 populateStimulusLibrary();
 updateRiggingControls();
 initialize();
