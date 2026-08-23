@@ -1,0 +1,147 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/GeorgeFejer91/affect-tracker-web/vr/contracts/affect-tracker-vr-session-v1.schema.json",
+  "title": "Affect Tracker VR session v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "version", "sessionId", "video", "affectSettings", "vr"],
+  "properties": {
+    "schema": { "const": "affect-tracker-vr-session" },
+    "version": { "const": 1 },
+    "sessionId": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,119}$" },
+    "video": { "$ref": "#/$defs/video" },
+    "affectSettings": { "$ref": "#/$defs/affectSettings" },
+    "vr": { "$ref": "#/$defs/vr" }
+  },
+  "$defs": {
+    "video": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["file", "byteLength", "sha256", "projection", "stereo", "loop"],
+      "properties": {
+        "file": { "type": "string", "minLength": 1, "maxLength": 255, "pattern": "^[^/\\\\\\u0000]+$" },
+        "byteLength": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+        "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "projection": { "enum": ["flat", "equirect-180", "equirect-360"] },
+        "stereo": { "enum": ["mono", "side-by-side-left-right", "top-bottom"] },
+        "loop": { "type": "boolean" }
+      }
+    },
+    "binding": {
+      "type": "string",
+      "pattern": "^(key:[A-Za-z0-9]{1,40}|mouse:(left|right|middle|button4|button5)|wheel:(up|down|left|right))$"
+    },
+    "bindings": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["increaseValence", "decreaseValence", "increaseArousal", "decreaseArousal", "reset", "togglePause", "showSettings", "toggleOverlayEditing"],
+      "properties": {
+        "increaseValence": { "$ref": "#/$defs/binding" },
+        "decreaseValence": { "$ref": "#/$defs/binding" },
+        "increaseArousal": { "$ref": "#/$defs/binding" },
+        "decreaseArousal": { "$ref": "#/$defs/binding" },
+        "reset": { "$ref": "#/$defs/binding" },
+        "togglePause": { "$ref": "#/$defs/binding" },
+        "showSettings": { "$ref": "#/$defs/binding" },
+        "toggleOverlayEditing": { "$ref": "#/$defs/binding" }
+      }
+    },
+    "advancedBindings": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "increaseAnimationSpeed": { "$ref": "#/$defs/binding" },
+        "decreaseAnimationSpeed": { "$ref": "#/$defs/binding" },
+        "increaseAmplitude": { "$ref": "#/$defs/binding" },
+        "decreaseAmplitude": { "$ref": "#/$defs/binding" },
+        "increaseDisorder": { "$ref": "#/$defs/binding" },
+        "decreaseDisorder": { "$ref": "#/$defs/binding" },
+        "increaseTransparency": { "$ref": "#/$defs/binding" },
+        "decreaseTransparency": { "$ref": "#/$defs/binding" },
+        "increaseSize": { "$ref": "#/$defs/binding" },
+        "decreaseSize": { "$ref": "#/$defs/binding" }
+      }
+    },
+    "affectSettings": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "inputMode", "stepSize", "continuousSpeed", "response", "bindings", "advancedBindings", "visual", "palette", "overlay", "lsl"],
+      "properties": {
+        "version": { "const": 1 },
+        "inputMode": { "enum": ["continuous", "step"] },
+        "stepSize": { "type": "number", "minimum": 0.01, "maximum": 1 },
+        "continuousSpeed": { "type": "number", "minimum": 0.05, "maximum": 4 },
+        "response": { "type": "number", "minimum": 0.1, "maximum": 30 },
+        "bindings": { "$ref": "#/$defs/bindings" },
+        "advancedBindings": { "$ref": "#/$defs/advancedBindings" },
+        "visual": {
+          "type": "object", "additionalProperties": false,
+          "required": ["animationSpeed", "amplitudeScale", "disorderScale"],
+          "properties": {
+            "animationSpeed": { "type": "number", "minimum": 0.25, "maximum": 4 },
+            "amplitudeScale": { "type": "number", "minimum": 0, "maximum": 2 },
+            "disorderScale": { "type": "number", "minimum": 0, "maximum": 2 }
+          }
+        },
+        "palette": {
+          "type": "object", "additionalProperties": false,
+          "required": ["up", "down", "left", "right"],
+          "properties": {
+            "up": { "$ref": "#/$defs/color" }, "down": { "$ref": "#/$defs/color" },
+            "left": { "$ref": "#/$defs/color" }, "right": { "$ref": "#/$defs/color" }
+          }
+        },
+        "overlay": {
+          "type": "object", "additionalProperties": false,
+          "required": ["x", "y", "size", "opacity", "visible"],
+          "properties": {
+            "x": { "type": "integer", "minimum": -100000, "maximum": 100000 },
+            "y": { "type": "integer", "minimum": -100000, "maximum": 100000 },
+            "size": { "type": "integer", "minimum": 120, "maximum": 640 },
+            "opacity": { "type": "number", "minimum": 0, "maximum": 1 },
+            "visible": { "type": "boolean" }
+          }
+        },
+        "lsl": {
+          "type": "object", "additionalProperties": false,
+          "required": ["streamName", "streamType", "markerName", "sampleRate", "sourceId"],
+          "properties": {
+            "streamName": { "$ref": "#/$defs/text80" }, "streamType": { "$ref": "#/$defs/text80" },
+            "markerName": { "$ref": "#/$defs/text80" },
+            "sampleRate": { "type": "integer", "minimum": 1, "maximum": 240 },
+            "sourceId": { "type": "string", "minLength": 1, "maxLength": 120 }
+          }
+        }
+      }
+    },
+    "vr": {
+      "type": "object", "additionalProperties": false,
+      "required": ["environment", "flubber", "controls"],
+      "properties": {
+        "environment": { "const": "dark" },
+        "flubber": {
+          "type": "object", "additionalProperties": false,
+          "required": ["widthMeters", "distanceMeters", "horizontalOffsetMeters", "verticalOffsetMeters"],
+          "properties": {
+            "widthMeters": { "type": "number", "minimum": 0.12, "maximum": 1.2 },
+            "distanceMeters": { "type": "number", "minimum": 0.35, "maximum": 5 },
+            "horizontalOffsetMeters": { "type": "number", "minimum": -2, "maximum": 2 },
+            "verticalOffsetMeters": { "type": "number", "minimum": -2, "maximum": 2 }
+          }
+        },
+        "controls": {
+          "type": "object", "additionalProperties": false,
+          "properties": {
+            "stick": { "enum": ["left", "right"] },
+            "resetButton": { "enum": ["x", "y", "a", "b", "none"] },
+            "pauseButton": { "enum": ["x", "y", "a", "b", "none"] },
+            "grabTrigger": { "const": "either" },
+            "showControllerModels": { "type": "boolean", "default": true }
+          }
+        }
+      }
+    },
+    "color": { "type": "string", "pattern": "^#[0-9a-fA-F]{6}$" },
+    "text80": { "type": "string", "minLength": 1, "maxLength": 80 }
+  }
+}

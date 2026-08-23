@@ -68,6 +68,18 @@ The SVG uses 192 angular samples, 16 projections, deterministic seeded phase/amp
 - Browser preferences may override bundled defaults for returning users. Replacing `site/settings.json` changes defaults for new/clean browser profiles; importing applies a file immediately.
 - Experiment stimulus source/URL/timing are browser-study configuration, not portable Flubber settings, and are intentionally absent from the desktop-compatible version-1 JSON.
 
+## Meta Quest VR player
+
+- The shared session root MAY contain a bounded `sessions/` directory of additional version-1 Quest manifests. Each launcher choice MUST be independently validated against its exact media bytes and explicit projection/stereo declaration; directory contents or filenames MUST NOT be used to infer playback geometry. `active-session.json` remains required and is the default/fallback. An invalid, incomplete, or duplicate optional session MUST NOT displace it.
+- Product/package identity is `Affect Tracker VR` / `io.github.georgefejer91.affecttracker.vr`, targeting Quest 2, Quest Pro, Quest 3, and Quest 3S on Horizon OS 69 or newer.
+- The APK reads a strict `affect-tracker-vr-session` version-1 envelope from a wearer-authorized `Documents/AffectTrackerVR` tree. The original video remains in `media/`; `active-session.json` is the low-rate activation control. No all-files permission, cloud upload, DRM, heuristic projection guessing, or active-session replacement during playback is permitted.
+- Media3 owns container/codec detection and decoder preparation. JSON owns the explicit `flat`, `equirect-180`, or `equirect-360` projection and `mono`, `side-by-side-left-right`, or `top-bottom` stereo layout.
+- The transparent Flubber is a native in-app alpha-blended spatial panel. It uses the canonical mathematics, is placed from the live viewer pose immediately before countdown, is movable in three dimensions with either controller pointer/trigger, remains front-facing, and is bounded to 0.35–5 metres from the wearer.
+- Flat video is recentered from that same live viewer pose immediately before countdown, using the tracked yaw while remaining upright at eye height, at a 2.0-metre default distance and 2.2-metre width (about 58° horizontal angular width), then world-anchored for playback.
+- Controller mappings are session data. Defaults are left thumbstick for valence/arousal, X for reset, Y for whole-session pause/resume, either trigger for Flubber grab, and visible Touch controller models. `vr.controls.showControllerModels` is an optional boolean that defaults to `true` for backward compatibility. The entire transparent Flubber quad, including visually empty pixels and corners, is a trigger-grab target. The configured thumbstick remains routed whenever the visible Flubber entity exists—during preparation, countdown, playback, and whole-session pause—and must not depend on LSL sampling state or Android panel focus. The same physical stick must not activate teleport, snap-turn, or any screen/world movement; disabling locomotion must preserve Interaction SDK controller-model tracking, pointer/grab behavior, and the controller-state handoff used by the affect engine.
+- A validated session opens discoverable LSL outlets on the Ready screen. Start begins video playback and state samples; first-frame, video, lifecycle, input, reset, pause, and grab events use the irregular marker stream.
+- Flat video uses a dark virtual environment. Passthrough and hand tracking are out of scope for v1.
+
 ## LSL output
 
 The desktop app publishes two outlets automatically for its entire process lifetime:

@@ -1,11 +1,12 @@
-# Affect Tracker: Web + Desktop
+# Affect Tracker: Web + Desktop + VR
 
-A matched pair of 2D affect trackers inspired by [AffectTracker](https://github.com/afourcade/AffectTracker):
+Three matched Affect Tracker delivery forms inspired by [AffectTracker](https://github.com/afourcade/AffectTracker):
 
 - A dependency-free online application hosted on GitHub Pages for browser studies.
 - An offline Tauri v2/Rust desktop companion with click-to-capture global key/mouse/wheel bindings, a click-through always-on-top overlay, and always-on local Lab Streaming Layer output.
+- A native Meta Quest Spatial SDK video player under [`vr/`](./vr/) that loads a local video/session manifest, renders a transparent movable Flubber, accepts Touch-controller input, and publishes same-LAN LSL.
 
-Both forms use the same canonical SVG renderer and the same valence/arousal mappings.
+All forms use the same valence/arousal mappings. Web and desktop share the JavaScript renderer directly; Quest uses a native allocation-bounded port checked against JavaScript golden vectors.
 
 Live site: <https://GeorgeFejer91.github.io/affect-tracker-web/>
 
@@ -13,7 +14,7 @@ Desktop source: [`desktop/`](./desktop/) and [`src-tauri/`](./src-tauri/)
 
 ## Mandatory project brief for AI agents
 
-Every AI agent must read [`AGENTS.md`](./AGENTS.md) and every file in [`for-ai/`](./for-ai/) before doing anything else in this repository. That directory records the product requirements, web/desktop parity contract, architecture, test gates, and roadmap.
+Every AI agent must read [`AGENTS.md`](./AGENTS.md) and every file in [`for-ai/`](./for-ai/) before doing anything else in this repository. That directory records the product requirements, cross-delivery parity contract, architecture, test gates, and roadmap.
 
 ## Controls
 

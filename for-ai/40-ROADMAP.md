@@ -15,6 +15,8 @@
 
 ## Study integration follow-up
 
+- In progress: native Quest Spatial SDK delivery under `vr/`, strict local video/session loading, transparent controller-movable Flubber, Media3 spatial playback, and same-LAN LSL. Host tests precede the required four-headset qualification matrix.
+
 - Delivered: preloaded GitHub Pages video experiment with optional YouTube URL/start/finish configuration, countdown, protected playback, precise local CSV, and automatic export.
 - Delivered as an experimental web prototype: adaptive unrestricted touch/pen/cursor path input, speed→arousal, roundness/jaggedness→valence, short-stroke speed continuity, default gated live move-until-satisfied/hold feedback plus optional direct continuous response, live 2D mapping feedback, optional normalized trace feedback, and append-only raw/derived/display CSV records.
 - Delivered: literature-grounded `0.15/0.44/0.80 D/s` cold-start speed anchors, participant-adaptive replacement, live normalized speed display, and explicit command-not-diagnosis language with source provenance.

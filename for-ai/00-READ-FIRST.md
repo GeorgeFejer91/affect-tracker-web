@@ -6,12 +6,13 @@ The repository root is the central project folder. [`05-PROJECT-METADATA.md`](./
 
 ## Project purpose
 
-Provide one 2D valence/arousal affect tracker in two delivery forms:
+Provide one valence/arousal affect tracker in three delivery forms:
 
 1. An online, dependency-free GitHub Pages application suitable for browser studies and integration beside web stimuli such as videos.
 2. An offline, downloadable Tauri desktop companion for Windows, macOS, and Linux that can remain above other applications and publish research data through Lab Streaming Layer (LSL).
+3. A native Meta Quest Spatial SDK APK that plays researcher-provided local video, displays the same procedural Flubber on a transparent movable spatial panel, accepts Touch-controller input, and publishes the desktop-compatible LSL schema over the local network.
 
-The two forms must share affect semantics and visual mathematics. Differences are permitted only where the runtime requires them, such as browser CSV export versus native LSL streaming.
+The three forms must share affect semantics and visual mathematics. Differences are permitted only where the runtime requires them, such as browser CSV export, desktop global input, and Quest spatial placement/video playback.
 
 ## Non-negotiable workflow
 
@@ -21,5 +22,5 @@ The two forms must share affect semantics and visual mathematics. Differences ar
 - Pointer trajectories are a narrow privacy exception: capture them only while the user has visibly selected Experimental Touch/Trackpad control, and write raw points only during active experiment playback.
 - Treat Tauri WebViews and IPC arguments as untrusted. Native authority stays in Rust behind narrow typed commands.
 - Do not introduce remote WebView content, generic shell execution, unrestricted filesystem/network permissions, or silent global input capture.
-- Test web and desktop behavior proportionally to each change.
+- Test web, desktop, and Quest behavior proportionally to each change, using cross-language golden vectors where code cannot be shared directly.
 - Update these documents when an approved product requirement or architecture decision changes.

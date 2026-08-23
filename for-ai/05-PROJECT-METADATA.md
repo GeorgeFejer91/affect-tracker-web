@@ -19,7 +19,7 @@ Maintain one research-quality 2D valence/arousal tracker with two coordinated de
 1. a dependency-free GitHub Pages application for online studies, local CSV acquisition, portable customization, and video experiments; and
 2. a cross-platform Tauri v2 desktop companion with a Rust authority layer, transparent always-on-top overlay, global physical-input capture, and always-on local LSL streams.
 
-The web and desktop applications must feel like the same instrument. Shared affect semantics, rendering mathematics, portable settings, terminology, accessibility, and privacy rules should remain aligned unless this directory records an explicit platform exception.
+The web, desktop, and Quest applications must feel like the same instrument. Shared affect semantics, rendering mathematics, portable settings, terminology, accessibility, and privacy rules should remain aligned unless this directory records an explicit platform exception.
 
 ## Global constraints
 
