@@ -66,7 +66,7 @@ data class LauncherPresentation(
         val staged = result.choices.firstOrNull { it.fingerprint == selectedFingerprint } ?: result.staged
         LauncherPresentation(
             "Ready to start",
-            "${staged.session.video.projection.token} · ${staged.session.video.stereo.token} · ${formatDuration(staged.durationMs)}",
+            choiceDetail(staged, formatDuration(staged.durationMs)),
             ready = true,
             selectedFingerprint = staged.fingerprint,
             choices = result.choices.map { LauncherChoice.from(it, it.fingerprint == staged.fingerprint) },
@@ -79,6 +79,14 @@ data class LauncherPresentation(
       val seconds = durationMs / 1_000
       return "%d:%02d".format(seconds / 60, seconds % 60)
     }
+
+    internal fun choiceDetail(staged: StagedSession, duration: String): String =
+        "${staged.session.video.projection.token} · ${staged.session.video.stereo.token} · $duration · " +
+            when (staged.choiceSource) {
+              VideoChoiceSource.ACTIVE_MANIFEST -> "active layout"
+              VideoChoiceSource.OPTIONAL_MANIFEST -> "declared layout"
+              VideoChoiceSource.ACTIVE_LAYOUT_DEFAULTS -> "active default layout"
+            }
   }
 }
 
@@ -92,7 +100,7 @@ data class LauncherChoice(
     fun from(staged: StagedSession, selected: Boolean) = LauncherChoice(
         staged.fingerprint,
         staged.session.video.file,
-        "${staged.session.video.projection.token} · ${staged.session.video.stereo.token} · ${staged.durationMs / 1_000}s",
+        LauncherPresentation.choiceDetail(staged, "${staged.durationMs / 1_000}s"),
         selected,
     )
   }
@@ -102,10 +110,12 @@ class AffectTrackerLauncherActivity : ComponentActivity() {
   private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
   private val runtime get() = (application as AffectTrackerVrApplication).runtime
   private var polling: Job? = null
+  private var initialValidation: Job? = null
   private var staged: StagedSession? = null
   private var choices: List<StagedSession> = emptyList()
   private var selectedFingerprint: String? = null
   private var telemetrySelectionFingerprint: String? = null
+  private var lastCatalogReceipt: String? = null
   private var starting by mutableStateOf(false)
   private var showAffectValues by mutableStateOf(false)
   private var presentation by mutableStateOf(LauncherPresentation.from(LoadResult.NoFolder))
@@ -124,6 +134,14 @@ class AffectTrackerLauncherActivity : ComponentActivity() {
       )
     }
     Log.i(ExperimentRuntime.READINESS_TAG, "launcher_rendered")
+    // Three bounded passes settle the active file, then optional/automatic media, even when
+    // Horizon creates this launcher but has not yet projected it as resumed.
+    initialValidation = scope.launch {
+      repeat(INITIAL_VALIDATION_PASSES) { index ->
+        scanAndPresent()
+        if (index + 1 < INITIAL_VALIDATION_PASSES) delay(2_000)
+      }
+    }
   }
 
   override fun onResume() {
@@ -139,6 +157,7 @@ class AffectTrackerLauncherActivity : ComponentActivity() {
 
   override fun onDestroy() {
     polling?.cancel()
+    initialValidation?.cancel()
     scope.coroutineContext[Job]?.cancel()
     super.onDestroy()
   }
@@ -146,27 +165,45 @@ class AffectTrackerLauncherActivity : ComponentActivity() {
   private fun beginPolling() {
     polling?.cancel()
     polling = scope.launch {
+      initialValidation?.join()
       while (isActive && !starting) {
-        val result = runCatching { runtime.loader.scan() }.getOrElse {
-          LoadResult.Rejected("folder_unavailable", "Folder access was lost. Authorize Documents/AffectTrackerVR again.")
-        }
-        val ready = result as? LoadResult.Ready
-        choices = ready?.choices.orEmpty()
-        staged = ready?.choices?.firstOrNull { it.fingerprint == selectedFingerprint } ?: ready?.staged
-        selectedFingerprint = staged?.fingerprint
-        staged?.let {
-          if (telemetrySelectionFingerprint != it.fingerprint) {
-            telemetrySelectionFingerprint = it.fingerprint
-            showAffectValues = it.session.flubber.showAffectValues
-          }
-        }
-        presentation = LauncherPresentation.from(result, selectedFingerprint)
-        staged?.let {
-          Log.i(ExperimentRuntime.READINESS_TAG, "session_ready session=${it.session.sessionId} fingerprint=${it.fingerprint}")
-        }
+        scanAndPresent()
         delay(2_000)
       }
     }
+  }
+
+  private suspend fun scanAndPresent() {
+    val result = runCatching { runtime.loader.scan() }.getOrElse {
+      LoadResult.Rejected("folder_unavailable", "Folder access was lost. Authorize Documents/AffectTrackerVR again.")
+    }
+    val ready = result as? LoadResult.Ready
+    choices = ready?.choices.orEmpty()
+    staged = ready?.choices?.firstOrNull { it.fingerprint == selectedFingerprint } ?: ready?.staged
+    selectedFingerprint = staged?.fingerprint
+    staged?.let {
+      if (telemetrySelectionFingerprint != it.fingerprint) {
+        telemetrySelectionFingerprint = it.fingerprint
+        showAffectValues = it.session.flubber.showAffectValues
+      }
+    }
+    presentation = LauncherPresentation.from(result, selectedFingerprint)
+    ready?.let(::logCatalogIfChanged)
+    staged?.let {
+      Log.i(ExperimentRuntime.READINESS_TAG, "session_ready session=${it.session.sessionId} fingerprint=${it.fingerprint}")
+    }
+  }
+
+  private fun logCatalogIfChanged(ready: LoadResult.Ready) {
+    val videos = ready.choices.joinToString(",") {
+      "${it.session.video.file.replace(Regex("\\s+"), "_")}:" +
+          "${it.choiceSource.name.lowercase()}:${it.session.controls.stick.token}"
+    }
+    val issueCodes = ready.issues.joinToString(",") { it.code }
+    val receipt = "choices=${ready.choices.size} videos=$videos issues=${ready.issues.size} codes=$issueCodes"
+    if (receipt == lastCatalogReceipt) return
+    lastCatalogReceipt = receipt
+    Log.i(ExperimentRuntime.READINESS_TAG, "session_catalog $receipt")
   }
 
   private fun selectSession(fingerprint: String) {
@@ -176,11 +213,16 @@ class AffectTrackerLauncherActivity : ComponentActivity() {
     telemetrySelectionFingerprint = fingerprint
     showAffectValues = next.session.flubber.showAffectValues
     presentation = presentation.copy(
-        detail = "${next.session.video.projection.token} · ${next.session.video.stereo.token} · ${next.durationMs / 1_000}s",
+        detail = LauncherPresentation.choiceDetail(next, "${next.durationMs / 1_000}s"),
         selectedFingerprint = fingerprint,
         choices = choices.map { LauncherChoice.from(it, it.fingerprint == fingerprint) },
     )
     Log.i(ExperimentRuntime.READINESS_TAG, "session_selected session=${next.session.sessionId}")
+    Log.i(
+        ExperimentRuntime.READINESS_TAG,
+        "runtime_profile source=active-session.json video=${next.session.video.file} " +
+            "layout_source=${next.choiceSource.name.lowercase()} stick=${next.session.controls.stick.token}",
+    )
   }
 
   private fun chooseFolder() {
@@ -231,6 +273,7 @@ class AffectTrackerLauncherActivity : ComponentActivity() {
 
   companion object {
     private const val FOLDER_PROXY_REQUEST = 4103
+    private const val INITIAL_VALIDATION_PASSES = 3
     const val EXTRA_LAUNCH_IN_HOME_PENDING_INTENT = "extra_launch_in_home_pending_intent"
   }
 }
@@ -262,7 +305,12 @@ private fun LauncherScreen(
               Text(state.title, style = MaterialTheme.typography.titleLarge)
               Text(state.detail, color = Color(0xFFC4CEDA))
               if (state.choices.isNotEmpty()) {
-                Text("Choose a validated experiment", color = Color(0xFF9DE5B3))
+                Text("Choose a validated video", color = Color(0xFF9DE5B3))
+                Text(
+                    "Flubber, controller, display, and LSL settings always come from active-session.json.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color(0xFFAAB4C2),
+                )
                 state.choices.forEach { choice ->
                   Button(
                       onClick = { selectSession(choice.fingerprint) },
@@ -282,7 +330,10 @@ private fun LauncherScreen(
               }
             }
           }
-          Text("PC folder: Documents/AffectTrackerVR — videos in media/, optional manifests in sessions/", color = Color(0xFFAAB4C2))
+          Text(
+              "PC folder: Documents/AffectTrackerVR — add videos to media/. Optional sessions/*.json files declare only per-video projection/stereo; videos without one use the active layout defaults.",
+              color = Color(0xFFAAB4C2),
+          )
         }
         Row(
             modifier = Modifier.fillMaxWidth(),

@@ -42,6 +42,7 @@ import com.meta.spatial.core.Vector3
 import com.meta.spatial.core.Vector4
 import com.meta.spatial.isdk.IsdkGrabState
 import com.meta.spatial.isdk.IsdkGrabbable
+import com.meta.spatial.isdk.IsdkPanelDimensions
 import com.meta.spatial.isdk.IsdkPanelGrabHandle
 import com.meta.spatial.isdk.IsdkSystem
 import com.meta.spatial.runtime.ButtonBits
@@ -320,6 +321,11 @@ class AffectTrackerVrActivity : AppSystemActivity() {
     flubberView?.resetTelemetry()
     status = "Preparing ${next.session.video.file}"
     details = "LSL is running. Waiting for the video decoder…"
+    Log.i(
+        ExperimentRuntime.READINESS_TAG,
+        "runtime_profile source=active-session.json video=${next.session.video.file} " +
+            "layout_source=${next.choiceSource.name.lowercase()} stick=${next.session.controls.stick.token}",
+    )
     lslSamplingActive = true
     if (sceneReady) {
       val viewer = scene.getViewerPose()
@@ -332,25 +338,34 @@ class AffectTrackerVrActivity : AppSystemActivity() {
   private fun placeFlubber(next: StagedSession, viewer: Pose, create: Boolean): Pose {
     val pose = SpatialPlacement.flubberPose(viewer, next.session.flubber)
     if (create || flubberEntity == null) {
-      val width = next.session.flubber.widthMeters
+      val configuredWidth = next.session.flubber.widthMeters
+      val surfaceWidth = FlubberPanelLayout.surfaceWidthMeters(configuredWidth)
       flubberEntity?.destroy()
       flubberEntity = Entity.create(
           Panel(R.id.flubber_panel),
-          PanelDimensions(Vector2(width, width)),
+          PanelDimensions(Vector2(surfaceWidth, surfaceWidth)),
           Transform(pose),
           Visible(next.session.affect.overlay.visible),
           Grabbable(enabled = true, type = GrabbableType.PIVOT_Y, minHeight = 0.25f, maxHeight = 2.5f),
           Hittable(),
-          // The SDK default is an edge-only grab region. These four overlapping edge widths
-          // deliberately cover the complete transparent panel, including its empty corners.
-          IsdkPanelGrabHandle(grabHandleCollisionWidths = Vector4(width, width, width, width)),
+          IsdkPanelDimensions(Vector2(surfaceWidth, surfaceWidth)),
+          IsdkGrabbable(),
+          // The SDK default uses narrow edge handles. Each edge collider spans the complete
+          // enlarged transparent quad, so the center and all empty corners initiate the same grab.
+          IsdkPanelGrabHandle(
+              grabHandleCollisionWidths = Vector4(surfaceWidth, surfaceWidth, surfaceWidth, surfaceWidth),
+          ),
       )
       lastGrabbed = false
       grabStartPosition = null
       grabMoveLogged = false
       lsl.marker("flubber:visible")
       Log.i(ExperimentRuntime.READINESS_TAG, "flubber_entity_visible session=${next.session.sessionId}")
-      Log.i(ExperimentRuntime.READINESS_TAG, "flubber_full_surface_grab width_m=$width")
+      Log.i(
+          ExperimentRuntime.READINESS_TAG,
+          "flubber_full_surface_grab configured_width_m=$configuredWidth surface_width_m=$surfaceWidth " +
+              "isdk_dimensions=true isdk_grabbable=true",
+      )
       Log.i(
           ExperimentRuntime.READINESS_TAG,
           "joystick_route active=${next.session.affect.overlay.visible} stick=${next.session.controls.stick.token} " +
@@ -360,7 +375,7 @@ class AffectTrackerVrActivity : AppSystemActivity() {
       Log.i(
           ExperimentRuntime.READINESS_TAG,
           "affect_value_readout visible=${effectiveShowAffectValues(next.session)} " +
-              "location=flubber_bottom refresh_hz=10 fields=current,target,rate,stick",
+              "location=flubber_bottom refresh_hz=10 fields=x,y",
       )
     } else {
       flubberEntity?.setComponent(Transform(pose))
@@ -498,9 +513,10 @@ class AffectTrackerVrActivity : AppSystemActivity() {
         }
       } },
       settingsCreator = {
-        val width = staged?.session?.flubber?.widthMeters ?: 0.3f
+        val configuredWidth = staged?.session?.flubber?.widthMeters ?: 0.3f
+        val surfaceWidth = FlubberPanelLayout.surfaceWidthMeters(configuredWidth)
         UIPanelSettings(
-            shape = QuadShapeOptions(width = width, height = width),
+            shape = QuadShapeOptions(width = surfaceWidth, height = surfaceWidth),
             style = PanelStyleOptions(themeResourceId = R.style.TransparentSpatialPanelTheme),
             display = DpPerMeterDisplayOptions(dpPerMeter = 1200f),
             rendering = UIPanelRenderOptions(

@@ -2,7 +2,7 @@
 
 `catalog.json` records reproducible source, license, projection, stereo layout, byte length, and SHA-256 data for optional Quest test videos. Video binaries are deliberately not committed to this repository.
 
-Run `prepare-open-media.ps1` with an exported or already validated session manifest. The script downloads each pinned file into `media/`, verifies its bytes, and creates one standard version-1 session manifest in `sessions/`. It does not alter `active-session.json`.
+Run `prepare-open-media.ps1` with an exported or already validated active manifest. The script downloads each pinned file into `media/`, verifies its bytes, and creates one standard version-1 per-video layout manifest in `sessions/`. It does not alter `active-session.json`. At runtime, the APK retains only each generated manifest's video identity/projection/stereo/loop and always overlays the active manifest's affect, Flubber, controller, and LSL profile.
 
 ```powershell
 pwsh -NoProfile -File .\open-media\prepare-open-media.ps1 `

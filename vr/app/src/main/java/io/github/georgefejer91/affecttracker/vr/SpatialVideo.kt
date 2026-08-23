@@ -6,6 +6,7 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import com.meta.spatial.core.Entity
 import com.meta.spatial.core.Pose
@@ -29,7 +30,11 @@ data class VideoPlaybackState(val token: String, val ready: Boolean, val playing
 
 @androidx.annotation.OptIn(markerClass = [UnstableApi::class])
 class SpatialVideoPlayer(context: Context, private val onState: (VideoPlaybackState) -> Unit, private val onMarker: (String) -> Unit) {
-  private val player = ExoPlayer.Builder(context).build()
+  private val player = ExoPlayer.Builder(
+      context,
+      DefaultRenderersFactory(context).setEnableDecoderFallback(true),
+  ).build()
+  private val contentResolver = context.contentResolver
   private var staged: StagedSession? = null
   private var playRequested = false
   private var firstPlaybackFrameMarked = false
@@ -44,7 +49,10 @@ class SpatialVideoPlayer(context: Context, private val onState: (VideoPlaybackSt
     player.addListener(object : Player.Listener {
       override fun onEvents(player: Player, events: Player.Events) = publish()
       override fun onRenderedFirstFrame() { onMarker("video:surface_frame_ready"); publish() }
-      override fun onPlayerError(error: PlaybackException) { onMarker("video:error:media3_${error.errorCode}"); publish() }
+      override fun onPlayerError(error: PlaybackException) {
+        onMarker("video:error:media3_${error.errorCode}:${error.errorCodeName}")
+        publish()
+      }
       override fun onPlaybackStateChanged(state: Int) {
         if (state == Player.STATE_ENDED) onMarker("video:ended")
         publish()
@@ -60,7 +68,16 @@ class SpatialVideoPlayer(context: Context, private val onState: (VideoPlaybackSt
     player.clearVideoSurface()
     player.setVideoSurface(surface)
     player.repeatMode = if (stagedSession.session.video.loop) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF
-    player.setMediaItem(MediaItem.Builder().setMediaId(stagedSession.session.sessionId).setUri(stagedSession.videoUri).build())
+    val mediaItem = MediaItem.Builder()
+        .setMediaId(stagedSession.session.sessionId)
+        .setUri(stagedSession.videoUri)
+        .apply {
+          contentResolver.getType(stagedSession.videoUri)
+              ?.takeIf { it.startsWith("video/") }
+              ?.let { setMimeType(it) }
+        }
+        .build()
+    player.setMediaItem(mediaItem)
     player.prepare()
   }
 

@@ -71,7 +71,7 @@ class FlubberView(context: Context, private val onShapeDrawn: (Float, Float) -> 
     super.onDraw(canvas)
     val points = geometry ?: return
     if (!visibleShape || points.x.isEmpty()) return
-    val scale = min(width, height) * 0.36f
+    val scale = min(width, height) * FlubberPanelLayout.CONTENT_SCALE_FRACTION
     val centerX = width * 0.5f
     val centerY = height * 0.5f
     path.rewind()

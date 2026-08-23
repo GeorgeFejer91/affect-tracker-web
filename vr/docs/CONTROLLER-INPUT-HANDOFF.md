@@ -22,10 +22,10 @@ Host tests and exact APK installation/readback pass. The final correction has no
   - Continuous mode applies the configured radial dead zone and `continuousSpeed`.
   - Step mode applies the configured `stepSize`, threshold crossing, and neutral re-arm.
 - Input remains active whenever the visible Flubber entity exists, including preparation, countdown, playback, and whole-session pause. It must not depend on video playback, LSL sampling, Android panel focus, or whether the pointer is over the Flubber.
-- The selected hand comes from session JSON. The field reports in this investigation used the right controller; the contract continues to support either `left` or `right`.
+- The selected hand comes from the one universal profile in `active-session.json`, so choosing another video cannot change it. The contract continues to support either `left` or `right`.
 - The same stick must not display a teleport cursor/ray, teleport, snap-turn, or move the video/world.
 - Controller tracking/models and pointer-trigger grabbing must continue working.
-- Trigger grabbing must work anywhere on the full transparent Flubber quad, not only on visible colored pixels.
+- Trigger grabbing must work anywhere on the 2.5× transparent Flubber surface, not only on visible colored pixels. The entity carries explicit metric `IsdkPanelDimensions`, `IsdkGrabbable`, and overlapping complete-width edge colliders in addition to `Hittable` and toolkit `Grabbable`.
 - One activity owns every controller route and feeds one `AffectEngine`; video and Flubber are not competing applications.
 
 ## What the wearer observed
@@ -40,6 +40,7 @@ The observed sequence is important because each report ruled out a different lay
 6. That success exposed a second problem: moving the stick also activated the teleport ray and moved/rotated the scene.
 7. An attempt to eliminate that conflict by unregistering `LocomotionSystem` removed the unwanted movement, but the following physical test lost joystick-to-Flubber response and useful controller feedback again.
 8. SDK bytecode inspection then showed that locomotion behavior and the ISDK input bridge share the same system object. The current implementation retains the object and disables only its locomotion state.
+9. A later multi-video check exposed a separate configuration drift: `active-session.json` selected the right stick, while every generated optional-video manifest on the headset selected the left stick. Selecting a clip therefore replaced the working controller profile. The loader now treats the active manifest as the universal runtime profile and overlays it onto every video choice; optional manifests retain only video identity/layout semantics.
 
 ## Findings that narrowed the problem
 
@@ -197,18 +198,19 @@ This prevents repeatedly recompiling the APK while diagnosing a headset-only inp
 
 ## Verification completed for the current correction
 
-- Shared Node suite: 80/80 passed.
+- Shared Node suite: 83/83 passed.
 - Native Rust LSL schema test: passed.
-- Android/Kotlin unit tests: passed.
+- Android/Kotlin unit tests: 30/30 passed.
 - Direct pinned-SDK locomotion policy test: passed.
 - Android lint: passed.
 - Locked offline debug build: passed.
 - APK identity, permission, ABI, and admission inspection: passed.
 - Exact APK installed through QuestIonAble File Manager.
 - Installed-byte hash and size matched the host-admitted artifact.
-- Installed APK SHA-256: `ad472d6896b4c02555371141f24687f1febd58ec8aec332722652582c7d3f33d`.
+- Installed APK SHA-256: `972f16503cd48c6f692eb814adc483dfd80958e13f57c47149f694dcf443b5a9`.
+- App-owned launcher evidence catalogued all five headset videos with the universal right-stick profile and zero final loader issues; no fatal runtime entry was present.
 
-The APK was installed without launching an unattended experiment because physical Touch acceptance requires a wearer. No raw device log, headset serial, private machine path, or APK binary is committed to Git.
+The APK launcher was started for bounded loader/readiness diagnosis, but the experiment itself was not started unattended because physical Touch acceptance requires a wearer. No raw device log, headset serial, private machine path, or APK binary is committed to Git.
 
 ## Remaining attended acceptance check
 

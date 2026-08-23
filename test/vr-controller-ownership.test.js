@@ -23,6 +23,20 @@ const telemetry = readFileSync(
   ),
   "utf8",
 );
+const loader = readFileSync(
+  new URL(
+    "../vr/app/src/main/java/io/github/georgefejer91/affecttracker/vr/SessionLoader.kt",
+    import.meta.url,
+  ),
+  "utf8",
+);
+const panelLayout = readFileSync(
+  new URL(
+    "../vr/app/src/main/java/io/github/georgefejer91/affecttracker/vr/FlubberPanelLayout.kt",
+    import.meta.url,
+  ),
+  "utf8",
+);
 
 test("Quest keeps the ISDK input bridge scheduled while disabling its locomotion behavior", () => {
   const superCreate = activity.indexOf("super.onCreate(savedInstanceState)");
@@ -54,4 +68,17 @@ test("Quest exposes a per-run two-coordinate affect readout without making model
   assert.match(telemetry, /refreshNanos: Long = 100_000_000L/);
   assert.match(telemetry, /X %\+\.3f   Y %\+\.3f/);
   assert.doesNotMatch(telemetry, /target|rate|Stick/);
+});
+
+test("Quest applies one active controller profile to every video and grabs the enlarged full surface", () => {
+  assert.match(loader, /session\.withRuntimeProfile\(it\.session\)/);
+  assert.match(loader, /VideoChoiceSource\.ACTIVE_LAYOUT_DEFAULTS/);
+  assert.match(activity, /IsdkPanelDimensions\(Vector2\(surfaceWidth, surfaceWidth\)\)/);
+  assert.match(activity, /IsdkGrabbable\(\)/);
+  assert.match(
+    activity,
+    /grabHandleCollisionWidths = Vector4\(surfaceWidth, surfaceWidth, surfaceWidth, surfaceWidth\)/,
+  );
+  assert.match(panelLayout, /SURFACE_SIZE_MULTIPLIER = 2\.5f/);
+  assert.match(panelLayout, /MAX_CANONICAL_RADIUS = 3\.08f/);
 });

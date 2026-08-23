@@ -42,6 +42,29 @@ class SessionContractTest {
     }
   }
 
+  @Test fun activeRuntimeProfileSupersedesEveryOptionalVideoProfile() {
+    val active = SessionContract.parse(
+        manifest(JSONObject().put("stick", "right"), filename = "primary.mp4", showAffectValues = true),
+    )
+    val optional = SessionContract.parse(
+        manifest(JSONObject().put("stick", "left"), filename = "immersive.webm", showAffectValues = false),
+    )
+
+    val effective = optional.withRuntimeProfile(active)
+
+    assertEquals("immersive.webm", effective.video.file)
+    assertEquals(optional.video.projection, effective.video.projection)
+    assertEquals(StickHand.RIGHT, effective.controls.stick)
+    assertEquals(true, effective.flubber.showAffectValues)
+    assertEquals(active.affect, effective.affect)
+  }
+
+  @Test fun discoveredMediaFilenameSafetyMatchesManifestSafety() {
+    assertEquals(true, SessionContract.isSafeVideoFilename("clip with spaces.webm"))
+    assertEquals(false, SessionContract.isSafeVideoFilename("../clip.mp4"))
+    assertEquals(false, SessionContract.isSafeVideoFilename("folder/clip.mp4"))
+  }
+
   private fun manifest(
       controls: JSONObject,
       filename: String = "stimulus.mp4",

@@ -60,6 +60,18 @@ data class VrSession(
     val controls: ControllerBindings,
 )
 
+/**
+ * Applies the one experiment-wide runtime profile from active-session.json to another video.
+ *
+ * Optional manifests retain only their media identity and explicit spatial layout. This prevents a
+ * video choice from silently changing controller ownership, Flubber behavior, placement, or LSL.
+ */
+internal fun VrSession.withRuntimeProfile(profile: VrSession): VrSession = copy(
+    affect = profile.affect,
+    flubber = profile.flubber,
+    controls = profile.controls,
+)
+
 object SessionContract {
   private val sessionIdPattern = Regex("^[A-Za-z0-9][A-Za-z0-9._-]{0,119}$")
   private val hashPattern = Regex("^[a-f0-9]{64}$")
@@ -90,7 +102,7 @@ object SessionContract {
   private fun parseVideo(value: JSONObject): VideoSpec {
     value.requireExact("file", "byteLength", "sha256", "projection", "stereo", "loop")
     val file = value.getString("file")
-    require(file.isNotEmpty() && file.length <= 255 && file != "." && file != ".." && !file.contains('/') && !file.contains('\\') && !file.contains('\u0000')) { "invalid_video_filename" }
+    require(isSafeVideoFilename(file)) { "invalid_video_filename" }
     val bytes = value.getLong("byteLength")
     require(bytes in 1..9_007_199_254_740_991L) { "invalid_video_length" }
     val hash = value.getString("sha256")
@@ -104,6 +116,10 @@ object SessionContract {
         value.getBoolean("loop"),
     )
   }
+
+  internal fun isSafeVideoFilename(file: String): Boolean =
+      file.isNotEmpty() && file.length <= 255 && file != "." && file != ".." &&
+          !file.contains('/') && !file.contains('\\') && !file.contains('\u0000')
 
   private fun parseAffect(value: JSONObject): AffectSettings {
     value.requireExact("version", "inputMode", "stepSize", "continuousSpeed", "response", "bindings", "advancedBindings", "visual", "palette", "overlay", "lsl")
