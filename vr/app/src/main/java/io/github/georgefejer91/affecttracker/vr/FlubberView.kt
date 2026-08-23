@@ -50,10 +50,6 @@ class FlubberView(context: Context, private val onShapeDrawn: (Float, Float) -> 
       visible: Boolean,
       currentValence: Float,
       currentArousal: Float,
-      targetValence: Float,
-      targetArousal: Float,
-      stickX: Float,
-      stickY: Float,
       displayAffectValues: Boolean,
       nowNanos: Long = System.nanoTime(),
   ) {
@@ -66,7 +62,7 @@ class FlubberView(context: Context, private val onShapeDrawn: (Float, Float) -> 
     if (showAffectValues && !displayAffectValues) telemetry.reset()
     showAffectValues = displayAffectValues
     if (showAffectValues) {
-      telemetry.update(nowNanos, currentValence, currentArousal, targetValence, targetArousal, stickX, stickY)
+      telemetry.update(nowNanos, currentValence, currentArousal)
     }
     postInvalidateOnAnimation()
   }
@@ -98,15 +94,12 @@ class FlubberView(context: Context, private val onShapeDrawn: (Float, Float) -> 
   }
 
   private fun drawTelemetry(canvas: Canvas) {
-    val textSize = width * 0.033f
-    val lineHeight = textSize * 1.32f
-    val firstBaseline = height - lineHeight * 2.55f
+    val textSize = width * 0.052f
+    val baseline = height - textSize * 0.75f
     telemetryStroke.textSize = textSize
     telemetryStroke.strokeWidth = textSize * 0.19f
     telemetryFill.textSize = textSize
-    drawTelemetryLine(canvas, telemetry.valenceLine, firstBaseline)
-    drawTelemetryLine(canvas, telemetry.arousalLine, firstBaseline + lineHeight)
-    drawTelemetryLine(canvas, telemetry.stickLine, firstBaseline + lineHeight * 2f)
+    drawTelemetryLine(canvas, telemetry.coordinateLine, baseline)
   }
 
   private fun drawTelemetryLine(canvas: Canvas, text: String, baseline: Float) {

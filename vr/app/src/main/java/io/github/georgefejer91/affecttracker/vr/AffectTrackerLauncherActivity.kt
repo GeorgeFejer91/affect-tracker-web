@@ -290,8 +290,8 @@ private fun LauncherScreen(
             verticalAlignment = Alignment.CenterVertically,
         ) {
           Column(modifier = Modifier.weight(1f)) {
-            Text("Show live affect values")
-            Text("Current, target, response rate, and stick X/Y", style = MaterialTheme.typography.bodySmall, color = Color(0xFFAAB4C2))
+            Text("Show X/Y affect coordinates")
+            Text("Two current values, each from -1 to +1", style = MaterialTheme.typography.bodySmall, color = Color(0xFFAAB4C2))
           }
           Switch(
               checked = showAffectValues,

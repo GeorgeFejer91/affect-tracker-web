@@ -6,25 +6,20 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class AffectTelemetryTextTest {
-  @Test fun readoutShowsCurrentTargetStickAndMeasuredRateAtTenHertz() {
+  @Test fun readoutShowsOnlyBoundedCurrentCoordinatesAtTenHertz() {
     val text = AffectTelemetryText()
-    assertTrue(text.update(1_000_000_000L, 0f, 0f, 1f, -1f, 1f, -1f))
-    assertEquals("V current +0.000  target +1.000  rate +0.00/s", text.valenceLine)
-    assertEquals("A current +0.000  target -1.000  rate +0.00/s", text.arousalLine)
-    assertEquals("Stick X +1.00  Y -1.00", text.stickLine)
+    assertTrue(text.update(1_000_000_000L, 2f, -2f))
+    assertEquals("X +1.000   Y -1.000", text.coordinateLine)
 
-    assertFalse(text.update(1_050_000_000L, 0.1f, -0.05f, 1f, -1f, 1f, -1f))
-    assertTrue(text.update(1_100_000_000L, 0.1f, -0.05f, 1f, -1f, 1f, -1f))
-    assertEquals("V current +0.100  target +1.000  rate +1.00/s", text.valenceLine)
-    assertEquals("A current -0.050  target -1.000  rate -0.50/s", text.arousalLine)
+    assertFalse(text.update(1_050_000_000L, 0.1f, -0.05f))
+    assertTrue(text.update(1_100_000_000L, 0.1f, -0.05f))
+    assertEquals("X +0.100   Y -0.050", text.coordinateLine)
   }
 
-  @Test fun resetPreventsAStaleRateFromCrossingSessions() {
+  @Test fun resetRestoresNeutralCoordinates() {
     val text = AffectTelemetryText()
-    text.update(1_000_000_000L, 0.5f, 0.5f, 0.5f, 0.5f, 0f, 0f)
+    text.update(1_000_000_000L, 0.5f, 0.5f)
     text.reset()
-    text.update(2_000_000_000L, -0.5f, -0.5f, -0.5f, -0.5f, 0f, 0f)
-    assertEquals("V current -0.500  target -0.500  rate +0.00/s", text.valenceLine)
-    assertEquals("A current -0.500  target -0.500  rate +0.00/s", text.arousalLine)
+    assertEquals("X +0.000   Y +0.000", text.coordinateLine)
   }
 }

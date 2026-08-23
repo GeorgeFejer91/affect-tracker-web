@@ -46,12 +46,12 @@ test("Quest keeps the ISDK input bridge scheduled while disabling its locomotion
   assert.doesNotMatch(activity, /unregisterSystem<LocomotionSystem>/);
 });
 
-test("Quest exposes a per-run numerical affect readout without making model animation authoritative", () => {
-  assert.match(launcher, /Text\("Show live affect values"\)/);
+test("Quest exposes a per-run two-coordinate affect readout without making model animation authoritative", () => {
+  assert.match(launcher, /Text\("Show X\/Y affect coordinates"\)/);
   assert.match(launcher, /putExtra\(AffectTrackerVrActivity\.EXTRA_SHOW_AFFECT_VALUES, showAffectValues\)/);
   assert.match(activity, /effectiveShowAffectValues\(session\)/);
   assert.match(activity, /affect_value_readout visible=\$\{effectiveShowAffectValues\(next\.session\)\}/);
   assert.match(telemetry, /refreshNanos: Long = 100_000_000L/);
-  assert.match(telemetry, /V current %\+\.3f  target %\+\.3f  rate %\+\.2f\/s/);
-  assert.match(telemetry, /Stick X %\+\.2f  Y %\+\.2f/);
+  assert.match(telemetry, /X %\+\.3f   Y %\+\.3f/);
+  assert.doesNotMatch(telemetry, /target|rate|Stick/);
 });

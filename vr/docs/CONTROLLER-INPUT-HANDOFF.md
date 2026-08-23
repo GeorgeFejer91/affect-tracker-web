@@ -86,7 +86,7 @@ Calling `enableLocomotion(false)` is different. It enters `LocomoteState.Disable
 | --- | --- | --- | --- |
 | Keep video and Flubber in one immersive activity | Test the theory that Meta permits only one joystick-owning app | Correct architecture; no second app or OpenXR session exists | Retained and required |
 | Make controller-model visibility configurable | Preserve controller pose/pointer feedback and allow studies to hide the models | Useful presentation option, but model animation is not proof of button delivery | Retained as `showControllerModels` |
-| Add an optional numerical Flubber readout | Make physical input and smoothing visible without relying on inconsistent button-model articulation | Shows semantic stick X/Y, target/current V/A, and measured current-coordinate rates directly in the headset | Retained as `vr.flubber.showAffectValues`, plus a transient Ready-screen override; disabled by default |
+| Add an optional numerical Flubber readout | Make the actual displayed affect coordinates visible without relying on inconsistent button-model articulation | Shows only current `X` (valence) and `Y` (arousal), each in `[-1,1]`, directly in the headset | Retained as `vr.flubber.showAffectValues`, plus a transient Ready-screen override; disabled by default |
 | Treat the visible controller/laser as proof of input | The ray changed color when the wearer moved the stick | Insufficient; shell/ISDK pointer feedback does not prove affect-engine delivery | Rejected as acceptance evidence |
 | Read Spatial `Controller.buttonState` | Follow Meta's public controller component and sample patterns | Provides directional thumb bits on supported runtime paths | Retained as primary physical route |
 | Merge `buttonState` with `directTouchButtonState` | Avoid dropping state exposed through direct-touch representation | Broadens valid controller-state observation without raw device access | Retained |
@@ -167,7 +167,7 @@ The Flubber response marker is emitted only after the Android drawing surface re
 - `test/vr-controller-ownership.test.js` prevents reintroducing locomotion unregistration and verifies setup ordering plus the readiness marker.
 - `LocomotionPolicyTest.kt` loads the pinned SDK classes and verifies that `enableLocomotion(false)` produces `Disabled` and does not claim controllers.
 - `TouchControllerInputTest.kt` covers hand-specific direction mapping, attachment/avatar/fallback merging, diagonal input, dead zones, and ISDK scroll normalization.
-- `AffectTelemetryTextTest.kt` verifies locale-stable current/target/stick text, finite-difference rate calculation, 10 Hz throttling, and session reset.
+- `AffectTelemetryTextTest.kt` verifies the locale-stable bounded current `X`/`Y` pair, 10 Hz throttling, and session reset.
 - Session tests validate `left`/`right` mappings, controller button uniqueness, `showControllerModels`, and the optional `showAffectValues` field.
 
 ### Debug CLI

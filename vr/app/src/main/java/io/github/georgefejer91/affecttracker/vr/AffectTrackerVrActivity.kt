@@ -230,7 +230,14 @@ class AffectTrackerVrActivity : AppSystemActivity() {
     applyControllerStick(localEngine, now)
     val snapshot = localEngine.tick(dt)
     val session = staged?.session ?: return
-    if (!localEngine.isPaused()) phase += dt * session.affect.visual.animationSpeed
+    if (!localEngine.isPaused()) {
+      phase = advanceFlubberPhase(
+          phase,
+          snapshot.currentY,
+          session.affect.visual.animationSpeed,
+          dt,
+      )
+    }
     if (session.affect.overlay.visible) geometry?.let { shape ->
       shape.update(snapshot, phase, session.affect.visual)
       flubberView?.render(
@@ -240,10 +247,6 @@ class AffectTrackerVrActivity : AppSystemActivity() {
           true,
           snapshot.currentX,
           snapshot.currentY,
-          snapshot.targetX,
-          snapshot.targetY,
-          telemetryStickX,
-          telemetryStickY,
           effectiveShowAffectValues(session),
           now,
       )

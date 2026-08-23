@@ -80,7 +80,7 @@ export function normalizeVrSession(value) {
     throw new Error("Show controller models must be true or false.");
   }
   if (flubber.showAffectValues !== undefined && typeof flubber.showAffectValues !== "boolean") {
-    throw new Error("Show numerical affect values must be true or false.");
+    throw new Error("Show X/Y affect coordinates must be true or false.");
   }
   if (resetButton !== "none" && resetButton === pauseButton) {
     throw new Error("Reset and pause must not use the same controller button.");

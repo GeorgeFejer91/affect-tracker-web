@@ -8,6 +8,41 @@ import kotlin.math.min
 import kotlin.math.sin
 import kotlin.math.roundToInt
 
+internal data class FlubberAffectParameters(
+    val frequencyHz: Double,
+    val projectionAmplitude: Double,
+    val shapeMix: Double,
+    val disorder: Double,
+)
+
+/**
+ * Canonical AffectTracker calibration.
+ *
+ * These extrema match the original Unity prefab and site/src/math.js. Keeping them together avoids
+ * allowing the native geometry and its animation clock to drift independently.
+ */
+internal fun flubberAffectParameters(x: Float, y: Float): FlubberAffectParameters {
+  val safeX = x.toDouble().coerceIn(-1.0, 1.0)
+  val safeY = y.toDouble().coerceIn(-1.0, 1.0)
+  return FlubberAffectParameters(
+      frequencyHz = 1.5 + safeY,
+      projectionAmplitude = 0.3 + 0.1 * safeY,
+      shapeMix = (safeX + 1.0) / 2.0,
+      disorder = 0.4 * (1.0 - safeX),
+  )
+}
+
+internal fun advanceFlubberPhase(
+    phase: Double,
+    arousal: Float,
+    animationSpeed: Double,
+    deltaSeconds: Float,
+): Double {
+  val frequencyHz = flubberAffectParameters(0f, arousal).frequencyHz
+  val next = phase + deltaSeconds.coerceIn(0f, 0.05f) * 2.0 * PI * frequencyHz * animationSpeed
+  return next % (2.0 * PI)
+}
+
 class FlubberGeometry(seed: String, private val vertexCount: Int = 192, private val waveCount: Int = 16) {
   val x = FloatArray(vertexCount)
   val y = FloatArray(vertexCount)
@@ -39,11 +74,10 @@ class FlubberGeometry(seed: String, private val vertexCount: Int = 192, private 
   }
 
   fun update(snapshot: AffectSnapshot, phase: Double, visual: VisualSettings, reducedMotion: Boolean = false) {
-    val safeX = snapshot.currentX.toDouble().coerceIn(-1.0, 1.0)
-    val safeY = snapshot.currentY.toDouble().coerceIn(-1.0, 1.0)
-    val shapeMix = (safeX + 1.0) / 2.0
-    val amplitude = (0.3 + 0.1 * safeY) * visual.amplitudeScale.coerceIn(0.0, 2.0)
-    val disorder = 0.4 * (1.0 - safeX) * visual.disorderScale.coerceIn(0.0, 2.0)
+    val parameters = flubberAffectParameters(snapshot.currentX, snapshot.currentY)
+    val shapeMix = parameters.shapeMix
+    val amplitude = parameters.projectionAmplitude * visual.amplitudeScale.coerceIn(0.0, 2.0)
+    val disorder = parameters.disorder * visual.disorderScale.coerceIn(0.0, 2.0)
     val scale = if (reducedMotion) 1.0 else 0.9 + 0.1 * (sin(phase) * 0.5 + 0.5)
     val oscillationDepth = if (reducedMotion) 0.14 else 0.5
     val verticesPerWave = vertexCount / waveCount
