@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="color-scheme" content="dark">
+    <meta name="description" content="Experimental Meta Quest WebXR affect-tracking video library.">
+    <title>Experimental WebXR Affect Study</title>
+    <link rel="stylesheet" href="./webxr.css">
+  </head>
+  <body>
+    <canvas id="xr-canvas" aria-hidden="true"></canvas>
+    <video
+      id="study-video"
+      preload="metadata"
+      playsinline
+      disablepictureinpicture
+      hidden
+    ></video>
+
+    <main class="study-shell">
+      <section class="study-card" aria-labelledby="study-title">
+        <p class="eyebrow"><span>Experimental</span> Meta Quest WebXR</p>
+        <h1 id="study-title">Immersive affect study</h1>
+        <p>
+          Choose a repository-hosted stimulus, enter VR, and move the affect tracker with the right
+          Touch thumbstick. Nothing is uploaded unless you enter a webhook below.
+        </p>
+
+        <label class="stimulus-field" for="stimulus-select">
+          Study video
+          <select id="stimulus-select"></select>
+        </label>
+        <section class="stimulus-details" aria-live="polite" aria-labelledby="stimulus-name">
+          <h2 id="stimulus-name">Loading stimulus library…</h2>
+          <p id="stimulus-description"></p>
+          <p id="stimulus-metadata"></p>
+          <p id="stimulus-warning" class="content-warning"></p>
+        </section>
+
+        <dl class="control-list">
+          <div><dt>Right thumbstick</dt><dd>Valence left/right, arousal down/up</dd></div>
+          <div><dt>X</dt><dd>Reset to neutral</dd></div>
+          <div><dt>Y</dt><dd>Pause or resume the whole study</dd></div>
+          <div><dt>Meta button</dt><dd>Use the system control to leave immersive mode</dd></div>
+        </dl>
+
+        <label class="webhook-field" for="webhook-url">
+          Optional HTTPS webhook
+          <input
+            id="webhook-url"
+            type="url"
+            inputmode="url"
+            autocomplete="off"
+            spellcheck="false"
+            placeholder="https://example.org/affect-csv"
+            aria-describedby="webhook-note"
+          >
+        </label>
+        <p id="webhook-note" class="privacy-note">
+          When present, the completed CSV is sent once with <code>Content-Type: text/csv</code>.
+          The endpoint must allow this site through CORS. The URL is not stored.
+        </p>
+
+        <div class="actions">
+          <button id="start-vr" type="button">Enter VR and start</button>
+          <button id="download-csv" type="button" hidden>Download last CSV</button>
+          <a href="./">Back to Affect Tracker</a>
+        </div>
+
+        <p id="study-status" class="status" role="status" aria-live="polite">
+          Checking this browser for immersive WebXR…
+        </p>
+        <p class="requirements">
+          Requires Meta Quest Browser with WebXR. CEAP-360VR choices are one-minute, silent,
+          noncommercial research stimuli shown on a full equirectangular sphere. The video, affect
+          samples, and CSV processing stay in the browser unless the optional webhook is used.
+        </p>
+        <p class="attribution">
+          CEAP stimuli: Xue et al., <cite>CEAP-360VR: A Continuous Physiological and Behavioral
+          Emotion Annotation Dataset for 360° Videos</cite>, CC BY-NC 4.0. See the
+          <a href="./assets/ceap/NOTICE.md">media notice</a>.
+        </p>
+      </section>
+    </main>
+
+    <script type="module" src="./src/webxr-study.js"></script>
+  </body>
+</html>

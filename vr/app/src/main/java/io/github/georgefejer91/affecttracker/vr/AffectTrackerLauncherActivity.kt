@@ -2,6 +2,7 @@ package io.github.georgefejer91.affecttracker.vr
 
 import android.app.PendingIntent
 import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import android.util.Log
 import androidx.activity.ComponentActivity
@@ -152,6 +153,7 @@ class AffectTrackerLauncherActivity : ComponentActivity() {
           { mixedRealityEnabled = it },
           { controllerFollowEnabled = it },
           { controllerFollowHand = it },
+          ::openWebXrStudy,
           ::startExperiment,
       )
     }
@@ -277,6 +279,24 @@ class AffectTrackerLauncherActivity : ComponentActivity() {
     Log.i(ExperimentRuntime.READINESS_TAG, "folder_picker_requested_in_home")
   }
 
+  private fun openWebXrStudy() {
+    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(WEBXR_STUDY_URL)).apply {
+      addCategory(Intent.CATEGORY_BROWSABLE)
+      addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    }
+    runCatching { startActivity(intent) }
+        .onSuccess {
+          Log.i(ExperimentRuntime.READINESS_TAG, "webxr_study_requested url=$WEBXR_STUDY_URL")
+        }
+        .onFailure {
+          presentation = presentation.copy(
+              title = "Meta Quest Browser unavailable",
+              detail = "Open $WEBXR_STUDY_URL manually in the headset browser.",
+          )
+          Log.e(ExperimentRuntime.READINESS_TAG, "webxr_study_open_failed", it)
+        }
+  }
+
   private fun startExperiment() {
     val next = staged ?: return
     if (starting) return
@@ -320,6 +340,7 @@ class AffectTrackerLauncherActivity : ComponentActivity() {
   companion object {
     private const val FOLDER_PROXY_REQUEST = 4103
     private const val INITIAL_VALIDATION_PASSES = 3
+    internal const val WEBXR_STUDY_URL = "https://GeorgeFejer91.github.io/affect-tracker-web/webxr.html"
     const val EXTRA_LAUNCH_IN_HOME_PENDING_INTENT = "extra_launch_in_home_pending_intent"
   }
 }
@@ -338,6 +359,7 @@ private fun LauncherScreen(
     setMixedRealityEnabled: (Boolean) -> Unit,
     setControllerFollowEnabled: (Boolean) -> Unit,
     setControllerFollowHand: (StickHand) -> Unit,
+    openWebXrStudy: () -> Unit,
     startExperiment: () -> Unit,
 ) {
   MaterialTheme(colorScheme = darkColorScheme(primary = Color(0xFF78D7FF), background = Color(0xFF080B10))) {
@@ -348,6 +370,12 @@ private fun LauncherScreen(
       ) {
         Text("Affect Tracker VR", style = MaterialTheme.typography.headlineMedium)
         Text("QUEST VIDEO EXPERIMENT", color = Color(0xFF78D7FF), style = MaterialTheme.typography.labelLarge)
+        Button(onClick = openWebXrStudy, enabled = !starting, modifier = Modifier.fillMaxWidth()) {
+          Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+            Text("Open WebXR study")
+            Text("Launch in Meta Quest Browser", style = MaterialTheme.typography.bodySmall)
+          }
+        }
         Column(
             modifier = Modifier.weight(1f).verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(12.dp),

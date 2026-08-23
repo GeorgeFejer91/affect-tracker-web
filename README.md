@@ -10,6 +10,8 @@ All forms use the same valence/arousal mappings. Web and desktop share the JavaS
 
 Live site: <https://GeorgeFejer91.github.io/affect-tracker-web/>
 
+Experimental Meta Quest WebXR study: <https://GeorgeFejer91.github.io/affect-tracker-web/webxr.html>
+
 Desktop source: [`desktop/`](./desktop/) and [`src-tauri/`](./src-tauri/)
 
 ## Mandatory project brief for AI agents
@@ -85,6 +87,12 @@ Touch experiments distinguish `pointer_raw`, `touch_metric`, `sample`, and `even
 The default stimulus is [`site/assets/dictator-3-study.mp4`](./site/assets/dictator-3-study.mp4), a 1920×1080 H.264/AAC copy of `Dictator 3.m4v` trimmed so its first frame corresponds to the original 90-second point. It is preloaded from GitHub Pages and does not contact a third party. Researchers can instead select **YouTube URL**, paste any supported watch/share/embed URL, and provide explicit start and finish seconds. That optional mode connects to YouTube and is subject to YouTube embedding permissions and playback policy; the affect CSV still remains local.
 
 The widget appearance, position, bindings, input behavior, and panel state are saved in `localStorage`. Affect values and history are not persisted.
+
+### Experimental Meta Quest WebXR study
+
+Open [`site/webxr.html`](./site/webxr.html) in Meta Quest Browser and choose either the bundled flat-screen Great Dictator clip or one of eight full-sphere CEAP-360VR stimuli. The CEAP choices are exact one-minute excerpts from the dataset's validated frame ranges and are silent because the distributed source files contain no audio. The right controller thumbstick continuously steers valence and arousal, left **X** resets to neutral, and left **Y** pauses or resumes playback. The page samples at 20 Hz and prepares a stimulus-labelled CSV download when the video finishes or the immersive session exits early. Every row includes stimulus provenance. A researcher may enter a per-run HTTPS webhook before entering VR; if delivery fails or no webhook is configured, the CSV remains available for headset download. The webhook address is not persisted.
+
+This path is intentionally isolated from the general browser tracker. It does not publish LSL, load arbitrary local/YouTube stimuli, import saved tracker settings, or use the experimental touch trace. The APK launcher button opens the hosted URL through Android's browsable-link intent. Physical controller mapping, media playback, file download, and webhook delivery still require acceptance testing in Meta Quest Browser before study use. CEAP media are not covered by the repository's BSD-3-Clause software license; see [`site/assets/ceap/NOTICE.md`](./site/assets/ceap/NOTICE.md) for the dataset reference and excerpt details.
 
 ## Shared customization JSON
 

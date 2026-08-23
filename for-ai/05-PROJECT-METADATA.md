@@ -16,14 +16,14 @@ The Git repository root is the central project folder. Do not create a second in
 
 Maintain one research-quality 2D valence/arousal tracker with two coordinated delivery forms:
 
-1. a dependency-free GitHub Pages application for online studies, local CSV acquisition, portable customization, and video experiments; and
+1. a dependency-free GitHub Pages application for online studies, local CSV acquisition, portable customization, video experiments, and an experimental Meta Quest WebXR selectable video library; and
 2. a cross-platform Tauri v2 desktop companion with a Rust authority layer, transparent always-on-top overlay, global physical-input capture, and always-on local LSL streams.
 
 The web, desktop, and Quest applications must feel like the same instrument. Shared affect semantics, rendering mathematics, portable settings, terminology, accessibility, and privacy rules should remain aligned unless this directory records an explicit platform exception.
 
 ## Global constraints
 
-- Research data stays participant-local unless a future requirement explicitly introduces a reviewed collection system.
+- Research data stays participant-local unless a reviewed mode explicitly asks the participant or researcher for a destination. The experimental WebXR study may send its completed CSV only to an HTTPS webhook typed for that run; the URL is not persisted, and download remains available if delivery is absent or fails.
 - Never record composed text, clipboard content, application contents, unrelated window titles, or other unnecessary personal data. Pointer movement is permitted only under the explicit, visible web-only Experimental Touch/Trackpad source described in `60-EXPERIMENTAL-TOUCH-TRACE.md`; raw points are logged only during active experiment playback.
 - Keep the browser app static and GitHub Pages-compatible. Do not add a backend, telemetry, CDN, runtime package dependency, or remote asset silently.
 - Keep native authority in Rust behind narrow typed Tauri commands/events/channels. Treat WebView input and imported settings as untrusted.
@@ -42,6 +42,7 @@ The web, desktop, and Quest applications must feel like the same instrument. Sha
 - `site/`: dependency-free online application and online-only experiment module.
 - `site/src/touch-trace.js`: browser-only trajectory filtering, equal-distance geometry, direct continuous and gated live move-and-hold feedback, adaptive calibration, and trace fitting.
 - `site/src/mobile.js`: browser-only narrow touch-capable viewport detection for one-time smartphone Touch Lab discovery; responsive presentation remains in `site/styles.css`.
+- `site/webxr.html`, `site/src/webxr-study.js`, `site/src/webxr-study-core.js`, and `site/src/webxr-stimuli.js`: experimental headset-browser study entrypoint, flat/equirectangular WebXR/WebGL adapter, selectable repository-hosted stimulus catalog, Quest-controller affect input, stimulus-aware CSV download, and explicit per-run webhook delivery.
 - `for-ai/70-RESEARCH-PROVENANCE.md` and `for-ai/references.bib`: source-decision ledger and citation-ready bibliography.
 - `desktop/`: Tauri WebView presentation and typed native adapter.
 - `.github/workflows/`: deployment, verification, and native packaging automation.

@@ -1,0 +1,154 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { readFileSync, statSync } from "node:fs";
+import {
+  advanceWebXrAffect,
+  controllerAxes,
+  createEquirectSphereVertices,
+  matrixWithoutTranslation,
+  modelMatrix,
+  multiplyMatrices,
+  normalizeStickAxis,
+  normalizeWebhookUrl,
+  readQuestControllerState,
+  WEBXR_CSV_COLUMNS,
+  webXrCsv,
+} from "../site/src/webxr-study-core.js";
+import {
+  stimulusDurationSeconds,
+  WEBXR_STIMULI,
+  webXrStimulusById,
+} from "../site/src/webxr-stimuli.js";
+
+const page = readFileSync(new URL("../site/webxr.html", import.meta.url), "utf8");
+const runtime = readFileSync(new URL("../site/src/webxr-study.js", import.meta.url), "utf8");
+const index = readFileSync(new URL("../site/index.html", import.meta.url), "utf8");
+const launcher = readFileSync(
+  new URL(
+    "../vr/app/src/main/java/io/github/georgefejer91/affecttracker/vr/AffectTrackerLauncherActivity.kt",
+    import.meta.url,
+  ),
+  "utf8",
+);
+
+test("WebXR thumbstick normalization applies a bounded radial-free dead zone", () => {
+  assert.equal(normalizeStickAxis(0.1), 0);
+  assert.equal(normalizeStickAxis(-1), -1);
+  assert.equal(normalizeStickAxis(1), 1);
+  assert.ok(normalizeStickAxis(0.5) > 0 && normalizeStickAxis(0.5) < 0.5);
+  assert.deepEqual(controllerAxes({ axes: [0.9, 0.9, 0.5, -0.75] }), {
+    x: normalizeStickAxis(0.5),
+    y: normalizeStickAxis(0.75),
+  });
+});
+
+test("WebXR controller state uses the right stick and left X/Y buttons", () => {
+  const state = readQuestControllerState([
+    { handedness: "left", gamepad: { axes: [0, 0, 0, 0], buttons: [{}, {}, {}, {}, { pressed: true }, { pressed: false }] } },
+    { handedness: "right", gamepad: { axes: [0, 0, 0.8, -0.6], buttons: [] } },
+  ]);
+  assert.equal(state.hand, "right");
+  assert.ok(state.x > 0.7);
+  assert.ok(state.y > 0.5);
+  assert.equal(state.reset, true);
+  assert.equal(state.pause, false);
+});
+
+test("WebXR affect state advances, smooths, and clamps in the canonical range", () => {
+  const next = advanceWebXrAffect(
+    { currentX: 0, currentY: 0, targetX: 0.99, targetY: -0.99 },
+    { x: 1, y: -1 },
+    0.05,
+  );
+  assert.equal(next.targetX, 1);
+  assert.equal(next.targetY, -1);
+  assert.ok(next.currentX > 0 && next.currentX < 1);
+  assert.ok(next.currentY < 0 && next.currentY > -1);
+});
+
+test("WebXR webhook is optional and HTTPS-only", () => {
+  assert.equal(normalizeWebhookUrl(""), "");
+  assert.equal(normalizeWebhookUrl("https://example.org/hook#private"), "https://example.org/hook");
+  assert.throws(() => normalizeWebhookUrl("http://example.org/hook"), /HTTPS/);
+  assert.throws(() => normalizeWebhookUrl("not a url"), /complete HTTPS/);
+});
+
+test("WebXR CSV has fixed reconstructable columns and escapes details", () => {
+  const csv = webXrCsv([{ session_id: "one", record_type: "event", detail: "comma, quote \" and newline\n" }]);
+  assert.equal(csv.split("\r\n")[0], WEBXR_CSV_COLUMNS.join(","));
+  assert.match(csv, /"comma, quote "" and newline\n"/);
+  assert.ok(csv.endsWith("\r\n"));
+});
+
+test("WebXR matrix helpers preserve model transforms through identity", () => {
+  const identity = new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);
+  const model = modelMatrix(2, 3, -4, 5, 6);
+  assert.deepEqual(Array.from(multiplyMatrices(identity, model)), Array.from(model));
+});
+
+test("WebXR equirectangular sphere is finite, complete, and centered on the viewer", () => {
+  const sphere = createEquirectSphereVertices(8, 16);
+  assert.equal(sphere.length, 8 * 16 * 6 * 5);
+  assert.ok(Array.from(sphere).every(Number.isFinite));
+  const positions = [];
+  for (let index = 0; index < sphere.length; index += 5) {
+    positions.push({ x: sphere[index], y: sphere[index + 1], z: sphere[index + 2], u: sphere[index + 3], v: sphere[index + 4] });
+  }
+  assert.ok(positions.some((point) => Math.abs(point.x) < 1e-6 && Math.abs(point.y) < 1e-6 && point.z < -0.99 && Math.abs(point.u - 0.5) < 1e-6));
+  assert.ok(positions.every((point) => point.u >= 0 && point.u <= 1 && point.v >= 0 && point.v <= 1));
+
+  const translated = modelMatrix(2, 3, -4, 1, 1);
+  const rotationOnly = matrixWithoutTranslation(translated);
+  assert.deepEqual(Array.from(rotationOnly.slice(12, 15)), [0, 0, 0]);
+});
+
+test("WebXR stimulus catalog contains the flat study and eight exact CEAP excerpts", () => {
+  assert.equal(WEBXR_STIMULI.length, 9);
+  assert.equal(new Set(WEBXR_STIMULI.map((stimulus) => stimulus.id)).size, WEBXR_STIMULI.length);
+  assert.equal(webXrStimulusById("missing").id, "great-dictator");
+  const ceap = WEBXR_STIMULI.filter((stimulus) => stimulus.collection === "CEAP-360VR");
+  assert.equal(ceap.length, 8);
+  assert.deepEqual(ceap.map((stimulus) => stimulus.sourceStartSeconds), [0, 10, 65, 3, 0, 0, 127, 41]);
+  assert.deepEqual(ceap.map((stimulus) => stimulus.frameCount), [1501, 1801, 1795, 1803, 1801, 1801, 1801, 1801]);
+  assert.ok(ceap.every((stimulus) => stimulus.projection === "equirectangular-360" && stimulus.audio === false));
+  assert.ok(ceap.every((stimulus) => stimulusDurationSeconds(stimulus) > 59 && stimulusDurationSeconds(stimulus) < 61));
+});
+
+test("every catalog media object is repository-hosted and below GitHub's file limit", () => {
+  for (const stimulus of WEBXR_STIMULI) {
+    assert.match(stimulus.src, /^\.\/assets\//);
+    const file = new URL(`../site/${stimulus.src.slice(2)}`, import.meta.url);
+    const size = statSync(file).size;
+    assert.ok(size > 0, `${stimulus.id} must not be empty`);
+    assert.ok(size < 99_000_000, `${stimulus.id} must stay below the repository safety cap`);
+  }
+});
+
+test("experimental page is local-first and wires the selectable WebXR study library", () => {
+  assert.match(page, /id="stimulus-select"/);
+  assert.match(page, /preload="metadata"/);
+  assert.doesNotMatch(page, /id="study-video"[^>]*\ssrc=/s);
+  assert.match(page, /Optional HTTPS webhook/);
+  assert.match(page, /src="\.\/src\/webxr-study\.js"/);
+  assert.doesNotMatch(page, /https:\/\/(?!example\.org)/);
+  assert.match(runtime, /requestSession\("immersive-vr"/);
+  assert.match(runtime, /new XRWebGLLayer/);
+  assert.match(runtime, /readQuestControllerState/);
+  assert.match(runtime, /equirectangular-360/);
+  assert.match(runtime, /createEquirectSphereVertices/);
+  assert.match(runtime, /type: "text\/csv;charset=utf-8"/);
+  assert.match(runtime, /method: "POST"/);
+});
+
+test("web and APK launchers expose the hosted experimental WebXR page", () => {
+  assert.match(index, /href="\.\/webxr\.html"/);
+  assert.match(launcher, /WEBXR_STUDY_URL = "https:\/\/GeorgeFejer91\.github\.io\/affect-tracker-web\/webxr\.html"/);
+  assert.match(launcher, /Intent\(Intent\.ACTION_VIEW, Uri\.parse\(WEBXR_STUDY_URL\)\)/);
+  assert.match(launcher, /addCategory\(Intent\.CATEGORY_BROWSABLE\)/);
+  assert.match(launcher, /Text\("Open WebXR study"\)/);
+  assert.ok(
+    launcher.indexOf('Text("Open WebXR study")') <
+      launcher.indexOf("Modifier.weight(1f).verticalScroll"),
+    "the WebXR action must appear above the scrollable native-session content",
+  );
+});

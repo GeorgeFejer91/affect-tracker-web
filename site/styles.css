@@ -85,6 +85,23 @@ button.is-held {
 .experiment-launch h3 { margin: 0 0 0.4rem; }
 .experiment-launch p { margin: 0.45rem 0; }
 .experiment-launch button { width: 100%; font-weight: 700; }
+.webxr-experiment-link {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.45rem;
+  margin-top: 0.55rem;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid rgb(120 215 255 / 0.5);
+  border-radius: 0.65rem;
+  color: #9de5ff;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-align: center;
+  text-decoration: none;
+}
+.webxr-experiment-link:hover { background: rgb(120 215 255 / 0.12); }
+.webxr-experiment-link:focus-visible { outline: 3px solid #ffd166; outline-offset: 2px; }
 .experiment-privacy { color: #c3cbd3; font-size: 0.78rem; }
 .experiment-settings {
   display: grid;

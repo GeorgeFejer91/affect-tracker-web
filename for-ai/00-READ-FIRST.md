@@ -8,7 +8,7 @@ The repository root is the central project folder. [`05-PROJECT-METADATA.md`](./
 
 Provide one valence/arousal affect tracker in three delivery forms:
 
-1. An online, dependency-free GitHub Pages application suitable for browser studies and integration beside web stimuli such as videos.
+1. An online, dependency-free GitHub Pages application suitable for browser studies and integration beside web stimuli such as videos, including an explicitly experimental Meta Quest WebXR library with the flat Great Dictator clip and eight CEAP-360VR one-minute immersive stimuli.
 2. An offline, downloadable Tauri desktop companion for Windows, macOS, and Linux that can remain above other applications and publish research data through Lab Streaming Layer (LSL).
 3. A native Meta Quest Spatial SDK APK that plays researcher-provided local video, displays the same procedural Flubber on a transparent movable spatial panel, accepts Touch-controller input, and publishes the desktop-compatible LSL schema over the local network.
 
