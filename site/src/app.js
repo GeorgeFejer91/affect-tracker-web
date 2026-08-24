@@ -52,8 +52,8 @@ import {
   polarMetricDefinition,
   polarWebBluetoothSupport,
 } from "./polar-stream.js";
-import { createPolarH10ReplaySession, polarReplayEnabled } from "./polar-replay.js";
-import { createFlubberBroadcaster } from "./flubber-remote.js";
+import { createPolarH10ReplaySession, polarReplayEnabled } from "./polar-replay.js?v=remote-2";
+import { createFlubberBroadcaster } from "./flubber-remote.js?v=remote-2";
 import {
   actionForBinding,
   ADVANCED_BINDING_LABELS,
