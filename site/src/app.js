@@ -724,7 +724,7 @@ function updatePolarMappingControls() {
 }
 
 function updatePolarConnectionUi(message = state.polarConnected ? "Polar H10 connected" : "Not connected", error = false) {
-  const support = polarWebBluetoothSupport();
+  const support = polarReplay ? { supported: true } : polarWebBluetoothSupport();
   elements.polarConnectButton.hidden = state.polarConnected;
   elements.polarConnectButton.disabled = !support.supported || state.polarConnecting;
   elements.polarDisconnectButton.hidden = !state.polarConnected;
@@ -760,7 +760,16 @@ function renderPolarDiagnostics(snapshot = polarSession.diagnosticSnapshot()) {
   const pmd = snapshot.firstEcgFrame
     ? `${snapshot.pmdResponse} · ECG frame received`
     : `${snapshot.pmdResponse} · no ECG frame`;
-  const values = {
+  const values = snapshot.mock ? {
+    api: "Synthetic replay · no Bluetooth",
+    adapter: "Not used",
+    activation: snapshot.userActivationAtRequest === true ? "Explicit start" : "Not started",
+    chooser: "Not used",
+    stage: snapshot.firstEcgFrame ? "Synthetic ECG live" : "Idle",
+    gatt: "0 / 0",
+    pmd: snapshot.firstEcgFrame ? "Synthetic 130 Hz fixture active" : "Not started",
+    error: "None",
+  } : {
     api,
     adapter: snapshot.adapterAvailability === "available"
       ? "Available"

@@ -43,6 +43,24 @@ export class PolarH10ReplaySession {
     this.lastHeartRateSecond = -1;
   }
 
+  diagnosticSnapshot() {
+    return {
+      mock: true,
+      secureContext: true,
+      apiAvailable: true,
+      adapterAvailability: "not-used",
+      userActivationAtRequest: this.connected ? true : "unknown",
+      chooser: "not used",
+      stage: this.connected ? "live" : "idle",
+      gattAttempt: 0,
+      gattAttemptsTotal: 0,
+      pmdResponse: "synthetic fixture",
+      firstEcgFrame: this.generatedSamples > 0,
+      lastErrorCode: "",
+      lastErrorMessage: "",
+    };
+  }
+
   async connect(onEvent) {
     if (this.connected) throw new Error("Stop the current synthetic ECG replay before starting another.");
     this.onEvent = onEvent;
@@ -64,6 +82,7 @@ export class PolarH10ReplaySession {
       message: "Synthetic Polar replay is live at 130 Hz",
     });
     this.tick();
+    this.emit({ kind: "diagnostic", snapshot: this.diagnosticSnapshot(), mock: true });
     this.intervalId = this.timer.setInterval(() => this.tick(), this.tickMs);
   }
 
@@ -134,6 +153,7 @@ export class PolarH10ReplaySession {
     this.intervalId = undefined;
     if (emit && (wasConnected || this.onEvent)) {
       this.emit({ kind: "connection", connected: false, mock: true, message: "Synthetic Polar replay stopped" });
+      this.emit({ kind: "diagnostic", snapshot: this.diagnosticSnapshot(), mock: true });
     }
     if (emit) this.onEvent = undefined;
   }

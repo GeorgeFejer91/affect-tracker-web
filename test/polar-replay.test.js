@@ -82,12 +82,28 @@ test("synthetic Polar session follows the real event contract at a self-correcti
   assert.ok(Number.isFinite(latestMetrics.values.ecg_rms));
   assert.ok(Number.isFinite(latestMetrics.values.ecg_peak_to_peak));
   assert.ok(ecgEvents.every((event) => event.microvolts.every(Number.isFinite)));
+  assert.deepEqual(session.diagnosticSnapshot(), {
+    mock: true,
+    secureContext: true,
+    apiAvailable: true,
+    adapterAvailability: "not-used",
+    userActivationAtRequest: true,
+    chooser: "not used",
+    stage: "live",
+    gattAttempt: 0,
+    gattAttemptsTotal: 0,
+    pmdResponse: "synthetic fixture",
+    firstEcgFrame: true,
+    lastErrorCode: "",
+    lastErrorMessage: "",
+  });
 
   const eventCountBeforeStop = events.length;
   await session.disconnect();
   clock.advance(1_000);
-  assert.equal(events.length, eventCountBeforeStop + 1);
-  assert.equal(events.at(-1).connected, false);
+  assert.equal(events.length, eventCountBeforeStop + 2);
+  assert.equal(events.at(-2).connected, false);
+  assert.equal(events.at(-1).snapshot.stage, "idle");
 });
 
 test("synthetic Polar replay requires the explicit non-persistent query flag", () => {
