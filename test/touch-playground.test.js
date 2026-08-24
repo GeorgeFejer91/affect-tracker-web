@@ -23,13 +23,13 @@ test("the online interface exposes a third experimental touch playground", async
   assert.match(html, /id="touch-playground-canvas"/);
   assert.match(html, /id="touch-preview-flubber"/);
   assert.match(html, /id="touch-preview-base-path"/);
-  assert.match(html, /Draw or swipe here to control the experimental Flubber/);
+  assert.match(html, /Page-wide mouse movement overview and touch or pen swipe surface/);
   assert.match(html, /class="touch-playground-options"/);
   assert.match(html, /id="touch-affect-space"/);
   assert.match(html, /id="touch-affect-point"/);
   assert.match(html, /id="touch-affect-valence-output"/);
   assert.match(html, /Fast[\s\S]*Slow[\s\S]*Angular[\s\S]*Circular/);
-  assert.match(html, /Angular \/ random[\s\S]*Circular[\s\S]*Raw trace · no smoothing/);
+  assert.match(html, /Angular \/ random[\s\S]*Circular[\s\S]*Page-wide miniature · aspect-preserving fit/);
   assert.match(html, /normalized, uniformly fitted overview[\s\S]*never affects classification/i);
   assert.match(html, /name="touch-feedback-mode" value="gated" checked/);
   assert.match(html, /Gated move-and-hold/);
@@ -93,6 +93,7 @@ test("the playground remains a private practice surface with explicit experiment
 
   assert.match(html, /Practice movement is not stored/);
   assert.match(html, /Raw pointer coordinates are recorded only while an experiment is actively playing/);
+  assert.match(app, /if \(event\.pointerType === "mouse"\) return phase === "move"/);
   assert.match(app, /closest\?\.\("#touch-playground-surface"\)\) return false/);
   assert.match(app, /!experiment\.writer \|\| experiment\.phase !== "running" \|\| !experiment\.playbackActive/);
 });

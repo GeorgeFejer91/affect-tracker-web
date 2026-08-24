@@ -27,7 +27,6 @@ import {
 } from "./experiment.js";
 import {
   fitTracePoints,
-  projectTracePoints,
   TOUCH_FEEDBACK_CONTINUOUS,
   TOUCH_FEEDBACK_GATED,
   TOUCH_TRACE_ALGORITHM_VERSION,
@@ -1239,7 +1238,7 @@ function positionTracePanel() {
   });
 }
 
-function drawTouchTraceCanvas(canvas, snapshot, timestamp, { rawSurface = false } = {}) {
+function drawTouchTraceCanvas(canvas, snapshot, timestamp) {
   const rect = canvas.getBoundingClientRect();
   if (rect.width < 1 || rect.height < 1) return;
   const ratio = Math.max(1, window.devicePixelRatio || 1);
@@ -1252,13 +1251,11 @@ function drawTouchTraceCanvas(canvas, snapshot, timestamp, { rawSurface = false 
   const context = canvas.getContext("2d");
   context.setTransform(ratio, 0, 0, ratio, 0, 0);
   context.clearRect(0, 0, rect.width, rect.height);
-  const points = rawSurface
-    ? projectTracePoints(snapshot.tracePoints, rect)
-    : fitTracePoints(snapshot.tracePoints, rect.width, rect.height);
-  context.lineCap = rawSurface ? "butt" : "round";
-  context.lineJoin = rawSurface ? "miter" : "round";
+  const points = fitTracePoints(snapshot.tracePoints, rect.width, rect.height);
+  context.lineCap = "butt";
+  context.lineJoin = "miter";
   context.miterLimit = 8;
-  context.lineWidth = rawSurface ? 1.75 : 2.25;
+  context.lineWidth = 1.75;
   for (let index = 1; index < points.length; index += 1) {
     const before = points[index - 1];
     const current = points[index];
@@ -1318,7 +1315,7 @@ function renderTouchTrace(timestamp) {
           : "ready for an occasional swipe";
 
   if (state.touchPlaygroundPanelOpen) {
-    drawTouchTraceCanvas(elements.touchPlaygroundCanvas, snapshot, timestamp, { rawSurface: true });
+    drawTouchTraceCanvas(elements.touchPlaygroundCanvas, snapshot, timestamp);
   }
   if (!elements.touchTracePanel.hidden) {
     positionTracePanel();
@@ -1729,10 +1726,14 @@ function touchTraceTargetExcluded(target) {
   return Boolean(target?.closest?.(".control-panel, .touch-trace-panel, button, input, select, textarea, [contenteditable='true']"));
 }
 
-function touchTraceCaptureEnabled(event) {
+function touchTraceCaptureEnabled(event, phase) {
   if (!touchTrackingActive() || captureInput || document.hidden) return false;
   if (experiment.phase === "running" && !experiment.playbackActive) return false;
   if (experiment.phase !== "idle" && experiment.phase !== "running") return false;
+  // Mouse and OS-accelerated touchpad hover is the page-wide signal. Analyze
+  // every movement, including motion over controls, without treating clicks
+  // as stroke boundaries or preventing the control's ordinary behavior.
+  if (event.pointerType === "mouse") return phase === "move";
   return !touchTraceTargetExcluded(event.target);
 }
 
@@ -1780,7 +1781,7 @@ function recordRawPointer(event, phase, coalescedIndex, result) {
 }
 
 function ingestPointerEvent(event, phase) {
-  if (!touchTraceCaptureEnabled(event)) return;
+  if (!touchTraceCaptureEnabled(event, phase)) return;
   if (event.isPrimary === false) {
     if (phase === "down") recordEvent("pointer", "ignored-multitouch", event.pointerType, event.pointerId);
     return;

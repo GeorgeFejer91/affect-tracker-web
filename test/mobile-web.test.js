@@ -27,7 +27,7 @@ test("the phone layout uses safe areas, dynamic height, and a large non-scrollin
   assert.match(html, /viewport-fit=cover/);
   assert.match(html, /class="panel-label-mobile">Touch Lab/);
   assert.match(html, /id="touch-preview-flubber"/);
-  assert.match(html, /id="touch-playground-surface"[^>]*Draw or swipe here/);
+  assert.match(html, /id="touch-playground-surface"[^>]*Page-wide mouse movement overview and touch or pen swipe surface/);
   assert.match(css, /@media \(max-width: 600px\), \(max-height: 500px\) and \(pointer: coarse\)/);
   assert.match(css, /height: 100dvh/);
   assert.match(css, /env\(safe-area-inset-top/);

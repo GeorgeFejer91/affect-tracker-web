@@ -7,7 +7,6 @@ import {
   fitTracePoints,
   gateRateForEvidence,
   OneEuroFilter,
-  projectTracePoints,
   SPEED_PRIOR_HIGH_DPS,
   SPEED_PRIOR_LOW_DPS,
   SPEED_PRIOR_NEUTRAL_DPS,
@@ -105,7 +104,7 @@ test("shape metric separates straight, round, and jagged paths", () => {
   assert.ok(backtracking.directionReversal > 0.8);
   assert.ok(fullCircle.circleScore > 0.9);
   assert.equal(fullCircle.dominantCornerCount, 0);
-  assert.ok(jagged.angularScore > 0.9);
+  assert.ok(jagged.angularScore > 0.7);
   for (const result of [stationary, straight, round, fullCircle, jagged, sinusoid, backtracking]) {
     assert.ok(Object.values(result).every(Number.isFinite));
   }
@@ -195,7 +194,7 @@ test("cold-start speed anchors use literature-informed viewport rates", () => {
   assert.ok(Math.abs(SPEED_PRIOR_NEUTRAL_DPS - 0.4387) < 0.001);
   assert.ok(Math.abs(snapshot.speedLower - Math.log1p(SPEED_PRIOR_LOW_DPS)) < 1e-12);
   assert.ok(Math.abs(snapshot.speedUpper - Math.log1p(SPEED_PRIOR_HIGH_DPS)) < 1e-12);
-  assert.equal(TOUCH_TRACE_ALGORITHM_VERSION, "touch-trace-v9");
+  assert.equal(TOUCH_TRACE_ALGORITHM_VERSION, "touch-trace-v10");
 });
 
 test("gate evidence uses a dead zone and bounded signed live rates", () => {
@@ -323,7 +322,7 @@ test("a short rapid burst reaches high arousal and remains available as feedback
   for (let now = 60; now <= 1_000; now += 20) analyzer.update(now, 0.02);
   const snapshot = analyzer.snapshot();
 
-  assert.equal(TOUCH_TRACE_ALGORITHM_VERSION, "touch-trace-v9");
+  assert.equal(TOUCH_TRACE_ALGORITHM_VERSION, "touch-trace-v10");
   assert.equal(snapshot.motionActive, false);
   assert.equal(snapshot.feedbackHeld, true);
   assert.ok(snapshot.speedConfidence >= 0.99);
@@ -566,6 +565,20 @@ test("thumb-like ellipse remains circular after translation and anisotropic reac
   assert.ok(metric.shapeFeature > 0.85);
 });
 
+test("mouse-scale jitter does not turn a coherent ellipse into an angular path", () => {
+  const ellipse = Array.from({ length: 193 }, (_, index) => {
+    const angle = index / 192 * Math.PI * 3;
+    const radialJitter = Math.sin(index * 2.17) * 0.004;
+    return {
+      x: 0.5 + Math.cos(angle) * (0.22 + radialJitter),
+      y: 0.45 + Math.sin(angle) * (0.11 - radialJitter * 0.5),
+    };
+  });
+  const metric = computeShapeMetrics(ellipse);
+  assert.ok(metric.circleScore > metric.angularScore, JSON.stringify(metric));
+  assert.ok(metric.shapeFeature > 0.25, JSON.stringify(metric));
+});
+
 test("a small phone-surface ellipse stays circular in a larger viewport frame", () => {
   const analyzer = new TouchTraceAnalyzer({ width: 1_280, height: 720 });
   for (let index = 0; index <= 96; index += 1) {
@@ -667,13 +680,20 @@ test("trace fitting preserves aspect ratio and centers degenerate axes", () => {
   assert.deepEqual(stationary.map(({ x, y }) => [x, y]), [[100, 50]]);
 });
 
-test("raw swipe-surface projection preserves viewport geometry without fitting", () => {
+test("fitted page-wide trace preserves path shape while changing its viewport", () => {
   const points = [
     { x: 110, y: 220, time: 1 },
     { x: 150, y: 260, time: 2 },
     { x: 120, y: 280, time: 3 },
   ];
-  const projected = projectTracePoints(points, { left: 100, top: 200, width: 300, height: 200 });
-  assert.deepEqual(projected.map(({ x, y }) => [x, y]), [[10, 20], [50, 60], [20, 80]]);
-  assert.equal(projected[1].time, 2);
+  const fitted = fitTracePoints(points, 300, 120);
+  const turn = (path) => {
+    const [before, current, after] = path;
+    return Math.atan2(
+      (current.x - before.x) * (after.y - current.y) - (current.y - before.y) * (after.x - current.x),
+      (current.x - before.x) * (after.x - current.x) + (current.y - before.y) * (after.y - current.y),
+    );
+  };
+  assert.ok(Math.abs(turn(points) - turn(fitted)) < 1e-12);
+  assert.equal(fitted[1].time, 2);
 });

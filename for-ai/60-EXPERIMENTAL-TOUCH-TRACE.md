@@ -8,16 +8,16 @@ This file is the normative contract for the browser-only movement-feedback proto
 - `touchFeedbackMode` is a separate browser-local preference: `gated` is the default live move-until-satisfied/hold behavior and `continuous` preserves the earlier direct-mapped response that later decays toward neutral. It is not part of portable settings.
 - Touch mode is visibly labelled **Experimental Touch/Trackpad**. Angular/random direction-changing movement drives valence left (`x<0`), repeated circular movement drives it right (`x>0`), and speed drives arousal (`y`). These are participant control commands, not inferred emotions.
 - The online UI exposes a top-level **Touch/Trackpad Playground** accordion beside Settings, Experiment, and the separate Polar Stream prototype. It is visibly marked **Experimental** and contains the authoritative **Enable touch/trackpad tracking** switch, an embedded live practice trace, detected pointer type, shape/speed labels, confidence, a read-only live valence–arousal color map with a moving dot/numeric coordinates, and the separate floating-trace preference.
-- Opening the playground collapses the other three accordions, and opening any alternative collapses the playground. Movement over the playground trace surface is analyzable; other controls remain excluded. The saved `inputSource` choice becomes live only while the Touch protocol is open or an experiment is active. While live it pauses, without disconnecting, any Polar Stream affect assignment; collapsing Touch outside an experiment suspends pointer drive and lets an assigned Polar metric resume.
-- Touch and pen movement are handled using Pointer Events and primary-pointer capture. Mouse hover supplies browser cursor movement, including the OS-accelerated trajectory exposed for laptop touchpads; raw touchpad contacts are unavailable to ordinary webpages.
-- Outside experiments, native controls/settings are excluded. During a fullscreen experiment the entire experiment layer is the capture surface. Only the primary pointer is analyzed; extra simultaneous pointers are ignored and logged.
+- Opening the playground collapses the other three accordions, and opening any alternative collapses the playground. The saved `inputSource` choice becomes live only while the Touch protocol is open or an experiment is active. While live it pauses, without disconnecting, any Polar Stream affect assignment; collapsing Touch outside an experiment suspends pointer drive and lets an assigned Polar metric resume.
+- Touch and pen movement are handled using Pointer Events and primary-pointer capture on the playground surface or the active experiment layer. Other native controls remain excluded for touch/pen so normal scrolling and settings interaction stay usable. Only the primary pointer is analyzed; extra simultaneous pointers are ignored and logged.
+- Mouse hover supplies one continuous browser-page cursor trajectory, including the OS-accelerated trajectory exposed for laptop touchpads; raw touchpad contacts are unavailable to ordinary webpages. Every mouse `pointermove` in the active page is analyzed even when its event target is a control. Mouse down/up remain ordinary UI events, are not analyzed as movement points, do not delimit the hover stroke, and are never prevented.
 - Selecting touch mode disables Flubber dragging. Configured keyboard, mouse-button, and wheel direction inputs remain observable/logged but do not drive affect. The Settings direction pad continues to edit those bindings rather than acting as a movement control. Reset deliberately clears the touch analyzer, adaptive history, and accumulated target.
 - Practice movement may update the display, but raw pointer coordinates are written only while an experiment is actively playing. The browser cannot observe other tabs, browser chrome, background pages, or other applications.
 - Trace feedback and cursor hiding default off and are stored only in browser local storage. The input source is likewise browser-local and intentionally absent from portable settings version 1. Cursor hiding applies only while this source is active, covers the movement/Flubber/experiment surfaces, and leaves the settings panel cursor visible so participants can reverse it. Settings Appearance and the playground display options expose synchronized controls for this one preference.
 
 ## Acquisition and segmentation
 
-For each dispatched Pointer Event, use `getCoalescedEvents()` when available and fall back to the event itself. Never use predicted events. Retain pointer/stroke identifiers, phase/type, `performance.now()` time, client and viewport-normalized positions, pressure, button state, coalesced index, and viewport dimensions.
+For each accepted dispatched Pointer Event, use `getCoalescedEvents()` when available and fall back to the event itself. Never use predicted events. Mouse accepts movement phases anywhere in the active page; touch/pen accepts primary-pointer phases only on permitted tracking surfaces. Retain pointer/stroke identifiers, phase/type, `performance.now()` time, client and viewport-normalized positions, pressure, button state, coalesced index, and viewport dimensions.
 
 Normalize distance by `D = hypot(viewportWidth, viewportHeight)`. Reject duplicate points, non-monotonic times, and intervals below 1 ms. A gap over 400 ms ends an ordinary continuous segment. Resize, orientation, cancellation, visibility, and fullscreen changes reset filters and segmentation so coordinate frames are never mixed.
 
@@ -51,7 +51,7 @@ The two intended participant commands are operationalized explicitly:
 
 The classifier uses only viewport-normalized, equal-distance points. Canvas fitting, CSS sizing, line caps, and all other rendering transforms are forbidden classifier inputs.
 
-Resample geometry every `0.005D` and retain the latest 512 resampled segments (`2.56D`). This bounded horizon keeps several phone-scale direction changes in view. For consecutive vectors use `theta=atan2(cross(u,v),dot(u,v))`. Turns of at least 120 degrees produce linearly increasing reversal strength that reaches 1 at 180 degrees. Close touch/pen strokes use the same transform on their on-surface direction summaries. Then compute:
+Resample geometry every `0.005D` and retain the latest 512 resampled segments (`2.56D`). This bounded horizon keeps several phone-scale direction changes in view. Structural turn activity, coherence, and sign changes use chords spanning four resampled segments (`0.02D`) on each side: `theta=atan2(cross(u,v),dot(u,v))`. Adjacent `0.005D` vectors are used only for explicit reversal evidence, so ordinary mouse micro-jitter cannot dominate the path-wide turn interpretation. Adjacent turns of at least 120 degrees produce linearly increasing reversal strength that reaches 1 at 180 degrees. Close touch/pen strokes use the same transform on their on-surface direction summaries. Then compute:
 
 ```text
 turnActivity = clamp(sum(abs(theta)) / (pi/2), 0, 1)
@@ -60,11 +60,11 @@ withinStrokeReversal = 0.8 * peakReversal + 0.2 * reversalTurnFraction
 directionReversal = max(withinStrokeReversal, crossStrokeReversal)
 
 directionEntropy = Shannon entropy of the 8-bin equal-distance heading code / log(8)
-dominant corners = turns >= 35 degrees between chords spanning 0.02D on each side,
+dominant corners = turns >= 60 degrees between chords spanning 0.02D on each side,
                    with endpointChord/localPathLength <= 0.85,
                    greedily non-max-suppressed within 0.04D
 cornerDensity = clamp(dominantCornerCount / 4, 0, 1)
-cornerStrength = median(clamp((abs(cornerAngle)-35deg)/(180deg-35deg), 0, 1))
+cornerStrength = median(clamp((abs(cornerAngle)-60deg)/(180deg-60deg), 0, 1))
 
 center points; compute the 2x2 covariance eigenvalues/eigenvectors
 nonDegenerate = clamp((minorEigenvalue/majorEigenvalue) / 0.04, 0, 1)
@@ -72,7 +72,9 @@ whiten along the covariance axes (classifier only, never display)
 radialVariation = standardDeviation(whitenedRadius) / mean(whitenedRadius)
 radialRegularity = clamp(1 - radialVariation/0.8, 0, 1)
 windingTurns = abs(sum(wrapped centroid-angle differences)) / (2*pi)
-windingCoverage = clamp(windingTurns, 0, 1)
+closure = clamp(1 - endpointDistance/pathLength, 0, 1)
+closureCoverage = clamp((closure-0.1)/0.5, 0, 1)
+windingCoverage = clamp(windingTurns, 0, 1) * closureCoverage
 turnCoverage = clamp(sum(abs(theta))/pi, 0, 1)
 
 rawCircleScore = clamp(turnCoherence * (1-directionReversal) * nonDegenerate
@@ -82,14 +84,16 @@ directionalDisorder = directionEntropy * sqrt(1-turnCoherence)
 cornerEvidence = corners exist
                  ? 0.55*cornerDensity + 0.25*cornerStrength + 0.20*directionEntropy
                  : 0
+microReversalDisorder = adjacentSignFlipRate * clamp(2.5*directionReversal, 0, 1)
 angularScore = clamp(max(0.9*directionReversal,
                          directionalDisorder,
                          cornerEvidence,
-                         turnActivity*signFlipRate), 0, 1)
+                         turnActivity*signFlipRate,
+                         microReversalDisorder), 0, 1)
 shapeFeature = clamp(circleScore - angularScore, -1, 1)
 ```
 
-Ignore turns under 5 degrees for sign flips. Roughness remains logged for backwards comparison but cannot turn generic local curvature into circle evidence. Covariance whitening makes loop topology tolerant of ellipses caused by thumb reach; it never alters the raw trace or creates circle evidence alone. Ordinary within-stroke shape confidence is zero until at least eight resampled segments and `0.04D` distance are available. Cross-stroke reversal may qualify shape earlier. Straight paths remain near neutral; a short coherent bend is only mildly circular; a full ellipse has high winding/coherence; multi-direction V/W paths, smooth random meanders, hairpins, exact backtracking, and opposing micro-strokes are angular/negative.
+Ignore structural and adjacent turns under 5 degrees for their respective sign-flip rates. Roughness remains logged for backwards comparison but cannot turn generic local curvature into circle evidence. Covariance whitening makes loop topology tolerant of ellipses caused by thumb reach; it never alters the displayed trace or creates circle evidence alone. Closure gating prevents a short open bend's centroid-angle motion from masquerading as a completed loop. Ordinary within-stroke shape confidence is zero until at least eight resampled segments and `0.04D` distance are available. Cross-stroke reversal may qualify shape earlier. Straight paths remain near neutral; a short coherent bend is only mildly circular; a full or repeated ellipse has high closure/winding/coherence even with mouse-scale jitter; multi-direction V/W paths, smooth large-scale random meanders, hairpins, exact backtracking, and opposing micro-strokes are angular/negative.
 
 ## Adaptive participant range and feedback behavior
 
@@ -121,7 +125,7 @@ Maintain the earlier 1,200-feature/60-second range and blend from priors over 10
 
 ## Trace and experiment layout
 
-The embedded swipe-area high-DPI canvas displays the last four seconds directly in surface coordinates: `drawX=clientX-canvasRect.left`, `drawY=clientY-canvasRect.top`. It performs no adaptive fit, interpolation, filtering, or curve smoothing; delivered straight segments use butt caps and miter joins so visible corners are not cosmetically rounded. The canvas clips movement outside its surface. The separate optional floating overview may still uniformly fit the unrestricted page-wide path with preserved aspect ratio, centering, and 8% padding, and must be described as a normalized overview. Neither visualization affects classifier coordinates.
+The embedded high-DPI movement map and separate optional floating overview both display the last four seconds of the unrestricted page-wide trajectory. On every frame, compute the recent path's x/y bounds and apply one uniform scale with centering and 8% padding. This dynamically fits the whole path into either canvas while preserving aspect ratio, segment angles, and relative distances. It performs no interpolation, filtering, non-uniform stretching, or curve smoothing; delivered straight segments use butt caps and miter joins so visible corners are not cosmetically rounded. Stroke boundaries remain disconnected. Neither visualization affects classifier coordinates.
 
 Segment age controls opacity and rainbow hue; reduced-motion uses a static spatial rainbow with ordinary fading. Labels show slow/fast, angular/circular, and calibration confidence. The embedded playground shows the displayed coordinates on the four-anchor palette: left/right are angular/circular, bottom/top are slow/fast. A compact two-card guide shows the theoretical commands: irregular V/W-like direction changes versus repeated one-direction elliptical loops.
 
@@ -129,7 +133,7 @@ Segment age controls opacity and rainbow hue; reduced-motion uses a static spati
 
 The web-only compact viewer activates for portrait widths through 600 CSS px and for coarse-pointer phone landscape viewports no taller than 500 CSS px. It uses four ≥44 px top tabs and a viewport-relative content sheet with `viewport-fit=cover`, `100dvh`, safe-area offsets, contained vertical scrolling, and no horizontal overflow. A clean touch-capable phone visit opens Touch Lab once for discovery and persists `mobileTouchIntroSeen`; `inputSource` remains manual until the participant explicitly enables tracking.
 
-The primary view order is movement-command guide, enable switch, pointer/gate status, canonical live Flubber preview beside the 2D mapping grid, large raw-coordinate swipe surface, then live shape/speed/confidence. The swipe surface is 12–18 rem high depending on dynamic viewport height, has `touch-action:none`, prevents overscroll, and is the only settings-panel region exempt from pointer-analysis exclusion. Secondary behavior, calibration, cursor/trace, and privacy controls are collapsed below it. The preview receives the existing generated path/color and adds no renderer or signal-processing fork. Smartphone presentation uses the same `touch-trace-v9` classifier, adaptive ranges, gate behavior, logging fields, and raw-pointer privacy limits as larger browsers.
+The primary view order is movement-command guide, enable switch, pointer/gate status, canonical live Flubber preview beside the 2D mapping grid, large fitted page-wide movement map/touch surface, then live shape/speed/confidence. The surface is 12–18 rem high depending on dynamic viewport height, has `touch-action:none`, prevents overscroll, and is the only settings-panel region exempt from touch/pen pointer-analysis exclusion; mouse movement remains page-wide. Secondary behavior, calibration, cursor/trace, and privacy controls are collapsed below it. The preview receives the existing generated path/color and adds no renderer or signal-processing fork. Smartphone presentation uses the same `touch-trace-v10` classifier, adaptive ranges, gate behavior, logging fields, and raw-pointer privacy limits as larger browsers.
 
 During experiments the vertical order is video, Flubber, then trace. `computeExperimentLayout` must shrink elements as needed on narrow displays, allow the trace to reach 220 px wide, and never overlap the video and Flubber.
 
@@ -146,7 +150,7 @@ Record types are:
 
 All rows retain session/experiment/stimulus identifiers, ISO and monotonic time, `active_elapsed_ms`, stimulus time, source/mode, `touch_feedback_mode`, effective `cursor_hidden`, and animation/widget state. Gate-aware rows expose `gate_id`, `gate_open`, `gate_commit_sequence`, `gate_duration_ms`, total `gate_delta_x/y`, `gate_live_active`, `gate_live_rate_x/y`, accumulated `gate_live_delta_x/y`, `speed_calibration_samples`, and `shape_calibration_samples`; every close also emits one `event` row with action `gate-commit`. `active_elapsed_ms` advances only during playback. Buffering pauses metric/sample emission and active time. Finish closes any still-open gated window without changing its live-selected target, then captures the final metric/sample before completion; abort/fullscreen exit/player failure generates a marked partial CSV.
 
-Algorithm identifier: `touch-trace-v9`. Changing formulas, defaults, columns, segmentation, or adaptive behavior requires tests, an algorithm-version decision, and an update to the provenance ledger.
+Algorithm identifier: `touch-trace-v10`. Changing formulas, defaults, columns, segmentation, or adaptive behavior requires tests, an algorithm-version decision, and an update to the provenance ledger.
 
 Version 2 replaces version 1's filtered-position-only speed estimate, five-segment speed-confidence ramp, 450 ms target response, and immediate 600 ms inactivity decay with a dual-median burst-preserving estimate, two-segment ramp, 300 ms attack, 1.8-second result hold, and 3-second release. This project-specific change responds to observed playground usability: short rapid movements were underweighted and feedback returned to neutral before participants could reach or perceive the extremes. No external algorithm or source code was introduced by this version change.
 
@@ -163,3 +167,5 @@ Version 7 corrects a shape-classification bias identified through direct playgro
 Version 8 fixes the remaining phone-scale jagged-recognition failure observed in the playground. The equal-distance geometry horizon increases from 32 to 512 segments (`0.16D` to `2.56D`), so multiple widely spaced corners coexist in the live shape estimate instead of every long straight leg erasing the preceding turn. Storage remains bounded, the formulas and CSV columns are unchanged, and the regression fixture models a large alternating path across a 1,000 × 1,000 capture surface. This project-specific usability revision introduces no external source or copied code.
 
 Version 9 operationalizes the study contrast as uncontrolled multi-direction thumb swipes versus repeated circular thumb motion. Circular evidence requires coherent accumulated winding around a non-degenerate center and tolerates elliptical thumb reach through classifier-only covariance whitening. Angular evidence combines multi-scale dominant corners, cyclic eight-direction entropy, turn-sign inconsistency, and reversal evidence. The embedded swipe trace is rendered in raw surface coordinates with butt caps and no adaptive fitting; the optional page-wide overview remains explicitly normalized. CSV adds all new component scores, and fixtures cover bowed V/W legs, anisotropic ellipses, raw trace projection, invariance, and prior paths. The research ledger records the equal-distance/corner/directional/thumb-reach sources; no external code was copied.
+
+Version 10 corrects the inverse usability failure observed with desktop mouse/trackpad use: excluded control-target movements created artificial joins when the cursor re-entered an accepted area, ordinary cursor micro-jitter could dominate adjacent-vector turns, and the embedded canvas clipped page coordinates instead of acting as a miniature. While the source is visibly active, every mouse movement in the page now feeds one continuous hover trajectory, including movement over controls; mouse clicks retain their ordinary behavior and are not stroke phases. Shape turn/coherence features move to 0.02D chords, adjacent vectors remain only for explicit reversals, dominant corners rise from 35° to 60°, and winding becomes strong only after partial path closure. Both trace canvases use the same uniform aspect-preserving dynamic fit with unsmoothed butt/miter segments. Speed formulas and calibration anchors are unchanged; removing excluded-target gaps restores their live response. This independently designed correction responds to direct product feedback, adds no external source or copied code, and changes no portable, Tauri, Quest, Polar, or LSL contract.
