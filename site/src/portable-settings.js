@@ -33,6 +33,20 @@ export const DIRECTION_BY_ACTION = Object.freeze({
   decreaseArousal: "down",
 });
 
+export const OPPOSITE_DIRECTION_ACTION = Object.freeze({
+  increaseValence: "decreaseValence",
+  decreaseValence: "increaseValence",
+  increaseArousal: "decreaseArousal",
+  decreaseArousal: "increaseArousal",
+});
+
+const OPPOSITE_WHEEL_DIRECTION = Object.freeze({
+  up: "Down",
+  down: "Up",
+  left: "Right",
+  right: "Left",
+});
+
 export const DEFAULT_PORTABLE_SETTINGS = Object.freeze({
   version: SETTINGS_VERSION,
   inputMode: "continuous",
@@ -181,6 +195,17 @@ export function actionForBinding(bindings, token, advancedBindings = {}) {
   const normalized = token.toLowerCase();
   return Object.entries({ ...bindings, ...advancedBindings })
     .find(([, binding]) => binding.toLowerCase() === normalized)?.[0] ?? null;
+}
+
+export function bindingUpdatesForCapture(action, value) {
+  const updates = { [action]: value };
+  const [kind, direction = ""] = value.split(":");
+  const oppositeAction = OPPOSITE_DIRECTION_ACTION[action];
+  const oppositeDirection = OPPOSITE_WHEEL_DIRECTION[direction.toLowerCase()];
+  if (kind.toLowerCase() === "wheel" && oppositeAction && oppositeDirection) {
+    updates[oppositeAction] = `wheel:${oppositeDirection}`;
+  }
+  return updates;
 }
 
 export function describeBinding(value) {

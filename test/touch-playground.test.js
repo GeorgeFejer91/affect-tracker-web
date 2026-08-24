@@ -97,10 +97,11 @@ test("the playground remains a private practice surface with explicit experiment
   assert.match(app, /!experiment\.writer \|\| experiment\.phase !== "running" \|\| !experiment\.playbackActive/);
 });
 
-test("opening any top-level accordion collapses both alternatives", async () => {
+test("opening any top-level accordion uses the shared exclusive protocol", async () => {
   const app = await readSiteFile("src/app.js");
+  const protocols = await readSiteFile("src/accordion-protocols.js");
 
-  assert.match(app, /if \(state\.panelOpen\) \{[\s\S]*state\.experimentPanelOpen = false;[\s\S]*state\.touchPlaygroundPanelOpen = false;/);
-  assert.match(app, /if \(state\.experimentPanelOpen\) \{[\s\S]*state\.panelOpen = false;[\s\S]*state\.touchPlaygroundPanelOpen = false;/);
-  assert.match(app, /if \(state\.touchPlaygroundPanelOpen\) \{[\s\S]*state\.panelOpen = false;[\s\S]*state\.experimentPanelOpen = false;/);
+  assert.match(app, /Object\.assign\(state, toggleAccordionProtocol\(state, protocolId\)\)/);
+  assert.match(protocols, /Object\.fromEntries\(ACCORDION_PROTOCOL_IDS\.map/);
+  assert.match(protocols, /protocolId === openProtocolId/);
 });

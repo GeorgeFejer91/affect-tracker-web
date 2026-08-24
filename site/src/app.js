@@ -36,10 +36,27 @@ import {
 } from "./touch-trace.js";
 import { pictureInPictureOptions, pictureInPictureSupported } from "./picture-in-picture.js";
 import { isSmartphoneTouchViewport } from "./mobile.js";
+import {
+  ACCORDION_PROTOCOLS,
+  normalizeAccordionState,
+  setAccordionProtocolOpen,
+  toggleAccordionProtocol,
+  touchProtocolActive,
+} from "./accordion-protocols.js";
 import { createVrSession, hashVideoFile, vrSessionJson } from "./vr-session.js";
+import {
+  createPolarH10BrowserSession,
+  defaultPolarMappings,
+  normalizePolarMappings,
+  normalizePolarMetric,
+  POLAR_METRICS,
+  polarMetricDefinition,
+  polarWebBluetoothSupport,
+} from "./polar-stream.js";
 import {
   actionForBinding,
   ADVANCED_BINDING_LABELS,
+  bindingUpdatesForCapture,
   BINDING_LABELS,
   cloneDefaultSettings,
   describeBinding,
@@ -74,6 +91,19 @@ const elements = {
   touchPlaygroundPanel: document.querySelector("#touch-playground-panel"),
   touchPlaygroundPanelToggle: document.querySelector("#touch-playground-panel-toggle"),
   touchPlaygroundToggleSymbol: document.querySelector("#touch-playground-toggle-symbol"),
+  polarStreamPanel: document.querySelector("#polar-stream-panel"),
+  polarStreamPanelToggle: document.querySelector("#polar-stream-panel-toggle"),
+  polarStreamToggleSymbol: document.querySelector("#polar-stream-toggle-symbol"),
+  polarSupportNote: document.querySelector("#polar-support-note"),
+  polarConnectButton: document.querySelector("#polar-connect-button"),
+  polarDisconnectButton: document.querySelector("#polar-disconnect-button"),
+  polarConnectionStatus: document.querySelector("#polar-connection-status"),
+  polarEcgCanvas: document.querySelector("#polar-ecg-canvas"),
+  polarEcgRate: document.querySelector("#polar-ecg-rate"),
+  polarBattery: document.querySelector("#polar-battery"),
+  polarSampleCount: document.querySelector("#polar-sample-count"),
+  polarMetricCards: document.querySelector("#polar-metric-cards"),
+  polarAxisFields: [...document.querySelectorAll("[data-polar-axis]")],
   valenceOutput: document.querySelector("#valence-output"),
   arousalOutput: document.querySelector("#arousal-output"),
   modeInputs: [...document.querySelectorAll("input[name='input-mode']")],
@@ -81,7 +111,7 @@ const elements = {
   touchFeedbackModeInputs: [...document.querySelectorAll("input[name='touch-feedback-mode']")],
   touchPointerType: document.querySelector("#touch-pointer-type"),
   touchGateStatus: document.querySelector("#touch-gate-status"),
-  touchHideCursorToggle: document.querySelector("#touch-hide-cursor-toggle"),
+  touchHideCursorToggles: [...document.querySelectorAll("[data-touch-hide-cursor]")],
   touchTraceFeedbackToggle: document.querySelector("#touch-trace-feedback-toggle"),
   touchPlaygroundSurface: document.querySelector("#touch-playground-surface"),
   touchPlaygroundCanvas: document.querySelector("#touch-playground-canvas"),
@@ -134,7 +164,12 @@ const elements = {
   settingsExportButton: document.querySelector("#settings-export-button"),
   settingsImportButton: document.querySelector("#settings-import-button"),
   settingsImportFile: document.querySelector("#settings-import-file"),
-  customization: document.querySelector("#customization-editor"),
+  inputSettings: document.querySelector("#input-settings"),
+  bindingCaptureDialog: document.querySelector("#binding-capture-dialog"),
+  bindingCaptureTitle: document.querySelector("#binding-capture-title"),
+  bindingCapturePairNote: document.querySelector("#binding-capture-pair-note"),
+  bindingCaptureCurrent: document.querySelector("#binding-capture-current"),
+  bindingCaptureCancel: document.querySelector("#binding-capture-cancel"),
   lslStreamName: document.querySelector("#web-lsl-stream-name"),
   lslStreamType: document.querySelector("#web-lsl-stream-type"),
   lslMarkerName: document.querySelector("#web-lsl-marker-name"),
@@ -209,6 +244,8 @@ function readPreferences(bundledSettings) {
       panelOpen: typeof parsed.panelOpen === "boolean" ? parsed.panelOpen : !parsed.seenIntro,
       experimentPanelOpen: typeof parsed.experimentPanelOpen === "boolean" ? parsed.experimentPanelOpen : false,
       touchPlaygroundPanelOpen: typeof parsed.touchPlaygroundPanelOpen === "boolean" ? parsed.touchPlaygroundPanelOpen : false,
+      polarStreamPanelOpen: typeof parsed.polarStreamPanelOpen === "boolean" ? parsed.polarStreamPanelOpen : false,
+      polarMappings: normalizePolarMappings(parsed.polarMappings),
       inputSource: parsed.inputSource === "touch-trace" ? "touch-trace" : "manual",
       touchFeedbackMode: parsed.touchFeedbackMode === TOUCH_FEEDBACK_CONTINUOUS
         ? TOUCH_FEEDBACK_CONTINUOUS
@@ -226,6 +263,8 @@ function readPreferences(bundledSettings) {
       panelOpen: true,
       experimentPanelOpen: false,
       touchPlaygroundPanelOpen: false,
+      polarStreamPanelOpen: false,
+      polarMappings: defaultPolarMappings(),
       inputSource: "manual",
       touchFeedbackMode: TOUCH_FEEDBACK_GATED,
       touchHideCursor: false,
@@ -263,6 +302,17 @@ const state = {
   panelOpen: preferences.panelOpen,
   experimentPanelOpen: preferences.experimentPanelOpen,
   touchPlaygroundPanelOpen: preferences.touchPlaygroundPanelOpen,
+  polarStreamPanelOpen: preferences.polarStreamPanelOpen,
+  polarMappings: preferences.polarMappings,
+  polarConnected: false,
+  polarConnecting: false,
+  polarDriveActive: false,
+  touchDriveActive: false,
+  polarMetrics: {},
+  polarAxisValues: {
+    valence: { value: "", normalized: "" },
+    arousal: { value: "", normalized: "" },
+  },
   palette: preferences.settings.palette,
   lsl: preferences.settings.lsl,
   heldDirections: new Set(),
@@ -272,12 +322,7 @@ const state = {
   touchTraceFeedback: preferences.touchTraceFeedback,
   mobileTouchIntroSeen: preferences.mobileTouchIntroSeen,
 };
-if (state.panelOpen) {
-  state.experimentPanelOpen = false;
-  state.touchPlaygroundPanelOpen = false;
-} else if (state.experimentPanelOpen) {
-  state.touchPlaygroundPanelOpen = false;
-}
+Object.assign(state, normalizeAccordionState(state));
 if (isSmartphoneTouchViewport({
   width: window.innerWidth,
   height: window.innerHeight,
@@ -287,6 +332,7 @@ if (isSmartphoneTouchViewport({
   state.panelOpen = false;
   state.experimentPanelOpen = false;
   state.touchPlaygroundPanelOpen = true;
+  state.polarStreamPanelOpen = false;
   state.mobileTouchIntroSeen = true;
 }
 
@@ -308,6 +354,14 @@ const experiment = {
   traceRect: undefined,
 };
 
+function touchTrackingActive() {
+  return touchProtocolActive({
+    inputSource: state.inputSource,
+    touchPlaygroundPanelOpen: state.touchPlaygroundPanelOpen,
+    experimentPhase: experiment.phase,
+  });
+}
+
 function currentExperimentActiveElapsedMs(now = performance.now()) {
   const active = experiment.playbackActive && experiment.activeStartedAt !== undefined
     ? now - experiment.activeStartedAt
@@ -328,7 +382,7 @@ function experimentRecordContext() {
     stimulusTimeSeconds: videoTime,
     activeElapsedMs: currentExperimentActiveElapsedMs(),
     playbackActive: experiment.playbackActive,
-    algorithmVersion: state.inputSource === "touch-trace" ? TOUCH_TRACE_ALGORITHM_VERSION : "",
+    algorithmVersion: touchTrackingActive() ? TOUCH_TRACE_ALGORITHM_VERSION : "",
   };
 }
 
@@ -338,6 +392,9 @@ const touchTrace = new TouchTraceAnalyzer({
   height: window.innerHeight,
   feedbackMode: state.touchFeedbackMode,
 });
+const polarSession = createPolarH10BrowserSession();
+let polarEcgWindow = [];
+let polarBatteryPercent;
 const profiles = createProfiles();
 let offsets = createProjectionOffsets(logger.sessionId, profiles.waveCount);
 let previousTimestamp;
@@ -368,6 +425,8 @@ function savePreferences() {
     panelOpen: state.panelOpen,
     experimentPanelOpen: state.experimentPanelOpen,
     touchPlaygroundPanelOpen: state.touchPlaygroundPanelOpen,
+    polarStreamPanelOpen: state.polarStreamPanelOpen,
+    polarMappings: state.polarMappings,
     inputSource: state.inputSource,
     touchFeedbackMode: state.touchFeedbackMode,
     touchHideCursor: state.touchHideCursor,
@@ -422,7 +481,7 @@ function recordSample() {
 }
 
 function recordTouchMetric() {
-  if (!experiment.writer || state.inputSource !== "touch-trace") return;
+  if (!experiment.writer || !touchTrackingActive()) return;
   const metric = touchTrace.snapshot();
   experiment.writer.record("touch_metric", {
     source: "touch-trace",
@@ -553,22 +612,344 @@ function updateTouchPlaygroundPanelState() {
   elements.touchPlaygroundToggleSymbol.textContent = state.touchPlaygroundPanelOpen ? "−" : "+";
 }
 
+function updatePolarPanelState() {
+  elements.polarStreamPanel.classList.toggle("is-collapsed", !state.polarStreamPanelOpen);
+  elements.polarStreamPanelToggle.setAttribute("aria-expanded", String(state.polarStreamPanelOpen));
+  elements.polarStreamToggleSymbol.textContent = state.polarStreamPanelOpen ? "−" : "+";
+}
+
+function updateAccordionPanelStates() {
+  updatePanelState();
+  updateExperimentPanelState();
+  updateTouchPlaygroundPanelState();
+  updatePolarPanelState();
+}
+
+function toggleTopLevelProtocol(protocolId) {
+  const protocol = ACCORDION_PROTOCOLS[protocolId];
+  Object.assign(state, toggleAccordionProtocol(state, protocolId));
+  updateAccordionPanelStates();
+  updateInputSourceControls();
+  applyPolarMappings();
+  updateExperimentSourceControls();
+  constrainAndRenderWidget();
+  savePreferences();
+  recordEvent(
+    "panel",
+    state[protocol.stateKey] ? "expand" : "collapse",
+    protocol.panelId,
+    state[protocol.stateKey],
+  );
+}
+
+function polarAxisField(axis, field) {
+  return elements.polarAxisFields
+    .find((fieldset) => fieldset.dataset.polarAxis === axis)
+    ?.querySelector(`[data-polar-field='${field}']`);
+}
+
+function polarAxisDriven(axis) {
+  const mapping = state.polarMappings[axis];
+  return !touchTrackingActive()
+    && state.polarConnected
+    && mapping.metric !== "manual"
+    && normalizePolarMetric(state.polarMetrics[mapping.metric], mapping) !== undefined;
+}
+
+function manualAxisAvailable(axis) {
+  return !touchTrackingActive() && !polarAxisDriven(axis);
+}
+
+function directionAxis(direction) {
+  return direction === "left" || direction === "right" ? "valence" : "arousal";
+}
+
+function formatPolarMetric(metricId, value) {
+  if (!Number.isFinite(value)) return "—";
+  const definition = polarMetricDefinition(metricId);
+  if (metricId === "ecg_local_power") return `${Math.round(value).toLocaleString()} ${definition?.unit ?? ""}`.trim();
+  const digits = ["excitement_score", "excitometer"].includes(metricId)
+    ? 3
+    : (metricId === "ln_rmssd" ? 2 : (metricId === "heart_rate" ? 0 : 1));
+  return `${value.toFixed(digits)} ${definition?.unit ?? ""}`.trim();
+}
+
+function updatePolarMappingControls() {
+  for (const axis of ["valence", "arousal"]) {
+    const mapping = state.polarMappings[axis];
+    const metric = polarAxisField(axis, "metric");
+    const minimum = polarAxisField(axis, "minimum");
+    const maximum = polarAxisField(axis, "maximum");
+    const invert = polarAxisField(axis, "invert");
+    const output = polarAxisField(axis, "value");
+    metric.value = mapping.metric;
+    minimum.value = mapping.minimum;
+    maximum.value = mapping.maximum;
+    invert.checked = mapping.invert;
+    const manual = mapping.metric === "manual";
+    minimum.disabled = manual;
+    maximum.disabled = manual;
+    invert.disabled = manual;
+    if (manual) output.value = "Manual";
+    else if (touchTrackingActive()) output.value = "Paused by Touch/Trackpad";
+    else if (!state.polarConnected) output.value = "Waiting for H10";
+    else {
+      const value = state.polarMetrics[mapping.metric];
+      const normalized = normalizePolarMetric(value, mapping);
+      output.value = normalized === undefined
+        ? "Waiting for metric"
+        : `${formatPolarMetric(mapping.metric, value)} → ${formatCoordinate(normalized)}`;
+    }
+  }
+  for (const card of elements.polarMetricCards.querySelectorAll("[data-polar-metric]")) {
+    const metricId = card.dataset.polarMetric;
+    const assigned = ["valence", "arousal"].some((axis) => state.polarMappings[axis].metric === metricId);
+    card.classList.toggle("is-assigned", assigned);
+    for (const button of card.querySelectorAll("[data-polar-quick-axis]")) {
+      button.setAttribute("aria-pressed", String(state.polarMappings[button.dataset.polarQuickAxis].metric === metricId));
+    }
+  }
+}
+
+function updatePolarConnectionUi(message = state.polarConnected ? "Polar H10 connected" : "Not connected", error = false) {
+  const support = polarWebBluetoothSupport();
+  elements.polarConnectButton.hidden = state.polarConnected;
+  elements.polarConnectButton.disabled = !support.supported || state.polarConnecting;
+  elements.polarDisconnectButton.hidden = !state.polarConnected;
+  elements.polarConnectionStatus.value = message;
+  elements.polarConnectionStatus.classList.toggle("is-error", error);
+  elements.polarBattery.value = Number.isFinite(polarBatteryPercent) ? `${polarBatteryPercent}%` : "—";
+  elements.polarBattery.hidden = !Number.isFinite(polarBatteryPercent);
+  elements.polarStreamPanel.classList.toggle("is-connected", state.polarConnected);
+}
+
+function drawPolarEcg() {
+  const canvas = elements.polarEcgCanvas;
+  const context = canvas.getContext("2d");
+  context.clearRect(0, 0, canvas.width, canvas.height);
+  context.fillStyle = "#05090b";
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  context.strokeStyle = "rgba(126, 225, 194, 0.11)";
+  context.lineWidth = 1;
+  for (let index = 1; index < 4; index += 1) {
+    const y = index * canvas.height / 4;
+    context.beginPath();
+    context.moveTo(0, y);
+    context.lineTo(canvas.width, y);
+    context.stroke();
+  }
+  if (polarEcgWindow.length < 2) {
+    context.fillStyle = "#789098";
+    context.font = "14px system-ui";
+    context.textAlign = "center";
+    context.fillText(state.polarConnected ? "Waiting for ECG samples…" : "ECG preview appears after connection", canvas.width / 2, canvas.height / 2);
+    return;
+  }
+  const sorted = [...polarEcgWindow].sort((a, b) => a - b);
+  const lower = sorted[Math.floor(sorted.length * 0.02)];
+  const upper = sorted[Math.min(sorted.length - 1, Math.ceil(sorted.length * 0.98))];
+  const center = (lower + upper) / 2;
+  const halfRange = Math.max(50, (upper - lower) * 0.6);
+  context.strokeStyle = "#79e2bd";
+  context.lineWidth = 1.4;
+  context.beginPath();
+  for (let index = 0; index < polarEcgWindow.length; index += 1) {
+    const x = index / (polarEcgWindow.length - 1) * canvas.width;
+    const y = clamp(0.5 - (polarEcgWindow[index] - center) / (halfRange * 2), 0.04, 0.96) * canvas.height;
+    if (index === 0) context.moveTo(x, y);
+    else context.lineTo(x, y);
+  }
+  context.stroke();
+}
+
+function applyPolarMappings() {
+  let active = false;
+  const experimentAllowsDrive = experiment.phase === "idle"
+    || (experiment.phase === "running" && experiment.playbackActive);
+  for (const axis of ["valence", "arousal"]) {
+    const mapping = state.polarMappings[axis];
+    const value = mapping.metric === "manual" ? undefined : state.polarMetrics[mapping.metric];
+    const normalized = normalizePolarMetric(value, mapping);
+    const driven = experimentAllowsDrive
+      && !touchTrackingActive()
+      && state.polarConnected
+      && normalized !== undefined;
+    state.polarAxisValues[axis] = {
+      value: Number.isFinite(value) ? value : "",
+      normalized: driven ? normalized : "",
+    };
+    if (driven) {
+      if (axis === "valence") state.targetX = normalized;
+      else state.targetY = normalized;
+      active = true;
+    }
+  }
+  state.polarDriveActive = active;
+  updatePolarMappingControls();
+  updateInputSourceControls();
+}
+
+function renderPolarMetrics() {
+  for (const card of elements.polarMetricCards.querySelectorAll("[data-polar-metric]")) {
+    const metricId = card.dataset.polarMetric;
+    card.querySelector(".polar-metric-value").value = formatPolarMetric(metricId, state.polarMetrics[metricId]);
+  }
+  elements.polarEcgRate.value = Number.isFinite(state.polarMetrics.heart_rate)
+    ? `${Math.round(state.polarMetrics.heart_rate)} bpm`
+    : "130 Hz raw";
+}
+
+function handlePolarEvent(event) {
+  if (event.kind === "status") {
+    updatePolarConnectionUi(event.message);
+    return;
+  }
+  if (event.kind === "connection") {
+    state.polarConnecting = false;
+    state.polarConnected = event.connected;
+    if (Number.isFinite(event.batteryPercent)) polarBatteryPercent = event.batteryPercent;
+    if (!event.connected) {
+      polarBatteryPercent = undefined;
+      polarEcgWindow = [];
+      state.polarMetrics = {};
+      elements.polarSampleCount.value = "0";
+      renderPolarMetrics();
+      drawPolarEcg();
+    }
+    applyPolarMappings();
+    updatePolarConnectionUi(event.message);
+    recordEvent("polar-stream", event.connected ? "connect" : "disconnect", "polar-h10", event.batteryPercent ?? "");
+    announce(event.message);
+    return;
+  }
+  if (event.kind === "ecg") {
+    polarEcgWindow.push(...event.microvolts);
+    if (polarEcgWindow.length > 650) polarEcgWindow.splice(0, polarEcgWindow.length - 650);
+    elements.polarSampleCount.value = event.snapshot.totalEcgSamples.toLocaleString();
+    drawPolarEcg();
+    return;
+  }
+  if (event.kind === "metrics") {
+    state.polarMetrics = { ...event.snapshot.values };
+    renderPolarMetrics();
+    applyPolarMappings();
+    return;
+  }
+  if (event.kind === "error") updatePolarConnectionUi(event.message, true);
+}
+
+function commitPolarMapping(axis) {
+  const metricId = polarAxisField(axis, "metric").value;
+  if (metricId === "manual") {
+    state.polarMappings[axis] = { ...defaultPolarMappings()[axis] };
+  } else {
+    const definition = polarMetricDefinition(metricId);
+    const minimum = Number(polarAxisField(axis, "minimum").value);
+    const maximum = Number(polarAxisField(axis, "maximum").value);
+    if (!definition || !Number.isFinite(minimum) || !Number.isFinite(maximum) || maximum <= minimum) {
+      updatePolarMappingControls();
+      announce("Polar metric bounds require a finite high value greater than the low value.");
+      return;
+    }
+    state.polarMappings[axis] = {
+      metric: metricId,
+      minimum,
+      maximum,
+      invert: polarAxisField(axis, "invert").checked,
+    };
+  }
+  state.heldDirections.clear();
+  clearHeldButtonStyles();
+  applyPolarMappings();
+  savePreferences();
+  recordEvent("polar-stream", "mapping-change", axis, JSON.stringify(state.polarMappings[axis]));
+  announce(`${axis === "valence" ? "Valence" : "Arousal"} Polar assignment updated.`);
+}
+
+function togglePolarQuickAssignment(axis, metricId) {
+  const definition = polarMetricDefinition(metricId);
+  if (!definition) return;
+  const alreadyAssigned = state.polarMappings[axis].metric === metricId;
+  state.polarMappings[axis] = alreadyAssigned
+    ? { ...defaultPolarMappings()[axis] }
+    : { metric: metricId, minimum: definition.minimum, maximum: definition.maximum, invert: false };
+  state.heldDirections.clear();
+  clearHeldButtonStyles();
+  applyPolarMappings();
+  savePreferences();
+  recordEvent("polar-stream", "mapping-change", axis, JSON.stringify(state.polarMappings[axis]));
+  const axisLabel = axis === "valence" ? "X / valence" : "Y / arousal";
+  announce(alreadyAssigned ? `${definition.label} removed from ${axisLabel}.` : `${definition.label} assigned to ${axisLabel}.`);
+}
+
+function initializePolarUi() {
+  for (const fieldset of elements.polarAxisFields) {
+    const select = fieldset.querySelector("[data-polar-field='metric']");
+    select.append(new Option("Manual / unassigned", "manual"));
+    for (const definition of POLAR_METRICS) select.append(new Option(`${definition.label} (${definition.unit})`, definition.id));
+  }
+  for (const definition of POLAR_METRICS) {
+    const card = document.createElement("div");
+    card.className = "polar-metric-card";
+    card.dataset.polarMetric = definition.id;
+    const heading = document.createElement("div");
+    heading.className = "polar-metric-heading";
+    const label = document.createElement("strong");
+    label.textContent = definition.shortLabel ?? definition.label;
+    label.title = definition.label;
+    const group = document.createElement("small");
+    group.textContent = definition.group;
+    heading.append(label, group);
+    const output = document.createElement("output");
+    output.className = "polar-metric-value";
+    output.value = "—";
+    const detail = document.createElement("span");
+    detail.className = "polar-metric-detail";
+    detail.textContent = definition.detail;
+    detail.title = definition.detail;
+    const buttons = document.createElement("div");
+    buttons.className = "polar-axis-quick-buttons";
+    for (const [axis, buttonLabel] of [["valence", "X · Valence"], ["arousal", "Y · Arousal"]]) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.dataset.polarQuickAxis = axis;
+      button.textContent = buttonLabel;
+      button.setAttribute("aria-pressed", "false");
+      button.setAttribute("aria-label", `Assign ${definition.label} to ${buttonLabel.replace(" · ", " ")}`);
+      button.addEventListener("click", () => togglePolarQuickAssignment(axis, definition.id));
+      buttons.append(button);
+    }
+    card.append(heading, output, detail, buttons);
+    elements.polarMetricCards.append(card);
+  }
+  const support = polarWebBluetoothSupport();
+  elements.polarSupportNote.textContent = support.reason;
+  elements.polarSupportNote.classList.toggle("is-unsupported", !support.supported);
+  updatePolarConnectionUi();
+  updatePolarMappingControls();
+  drawPolarEcg();
+}
+
 function updateModeControls() {
   for (const input of elements.modeInputs) input.checked = input.value === state.inputMode;
 }
 
 function updateInputSourceControls() {
-  const active = state.inputSource === "touch-trace";
-  elements.touchTrackingToggle.checked = active;
+  const selected = state.inputSource === "touch-trace";
+  const active = touchTrackingActive();
+  state.touchDriveActive = active;
+  elements.touchTrackingToggle.checked = selected;
   for (const input of elements.touchFeedbackModeInputs) input.checked = input.value === state.touchFeedbackMode;
-  elements.touchHideCursorToggle.checked = state.touchHideCursor;
-  elements.touchHideCursorToggle.disabled = !active;
+  for (const input of elements.touchHideCursorToggles) {
+    input.checked = state.touchHideCursor;
+    input.disabled = !selected;
+  }
   elements.touchTraceFeedbackToggle.checked = state.touchTraceFeedback;
-  elements.touchTraceFeedbackToggle.disabled = !active;
+  elements.touchTraceFeedbackToggle.disabled = !selected;
   elements.touchPlaygroundSurface.classList.toggle("is-active", active);
   elements.touchPlaygroundPanel.classList.toggle("is-tracking", active);
   elements.touchTracePanel.hidden = !(active && state.touchTraceFeedback && state.widgetVisible);
-  elements.featureSpace.setAttribute("aria-disabled", String(active));
+  elements.featureSpace.setAttribute("aria-disabled", "false");
   for (const button of elements.directionButtons) button.disabled = false;
   document.body.classList.toggle("is-touch-source", active);
   document.body.classList.toggle("is-touch-cursor-hidden", active && state.touchHideCursor);
@@ -579,75 +960,115 @@ function updateInputSourceControls() {
 
 function finishBindingCapture(value) {
   if (!captureInput) return;
-  const action = captureInput.dataset.binding;
-  const group = captureInput.dataset.bindingGroup === "advanced" ? "advancedBindings" : "bindings";
+  const { action, group, trigger } = captureInput;
+  const updates = bindingUpdatesForCapture(action, value);
+  const updatedActions = new Set(Object.keys(updates));
+  const updatedValues = new Set(Object.values(updates).map((binding) => binding.toLowerCase()));
   const assignments = { ...state.bindings, ...state.advancedBindings };
-  const conflict = Object.entries(assignments).find(([candidate, binding]) => candidate !== action && binding.toLowerCase() === value.toLowerCase());
+  const conflict = Object.entries(assignments).find(
+    ([candidate, binding]) => !updatedActions.has(candidate) && updatedValues.has(binding.toLowerCase()),
+  );
   if (conflict) {
-    captureInput.value = describeBinding(captureInput.dataset.bindingValue);
-    captureInput.classList.remove("is-capturing");
-    captureInput = undefined;
+    cancelBindingCapture();
     announce(`That input is already assigned to ${BINDING_LABELS[conflict[0]] ?? ADVANCED_BINDING_LABELS[conflict[0]]}.`);
     return;
   }
-  captureInput.dataset.bindingValue = value;
-  captureInput.value = describeBinding(value);
-  captureInput.classList.remove("is-capturing");
-  state[group][captureInput.dataset.binding] = value;
+
+  for (const [updatedAction, binding] of Object.entries(updates)) {
+    const updatedGroup = updatedAction in state.bindings ? "bindings" : group;
+    state[updatedGroup][updatedAction] = binding;
+  }
+  trigger.classList.remove("is-capturing");
   captureInput = undefined;
+  if (elements.bindingCaptureDialog.open) elements.bindingCaptureDialog.close();
   createBindingInputs();
   savePreferences();
-  recordEvent("settings", "binding-change", "input", value);
-  announce(`Input assigned to ${describeBinding(value)}.`);
+  for (const [updatedAction, binding] of Object.entries(updates)) {
+    recordEvent("settings", "binding-change", updatedAction, binding);
+  }
+  if (Object.keys(updates).length > 1) {
+    const oppositeAction = Object.keys(updates).find((candidate) => candidate !== action);
+    announce(`${describeBinding(value)} assigned to ${BINDING_LABELS[action]}; ${describeBinding(updates[oppositeAction])} assigned to ${BINDING_LABELS[oppositeAction]}.`);
+  } else {
+    announce(`${describeBinding(value)} assigned to ${BINDING_LABELS[action] ?? ADVANCED_BINDING_LABELS[action]}.`);
+  }
 }
 
-function beginBindingCapture(input) {
-  if (captureInput && captureInput !== input) {
-    captureInput.value = describeBinding(captureInput.dataset.bindingValue);
-    captureInput.classList.remove("is-capturing");
-  }
-  captureInput = input;
-  input.value = "Press, click, or scroll…";
-  input.classList.add("is-capturing");
+function cancelBindingCapture() {
+  if (!captureInput) return;
+  captureInput.trigger.classList.remove("is-capturing");
+  captureInput = undefined;
+  if (elements.bindingCaptureDialog.open) elements.bindingCaptureDialog.close();
+}
+
+function beginBindingCapture(action, group, trigger) {
+  cancelBindingCapture();
+  captureInput = { action, group, trigger };
+  trigger.classList.add("is-capturing");
+  elements.bindingCaptureTitle.textContent = BINDING_LABELS[action] ?? ADVANCED_BINDING_LABELS[action];
+  elements.bindingCaptureCurrent.value = describeBinding(
+    group === "advancedBindings" ? state.advancedBindings[action] ?? "Unassigned" : state.bindings[action],
+  );
+  elements.bindingCapturePairNote.hidden = !(action in DIRECTION_BY_ACTION);
+  elements.bindingCaptureDialog.showModal();
   announce("Waiting for a keyboard, mouse-button, or wheel input.");
 }
 
+function createBindingButton(action, label, group) {
+  const button = document.createElement("button");
+  const value = group === "advancedBindings" ? state.advancedBindings[action] ?? "" : state.bindings[action];
+  button.type = "button";
+  button.className = "binding-assignment-button";
+  button.dataset.binding = action;
+  const name = document.createElement("span");
+  name.textContent = label;
+  const assignment = document.createElement("output");
+  assignment.textContent = value ? describeBinding(value) : "Unassigned";
+  button.setAttribute("aria-label", `Assign ${label}. Current input: ${assignment.textContent}.`);
+  button.append(name, assignment);
+  button.addEventListener("click", () => beginBindingCapture(action, group, button));
+  return button;
+}
+
+function describeDirectionBinding(value) {
+  const [kind, control = ""] = value.split(":");
+  if (kind === "key") {
+    const compactKey = {
+      ArrowUp: "↑",
+      ArrowDown: "↓",
+      ArrowLeft: "←",
+      ArrowRight: "→",
+    }[control] ?? control.replace(/^Key/, "");
+    return `Key · ${compactKey}`;
+  }
+  if (kind === "mouse") return `Mouse · ${control}`;
+  if (kind === "wheel") return `Wheel · ${control}`;
+  return describeBinding(value);
+}
+
 function createBindingInputs() {
+  for (const button of elements.directionButtons) {
+    const action = button.dataset.binding;
+    const assignment = button.querySelector("[data-binding-value]");
+    assignment.value = describeDirectionBinding(state.bindings[action]);
+    button.setAttribute("aria-label", `Assign ${BINDING_LABELS[action]}. Current input: ${describeBinding(state.bindings[action])}.`);
+  }
+
   elements.bindingGrid.replaceChildren();
   for (const [action, label] of Object.entries(BINDING_LABELS)) {
-    const wrapper = document.createElement("label");
-    wrapper.textContent = label;
-    const input = document.createElement("input");
-    input.readOnly = true;
-    input.autocomplete = "off";
-    input.dataset.binding = action;
-    input.dataset.bindingGroup = "core";
-    input.dataset.bindingValue = state.bindings[action];
-    input.value = describeBinding(state.bindings[action]);
-    input.addEventListener("click", () => beginBindingCapture(input));
-    wrapper.append(input);
-    elements.bindingGrid.append(wrapper);
+    if (action in DIRECTION_BY_ACTION) continue;
+    elements.bindingGrid.append(createBindingButton(action, label, "bindings"));
   }
 
   elements.advancedBindingGrid.replaceChildren();
   for (const [action, label] of Object.entries(ADVANCED_BINDING_LABELS)) {
     const row = document.createElement("div");
     row.className = "advanced-binding-field";
-    const wrapper = document.createElement("label");
-    wrapper.textContent = label;
-    const input = document.createElement("input");
-    input.readOnly = true;
-    input.autocomplete = "off";
-    input.placeholder = "Unassigned";
-    input.dataset.binding = action;
-    input.dataset.bindingGroup = "advanced";
-    input.dataset.bindingValue = state.advancedBindings[action] ?? "";
-    input.value = input.dataset.bindingValue ? describeBinding(input.dataset.bindingValue) : "";
-    input.addEventListener("click", () => beginBindingCapture(input));
+    const assignment = createBindingButton(action, label, "advancedBindings");
     const clear = document.createElement("button");
     clear.type = "button";
     clear.textContent = "Clear";
-    clear.disabled = !input.dataset.bindingValue;
+    clear.disabled = !state.advancedBindings[action];
     clear.addEventListener("click", () => {
       delete state.advancedBindings[action];
       savePreferences();
@@ -655,8 +1076,7 @@ function createBindingInputs() {
       recordEvent("settings", "advanced-binding-clear", action, "");
       announce(`${label} assignment cleared.`);
     });
-    wrapper.append(input);
-    row.append(wrapper, clear);
+    row.append(assignment, clear);
     elements.advancedBindingGrid.append(row);
   }
 }
@@ -673,7 +1093,7 @@ function updateCustomizationControls() {
   elements.transparencyOutput.value = `${elements.transparency.value}%`;
   elements.widgetVisibleButton.textContent = state.widgetVisible ? "Hide flubber" : "Show flubber";
   elements.dragToggleButton.textContent = state.widgetDragEnabled ? "Disable dragging" : "Enable dragging";
-  elements.dragToggleButton.disabled = state.inputSource === "touch-trace" || experiment.phase !== "idle";
+  elements.dragToggleButton.disabled = touchTrackingActive() || experiment.phase !== "idle";
   elements.lslStreamName.value = state.lsl.streamName;
   elements.lslStreamType.value = state.lsl.streamType;
   elements.lslMarkerName.value = state.lsl.markerName;
@@ -719,7 +1139,7 @@ function updateCoordinateDisplay() {
   elements.arousalOutput.textContent = formatCoordinate(state.currentY);
   elements.widget.setAttribute(
     "aria-label",
-    `${state.inputSource === "touch-trace" ? "Experimental movement-responsive" : "Draggable"} affect shape. Valence ${state.currentX.toFixed(2)}, arousal ${state.currentY.toFixed(2)}.`,
+    `${touchTrackingActive() ? "Experimental movement-responsive" : "Draggable"} affect shape. Valence ${state.currentX.toFixed(2)}, arousal ${state.currentY.toFixed(2)}.`,
   );
 }
 
@@ -768,11 +1188,30 @@ function updateFeatureSpace() {
   elements.featureSpace.setAttribute("aria-valuetext", `Valence ${state.targetX.toFixed(2)}, arousal ${state.targetY.toFixed(2)}`);
 }
 
+function claimFeatureSpaceControl() {
+  const releasedAxes = [];
+  for (const axis of ["valence", "arousal"]) {
+    if (state.polarMappings[axis].metric === "manual") continue;
+    state.polarMappings[axis] = { ...defaultPolarMappings()[axis] };
+    releasedAxes.push(axis);
+  }
+  if (releasedAxes.length === 0) return;
+  applyPolarMappings();
+  savePreferences();
+  for (const axis of releasedAxes) {
+    recordEvent("feature-space", "mapping-change", axis, JSON.stringify(state.polarMappings[axis]));
+  }
+  announce("The 2D grid returned valence and arousal to manual control.");
+}
+
 function chooseFeatureCoordinate(event) {
-  if (state.inputSource !== "manual") return;
   const bounds = elements.featureSpace.getBoundingClientRect();
   state.targetX = clamp(((event.clientX - bounds.left) / bounds.width) * 2 - 1, -1, 1);
   state.targetY = clamp(1 - ((event.clientY - bounds.top) / bounds.height) * 2, -1, 1);
+  state.currentX = state.targetX;
+  state.currentY = state.targetY;
+  updateCoordinateDisplay();
+  updateFeatureSpace();
 }
 
 function tracePanelDimensions() {
@@ -866,7 +1305,7 @@ function renderTouchTrace(timestamp) {
   elements.playgroundShapeOutput.value = shapeLabel;
   elements.playgroundSpeedOutput.value = speedLabel;
   elements.playgroundConfidenceOutput.value = confidenceLabel;
-  elements.touchGateStatus.value = state.inputSource !== "touch-trace"
+  elements.touchGateStatus.value = !touchTrackingActive()
     ? "tracking off"
     : !gated
       ? "continuous response"
@@ -889,7 +1328,7 @@ function renderTouchTrace(timestamp) {
 
 function layoutExperiment() {
   if (experiment.phase === "idle") return;
-  const traceSize = state.inputSource === "touch-trace" && state.touchTraceFeedback && state.widgetVisible ? tracePanelDimensions() : undefined;
+  const traceSize = touchTrackingActive() && state.touchTraceFeedback && state.widgetVisible ? tracePanelDimensions() : undefined;
   const layout = computeExperimentLayout(window.innerWidth, window.innerHeight, state.widgetSize, 24, traceSize);
   const { left, top, width, height } = layout.videoRect;
   Object.assign(elements.experimentPlayerShell.style, {
@@ -918,7 +1357,7 @@ function constrainAndRenderWidget() {
   );
   state.widgetX = constrained.x;
   state.widgetY = constrained.y;
-  if (experiment.phase === "idle" && state.inputSource === "touch-trace" && state.touchTraceFeedback) {
+  if (experiment.phase === "idle" && touchTrackingActive() && state.touchTraceFeedback) {
     const trace = tracePanelDimensions();
     const maximumY = window.innerHeight - trace.height - 12 - state.widgetSize / 2;
     state.widgetY = clamp(state.widgetY, state.widgetSize / 2, Math.max(state.widgetSize / 2, maximumY));
@@ -928,7 +1367,7 @@ function constrainAndRenderWidget() {
   elements.widget.style.setProperty("--widget-size", `${renderedWidgetSize}px`);
   elements.widget.style.opacity = String(state.widgetOpacity);
   elements.widget.hidden = !state.widgetVisible || Boolean(pictureInPictureWindow);
-  elements.widget.classList.toggle("is-drag-disabled", !state.widgetDragEnabled || state.inputSource === "touch-trace");
+  elements.widget.classList.toggle("is-drag-disabled", !state.widgetDragEnabled || touchTrackingActive());
   positionTracePanel();
   if (pictureInPictureView) {
     pictureInPictureView.root.hidden = !state.widgetVisible;
@@ -1033,7 +1472,7 @@ function updatePictureInPictureSupport() {
 }
 
 function resetAffect(source = "keyboard") {
-  if (state.inputSource === "touch-trace") {
+  if (touchTrackingActive()) {
     touchTrace.reset({ width: window.innerWidth, height: window.innerHeight });
     lastLoggedGateCommitSequence = 0;
     state.targetX = 0;
@@ -1042,8 +1481,8 @@ function resetAffect(source = "keyboard") {
     announce("Experimental movement feedback and calibration returned to neutral.");
     return;
   }
-  state.targetX = 0;
-  state.targetY = 0;
+  if (manualAxisAvailable("valence")) state.targetX = 0;
+  if (manualAxisAvailable("arousal")) state.targetY = 0;
   state.heldDirections.clear();
   clearHeldButtonStyles();
   recordEvent(source, "reset", "neutral", 0);
@@ -1081,6 +1520,7 @@ function setInputSource(inputSource, source = "panel") {
   lastLoggedGateCommitSequence = 0;
   updateInputSourceControls();
   updateExperimentSourceControls();
+  applyPolarMappings();
   constrainAndRenderWidget();
   savePreferences();
   recordEvent(source, "source-change", "input-source", inputSource);
@@ -1104,18 +1544,18 @@ function setTouchFeedbackMode(mode, source = "playground") {
 }
 
 function moveTarget(direction, source, amount = state.stepSize) {
-  if (state.inputSource === "touch-trace") return;
+  if (!manualAxisAvailable(directionAxis(direction))) return;
   const next = applyStep(state.targetX, state.targetY, direction, amount);
-  state.targetX = next.x;
-  state.targetY = next.y;
+  if (directionAxis(direction) === "valence") state.targetX = next.x;
+  else state.targetY = next.y;
   recordEvent(source, "step", direction, amount);
 }
 
 function updateContinuousInput(deltaSeconds) {
-  if (state.inputSource !== "manual" || state.inputMode !== "continuous" || state.heldDirections.size === 0) return;
+  if (touchTrackingActive() || state.inputMode !== "continuous" || state.heldDirections.size === 0) return;
   const movement = continuousMovement(state.heldDirections, deltaSeconds, state.continuousSpeed);
-  state.targetX = clamp(state.targetX + movement.x);
-  state.targetY = clamp(state.targetY + movement.y);
+  if (manualAxisAvailable("valence")) state.targetX = clamp(state.targetX + movement.x);
+  if (manualAxisAvailable("arousal")) state.targetY = clamp(state.targetY + movement.y);
 }
 
 function clearHeldButtonStyles() {
@@ -1156,16 +1596,23 @@ function applyAdvancedFeatureAction(action, pressed, source) {
 
 function applyBoundAction(action, pressed, source, impulse = false) {
   if (applyAdvancedFeatureAction(action, pressed, source)) return true;
-  if (state.inputSource === "touch-trace" && action === "reset") {
+  if (touchTrackingActive() && action === "reset") {
     if (pressed) resetAffect(source);
     return true;
   }
   const direction = DIRECTION_BY_ACTION[action];
   if (direction) {
-    if (state.inputSource === "touch-trace") {
+    if (touchTrackingActive()) {
       if (pressed) {
         recordEvent(source, "ignored-control", direction, "touch-trace");
         announce("Manual direction was logged but movement remains in control.");
+      }
+      return true;
+    }
+    if (!manualAxisAvailable(directionAxis(direction))) {
+      if (pressed) {
+        recordEvent(source, "ignored-control", direction, "polar-stream");
+        announce(`${directionAxis(direction) === "valence" ? "Valence" : "Arousal"} is currently assigned to Polar Stream.`);
       }
       return true;
     }
@@ -1185,13 +1632,11 @@ function applyBoundAction(action, pressed, source, impulse = false) {
   if (action === "reset") resetAffect(source);
   else if (action === "togglePause") toggleAnimation(source);
   else if (action === "showSettings") {
-    state.panelOpen = true;
-    state.experimentPanelOpen = false;
-    state.touchPlaygroundPanelOpen = false;
-    elements.customization.open = true;
-    updatePanelState();
-    updateExperimentPanelState();
-    updateTouchPlaygroundPanelState();
+    Object.assign(state, setAccordionProtocolOpen(state, "settings", true));
+    elements.inputSettings.open = true;
+    updateAccordionPanelStates();
+    applyPolarMappings();
+    constrainAndRenderWidget();
     savePreferences();
   } else if (action === "toggleOverlayEditing") {
     state.widgetDragEnabled = !state.widgetDragEnabled;
@@ -1228,7 +1673,8 @@ function handleWheel(event) {
     applyBoundAction(action, true, "wheel", true);
     return;
   }
-  if (state.inputSource === "touch-trace") return;
+  const wheelAxis = event.shiftKey ? "valence" : "arousal";
+  if (!manualAxisAvailable(wheelAxis)) return;
   event.preventDefault();
   // Keep the original browser gesture as a fallback when no wheel direction is explicitly assigned.
   const amount = normalizeWheel(event.deltaY);
@@ -1249,58 +1695,8 @@ function handleGlobalMouseUp(event) {
   if (action) applyBoundAction(action, false, "mouse");
 }
 
-function handleDirectionPointerDown(event) {
-  if (state.inputSource !== "manual" || state.inputMode !== "continuous") return;
-  const button = event.currentTarget;
-  const direction = button.dataset.direction;
-  event.preventDefault();
-  button.setPointerCapture(event.pointerId);
-  button.classList.add("is-held");
-  if (!state.heldDirections.has(direction)) {
-    state.heldDirections.add(direction);
-    recordEvent("button", "press", direction, true);
-  }
-}
-
-function releaseDirectionButton(event) {
-  const button = event.currentTarget;
-  const direction = button.dataset.direction;
-  button.classList.remove("is-held");
-  if (state.inputMode === "continuous" && state.heldDirections.delete(direction)) {
-    recordEvent("button", "release", direction, false);
-  }
-}
-
-function handleDirectionClick(event) {
-  if (state.inputSource === "touch-trace") {
-    recordEvent("button", "ignored-control", event.currentTarget.dataset.direction, "touch-trace");
-    announce("Manual direction was logged but movement remains in control.");
-  } else if (state.inputMode === "step") {
-    moveTarget(event.currentTarget.dataset.direction, "button");
-  }
-}
-
-function handleDirectionButtonKeyDown(event) {
-  if (state.inputSource !== "manual") return;
-  if (state.inputMode !== "continuous" || (event.key !== " " && event.key !== "Enter")) return;
-  event.preventDefault();
-  const button = event.currentTarget;
-  const direction = button.dataset.direction;
-  button.classList.add("is-held");
-  if (!state.heldDirections.has(direction)) {
-    state.heldDirections.add(direction);
-    recordEvent("button", "press", direction, true);
-  }
-}
-
-function handleDirectionButtonKeyUp(event) {
-  if (state.inputMode !== "continuous" || (event.key !== " " && event.key !== "Enter")) return;
-  event.preventDefault();
-  releaseDirectionButton(event);
-}
-
 function handleWidgetPointerDown(event) {
-  if (event.button !== 0 || !state.widgetDragEnabled || state.inputSource === "touch-trace") return;
+  if (event.button !== 0 || !state.widgetDragEnabled || touchTrackingActive()) return;
   state.dragging = true;
   dragOffsetX = event.clientX - state.widgetX;
   dragOffsetY = event.clientY - state.widgetY;
@@ -1334,7 +1730,7 @@ function touchTraceTargetExcluded(target) {
 }
 
 function touchTraceCaptureEnabled(event) {
-  if (state.inputSource !== "touch-trace" || captureInput || document.hidden) return false;
+  if (!touchTrackingActive() || captureInput || document.hidden) return false;
   if (experiment.phase === "running" && !experiment.playbackActive) return false;
   if (experiment.phase !== "idle" && experiment.phase !== "running") return false;
   return !touchTraceTargetExcluded(event.target);
@@ -1464,6 +1860,7 @@ function setExperimentPlayback(active, source) {
   }
   experiment.playbackActive = active;
   experiment.activeStartedAt = active ? now : undefined;
+  applyPolarMappings();
   if (experiment.writer) recordEvent(source, "state-change", "player", active ? "playing" : "buffering");
 }
 
@@ -1647,6 +2044,9 @@ function updateExperimentSourceControls() {
   if (state.inputSource === "touch-trace") {
     elements.experimentSourceNote.textContent += " Experimental pointer trajectories, derived movement metrics, adaptive bounds, and displayed affect values will also be included in the local CSV.";
   }
+  if (state.polarConnected || Object.values(state.polarMappings).some((mapping) => mapping.metric !== "manual")) {
+    elements.experimentSourceNote.textContent += " Polar connection, assigned metric values, bounds, and normalized affect context will be included; raw ECG will not.";
+  }
   updateExperimentSizeWarning();
 }
 
@@ -1709,6 +2109,7 @@ function teardownExperimentPresentation() {
   experiment.displayWidgetSize = undefined;
   experiment.traceRect = undefined;
   experiment.phase = "idle";
+  applyPolarMappings();
   offsets = createProjectionOffsets(logger.sessionId, profiles.waveCount);
   exitExperimentFullscreen();
   elements.experimentStartButton.disabled = false;
@@ -1735,7 +2136,7 @@ function finishExperiment(reason = "video-ended") {
   experiment.phase = "finishing";
   clearInterval(experiment.sampleTimer);
   experiment.sampleTimer = undefined;
-  if (state.inputSource === "touch-trace" && state.touchFeedbackMode === TOUCH_FEEDBACK_GATED) {
+  if (touchTrackingActive() && state.touchFeedbackMode === TOUCH_FEEDBACK_GATED) {
     touchTrace.commitGate(performance.now());
     applyTouchTraceState(touchTrace.snapshot());
   }
@@ -1838,6 +2239,7 @@ async function startExperiment() {
   elements.experimentRetryExportButton.hidden = true;
   await requestExperimentFullscreen();
   experiment.phase = "loading";
+  applyPolarMappings();
   experiment.adapter = experiment.config.source === "youtube"
     ? createYouTubeExperimentAdapter(experiment.config)
     : createLocalExperimentAdapter();
@@ -2038,46 +2440,47 @@ function initializeEvents() {
   });
 
   elements.panelToggle.addEventListener("click", () => {
-    state.panelOpen = !state.panelOpen;
-    if (state.panelOpen) {
-      state.experimentPanelOpen = false;
-      state.touchPlaygroundPanelOpen = false;
-      updateExperimentPanelState();
-      updateTouchPlaygroundPanelState();
-    }
-    updatePanelState();
-    savePreferences();
-    recordEvent("panel", state.panelOpen ? "expand" : "collapse", "panel", state.panelOpen);
+    toggleTopLevelProtocol("settings");
   });
   elements.experimentPanelToggle.addEventListener("click", () => {
-    state.experimentPanelOpen = !state.experimentPanelOpen;
-    if (state.experimentPanelOpen) {
-      state.panelOpen = false;
-      state.touchPlaygroundPanelOpen = false;
-      updatePanelState();
-      updateTouchPlaygroundPanelState();
-    }
-    updateExperimentPanelState();
-    savePreferences();
-    recordEvent("panel", state.experimentPanelOpen ? "expand" : "collapse", "experiment-panel", state.experimentPanelOpen);
+    toggleTopLevelProtocol("experiment");
   });
   elements.touchPlaygroundPanelToggle.addEventListener("click", () => {
-    state.touchPlaygroundPanelOpen = !state.touchPlaygroundPanelOpen;
-    if (state.touchPlaygroundPanelOpen) {
-      state.panelOpen = false;
-      state.experimentPanelOpen = false;
-      updatePanelState();
-      updateExperimentPanelState();
-    }
-    updateTouchPlaygroundPanelState();
-    savePreferences();
-    recordEvent(
-      "panel",
-      state.touchPlaygroundPanelOpen ? "expand" : "collapse",
-      "touch-playground-panel",
-      state.touchPlaygroundPanelOpen,
-    );
+    toggleTopLevelProtocol("touch");
   });
+  elements.polarStreamPanelToggle.addEventListener("click", () => {
+    toggleTopLevelProtocol("polar");
+  });
+
+  elements.polarConnectButton.addEventListener("click", async () => {
+    state.polarConnecting = true;
+    updatePolarConnectionUi("Waiting for browser Bluetooth chooser…");
+    try {
+      await polarSession.connect(handlePolarEvent);
+    } catch (error) {
+      state.polarConnecting = false;
+      updatePolarConnectionUi(error?.message ?? String(error), true);
+      announce(error?.message ?? String(error));
+    }
+  });
+  elements.polarDisconnectButton.addEventListener("click", async () => {
+    await polarSession.disconnect();
+  });
+  for (const fieldset of elements.polarAxisFields) {
+    const axis = fieldset.dataset.polarAxis;
+    const metric = fieldset.querySelector("[data-polar-field='metric']");
+    metric.addEventListener("change", () => {
+      const definition = polarMetricDefinition(metric.value);
+      if (definition) {
+        polarAxisField(axis, "minimum").value = definition.minimum;
+        polarAxisField(axis, "maximum").value = definition.maximum;
+      }
+      commitPolarMapping(axis);
+    });
+    for (const field of ["minimum", "maximum", "invert"]) {
+      fieldset.querySelector(`[data-polar-field='${field}']`).addEventListener("change", () => commitPolarMapping(axis));
+    }
+  }
 
   for (const input of elements.modeInputs) {
     input.addEventListener("change", () => setMode(input.value));
@@ -2088,13 +2491,15 @@ function initializeEvents() {
   for (const input of elements.touchFeedbackModeInputs) {
     input.addEventListener("change", () => setTouchFeedbackMode(input.value));
   }
-  elements.touchHideCursorToggle.addEventListener("change", () => {
-    state.touchHideCursor = elements.touchHideCursorToggle.checked;
-    updateInputSourceControls();
-    savePreferences();
-    recordEvent("panel", "cursor-visibility", "touch-trace", state.touchHideCursor ? "hidden" : "visible");
-    announce(state.touchHideCursor ? "Mouse cursor hidden over tracking areas." : "Mouse cursor visible over tracking areas.");
-  });
+  for (const input of elements.touchHideCursorToggles) {
+    input.addEventListener("change", () => {
+      state.touchHideCursor = input.checked;
+      updateInputSourceControls();
+      savePreferences();
+      recordEvent("panel", "cursor-visibility", "touch-trace", state.touchHideCursor ? "hidden" : "visible");
+      announce(state.touchHideCursor ? "Mouse cursor hidden over tracking areas." : "Mouse cursor visible over tracking areas.");
+    });
+  }
   elements.touchTraceFeedbackToggle.addEventListener("change", () => {
     state.touchTraceFeedback = elements.touchTraceFeedbackToggle.checked;
     updateInputSourceControls();
@@ -2179,6 +2584,18 @@ function initializeEvents() {
     }
   });
   elements.settingsImportButton.addEventListener("click", () => elements.settingsImportFile.click());
+  elements.bindingCaptureCancel.addEventListener("click", () => {
+    cancelBindingCapture();
+    announce("Input assignment cancelled.");
+  });
+  elements.bindingCaptureDialog.addEventListener("cancel", (event) => {
+    event.preventDefault();
+    cancelBindingCapture();
+    announce("Input assignment cancelled.");
+  });
+  elements.bindingCaptureDialog.addEventListener("close", () => {
+    if (captureInput) cancelBindingCapture();
+  });
   elements.settingsImportFile.addEventListener("change", async () => {
     try {
       await importSettings(elements.settingsImportFile.files?.[0]);
@@ -2210,8 +2627,8 @@ function initializeEvents() {
     });
   }
   elements.featureSpace.addEventListener("pointerdown", (event) => {
-    if (state.inputSource !== "manual") return;
     event.preventDefault();
+    claimFeatureSpaceControl();
     featurePointerId = event.pointerId;
     elements.featureSpace.setPointerCapture(event.pointerId);
     chooseFeatureCoordinate(event);
@@ -2230,25 +2647,22 @@ function initializeEvents() {
   elements.featureSpace.addEventListener("pointerup", finishFeatureSelection);
   elements.featureSpace.addEventListener("pointercancel", finishFeatureSelection);
   elements.featureSpace.addEventListener("keydown", (event) => {
-    if (state.inputSource !== "manual") return;
     const direction = { ArrowLeft: [-0.05, 0], ArrowRight: [0.05, 0], ArrowUp: [0, 0.05], ArrowDown: [0, -0.05] }[event.key];
     if (!direction) return;
     event.preventDefault();
     event.stopPropagation();
-    state.targetX = clamp(state.targetX + direction[0], -1, 1);
-    state.targetY = clamp(state.targetY + direction[1], -1, 1);
+    claimFeatureSpaceControl();
+    if (direction[0] !== 0) state.targetX = clamp(state.targetX + direction[0], -1, 1);
+    if (direction[1] !== 0) state.targetY = clamp(state.targetY + direction[1], -1, 1);
+    state.currentX = state.targetX;
+    state.currentY = state.targetY;
+    updateCoordinateDisplay();
+    updateFeatureSpace();
     recordEvent("feature-space", "select-coordinate", event.key, `${state.targetX.toFixed(4)},${state.targetY.toFixed(4)}`);
   });
 
   for (const button of elements.directionButtons) {
-    button.addEventListener("pointerdown", handleDirectionPointerDown);
-    button.addEventListener("pointerup", releaseDirectionButton);
-    button.addEventListener("pointercancel", releaseDirectionButton);
-    button.addEventListener("lostpointercapture", releaseDirectionButton);
-    button.addEventListener("click", handleDirectionClick);
-    button.addEventListener("keydown", handleDirectionButtonKeyDown);
-    button.addEventListener("keyup", handleDirectionButtonKeyUp);
-    button.addEventListener("blur", releaseDirectionButton);
+    button.addEventListener("click", () => beginBindingCapture(button.dataset.binding, "bindings", button));
   }
 
   elements.resetButton.addEventListener("click", () => resetAffect("button"));
@@ -2285,6 +2699,7 @@ function initializeEvents() {
   elements.widget.addEventListener("pointermove", handleWidgetPointerMove);
   elements.widget.addEventListener("pointerup", finishWidgetDrag);
   elements.widget.addEventListener("pointercancel", finishWidgetDrag);
+  window.addEventListener("beforeunload", () => { void polarSession.disconnect({ emit: false }); });
 }
 
 function animationFrame(timestamp) {
@@ -2296,10 +2711,10 @@ function animationFrame(timestamp) {
 
   updateContinuousInput(deltaSeconds);
   const touchMetric = touchTrace.update(timestamp, deltaSeconds);
-  if (state.inputSource === "touch-trace") {
+  if (touchTrackingActive()) {
     applyTouchTraceState(touchMetric);
   }
-  if (state.inputSource === "touch-trace" && state.touchFeedbackMode === TOUCH_FEEDBACK_GATED) {
+  if (touchTrackingActive() && state.touchFeedbackMode === TOUCH_FEEDBACK_GATED) {
     // The bounded live gate velocity is already the smoothing layer. Rendering
     // it directly lets participants stop on the exact visible grid position.
     state.currentX = state.targetX;
@@ -2352,9 +2767,8 @@ function animationFrame(timestamp) {
 }
 
 function initialize() {
-  updatePanelState();
-  updateExperimentPanelState();
-  updateTouchPlaygroundPanelState();
+  updateAccordionPanelStates();
+  initializePolarUi();
   updateModeControls();
   updateFeatureSpace();
   updateCustomizationControls();
@@ -2372,11 +2786,17 @@ document.addEventListener("keydown", (event) => {
   if (!captureInput) return;
   event.preventDefault();
   event.stopImmediatePropagation();
+  if (event.key === "Escape") {
+    cancelBindingCapture();
+    announce("Input assignment cancelled.");
+    return;
+  }
   finishBindingCapture(`key:${event.code}`);
 }, true);
 
 document.addEventListener("mousedown", (event) => {
   if (!captureInput) return;
+  if (event.target === elements.bindingCaptureCancel) return;
   event.preventDefault();
   event.stopImmediatePropagation();
   finishBindingCapture(`mouse:${mouseButtonName(event.button)}`);

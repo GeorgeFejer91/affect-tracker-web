@@ -60,6 +60,25 @@ button.is-held {
   outline-offset: 3px;
 }
 
+.binding-capture-dialog {
+  width: min(25rem, calc(100vw - 2rem));
+  padding: 0;
+  border: 1px solid rgb(120 215 255 / 48%);
+  border-radius: 0.85rem;
+  color: #f4f4f4;
+  background: #101317;
+  box-shadow: 0 1.5rem 4rem rgb(0 0 0 / 70%);
+}
+
+.binding-capture-dialog::backdrop { background: rgb(0 0 0 / 72%); backdrop-filter: blur(3px); }
+.binding-capture-content { padding: 1.15rem; }
+.binding-capture-kicker { color: #78d7ff; font-size: 0.65rem; font-weight: 750; letter-spacing: 0.11em; text-transform: uppercase; }
+.binding-capture-content h2 { margin: 0.25rem 0 0.65rem; font-size: 1.1rem; }
+.binding-capture-content p { margin: 0.45rem 0; color: rgb(255 255 255 / 68%); font-size: 0.78rem; line-height: 1.45; }
+.binding-capture-content .binding-capture-pair-note { color: #c3edff; }
+.binding-capture-current output { color: #fff; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
+.binding-capture-content button { width: 100%; min-height: 2.55rem; margin-top: 0.6rem; }
+
 .affect-widget {
   --widget-size: 180px;
   position: fixed;
@@ -262,7 +281,7 @@ body.is-experiment-running .touch-trace-panel { z-index: 40; }
   backdrop-filter: blur(14px);
 }
 
-.panel-stack .panel-content { max-height: calc(100vh - 11rem); }
+.panel-stack .panel-content { max-height: calc(100vh - 16rem); }
 
 .panel-toggle {
   display: flex;
@@ -290,6 +309,117 @@ body.is-experiment-running .touch-trace-panel { z-index: 40; }
   gap: 0.5rem;
   text-align: left;
 }
+
+.polar-stream-logo {
+  width: 1.45rem;
+  height: 1.45rem;
+  flex: 0 0 auto;
+}
+
+.polar-stream-panel.is-connected {
+  border-color: rgb(104 224 154 / 55%);
+  box-shadow: 0 1rem 3rem rgb(0 0 0 / 48%), 0 0 1.2rem rgb(86 196 142 / 10%);
+}
+
+.polar-stream-intro {
+  padding: 0.65rem;
+  border: 1px solid #43525c;
+  border-radius: 0.65rem;
+  background: #0c1215;
+}
+
+.polar-stream-intro h3,
+.polar-stream-intro h4,
+.polar-stream-intro p { margin: 0.45rem 0; }
+
+.polar-mapping-note,
+.polar-support-note { color: #c5cfd5; font-size: 0.75rem; line-height: 1.45; }
+.polar-support-note { padding: 0.55rem; border-left: 3px solid #6ba8c9; background: rgb(77 132 163 / 12%); }
+.polar-support-note.is-unsupported { border-left-color: #e2ad53; color: #ffdc9b; background: rgb(166 108 24 / 12%); }
+
+.polar-connect-module {
+  display: grid;
+  grid-template-columns: 2rem minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 3rem;
+  padding: 0.45rem;
+  border: 1px solid rgb(255 255 255 / 13%);
+  border-radius: 0.55rem;
+  background: rgb(255 255 255 / 4%);
+}
+
+.polar-connect-logo { width: 2rem; height: 2rem; }
+.polar-connect-copy { min-width: 0; }
+.polar-connect-copy h3 { margin: 0; font-size: 0.8rem; }
+.polar-connect-copy output { display: block; overflow: hidden; color: #a9e9ca; font-size: 0.66rem; text-overflow: ellipsis; white-space: nowrap; }
+.polar-connect-copy output::before { content: ""; display: inline-block; width: 0.42rem; height: 0.42rem; margin-right: 0.35rem; border-radius: 50%; background: #7d8990; }
+.polar-stream-panel.is-connected .polar-connect-copy output::before { background: #63dfa1; box-shadow: 0 0 0.5rem rgb(99 223 161 / 55%); }
+.polar-connect-copy output.is-error { color: #ffb2a8; }
+.polar-connect-battery { color: #d9e4e9; font: 700 0.68rem ui-monospace, SFMono-Regular, Consolas, monospace; }
+.polar-connect-module button { min-height: 2.1rem; padding: 0.35rem 0.6rem; font-size: 0.7rem; font-weight: 700; }
+
+.polar-support-details,
+.polar-mapping-details,
+.polar-ecg-details { margin-top: 0.5rem; }
+.polar-support-details summary,
+.polar-mapping-details summary,
+.polar-ecg-details summary { min-height: 2rem; color: #b9c8cf; font-size: 0.68rem; cursor: pointer; }
+.polar-support-details .polar-support-note { margin: 0.25rem 0 0.55rem; }
+
+.polar-ecg-canvas {
+  display: block;
+  width: 100%;
+  height: 8rem;
+  border: 1px solid rgb(116 215 194 / 24%);
+  border-radius: 0.55rem;
+  background: #05090b;
+}
+
+.polar-metric-cards {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.4rem;
+  margin-top: 0.5rem;
+}
+
+.polar-metric-card {
+  min-width: 0;
+  padding: 0.5rem;
+  border: 1px solid rgb(255 255 255 / 10%);
+  border-radius: 0.45rem;
+  background: rgb(255 255 255 / 4%);
+  font-size: 0.65rem;
+  text-align: left;
+}
+
+.polar-metric-card.is-assigned { border-color: rgb(111 222 176 / 48%); background: rgb(58 137 104 / 12%); }
+.polar-metric-heading { display: flex; min-width: 0; align-items: baseline; justify-content: space-between; gap: 0.35rem; }
+.polar-metric-heading strong { overflow: hidden; color: #e9fff5; font-size: 0.7rem; text-overflow: ellipsis; white-space: nowrap; }
+.polar-metric-heading small { display: none; }
+.polar-metric-card > output { display: block; margin-top: 0.2rem; color: #ddfff0; font: 700 0.76rem ui-monospace, SFMono-Regular, Consolas, monospace; }
+.polar-metric-detail { display: block; min-height: 1.7em; margin-top: 0.12rem; overflow: hidden; color: #9eabb1; font-size: 0.58rem; line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }
+.polar-axis-quick-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 0.3rem; margin-top: 0.38rem; }
+.polar-axis-quick-buttons button { min-height: 1.8rem; padding: 0.2rem; border-color: rgb(255 255 255 / 15%); font-size: 0.62rem; font-weight: 700; }
+.polar-axis-quick-buttons button[aria-pressed="true"] { border-color: #68dca9; color: #dffff0; background: rgb(45 154 106 / 26%); }
+
+.polar-mapping-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+
+.polar-mapping-grid fieldset { min-width: 0; margin: 0; padding: 0.55rem; border: 1px solid rgb(255 255 255 / 15%); border-radius: 0.55rem; }
+.polar-mapping-grid legend { padding: 0 0.25rem; color: #e8fff5; font-size: 0.72rem; font-weight: 700; }
+.polar-mapping-grid label { display: grid; gap: 0.18rem; margin: 0.35rem 0; color: #b6c0c6; font-size: 0.67rem; }
+.polar-mapping-grid input,
+.polar-mapping-grid select { width: 100%; min-width: 0; }
+.polar-mapping-grid .polar-reverse { display: flex; align-items: center; gap: 0.4rem; }
+.polar-mapping-grid .polar-reverse input { width: auto; }
+.polar-mapping-grid output { display: block; padding: 0.35rem; border-radius: 0.35rem; color: #a9e9ca; background: rgb(77 147 112 / 13%); font: 0.68rem ui-monospace, SFMono-Regular, Consolas, monospace; text-align: center; }
+
+.polar-ecg-details summary output { color: #a9e9ca; font: 700 0.66rem ui-monospace, SFMono-Regular, Consolas, monospace; }
+.polar-ecg-details .polar-ecg-canvas { margin-top: 0.35rem; }
 
 .panel-label-mobile {
   display: none;
@@ -359,13 +489,28 @@ body.is-experiment-running .touch-trace-panel { z-index: 40; }
   font-size: 0.82rem;
 }
 
-.customization-editor { margin-bottom: 0.75rem; padding: 0.6rem; border: 1px solid rgb(255 255 255 / 10%); border-radius: 0.55rem; }
-.customization-editor summary { cursor: pointer; color: #eee; font-size: 0.78rem; }
-.customization-editor h3 { margin: 0.85rem 0 0.25rem; font-size: 0.75rem; }
-.customization-editor p { margin: 0.3rem 0 0.65rem; color: rgb(255 255 255 / 58%); font-size: 0.67rem; line-height: 1.4; }
+.settings-modules { display: grid; gap: 0.55rem; margin-bottom: 0.75rem; }
+.settings-section,
+.settings-subsection { overflow: clip; border: 1px solid rgb(255 255 255 / 11%); border-radius: 0.55rem; background: rgb(255 255 255 / 2.5%); }
+.settings-section > summary,
+.settings-subsection > summary { min-height: 2.65rem; padding: 0.7rem 0.75rem; cursor: pointer; color: #eee; font-size: 0.78rem; font-weight: 650; }
+.settings-section[open] > summary,
+.settings-subsection[open] > summary { border-bottom: 1px solid rgb(255 255 255 / 9%); background: rgb(255 255 255 / 4%); }
+.settings-section-content { padding: 0.7rem; }
+.settings-section h3 { margin: 0 0 0.25rem; font-size: 0.75rem; }
+.settings-section p,
+.settings-subsection p { margin: 0.3rem 0 0.65rem; color: rgb(255 255 255 / 58%); font-size: 0.67rem; line-height: 1.4; }
+.settings-subsection { margin-top: 0.7rem; }
+.settings-subsection > .web-settings-grid,
+.settings-subsection > .web-binding-grid,
+.settings-subsection > p,
+.settings-subsection > .wide-action { margin-right: 0.65rem; margin-left: 0.65rem; }
+.settings-subsection > .web-binding-grid,
+.settings-subsection > .wide-action:last-child,
+.settings-subsection > p:last-child { margin-bottom: 0.65rem; }
 .web-settings-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; margin-top: 0.65rem; }
-.web-settings-grid label, .web-binding-grid label { display: grid; gap: 0.25rem; color: rgb(255 255 255 / 62%); font-size: 0.65rem; }
-.web-settings-grid input, .web-settings-grid select, .web-binding-grid input { width: 100%; min-height: 2rem; padding: 0.3rem 0.4rem; border: 1px solid rgb(255 255 255 / 18%); border-radius: 0.4rem; background: #15181b; color: #fff; }
+.web-settings-grid label { display: grid; gap: 0.25rem; color: rgb(255 255 255 / 62%); font-size: 0.65rem; }
+.web-settings-grid input, .web-settings-grid select { width: 100%; min-height: 2rem; padding: 0.3rem 0.4rem; border: 1px solid rgb(255 255 255 / 18%); border-radius: 0.4rem; background: #15181b; color: #fff; }
 .web-settings-grid .wide-field { grid-column: 1 / -1; }
 .quest-exporter { margin-top: 0.8rem; }
 .quest-exporter .wide-action { width: 100%; min-height: 2.4rem; margin-top: 0.65rem; }
@@ -375,13 +520,16 @@ body.is-experiment-running .touch-trace-panel { z-index: 40; }
 .web-range-field input { padding: 0; }
 .web-range-field output { font: 0.7rem ui-monospace, SFMono-Regular, Consolas, monospace; text-align: right; }
 .web-binding-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.45rem; }
-.web-binding-grid input { cursor: pointer; font-size: 0.63rem; }
-.web-binding-grid input.is-capturing { border-color: #74d8ff; background: #123345; color: #bdefff; }
-.advanced-controls { margin-top: 0.75rem; }
 .advanced-binding-field { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0.35rem; align-items: end; }
 .advanced-binding-field button { min-height: 2rem; padding: 0.3rem 0.5rem; }
+.binding-assignment-button { display: grid; width: 100%; min-height: 2.8rem; padding: 0.45rem 0.55rem; gap: 0.15rem; text-align: left; }
+.binding-assignment-button span { color: rgb(255 255 255 / 64%); font-size: 0.62rem; }
+.binding-assignment-button output { overflow: hidden; color: #fff; font-size: 0.67rem; text-overflow: ellipsis; white-space: nowrap; }
+.binding-assignment-button.is-capturing,
+.direction-button.is-capturing { border-color: #74d8ff; background: #123345; color: #bdefff; }
 .settings-button-row { display: grid; grid-template-columns: 1fr 1fr; gap: 0.45rem; margin-top: 0.65rem; }
 .settings-button-row button { min-height: 2.15rem; padding: 0.4rem; font-size: 0.7rem; }
+.wide-action { width: 100%; min-height: 2.35rem; margin-top: 0.65rem; }
 .picture-in-picture-toggle { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.7rem; color: #f4f4f4; font-size: 0.72rem; cursor: pointer; }
 .picture-in-picture-toggle input { width: 1rem; height: 1rem; margin: 0; accent-color: #78d7ff; }
 .picture-in-picture-toggle:has(input:disabled) { color: rgb(255 255 255 / 42%); cursor: not-allowed; }
@@ -849,17 +997,27 @@ html:has(.pip-body),
     ". up ."
     "left neutral right"
     ". down .";
-  grid-template-columns: repeat(3, 2.8rem);
+  grid-template-columns: repeat(3, 4.3rem);
   gap: 0.35rem;
   justify-content: center;
-  margin: 0.25rem 0 0.85rem;
+  margin: 0.55rem 0;
 }
 
 .direction-button {
-  width: 2.8rem;
-  height: 2.55rem;
+  display: flex;
+  width: 4.3rem;
+  height: 3.65rem;
+  padding: 0.3rem;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.18rem;
   font-size: 1.05rem;
 }
+
+.direction-glyph { font-size: 1.2rem; line-height: 1; }
+.direction-binding-value { width: 100%; overflow: hidden; color: rgb(255 255 255 / 68%); font: 0.5rem ui-monospace, SFMono-Regular, Consolas, monospace; text-overflow: ellipsis; white-space: nowrap; }
+.wheel-pair-note { margin-bottom: 0 !important; text-align: center; }
 
 .direction-button.up { grid-area: up; }
 .direction-button.left { grid-area: left; }
@@ -1011,7 +1169,7 @@ kbd {
     right: calc(env(safe-area-inset-right, 0px) + 0.5rem);
     left: calc(env(safe-area-inset-left, 0px) + 0.5rem);
     width: auto;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 0.35rem;
   }
 
@@ -1044,6 +1202,8 @@ kbd {
     gap: 0.25rem;
     text-align: center;
   }
+
+  .polar-stream-logo { width: 1.1rem; height: 1.1rem; }
 
   .panel-label-full,
   .toggle-symbol {
@@ -1164,7 +1324,8 @@ kbd {
 
   .experiment-settings,
   .web-settings-grid,
-  .web-binding-grid {
+  .web-binding-grid,
+  .polar-mapping-grid {
     grid-template-columns: 1fr;
   }
 

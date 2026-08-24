@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import {
   actionForBinding,
+  bindingUpdatesForCapture,
   cloneDefaultSettings,
   normalizePortableSettings,
   opacityToTransparencyPercent,
@@ -35,6 +36,23 @@ test("binding lookup is case-insensitive and duplicate assignments are rejected"
   assert.equal(actionForBinding(settings.bindings, "KEY:ARROWRIGHT"), "increaseValence");
   settings.bindings.increaseValence = settings.bindings.reset;
   assert.throws(() => normalizePortableSettings(settings), /unique/);
+});
+
+test("direction capture pairs opposite wheel directions without pairing keys or mouse buttons", () => {
+  assert.deepEqual(bindingUpdatesForCapture("increaseArousal", "wheel:Up"), {
+    increaseArousal: "wheel:Up",
+    decreaseArousal: "wheel:Down",
+  });
+  assert.deepEqual(bindingUpdatesForCapture("decreaseValence", "wheel:Right"), {
+    decreaseValence: "wheel:Right",
+    increaseValence: "wheel:Left",
+  });
+  assert.deepEqual(bindingUpdatesForCapture("increaseArousal", "key:KeyW"), {
+    increaseArousal: "key:KeyW",
+  });
+  assert.deepEqual(bindingUpdatesForCapture("reset", "wheel:Down"), {
+    reset: "wheel:Down",
+  });
 });
 
 test("advanced feature bindings are optional, portable, and share conflict validation", () => {

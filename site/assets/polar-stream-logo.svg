@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title">
+  <title id="title">Polar Stream</title>
+  <defs>
+    <clipPath id="disc"><circle cx="32" cy="32" r="30"/></clipPath>
+  </defs>
+  <circle cx="32" cy="32" r="30" fill="#07090b" stroke="#dbe4ea" stroke-width="2"/>
+  <g clip-path="url(#disc)" transform="rotate(-34 32 32)">
+    <rect x="-2" y="40" width="78" height="4" fill="#ef3b33"/>
+    <rect x="-2" y="44" width="78" height="4" fill="#ff8b2c"/>
+    <rect x="-2" y="48" width="78" height="4" fill="#f4d74e"/>
+    <rect x="-2" y="52" width="78" height="4" fill="#5ecb72"/>
+    <rect x="-2" y="56" width="78" height="4" fill="#4f9eea"/>
+  </g>
+  <path d="M20 48V16h14.5c8.8 0 14.5 5.1 14.5 12.7S43.3 41.5 34.5 41.5H27V48zm7-13h7.2c4.8 0 7.6-2.3 7.6-6.3s-2.8-6.2-7.6-6.2H27z" fill="#fff"/>
+</svg>

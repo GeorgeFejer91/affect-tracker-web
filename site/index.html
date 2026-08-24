@@ -45,7 +45,7 @@
       </section>
 
       <div class="panel-stack">
-      <section id="control-panel" class="control-panel" aria-labelledby="panel-title">
+      <section id="control-panel" class="control-panel" data-module-protocol="settings" aria-labelledby="panel-title">
         <button
           id="panel-toggle"
           class="panel-toggle"
@@ -67,140 +67,182 @@
             <div><span>Arousal</span><output id="arousal-output">+0.000</output></div>
           </div>
 
-          <fieldset class="mode-control">
-            <legend>Input mode</legend>
-            <label><input type="radio" name="input-mode" value="continuous" checked> Continuous</label>
-            <label><input type="radio" name="input-mode" value="step"> Step</label>
-          </fieldset>
+          <div id="customization-editor" class="settings-modules" aria-label="Affect Tracker settings categories">
+            <details id="input-settings" class="settings-section" open>
+              <summary>Input &amp; shortcuts</summary>
+              <div class="settings-section-content">
+                <fieldset class="mode-control">
+                  <legend>Input mode</legend>
+                  <label><input type="radio" name="input-mode" value="continuous" checked> Continuous</label>
+                  <label><input type="radio" name="input-mode" value="step"> Step</label>
+                </fieldset>
 
-          <details id="customization-editor" class="customization-editor">
-            <summary>Customization and settings JSON</summary>
-            <div class="web-settings-grid">
-              <label>Step size<input id="web-step-size" type="number" min="0.01" max="1" step="0.01"></label>
-              <label>Hold speed / second<input id="web-continuous-speed" type="number" min="0.05" max="4" step="0.05"></label>
-              <label>Smoothing response<input id="web-response" type="number" min="0.1" max="30" step="0.1"></label>
-              <label>Flubber size (px)<input id="web-widget-size" type="number" min="120" max="640" step="10"></label>
-              <label class="wide-field">Flubber transparency
-                <span class="web-range-field"><input id="web-transparency" type="range" min="0" max="100" step="1"><output id="web-transparency-output">5%</output></span>
-              </label>
-            </div>
-            <div class="settings-button-row">
-              <button id="widget-visible-button" type="button">Hide flubber</button>
-              <button id="drag-toggle-button" type="button">Disable dragging</button>
-            </div>
-            <label class="picture-in-picture-toggle">
-              <input id="picture-in-picture-toggle" type="checkbox" aria-describedby="picture-in-picture-note">
-              <span>Float Flubber over other apps</span>
-            </label>
-            <p id="picture-in-picture-note">Available in browsers that support interactive Picture-in-Picture.</p>
+                <h3>Direction assignments</h3>
+                <p>Press an arrow below, then press a keyboard key, click a mouse button, or move the scroll wheel.</p>
+                <div class="direction-pad binding-pad" aria-label="Directional input assignments">
+                  <button class="direction-button up" type="button" data-direction="up" data-binding="increaseArousal" aria-label="Assign the Up input">
+                    <span class="direction-glyph" aria-hidden="true">↑</span><output class="direction-binding-value" data-binding-value></output>
+                  </button>
+                  <button class="direction-button left" type="button" data-direction="left" data-binding="decreaseValence" aria-label="Assign the Left input">
+                    <span class="direction-glyph" aria-hidden="true">←</span><output class="direction-binding-value" data-binding-value></output>
+                  </button>
+                  <button class="direction-button neutral" id="reset-button" type="button" aria-label="Return to neutral">●</button>
+                  <button class="direction-button right" type="button" data-direction="right" data-binding="increaseValence" aria-label="Assign the Right input">
+                    <span class="direction-glyph" aria-hidden="true">→</span><output class="direction-binding-value" data-binding-value></output>
+                  </button>
+                  <button class="direction-button down" type="button" data-direction="down" data-binding="decreaseArousal" aria-label="Assign the Down input">
+                    <span class="direction-glyph" aria-hidden="true">↓</span><output class="direction-binding-value" data-binding-value></output>
+                  </button>
+                </div>
+                <p class="wheel-pair-note">Assigning a wheel direction also assigns its opposite direction to the opposite arrow.</p>
 
-            <h3>Keyboard, mouse, and wheel assignments</h3>
-            <p>Click a field and then press, click, or scroll. Browser assignments work while this page is focused.</p>
-            <div id="web-binding-grid" class="web-binding-grid"></div>
+                <div class="web-settings-grid">
+                  <label>Step size<input id="web-step-size" type="number" min="0.01" max="1" step="0.01"></label>
+                  <label>Hold speed / second<input id="web-continuous-speed" type="number" min="0.05" max="4" step="0.05"></label>
+                  <label class="wide-field">Smoothing response<input id="web-response" type="number" min="0.1" max="30" step="0.1"></label>
+                </div>
+                <button id="pause-button" class="wide-action" type="button">Pause motion</button>
 
-            <details class="advanced-controls">
-              <summary>Advanced Flubber feature controls</summary>
-              <p>Set the starting visual values, then optionally assign a key, mouse button, or wheel direction to increase or decrease each feature. Advanced assignments are unassigned by default.</p>
-              <div class="web-settings-grid">
-                <label>Animation speed<input id="web-animation-speed" type="number" min="0.25" max="4" step="0.1"></label>
-                <label>Pulse amplitude<input id="web-amplitude-scale" type="number" min="0" max="2" step="0.1"></label>
-                <label>Shape disorder<input id="web-disorder-scale" type="number" min="0" max="2" step="0.1"></label>
+                <details class="settings-subsection">
+                  <summary>Reset, pause &amp; utility shortcuts</summary>
+                  <p>These assignments use the same keyboard, mouse-button, and wheel capture dialog. Browser shortcuts work while this page is focused.</p>
+                  <div id="web-binding-grid" class="web-binding-grid"></div>
+                </details>
               </div>
-              <div id="web-advanced-binding-grid" class="web-binding-grid"></div>
             </details>
 
-            <h3>Desktop LSL metadata</h3>
-            <p>Browsers cannot publish LSL. These values remain in the portable JSON and take effect when imported by the desktop app.</p>
-            <div class="web-settings-grid">
-              <label>State stream<input id="web-lsl-stream-name" maxlength="80"></label>
-              <label>Stream type<input id="web-lsl-stream-type" maxlength="80"></label>
-              <label>Marker stream<input id="web-lsl-marker-name" maxlength="80"></label>
-              <label>Sample rate<input id="web-lsl-sample-rate" type="number" min="1" max="240" step="1"></label>
-              <label class="wide-field">Source ID<input id="web-lsl-source-id" maxlength="120"></label>
-            </div>
-
-            <div class="settings-button-row">
-              <input id="settings-import-file" class="visually-hidden" type="file" accept="application/json,.json">
-              <button id="settings-import-button" type="button">Import settings JSON</button>
-              <button id="settings-export-button" type="button">Export settings JSON</button>
-            </div>
-            <p>The same version-1 JSON is accepted by Affect Tracker Desktop. Replacing <code>site/settings.json</code> in the repository changes the hosted defaults for new browser profiles.</p>
-
-            <details class="advanced-controls quest-exporter">
-              <summary>Export a Meta Quest video session</summary>
-              <p>Select the video that you will copy to <code>Documents/AffectTrackerVR/media</code>. The browser reads and hashes it locally; it is never uploaded.</p>
-              <div class="web-settings-grid">
-                <label class="wide-field">Video file<input id="quest-video-file" type="file" accept="video/*,.mkv,.webm,.mp4,.m4v,.mov,.ts,.mpeg,.mpg"></label>
-                <label>Projection<select id="quest-video-projection"><option value="flat">Flat</option><option value="equirect-180">Equirectangular 180°</option><option value="equirect-360">Equirectangular 360°</option></select></label>
-                <label>Stereo layout<select id="quest-video-stereo"><option value="mono">Mono</option><option value="side-by-side-left-right">Side-by-side left/right</option><option value="top-bottom">Top/bottom</option></select></label>
-                <label>Flubber width (m)<input id="quest-flubber-width" type="number" min="0.12" max="1.2" step="0.01" value="0.3"></label>
-                <label>Initial distance (m)<input id="quest-flubber-distance" type="number" min="0.35" max="5" step="0.05" value="1.25"></label>
-                <label>Horizontal offset (m)<input id="quest-flubber-x" type="number" min="-2" max="2" step="0.05" value="0"></label>
-                <label>Vertical offset (m)<input id="quest-flubber-y" type="number" min="-2" max="2" step="0.05" value="-0.3"></label>
-                <label class="quest-loop"><input id="quest-mixed-reality" type="checkbox"> Mixed reality passthrough</label>
-                <label class="quest-loop"><input id="quest-follow-controller" type="checkbox"> Keep Flubber near a controller</label>
-                <label>Follow controller<select id="quest-follow-controller-hand"><option value="left">Left</option><option value="right">Right</option></select></label>
-                <label>Controller spacing (m)<input id="quest-follow-controller-distance" type="number" min="0.05" max="0.6" step="0.01" value="0.18"></label>
-                <label>Thumbstick<select id="quest-stick"><option value="right">Right</option><option value="left">Left</option></select></label>
-                <label>Reset button<select id="quest-reset-button"><option value="x">X</option><option value="y">Y</option><option value="a">A</option><option value="b">B</option><option value="none">None</option></select></label>
-                <label>Pause button<select id="quest-pause-button"><option value="y">Y</option><option value="x">X</option><option value="a">A</option><option value="b">B</option><option value="none">None</option></select></label>
-                <label class="quest-loop"><input id="quest-show-controller-models" type="checkbox" checked> Show controller models</label>
-                <label class="quest-loop"><input id="quest-show-affect-values" type="checkbox"> Show X/Y affect coordinates</label>
-                <label class="quest-loop"><input id="quest-video-loop" type="checkbox"> Loop video</label>
+            <details class="settings-section">
+              <summary>Appearance &amp; cursor</summary>
+              <div class="settings-section-content">
+                <div class="web-settings-grid">
+                  <label>Flubber size (px)<input id="web-widget-size" type="number" min="120" max="640" step="10"></label>
+                  <label class="wide-field">Flubber transparency
+                    <span class="web-range-field"><input id="web-transparency" type="range" min="0" max="100" step="1"><output id="web-transparency-output">5%</output></span>
+                  </label>
+                </div>
+                <div class="settings-button-row">
+                  <button id="widget-visible-button" type="button">Hide flubber</button>
+                  <button id="drag-toggle-button" type="button">Disable dragging</button>
+                </div>
+                <label class="picture-in-picture-toggle">
+                  <input id="settings-hide-cursor-toggle" data-touch-hide-cursor type="checkbox">
+                  <span>Hide mouse cursor while tracking</span>
+                </label>
+                <p>The cursor is hidden only over tracking, Flubber, and experiment surfaces while Experimental Touch/Trackpad tracking is active. It stays visible in Settings.</p>
+                <label class="picture-in-picture-toggle">
+                  <input id="picture-in-picture-toggle" type="checkbox" aria-describedby="picture-in-picture-note">
+                  <span>Float Flubber over other apps</span>
+                </label>
+                <p id="picture-in-picture-note">Available in browsers that support interactive Picture-in-Picture.</p>
               </div>
-              <button id="quest-export-button" class="wide-action" type="button">Hash video and export active-session.json</button>
-              <p id="quest-export-status" role="status" aria-live="polite">Copy the video first and <code>active-session.json</code> last.</p>
             </details>
-          </details>
 
-          <div class="direction-pad" aria-label="Directional affect controls">
-            <button class="direction-button up" type="button" data-direction="up" aria-label="Increase arousal">↑</button>
-            <button class="direction-button left" type="button" data-direction="left" aria-label="Decrease valence">←</button>
-            <button class="direction-button neutral" id="reset-button" type="button" aria-label="Return to neutral">●</button>
-            <button class="direction-button right" type="button" data-direction="right" aria-label="Increase valence">→</button>
-            <button class="direction-button down" type="button" data-direction="down" aria-label="Decrease arousal">↓</button>
+            <details class="settings-section">
+              <summary>2D grid &amp; colors</summary>
+              <div class="settings-section-content">
+                <div id="web-feature-space" class="web-feature-space" role="slider" tabindex="0" aria-label="Choose valence and arousal from the color space" aria-describedby="feature-space-help" aria-valuetext="Neutral">
+                  <canvas id="web-feature-space-canvas" width="160" height="160" aria-hidden="true"></canvas>
+                  <span class="space-axis space-up">Up</span><span class="space-axis space-down">Down</span>
+                  <span class="space-axis space-left">Left</span><span class="space-axis space-right">Right</span>
+                  <svg id="web-feature-point" class="web-feature-point" viewBox="-1.62 -1.62 3.24 3.24" aria-hidden="true" focusable="false">
+                    <path id="web-feature-flubber-path"></path>
+                  </svg>
+                </div>
+                <div class="feature-preview-values" aria-live="off">
+                  <span>Valence <output id="web-feature-valence-output">+0.000</output></span>
+                  <span>Arousal <output id="web-feature-arousal-output">+0.000</output></span>
+                </div>
+                <div class="web-palette-grid">
+                  <label>Up <input type="color" data-palette="up"></label>
+                  <label>Down <input type="color" data-palette="down"></label>
+                  <label>Left <input type="color" data-palette="left"></label>
+                  <label>Right <input type="color" data-palette="right"></label>
+                </div>
+                <p id="feature-space-help">Click, drag, or use the arrow keys to move the miniature Flubber to an exact valence–arousal state. Opening Settings pauses armed Touch/Trackpad control; choosing a grid point also returns both Polar axes to Manual.</p>
+              </div>
+            </details>
+
+            <details class="settings-section">
+              <summary>Data &amp; settings files</summary>
+              <div class="settings-section-content">
+                <div class="settings-button-row">
+                  <button id="export-button" type="button">Download CSV</button>
+                  <button id="clear-button" class="subtle-danger" type="button">Clear buffer</button>
+                </div>
+                <dl class="buffer-status">
+                  <div><dt>Events</dt><dd id="event-count">0</dd></div>
+                  <div><dt>Samples</dt><dd id="sample-count">0</dd></div>
+                  <div><dt>Buffered</dt><dd id="buffer-count">0 / 10,000</dd></div>
+                </dl>
+                <div class="settings-button-row">
+                  <input id="settings-import-file" class="visually-hidden" type="file" accept="application/json,.json">
+                  <button id="settings-import-button" type="button">Import settings JSON</button>
+                  <button id="settings-export-button" type="button">Export settings JSON</button>
+                </div>
+                <p>The same version-1 JSON is accepted by Affect Tracker Desktop. Records remain in this tab only, so download the CSV before closing or refreshing.</p>
+              </div>
+            </details>
+
+            <details class="settings-section">
+              <summary>Advanced &amp; integrations</summary>
+              <div class="settings-section-content">
+                <details class="settings-subsection">
+                  <summary>Advanced Flubber feature controls</summary>
+                  <p>Set starting visual values and optionally assign inputs to increase or decrease each feature.</p>
+                  <div class="web-settings-grid">
+                    <label>Animation speed<input id="web-animation-speed" type="number" min="0.25" max="4" step="0.1"></label>
+                    <label>Pulse amplitude<input id="web-amplitude-scale" type="number" min="0" max="2" step="0.1"></label>
+                    <label>Shape disorder<input id="web-disorder-scale" type="number" min="0" max="2" step="0.1"></label>
+                  </div>
+                  <div id="web-advanced-binding-grid" class="web-binding-grid"></div>
+                </details>
+
+                <details class="settings-subsection">
+                  <summary>Desktop LSL metadata</summary>
+                  <p>Browsers cannot publish LSL. These values remain in portable JSON and take effect when imported by the desktop app.</p>
+                  <div class="web-settings-grid">
+                    <label>State stream<input id="web-lsl-stream-name" maxlength="80"></label>
+                    <label>Stream type<input id="web-lsl-stream-type" maxlength="80"></label>
+                    <label>Marker stream<input id="web-lsl-marker-name" maxlength="80"></label>
+                    <label>Sample rate<input id="web-lsl-sample-rate" type="number" min="1" max="240" step="1"></label>
+                    <label class="wide-field">Source ID<input id="web-lsl-source-id" maxlength="120"></label>
+                  </div>
+                </details>
+
+                <details class="settings-subsection quest-exporter">
+                  <summary>Export a Meta Quest video session</summary>
+                  <p>Select the video that you will copy to <code>Documents/AffectTrackerVR/media</code>. The browser reads and hashes it locally; it is never uploaded.</p>
+                  <div class="web-settings-grid">
+                    <label class="wide-field">Video file<input id="quest-video-file" type="file" accept="video/*,.mkv,.webm,.mp4,.m4v,.mov,.ts,.mpeg,.mpg"></label>
+                    <label>Projection<select id="quest-video-projection"><option value="flat">Flat</option><option value="equirect-180">Equirectangular 180°</option><option value="equirect-360">Equirectangular 360°</option></select></label>
+                    <label>Stereo layout<select id="quest-video-stereo"><option value="mono">Mono</option><option value="side-by-side-left-right">Side-by-side left/right</option><option value="top-bottom">Top/bottom</option></select></label>
+                    <label>Flubber width (m)<input id="quest-flubber-width" type="number" min="0.12" max="1.2" step="0.01" value="0.3"></label>
+                    <label>Initial distance (m)<input id="quest-flubber-distance" type="number" min="0.35" max="5" step="0.05" value="1.25"></label>
+                    <label>Horizontal offset (m)<input id="quest-flubber-x" type="number" min="-2" max="2" step="0.05" value="0"></label>
+                    <label>Vertical offset (m)<input id="quest-flubber-y" type="number" min="-2" max="2" step="0.05" value="-0.3"></label>
+                    <label class="quest-loop"><input id="quest-mixed-reality" type="checkbox"> Mixed reality passthrough</label>
+                    <label class="quest-loop"><input id="quest-follow-controller" type="checkbox"> Keep Flubber near a controller</label>
+                    <label>Follow controller<select id="quest-follow-controller-hand"><option value="left">Left</option><option value="right">Right</option></select></label>
+                    <label>Controller spacing (m)<input id="quest-follow-controller-distance" type="number" min="0.05" max="0.6" step="0.01" value="0.18"></label>
+                    <label>Thumbstick<select id="quest-stick"><option value="right">Right</option><option value="left">Left</option></select></label>
+                    <label>Reset button<select id="quest-reset-button"><option value="x">X</option><option value="y">Y</option><option value="a">A</option><option value="b">B</option><option value="none">None</option></select></label>
+                    <label>Pause button<select id="quest-pause-button"><option value="y">Y</option><option value="x">X</option><option value="a">A</option><option value="b">B</option><option value="none">None</option></select></label>
+                    <label class="quest-loop"><input id="quest-show-controller-models" type="checkbox" checked> Show controller models</label>
+                    <label class="quest-loop"><input id="quest-show-affect-values" type="checkbox"> Show X/Y affect coordinates</label>
+                    <label class="quest-loop"><input id="quest-video-loop" type="checkbox"> Loop video</label>
+                  </div>
+                  <button id="quest-export-button" class="wide-action" type="button">Hash video and export active-session.json</button>
+                  <p id="quest-export-status" role="status" aria-live="polite">Copy the video first and <code>active-session.json</code> last.</p>
+                </details>
+              </div>
+            </details>
           </div>
-
-          <div class="action-row">
-            <button id="pause-button" type="button">Pause motion</button>
-            <button id="export-button" type="button">Download CSV</button>
-            <button id="clear-button" class="subtle-danger" type="button">Clear buffer</button>
-          </div>
-
-          <details class="palette-editor">
-            <summary>Valence–arousal color space</summary>
-            <div id="web-feature-space" class="web-feature-space" role="slider" tabindex="0" aria-label="Choose valence and arousal from the color space" aria-valuetext="Neutral">
-              <canvas id="web-feature-space-canvas" width="160" height="160" aria-hidden="true"></canvas>
-              <span class="space-axis space-up">Up</span><span class="space-axis space-down">Down</span>
-              <span class="space-axis space-left">Left</span><span class="space-axis space-right">Right</span>
-              <svg id="web-feature-point" class="web-feature-point" viewBox="-1.62 -1.62 3.24 3.24" aria-hidden="true" focusable="false">
-                <path id="web-feature-flubber-path"></path>
-              </svg>
-            </div>
-            <div class="feature-preview-values" aria-live="off">
-              <span>Valence <output id="web-feature-valence-output">+0.000</output></span>
-              <span>Arousal <output id="web-feature-arousal-output">+0.000</output></span>
-            </div>
-            <div class="web-palette-grid">
-              <label>Up <input type="color" data-palette="up"></label>
-              <label>Down <input type="color" data-palette="down"></label>
-              <label>Left <input type="color" data-palette="left"></label>
-              <label>Right <input type="color" data-palette="right"></label>
-            </div>
-            <p>Click, drag, or use the arrow keys to move the miniature Flubber through valence and arousal while tuning the four blended colors.</p>
-          </details>
-
-          <dl class="buffer-status">
-            <div><dt>Events</dt><dd id="event-count">0</dd></div>
-            <div><dt>Samples</dt><dd id="sample-count">0</dd></div>
-            <div><dt>Buffered</dt><dd id="buffer-count">0 / 10,000</dd></div>
-          </dl>
 
           <details class="help">
             <summary>Controls and privacy</summary>
-            <p>The arrow keys control valence and arousal by default. Every key, mouse button, and wheel direction can be reassigned under Customization.</p>
+            <p>The arrow keys control valence and arousal by default. Open Input &amp; shortcuts, then press a direction button to reassign it.</p>
             <p>Unassigned wheel gestures retain the browser fallback: wheel changes arousal and <kbd>Shift</kbd> + wheel changes valence.</p>
-            <p>Records remain in this tab only. Download the CSV before closing or refreshing.</p>
+            <p>Settings, recordings, and imported files stay participant-local.</p>
           </details>
 
           <p class="attribution">
@@ -210,7 +252,7 @@
         </div>
       </section>
 
-      <section id="experiment-panel" class="control-panel experiment-panel is-collapsed" aria-labelledby="experiment-panel-title">
+      <section id="experiment-panel" class="control-panel experiment-panel is-collapsed" data-module-protocol="experiment" aria-labelledby="experiment-panel-title">
         <button id="experiment-panel-toggle" class="panel-toggle" type="button" aria-label="Experiment" aria-expanded="false" aria-controls="experiment-panel-content">
           <span id="experiment-panel-title" class="panel-title-group">
             <span class="panel-label-full">Experiment</span>
@@ -244,7 +286,7 @@
         </div>
       </section>
 
-      <section id="touch-playground-panel" class="control-panel touch-playground-panel is-collapsed" aria-labelledby="touch-playground-panel-title">
+      <section id="touch-playground-panel" class="control-panel touch-playground-panel is-collapsed" data-module-protocol="touch" aria-labelledby="touch-playground-panel-title">
         <button id="touch-playground-panel-toggle" class="panel-toggle" type="button" aria-label="Touch/Trackpad Playground — Experimental" aria-expanded="false" aria-controls="touch-playground-panel-content">
           <span id="touch-playground-panel-title" class="panel-title-group">
             <span class="panel-label-full">Touch/Trackpad Playground</span>
@@ -282,7 +324,7 @@
               <input id="touch-tracking-toggle" type="checkbox" role="switch" aria-describedby="touch-tracking-note">
               <span>
                 <strong>Enable touch/trackpad tracking</strong>
-                <small>Replaces manual affect control while enabled</small>
+                <small>Active while this panel is open or an experiment runs</small>
               </span>
             </label>
 
@@ -349,7 +391,7 @@
               <p class="touch-calibration-note"><strong>Speed calibration:</strong> cold-start anchors are 0.15 viewport diagonals/s for deliberate slow movement, about 0.44 D/s for the midpoint/hold command, and 0.80 D/s for a quick swipe. Your completed movements progressively personalize that range. These are control commands—not claims that a speed diagnoses calmness or emotional arousal.</p>
               <p>Repeated short touch/pen strokes beginning within 900 ms share speed evidence and compare their on-surface direction, so up/down/up can register as jagged. Separate paths are never connected and the lifted-finger jump never counts as movement.</p>
               <label class="picture-in-picture-toggle pointer-only-option">
-                <input id="touch-hide-cursor-toggle" type="checkbox">
+                <input id="touch-hide-cursor-toggle" data-touch-hide-cursor type="checkbox">
                 <span>Hide mouse cursor while tracking</span>
               </label>
               <p class="pointer-only-option">The cursor remains visible over settings controls so this option can always be turned off.</p>
@@ -363,6 +405,73 @@
           </section>
         </div>
       </section>
+
+      <section id="polar-stream-panel" class="control-panel polar-stream-panel is-collapsed" data-module-protocol="polar" aria-labelledby="polar-stream-panel-title">
+        <button id="polar-stream-panel-toggle" class="panel-toggle" type="button" aria-label="Polar Stream — Experimental" aria-expanded="false" aria-controls="polar-stream-panel-content">
+          <span id="polar-stream-panel-title" class="panel-title-group">
+            <img class="polar-stream-logo" src="./assets/polar-stream-logo.svg" alt="">
+            <span class="panel-label-full">Polar Stream</span>
+            <span class="panel-label-mobile">Polar</span>
+            <span class="experimental-badge" aria-hidden="true">
+              <span class="panel-label-full">Experimental</span>
+              <span class="panel-label-mobile">EXP</span>
+            </span>
+          </span>
+          <span id="polar-stream-toggle-symbol" class="toggle-symbol" aria-hidden="true">+</span>
+        </button>
+        <div id="polar-stream-panel-content" class="panel-content">
+          <section class="polar-stream-intro" aria-labelledby="polar-stream-title">
+            <div class="polar-connect-module">
+              <img class="polar-connect-logo" src="./assets/polar-stream-logo.svg" alt="">
+              <div class="polar-connect-copy">
+                <h3 id="polar-stream-title">Polar H10</h3>
+                <output id="polar-connection-status" aria-live="polite">Not connected</output>
+              </div>
+              <output id="polar-battery" class="polar-connect-battery" aria-label="Polar H10 battery">—</output>
+              <button id="polar-connect-button" type="button">Connect</button>
+              <button id="polar-disconnect-button" type="button" hidden>Disconnect</button>
+            </div>
+
+            <details class="polar-support-details">
+              <summary>Browser connection details</summary>
+              <p id="polar-support-note" class="polar-support-note" role="status">Checking Web Bluetooth support…</p>
+            </details>
+
+            <h4>Signal modules</h4>
+            <p class="polar-mapping-note">Choose <strong>X</strong> for valence or <strong>Y</strong> for arousal on any live metric. Assigning a module is what lets it move Flubber; connecting alone does not.</p>
+            <div id="polar-metric-cards" class="polar-metric-cards"></div>
+
+            <details class="polar-mapping-details">
+              <summary>Fine-tune X/Y ranges</summary>
+              <p class="polar-mapping-note">Each assigned axis is linearly mapped between its low and high bounds and clamped to −1…+1. Manual axes retain the normal controls. The active Touch/Trackpad protocol pauses these assignments.</p>
+              <div class="polar-mapping-grid">
+                <fieldset data-polar-axis="valence">
+                  <legend>Valence (X)</legend>
+                  <label>Source<select data-polar-field="metric"></select></label>
+                  <label>Low<input data-polar-field="minimum" type="number" step="any"></label>
+                  <label>High<input data-polar-field="maximum" type="number" step="any"></label>
+                  <label class="polar-reverse"><input data-polar-field="invert" type="checkbox"> Reverse</label>
+                  <output data-polar-field="value">Manual</output>
+                </fieldset>
+                <fieldset data-polar-axis="arousal">
+                  <legend>Arousal (Y)</legend>
+                  <label>Source<select data-polar-field="metric"></select></label>
+                  <label>Low<input data-polar-field="minimum" type="number" step="any"></label>
+                  <label>High<input data-polar-field="maximum" type="number" step="any"></label>
+                  <label class="polar-reverse"><input data-polar-field="invert" type="checkbox"> Reverse</label>
+                  <output data-polar-field="value">Manual</output>
+                </fieldset>
+              </div>
+            </details>
+
+            <details class="polar-ecg-details">
+              <summary>Live ECG preview <output id="polar-ecg-rate">—</output> · <output id="polar-sample-count">0</output> samples</summary>
+              <canvas id="polar-ecg-canvas" class="polar-ecg-canvas" width="640" height="160" aria-label="Recent Polar H10 ECG waveform"></canvas>
+            </details>
+            <p class="experiment-privacy"><strong>Local and experimental:</strong> ECG and RR data stay in this tab. The waveform keeps only the latest five seconds in memory; CSV samples contain mapped state and current metric context, not the 130 Hz raw ECG. These signals are not a diagnosis or a direct measure of emotion.</p>
+          </section>
+        </div>
+      </section>
       </div>
 
       <section id="experiment-layer" class="experiment-layer" hidden aria-label="Demo video experiment">
@@ -373,6 +482,17 @@
           <div class="experiment-input-shield" aria-hidden="true"></div>
         </div>
       </section>
+
+      <dialog id="binding-capture-dialog" class="binding-capture-dialog" aria-labelledby="binding-capture-title" aria-describedby="binding-capture-instructions">
+        <div class="binding-capture-content">
+          <span class="binding-capture-kicker">Assign input</span>
+          <h2 id="binding-capture-title">Choose an input</h2>
+          <p id="binding-capture-instructions">Press a keyboard key, click a mouse button, or move the scroll wheel.</p>
+          <p id="binding-capture-pair-note" class="binding-capture-pair-note" hidden>Wheel capture also assigns the opposite wheel direction to the opposite affect arrow.</p>
+          <p class="binding-capture-current">Current: <output id="binding-capture-current">Unassigned</output></p>
+          <button id="binding-capture-cancel" type="button">Cancel</button>
+        </div>
+      </dialog>
 
       <p id="status-region" class="visually-hidden" aria-live="polite"></p>
     </main>

@@ -31,7 +31,7 @@ test("the phone layout uses safe areas, dynamic height, and a large non-scrollin
   assert.match(css, /@media \(max-width: 600px\), \(max-height: 500px\) and \(pointer: coarse\)/);
   assert.match(css, /height: 100dvh/);
   assert.match(css, /env\(safe-area-inset-top/);
-  assert.match(css, /grid-template-columns: repeat\(3, minmax\(0, 1fr\)\)/);
+  assert.match(css, /grid-template-columns: repeat\(4, minmax\(0, 1fr\)\)/);
   assert.match(css, /height: clamp\(12rem, 32dvh, 18rem\)/);
   assert.match(css, /touch-action: none/);
   assert.match(css, /overscroll-behavior: contain/);

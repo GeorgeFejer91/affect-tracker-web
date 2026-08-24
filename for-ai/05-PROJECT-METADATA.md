@@ -24,9 +24,10 @@ The web, desktop, and Quest applications must feel like the same instrument. Sha
 ## Global constraints
 
 - Research data stays participant-local unless a reviewed mode explicitly asks the participant or researcher for a destination. The experimental WebXR study may send its completed CSV only to an HTTPS webhook typed for that run; the URL is not persisted, and download remains available if delivery is absent or fails.
-- Never record composed text, clipboard content, application contents, unrelated window titles, or other unnecessary personal data. Pointer movement is permitted only under the explicit, visible web-only Experimental Touch/Trackpad source described in `60-EXPERIMENTAL-TOUCH-TRACE.md`; raw points are logged only during active experiment playback.
+- Never record composed text, clipboard content, application contents, unrelated window titles, or other unnecessary personal data. Pointer movement is permitted only under the explicit, visible web-only Experimental Touch/Trackpad source described in `60-EXPERIMENTAL-TOUCH-TRACE.md`; raw points are logged only during active experiment playback. Polar H10 physiology is permitted only after the user-triggered browser chooser described in `65-EXPERIMENTAL-POLAR-STREAM.md`; raw ECG remains bounded in memory and is never persisted.
 - Keep the browser app static and GitHub Pages-compatible. Do not add a backend, telemetry, CDN, runtime package dependency, or remote asset silently.
 - Keep native authority in Rust behind narrow typed Tauri commands/events/channels. Treat WebView input and imported settings as untrusted.
+- Preserve product-module correspondence across UI and code. Every top-level product surface or accordion has one explicit protocol boundary with its own state, responsibilities, privacy/data contract, and tests. Shared shells coordinate visibility and documented precedence but do not absorb module-specific acquisition or business rules; native authority is exposed through matching narrow domain adapters rather than a generic privileged command layer.
 - Preserve least-privilege capabilities, restrictive CSP, local packaged content, and clean native-resource shutdown.
 - Do not claim browser features can provide the same transparent, click-through, OS-global overlay or global input capture as Tauri.
 - Preserve Windows, macOS, and Linux packaging. State Linux Wayland global-input limitations accurately.
@@ -41,9 +42,12 @@ The web, desktop, and Quest applications must feel like the same instrument. Sha
 - `src-tauri/`: authoritative Rust state, validation, persistence, input monitoring, lifecycle, and LSL implementation.
 - `site/`: dependency-free online application and online-only experiment module.
 - `site/src/touch-trace.js`: browser-only trajectory filtering, equal-distance geometry, direct continuous and gated live move-and-hold feedback, adaptive calibration, and trace fitting.
+- `site/src/polar-stream.js`: browser-only Web Bluetooth capability boundary, Polar H10 PMD/heart-rate decoding, bounded ECG/RR metrics, and GATT lifecycle.
 - `site/src/mobile.js`: browser-only narrow touch-capable viewport detection for one-time smartphone Touch Lab discovery; responsive presentation remains in `site/styles.css`.
+- `site/src/accordion-protocols.js`: canonical registry for the four top-level web modules, their distinct responsibilities, mutually exclusive open state, and cross-module Touch/Trackpad activation rule.
 - `site/webxr.html`, `site/src/webxr-study.js`, `site/src/webxr-study-core.js`, and `site/src/webxr-stimuli.js`: experimental headset-browser study entrypoint, flat/equirectangular WebXR/WebGL adapter, selectable repository-hosted stimulus catalog, Quest-controller affect input, stimulus-aware CSV download, and explicit per-run webhook delivery.
 - `for-ai/70-RESEARCH-PROVENANCE.md` and `for-ai/references.bib`: source-decision ledger and citation-ready bibliography.
+- `for-ai/65-EXPERIMENTAL-POLAR-STREAM.md`: normative Polar Stream support, privacy, metric, mapping, precedence, and qualification contract.
 - `desktop/`: Tauri WebView presentation and typed native adapter.
 - `.github/workflows/`: deployment, verification, and native packaging automation.
 

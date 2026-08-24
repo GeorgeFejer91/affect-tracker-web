@@ -31,10 +31,11 @@ The local skill name is stable; its installation path is not. Never hard-code a 
 1. Restate the requested user-visible outcome and determine whether it affects web, desktop, shared behavior, settings, logging/LSL, privacy, accessibility, packaging, or release semantics.
 2. Check the parity contract. Implement every affected delivery form when behavior is shared, or record a deliberate platform-specific exception.
 3. Define cross-layer ownership before coding: Rust owns native authority and durable validation; frontends own presentation and transient UI; research sampling must not depend on rendering cadence.
-4. Prefer the smallest coherent vertical change. Avoid unrelated framework migrations, dependency updates, broad permissions, or refactors.
-5. Add or update focused tests, then run the broader applicable gates from `30-TESTING-AND-RELEASE.md`.
-6. Verify user-visible web or desktop behavior in a real runtime when practical. Never claim a platform or package was tested when it was not.
-7. Update documentation, this durable brief, and release notes when behavior or constraints change.
+4. Preserve UI-to-code module correspondence. For each top-level surface, identify its named protocol/controller, owned state and data, privacy boundary, and backend adapter if any. Keep the common shell limited to navigation, shared rendering, and documented precedence; do not place unrelated module protocols in one catch-all handler or expose generic native authority.
+5. Prefer the smallest coherent vertical change. Avoid unrelated framework migrations, dependency updates, broad permissions, or refactors.
+6. Add or update focused tests, then run the broader applicable gates from `30-TESTING-AND-RELEASE.md`.
+7. Verify user-visible web or desktop behavior in a real runtime when practical. Never claim a platform or package was tested when it was not.
+8. Update documentation, this durable brief, and release notes when behavior or constraints change.
 
 ## Maintain this directory continuously
 
@@ -56,11 +57,12 @@ Before merging any source-derived algorithm, API behavior, or compatibility deci
 - Inspect status and diff before and after edits. Never discard, overwrite, stage, or reformat unrelated work.
 - Keep one coherent concern per commit where practical. Stage explicit paths; do not blindly stage the entire worktree.
 - Create a tested checkpoint after each meaningful, coherent milestone and before risky migrations or lengthy platform work.
-- When the user has authorized implementation/publishing, push useful tested checkpoints to the canonical GitHub repository so the remote does not lag behind completed local work.
+- Completing a new feature carries standing project authorization to commit and push its tested, coherent checkpoint to the canonical GitHub repository so the remote does not lag behind completed local work. Skip automatic publication only when the user explicitly requests local-only or no-push work, validation fails, credentials or CI are unavailable, or ownership/scope is too ambiguous to stage safely; report that blocker instead of silently leaving completed work local.
+- For every web-facing feature, let the repository's standard GitHub Pages workflow publish the pushed commit, verify the relevant Actions run, then open and verify the public project-path URL. Do not call the online feature complete merely because the push succeeded.
 - Follow the repository's normal branch/PR policy and verify relevant GitHub Actions after pushing. Do not bypass failing checks or rewrite shared history.
 - Before handoff, consolidate the working tree: commit and push completed in-scope work; leave unrelated work untouched; clearly report any intentional uncommitted files, failing checks, or unpushed commits.
 - A clean working tree is a goal, not permission to absorb someone else's changes. If ownership or intent is ambiguous, stop and ask rather than hiding the dirt in an unrelated commit.
-- Do not push merely because a read-only review or diagnosis was requested. Publishing must remain within the user's authorized task.
+- Do not push merely because a read-only review or diagnosis was requested. The standing publication rule applies to completed implementation work, not inspection-only tasks or unrelated local changes.
 
 ## Completion report
 

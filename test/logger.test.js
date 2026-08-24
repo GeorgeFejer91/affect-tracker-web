@@ -87,6 +87,36 @@ test("experiment context is attached to every timestamped record", () => {
   assert.equal(record.current_y, state.currentY);
 });
 
+test("logger identifies Polar-driven state and preserves axis mapping context", () => {
+  const logger = new AffectLogger({
+    now: () => 1,
+    wallClock: () => new Date(0),
+    sessionId: () => "polar-session",
+  });
+  const record = logger.record("sample", { source: "timer" }, {
+    ...state,
+    inputSource: "manual",
+    polarConnected: true,
+    polarDriveActive: true,
+    polarMappings: {
+      valence: { metric: "rmssd", minimum: 10, maximum: 90, invert: true },
+      arousal: { metric: "manual", minimum: -1, maximum: 1, invert: false },
+    },
+    polarAxisValues: {
+      valence: { value: 40, normalized: 0.25 },
+      arousal: { value: "", normalized: "" },
+    },
+  });
+
+  assert.equal(record.input_source, "polar-stream");
+  assert.equal(record.polar_connected, true);
+  assert.equal(record.polar_valence_metric, "rmssd");
+  assert.equal(record.polar_valence_value, 40);
+  assert.equal(record.polar_valence_normalized, 0.25);
+  assert.equal(record.polar_arousal_metric, "manual");
+  assert.equal(record.polar_arousal_minimum, "");
+});
+
 test("experiment writer is append-only across CSV chunks", () => {
   let time = 10;
   const writer = new ExperimentCsvWriter({
@@ -131,7 +161,12 @@ test("extended CSV distinguishes raw, metric, and displayed state", () => {
     wallClock: () => new Date("2026-08-22T00:00:00Z"),
     sessionId: () => "session",
   });
-  const touchState = { ...state, inputSource: "touch-trace", touchFeedbackMode: "gated" };
+  const touchState = {
+    ...state,
+    inputSource: "touch-trace",
+    touchDriveActive: true,
+    touchFeedbackMode: "gated",
+  };
   writer.record("pointer_raw", { pointerTimeMs: 1, normalizedX: 0.2, normalizedY: 0.3 }, touchState);
   writer.record("touch_metric", {
     shapeFeature: -0.4,
