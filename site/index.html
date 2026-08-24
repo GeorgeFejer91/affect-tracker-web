@@ -125,6 +125,32 @@
               <button id="settings-export-button" type="button">Export settings JSON</button>
             </div>
             <p>The same version-1 JSON is accepted by Affect Tracker Desktop. Replacing <code>site/settings.json</code> in the repository changes the hosted defaults for new browser profiles.</p>
+
+            <details class="advanced-controls quest-exporter">
+              <summary>Export a Meta Quest video session</summary>
+              <p>Select the video that you will copy to <code>Documents/AffectTrackerVR/media</code>. The browser reads and hashes it locally; it is never uploaded.</p>
+              <div class="web-settings-grid">
+                <label class="wide-field">Video file<input id="quest-video-file" type="file" accept="video/*,.mkv,.webm,.mp4,.m4v,.mov,.ts,.mpeg,.mpg"></label>
+                <label>Projection<select id="quest-video-projection"><option value="flat">Flat</option><option value="equirect-180">Equirectangular 180°</option><option value="equirect-360">Equirectangular 360°</option></select></label>
+                <label>Stereo layout<select id="quest-video-stereo"><option value="mono">Mono</option><option value="side-by-side-left-right">Side-by-side left/right</option><option value="top-bottom">Top/bottom</option></select></label>
+                <label>Flubber width (m)<input id="quest-flubber-width" type="number" min="0.12" max="1.2" step="0.01" value="0.3"></label>
+                <label>Initial distance (m)<input id="quest-flubber-distance" type="number" min="0.35" max="5" step="0.05" value="1.25"></label>
+                <label>Horizontal offset (m)<input id="quest-flubber-x" type="number" min="-2" max="2" step="0.05" value="0"></label>
+                <label>Vertical offset (m)<input id="quest-flubber-y" type="number" min="-2" max="2" step="0.05" value="-0.3"></label>
+                <label class="quest-loop"><input id="quest-mixed-reality" type="checkbox"> Mixed reality passthrough</label>
+                <label class="quest-loop"><input id="quest-follow-controller" type="checkbox"> Keep Flubber near a controller</label>
+                <label>Follow controller<select id="quest-follow-controller-hand"><option value="left">Left</option><option value="right">Right</option></select></label>
+                <label>Controller spacing (m)<input id="quest-follow-controller-distance" type="number" min="0.05" max="0.6" step="0.01" value="0.18"></label>
+                <label>Thumbstick<select id="quest-stick"><option value="right">Right</option><option value="left">Left</option></select></label>
+                <label>Reset button<select id="quest-reset-button"><option value="x">X</option><option value="y">Y</option><option value="a">A</option><option value="b">B</option><option value="none">None</option></select></label>
+                <label>Pause button<select id="quest-pause-button"><option value="y">Y</option><option value="x">X</option><option value="a">A</option><option value="b">B</option><option value="none">None</option></select></label>
+                <label class="quest-loop"><input id="quest-show-controller-models" type="checkbox" checked> Show controller models</label>
+                <label class="quest-loop"><input id="quest-show-affect-values" type="checkbox"> Show X/Y affect coordinates</label>
+                <label class="quest-loop"><input id="quest-video-loop" type="checkbox"> Loop video</label>
+              </div>
+              <button id="quest-export-button" class="wide-action" type="button">Hash video and export active-session.json</button>
+              <p id="quest-export-status" role="status" aria-live="polite">Copy the video first and <code>active-session.json</code> last.</p>
+            </details>
           </details>
 
           <div class="direction-pad" aria-label="Directional affect controls">
@@ -208,6 +234,9 @@
               <label>Finish (seconds)<input id="experiment-end-seconds" type="number" min="0.1" step="0.1" value="344.4"></label>
             </div>
             <button id="experiment-start-button" type="button">Start experiment</button>
+            <a class="webxr-experiment-link" href="./webxr.html">
+              Open experimental Meta Quest WebXR study
+            </a>
             <button id="experiment-retry-export-button" type="button" hidden>Retry last experiment CSV</button>
             <p id="experiment-size-warning" class="experiment-warning" hidden></p>
             <p id="experiment-source-note" class="experiment-privacy">The preloaded video and recording remain in this page. Physical key, mouse-button, and wheel identifiers—not typed text—are recorded locally during the experiment.</p>

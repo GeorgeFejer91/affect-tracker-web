@@ -1,0 +1,1 @@
+-keep class io.github.georgefejer91.affecttracker.vr.NativeLslBridge { *; }

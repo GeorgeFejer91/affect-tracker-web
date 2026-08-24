@@ -1,0 +1,57 @@
+{
+  "version": 1,
+  "items": [
+    {
+      "id": "nasa-deep-space-dish-360-1080",
+      "label": "NASA Deep Space Dish (360°)",
+      "file": "nasa-deep-space-dish-360-1080.webm",
+      "byteLength": 55063357,
+      "sha256": "635449589ab91c6d3db39c88ae6033226764d5f6d4efbb9bfa76d6cea48e9407",
+      "projection": "equirect-360",
+      "stereo": "mono",
+      "sourcePage": "https://commons.wikimedia.org/wiki/File:Explore_NASA%E2%80%99s_70-Meter_Deep_Space_Communications_Dish_(360%C2%B0_Video)_(dsn-communicate-3).webm",
+      "downloadUrl": "https://upload.wikimedia.org/wikipedia/commons/transcoded/a/ab/Explore_NASA%E2%80%99s_70-Meter_Deep_Space_Communications_Dish_%28360%C2%B0_Video%29_%28dsn-communicate-3%29.webm/Explore_NASA%E2%80%99s_70-Meter_Deep_Space_Communications_Dish_%28360%C2%B0_Video%29_%28dsn-communicate-3%29.webm.1080p.vp9.webm",
+      "license": "Public domain (NASA)",
+      "credit": "NASA/JPL-Caltech"
+    },
+    {
+      "id": "nasa-alaskan-glaciers-360-1080",
+      "label": "NASA Alaskan Glaciers (360°)",
+      "file": "nasa-alaskan-glaciers-360-1080.webm",
+      "byteLength": 161335810,
+      "sha256": "af5e1484d711780285c6bfbe27a43c4bb383fa8484b21bc8454ac888128f552d",
+      "projection": "equirect-360",
+      "stereo": "mono",
+      "sourcePage": "https://commons.wikimedia.org/wiki/File:Fly_Above_Alaskan_Glaciers_in_360_Y2eysSmn9VU.webm",
+      "downloadUrl": "https://upload.wikimedia.org/wikipedia/commons/transcoded/9/95/Fly_Above_Alaskan_Glaciers_in_360_Y2eysSmn9VU.webm/Fly_Above_Alaskan_Glaciers_in_360_Y2eysSmn9VU.webm.1080p.vp9.webm",
+      "license": "Public domain (NASA; Commons license review)",
+      "credit": "NASA Goddard"
+    },
+    {
+      "id": "everest-satellite-flyover",
+      "label": "Everest satellite flyover (flat)",
+      "file": "everest-satellite-flyover.webm",
+      "byteLength": 13510765,
+      "sha256": "72c656e176b6ffea5f6ca6d5072ed934cf83a405e334bd627e3fcfd500ab2211",
+      "projection": "flat",
+      "stereo": "mono",
+      "sourcePage": "https://commons.wikimedia.org/wiki/File:EVEREST.webm",
+      "downloadUrl": "https://upload.wikimedia.org/wikipedia/commons/7/70/EVEREST.webm",
+      "license": "CC BY-SA 4.0",
+      "credit": "Sgascoin / Wikimedia Commons"
+    },
+    {
+      "id": "meta-doggie-sbs",
+      "label": "Meta Doggie spatial sample (stereo SBS)",
+      "file": "meta-doggie-sbs.mp4",
+      "byteLength": 30531617,
+      "sha256": "d0e7057db5e00d618f7136e4e89244b54706e377f79336b0e0b33782af279190",
+      "projection": "flat",
+      "stereo": "side-by-side-left-right",
+      "sourcePage": "https://github.com/meta-quest/Meta-Spatial-SDK-Samples/tree/main/SpatialVideoSample",
+      "downloadUrl": "https://raw.githubusercontent.com/meta-quest/Meta-Spatial-SDK-Samples/a46c632cb94eadce0a521dfefca458e3968b2780/SpatialVideoSample/app/src/main/res/raw/doggie.mp4",
+      "license": "MIT repository license",
+      "credit": "Copyright Meta Platforms, Inc. and affiliates"
+    }
+  ]
+}

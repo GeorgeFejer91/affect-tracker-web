@@ -29,7 +29,7 @@ The local skill name is stable; its installation path is not. Never hard-code a 
 ## How to approach changes
 
 1. Restate the requested user-visible outcome and determine whether it affects web, desktop, shared behavior, settings, logging/LSL, privacy, accessibility, packaging, or release semantics.
-2. Check the parity contract. Implement both runtimes when behavior is shared, or record a deliberate platform-specific exception.
+2. Check the parity contract. Implement every affected delivery form when behavior is shared, or record a deliberate platform-specific exception.
 3. Define cross-layer ownership before coding: Rust owns native authority and durable validation; frontends own presentation and transient UI; research sampling must not depend on rendering cadence.
 4. Prefer the smallest coherent vertical change. Avoid unrelated framework migrations, dependency updates, broad permissions, or refactors.
 5. Add or update focused tests, then run the broader applicable gates from `30-TESTING-AND-RELEASE.md`.
@@ -42,7 +42,7 @@ Update `for-ai/` in the same change whenever:
 
 - the user adds, removes, or clarifies a project requirement;
 - an architectural or privacy/security decision changes;
-- web/desktop parity gains an exception;
+- cross-delivery parity gains an exception;
 - a portable settings, CSV, marker, LSL, or IPC schema changes;
 - supported platforms, release gates, or known limitations change; or
 - testing/debugging reveals a reusable lesson that would prevent future mistakes.

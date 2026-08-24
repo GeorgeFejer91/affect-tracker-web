@@ -15,7 +15,10 @@
 
 ## Study integration follow-up
 
+- In progress: native Quest Spatial SDK delivery under `vr/`, strict local video/session loading, transparent controller-movable Flubber, Media3 spatial playback, and same-LAN LSL. Host tests precede the required four-headset qualification matrix.
+
 - Delivered: preloaded GitHub Pages video experiment with optional YouTube URL/start/finish configuration, countdown, protected playback, precise local CSV, and automatic export.
+- Delivered as an experimental browser-headset slice: a Meta Quest WebXR selectable library with the flat Great Dictator study and eight exact-frame CEAP-360VR one-minute full-sphere excerpts, canonical Flubber rendering, stimulus-aware CSV, right-stick affect control, X reset, Y whole-session pause, local download, an explicit per-run HTTPS webhook, and a native-launcher link to the hosted page. Physical Quest sphere/orientation/controller/download/webhook qualification remains required before research use.
 - Delivered as an experimental web prototype: adaptive unrestricted touch/pen/cursor input; speed→arousal; coherent winding/ellipse-tolerant circular evidence versus dominant-corner/directional-disorder angular evidence→valence; 2.56-diagonal geometry; short-stroke speed/direction continuity without lifted-gap measurement; default gated live move-until-satisfied/hold feedback plus optional direct continuous response; theoretical movement guides; raw-coordinate swipe trace; live 2D mapping feedback; optional normalized overview; and append-only raw/derived/display CSV records.
 - Delivered: literature-grounded `0.15/0.44/0.80 D/s` cold-start speed anchors, participant-adaptive replacement, live normalized speed display, and explicit command-not-diagnosis language with source provenance.
 - Delivered: touch-first GitHub Pages smartphone viewer with one-time Touch Lab discovery, compact safe-area-aware navigation, a canonical live Flubber preview, always-visible 2D mapping, a large dedicated swipe surface, and portrait/landscape phone layouts. This remains a browser experience, not a native smartphone app.

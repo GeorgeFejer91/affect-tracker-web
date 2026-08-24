@@ -36,6 +36,7 @@ import {
 } from "./touch-trace.js";
 import { pictureInPictureOptions, pictureInPictureSupported } from "./picture-in-picture.js";
 import { isSmartphoneTouchViewport } from "./mobile.js";
+import { createVrSession, hashVideoFile, vrSessionJson } from "./vr-session.js";
 import {
   actionForBinding,
   ADVANCED_BINDING_LABELS,
@@ -139,6 +140,25 @@ const elements = {
   lslMarkerName: document.querySelector("#web-lsl-marker-name"),
   lslSampleRate: document.querySelector("#web-lsl-sample-rate"),
   lslSourceId: document.querySelector("#web-lsl-source-id"),
+  questVideoFile: document.querySelector("#quest-video-file"),
+  questVideoProjection: document.querySelector("#quest-video-projection"),
+  questVideoStereo: document.querySelector("#quest-video-stereo"),
+  questVideoLoop: document.querySelector("#quest-video-loop"),
+  questFlubberWidth: document.querySelector("#quest-flubber-width"),
+  questFlubberDistance: document.querySelector("#quest-flubber-distance"),
+  questFlubberX: document.querySelector("#quest-flubber-x"),
+  questFlubberY: document.querySelector("#quest-flubber-y"),
+  questMixedReality: document.querySelector("#quest-mixed-reality"),
+  questFollowController: document.querySelector("#quest-follow-controller"),
+  questFollowControllerHand: document.querySelector("#quest-follow-controller-hand"),
+  questFollowControllerDistance: document.querySelector("#quest-follow-controller-distance"),
+  questStick: document.querySelector("#quest-stick"),
+  questResetButton: document.querySelector("#quest-reset-button"),
+  questPauseButton: document.querySelector("#quest-pause-button"),
+  questShowControllerModels: document.querySelector("#quest-show-controller-models"),
+  questShowAffectValues: document.querySelector("#quest-show-affect-values"),
+  questExportButton: document.querySelector("#quest-export-button"),
+  questExportStatus: document.querySelector("#quest-export-status"),
   pictureInPictureToggle: document.querySelector("#picture-in-picture-toggle"),
   pictureInPictureNote: document.querySelector("#picture-in-picture-note"),
   experimentStartButton: document.querySelector("#experiment-start-button"),
@@ -1201,7 +1221,7 @@ function handleGlobalKeyUp(event) {
 }
 
 function handleWheel(event) {
-  if (targetIsEditable(event) || captureInput) return;
+  if (targetIsEditable(event) || elements.panelContent.contains(event.target) || captureInput) return;
   const action = actionForBinding(state.bindings, `wheel:${wheelDirection(event.deltaX, event.deltaY)}`, state.advancedBindings);
   if (action) {
     event.preventDefault();
@@ -1880,6 +1900,69 @@ function exportSettings() {
   announce("Portable settings JSON exported.");
 }
 
+function downloadJson(contents, filename) {
+  const url = URL.createObjectURL(new Blob([contents], { type: "application/json;charset=utf-8" }));
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.append(anchor);
+  anchor.click();
+  anchor.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
+function updateQuestControllerFollowControls() {
+  const disabled = !elements.questFollowController.checked;
+  elements.questFollowControllerHand.disabled = disabled;
+  elements.questFollowControllerDistance.disabled = disabled;
+}
+
+async function exportQuestSession() {
+  const file = elements.questVideoFile.files?.[0];
+  if (!file) throw new Error("Select the video that will be copied to the headset.");
+  elements.questExportButton.disabled = true;
+  elements.questExportStatus.textContent = `Hashing ${file.name} locally…`;
+  try {
+    const sha256 = await hashVideoFile(file);
+    const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+    const session = createVrSession({
+      sessionId: `quest-${timestamp}`,
+      file,
+      sha256,
+      projection: elements.questVideoProjection.value,
+      stereo: elements.questVideoStereo.value,
+      loop: elements.questVideoLoop.checked,
+      affectSettings: settingsFromState(),
+      environment: elements.questMixedReality.checked ? "passthrough" : "dark",
+      flubber: {
+        widthMeters: Number(elements.questFlubberWidth.value),
+        distanceMeters: Number(elements.questFlubberDistance.value),
+        horizontalOffsetMeters: Number(elements.questFlubberX.value),
+        verticalOffsetMeters: Number(elements.questFlubberY.value),
+        showAffectValues: elements.questShowAffectValues.checked,
+        controllerFollow: {
+          enabled: elements.questFollowController.checked,
+          hand: elements.questFollowControllerHand.value,
+          distanceMeters: Number(elements.questFollowControllerDistance.value),
+        },
+      },
+      controls: {
+        stick: elements.questStick.value,
+        resetButton: elements.questResetButton.value,
+        pauseButton: elements.questPauseButton.value,
+        grabTrigger: "either",
+        showControllerModels: elements.questShowControllerModels.checked,
+      },
+    });
+    downloadJson(vrSessionJson(session), "active-session.json");
+    elements.questExportStatus.textContent = `Ready. Copy ${file.name} first, then active-session.json last.`;
+    recordEvent("settings", "export", "quest-session-json", 1);
+    announce("Quest session JSON exported.");
+  } finally {
+    elements.questExportButton.disabled = false;
+  }
+}
+
 async function importSettings(file) {
   if (!file) return;
   if (file.size > 256 * 1024) throw new Error("Settings JSON must be smaller than 256 KB.");
@@ -2084,6 +2167,17 @@ function initializeEvents() {
     else if (pictureInPictureWindow && !pictureInPictureWindow.closed) pictureInPictureWindow.close();
   });
   elements.settingsExportButton.addEventListener("click", exportSettings);
+  elements.questFollowController.addEventListener("change", updateQuestControllerFollowControls);
+  updateQuestControllerFollowControls();
+  elements.questExportButton.addEventListener("click", async () => {
+    try {
+      await exportQuestSession();
+    } catch (error) {
+      const message = error?.message ?? String(error);
+      elements.questExportStatus.textContent = message;
+      announce(message);
+    }
+  });
   elements.settingsImportButton.addEventListener("click", () => elements.settingsImportFile.click());
   elements.settingsImportFile.addEventListener("change", async () => {
     try {
