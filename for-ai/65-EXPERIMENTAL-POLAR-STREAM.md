@@ -60,7 +60,10 @@ timeouts. Optional heart-rate and battery failures do not prevent raw ECG.
 Required GATT failures retain the failing stage and the browser's safe error
 text in the visible connector status. `NetworkError`, `AbortError`, and
 `InvalidStateError` also explain that Polar Stream, Polar Beat/Flow, or another
-browser tab may still own the H10 lease. This is especially important because
+browser tab may still own the H10 lease. Transient link failures receive four
+total attempts separated by bounded 0.75, 1.5, and 3 second delays so Windows
+has time to release a just-closed GATT owner without creating an unbounded
+reconnect loop. This is especially important because
 both public projects share the `georgefejer91.github.io` origin while each tab
 still owns an independent GATT/notification lifecycle. Teardown removes every
 listener, stops notifications best-effort, disconnects GATT, rejects pending

@@ -61,7 +61,7 @@ export const POLAR_METRICS = Object.freeze([
 const METRIC_BY_ID = new Map(POLAR_METRICS.map((metric) => [metric.id, metric]));
 const ECG_WINDOW_SAMPLES = 130 * 5;
 const RR_WINDOW_VALUES = 300;
-const GATT_CONNECT_RETRY_DELAY_MS = 300;
+const GATT_CONNECT_RETRY_DELAYS_MS = Object.freeze([750, 1_500, 3_000]);
 const CONTROL_RESPONSE_TIMEOUT_MS = 7_500;
 const FIRST_ECG_TIMEOUT_MS = 10_000;
 
@@ -489,14 +489,20 @@ export class PolarH10BrowserSession {
 
   async connectGatt() {
     let lastError;
-    for (let attempt = 0; attempt < 2; attempt += 1) {
+    const totalAttempts = GATT_CONNECT_RETRY_DELAYS_MS.length + 1;
+    for (let attempt = 0; attempt < totalAttempts; attempt += 1) {
       try {
         return await this.device.gatt.connect();
       } catch (error) {
         lastError = error;
-        if (!(error?.name === "NetworkError" || error?.name === "AbortError") || attempt === 1) throw error;
-        this.emit({ kind: "status", message: "Retrying the browser GATT connection…" });
-        await new Promise((resolve) => this.timer.setTimeout(resolve, GATT_CONNECT_RETRY_DELAY_MS));
+        const transient = ["AbortError", "NetworkError"].includes(error?.name);
+        if (!transient || attempt === totalAttempts - 1) throw error;
+        const delayMs = GATT_CONNECT_RETRY_DELAYS_MS[attempt];
+        this.emit({
+          kind: "status",
+          message: `Bluetooth link attempt ${attempt + 1} failed; retrying ${attempt + 2}/${totalAttempts} in ${(delayMs / 1_000).toFixed(2).replace(/0+$/, "").replace(/\.$/, "")} s…`,
+        });
+        await new Promise((resolve) => this.timer.setTimeout(resolve, delayMs));
       }
     }
     throw lastError;

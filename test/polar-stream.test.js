@@ -155,6 +155,38 @@ test("browser session reports the exact failing GATT stage and a competing-sessi
   assert.equal(server.connected, false);
 });
 
+test("browser session gives Windows a bounded exponential GATT recovery window", async () => {
+  let attempts = 0;
+  const delays = [];
+  const events = [];
+  const expectedServer = { connected: true };
+  const session = new PolarH10BrowserSession({
+    timer: {
+      setTimeout(callback, delayMs) {
+        delays.push(delayMs);
+        queueMicrotask(callback);
+        return delays.length;
+      },
+      clearTimeout() {},
+    },
+  });
+  session.device = {
+    gatt: {
+      async connect() {
+        attempts += 1;
+        if (attempts < 4) throw new DOMException("Connection attempt failed.", "NetworkError");
+        return expectedServer;
+      },
+    },
+  };
+  session.onEvent = (event) => events.push(event);
+
+  assert.equal(await session.connectGatt(), expectedServer);
+  assert.equal(attempts, 4);
+  assert.deepEqual(delays, [750, 1_500, 3_000]);
+  assert.deepEqual(events.map((event) => event.message.match(/retrying (\d\/4)/)?.[1]), ["2/4", "3/4", "4/4"]);
+});
+
 test("browser session fails closed on rejected or missing ECG start acknowledgements", async () => {
   async function attempt(controlResponse) {
     class Characteristic extends EventTarget {
