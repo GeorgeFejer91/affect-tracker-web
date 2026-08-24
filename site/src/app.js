@@ -417,6 +417,8 @@ let featurePointerId;
 let captureInput;
 let pictureInPictureWindow;
 let pictureInPictureView;
+let broadcastWakeLock;
+let broadcastOwnsPictureInPicture = false;
 let animationFrameOwner;
 let animationFrameId;
 let activeTracePointerId;
@@ -804,6 +806,8 @@ function updateRemoteBroadcastUi(detail = flubberBroadcaster.snapshot()) {
   if (Number.isFinite(detail.rttMs)) routeParts.push(`${detail.rttMs} ms RTT`);
   if (detail.sequence) routeParts.push(`sequence ${detail.sequence}`);
   if (detail.droppedBackpressure) routeParts.push(`${detail.droppedBackpressure} backpressure drops`);
+  if (pictureInPictureWindow && !pictureInPictureWindow.closed) routeParts.push("foreground Flubber window");
+  if (broadcastWakeLock && !broadcastWakeLock.released) routeParts.push("wake lock");
   elements.remoteBroadcastRoute.value = routeParts.join(" · ") || (broadcasting ? "Waiting for listeners" : "Waiting");
   elements.remoteBroadcastStatus.value = detail.message
     || (broadcasting
@@ -1494,6 +1498,7 @@ function renderPictureInPicture(rendered) {
 
 function finishPictureInPicture(childWindow) {
   if (pictureInPictureWindow !== childWindow) return;
+  broadcastOwnsPictureInPicture = false;
   pictureInPictureWindow = undefined;
   pictureInPictureView = undefined;
   if (animationFrameOwner === childWindow) {
@@ -1557,6 +1562,7 @@ async function openPictureInPicture() {
     constrainAndRenderWidget();
     recordEvent("picture-in-picture", "open", "flubber", true);
     announce("Flubber is floating over other applications. Keep this page open.");
+    return true;
   } catch (error) {
     elements.pictureInPictureToggle.checked = false;
     pictureInPictureWindow = undefined;
@@ -1565,7 +1571,46 @@ async function openPictureInPicture() {
     announce(error?.name === "NotAllowedError"
       ? "The browser blocked Picture-in-Picture. Try the checkbox again."
       : `Picture-in-Picture could not open: ${error?.message ?? String(error)}`);
+    return false;
   }
+}
+
+async function acquireBroadcastWakeLock() {
+  if (!navigator.wakeLock?.request || document.visibilityState !== "visible") return false;
+  if (broadcastWakeLock && !broadcastWakeLock.released) return true;
+  try {
+    const wakeLock = await navigator.wakeLock.request("screen");
+    broadcastWakeLock = wakeLock;
+    wakeLock.addEventListener("release", () => {
+      if (broadcastWakeLock === wakeLock) broadcastWakeLock = undefined;
+      updateRemoteBroadcastUi();
+    }, { once: true });
+    updateRemoteBroadcastUi();
+    return true;
+  } catch {
+    broadcastWakeLock = undefined;
+    updateRemoteBroadcastUi();
+    return false;
+  }
+}
+
+async function releaseBroadcastLatencyMode() {
+  const wakeLock = broadcastWakeLock;
+  broadcastWakeLock = undefined;
+  if (wakeLock && !wakeLock.released) await wakeLock.release().catch(() => {});
+  if (broadcastOwnsPictureInPicture && pictureInPictureWindow && !pictureInPictureWindow.closed) {
+    broadcastOwnsPictureInPicture = false;
+    pictureInPictureWindow.close();
+  }
+  updateRemoteBroadcastUi();
+}
+
+async function acquireBroadcastLatencyMode() {
+  if (!pictureInPictureWindow && pictureInPictureSupported(window)) {
+    broadcastOwnsPictureInPicture = await openPictureInPicture();
+  }
+  await acquireBroadcastWakeLock();
+  updateRemoteBroadcastUi();
 }
 
 function updatePictureInPictureSupport() {
@@ -2588,14 +2633,17 @@ function initializeEvents() {
       if (snapshot.phase === "broadcasting") {
         const sourceLabel = snapshot.sourceLabel;
         await flubberBroadcaster.stop();
+        await releaseBroadcastLatencyMode();
         recordEvent("remote-flubber", "remote-broadcast-stop", sourceLabel, 0);
         announce("Remote Flubber broadcast stopped.");
       } else {
+        await acquireBroadcastLatencyMode();
         const started = await flubberBroadcaster.start();
         recordEvent("remote-flubber", "remote-broadcast-start", started.sourceLabel, 1);
         announce(`${started.sourceLabel} is broadcasting final Flubber coordinates.`);
       }
     } catch (error) {
+      if (flubberBroadcaster.snapshot().phase !== "broadcasting") await releaseBroadcastLatencyMode();
       announce(`Remote broadcast could not start: ${error?.message ?? String(error)}`);
     }
   });
@@ -2838,7 +2886,13 @@ function initializeEvents() {
   });
   window.addEventListener("pagehide", () => {
     void flubberBroadcaster.stop();
+    void releaseBroadcastLatencyMode();
   }, { once: true });
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible" && flubberBroadcaster.snapshot().phase === "broadcasting") {
+      void acquireBroadcastWakeLock();
+    }
+  });
 }
 
 function animationFrame(timestamp) {

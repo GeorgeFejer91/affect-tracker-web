@@ -509,4 +509,8 @@ test("remote pages load only the local SDK and feature code makes no microphone 
   assert.match(receiver, /record\("event", remoteEvent\.event/);
   assert.match(receiver, /setAttribute\("aria-pressed"/);
   assert.match(receiver, /navigator\.wakeLock\.request\("screen"\)/);
+  assert.match(app, /broadcastOwnsPictureInPicture/);
+  assert.match(app, /acquireBroadcastLatencyMode/);
+  assert.match(app, /navigator\.wakeLock\.request\("screen"\)/);
+  assert.match(receiver, /visible-blurred/);
 });

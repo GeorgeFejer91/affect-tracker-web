@@ -257,7 +257,11 @@ function remoteQualityText(snapshot) {
 }
 
 function remoteModeText() {
-  if (state.session) return "Immersive WebXR foreground";
+  if (state.session) {
+    if (state.session.visibilityState === "visible") return "Immersive WebXR foreground";
+    if (state.session.visibilityState === "visible-blurred") return "Immersive WebXR · system overlay may throttle delivery";
+    return "Immersive WebXR hidden · Meta has backgrounded this session";
+  }
   if (state.wakeLock && !state.wakeLock.released) return "Screen wake lock active · enter WebXR for lowest latency";
   return "Browser panel · Meta may deprioritize delivery";
 }
@@ -815,6 +819,9 @@ async function startStudy() {
 
     state.session = session;
     elements.remoteMode.value = remoteModeText();
+    session.addEventListener("visibilitychange", () => {
+      elements.remoteMode.value = remoteModeText();
+    });
     state.referenceSpace = referenceSpace;
     state.viewerSpace = viewerSpace;
     state.sessionId = crypto.randomUUID?.() ?? `webxr-${Date.now()}-${Math.random().toString(16).slice(2)}`;
