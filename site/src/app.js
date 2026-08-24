@@ -95,6 +95,7 @@ const elements = {
   polarStreamPanelToggle: document.querySelector("#polar-stream-panel-toggle"),
   polarStreamToggleSymbol: document.querySelector("#polar-stream-toggle-symbol"),
   polarSupportNote: document.querySelector("#polar-support-note"),
+  polarDiagnosticOutputs: [...document.querySelectorAll("[data-polar-diagnostic]")],
   polarConnectButton: document.querySelector("#polar-connect-button"),
   polarDisconnectButton: document.querySelector("#polar-disconnect-button"),
   polarConnectionStatus: document.querySelector("#polar-connection-status"),
@@ -732,6 +733,50 @@ function updatePolarConnectionUi(message = state.polarConnected ? "Polar H10 con
   elements.polarStreamPanel.classList.toggle("is-connected", state.polarConnected);
 }
 
+function renderPolarDiagnostics(snapshot = polarSession.diagnosticSnapshot()) {
+  const stageLabels = {
+    idle: "Idle",
+    chooser: "Chrome chooser",
+    GATT_CONNECT: "GATT link",
+    PMD_SERVICE: "PMD service",
+    PMD_CONTROL: "PMD control",
+    PMD_DATA: "PMD data",
+    PMD_DATA_NOTIFY: "ECG notifications",
+    PMD_CONTROL_NOTIFY: "PMD indications",
+    ECG_START: "ECG startup",
+    live: "Live ECG",
+    disconnecting: "Disconnecting",
+    disconnected: "Link lost",
+    failed: "Failed",
+  };
+  const activation = snapshot.userActivationAtRequest === true
+    ? "Present"
+    : snapshot.userActivationAtRequest === false ? "Missing" : "Not checked";
+  const api = snapshot.secureContext && snapshot.apiAvailable
+    ? "HTTPS · Web Bluetooth ready"
+    : snapshot.secureContext ? "Web Bluetooth API missing" : "Insecure page";
+  const pmd = snapshot.firstEcgFrame
+    ? `${snapshot.pmdResponse} · ECG frame received`
+    : `${snapshot.pmdResponse} · no ECG frame`;
+  const values = {
+    api,
+    adapter: snapshot.adapterAvailability === "available"
+      ? "Available"
+      : snapshot.adapterAvailability === "unavailable" ? "Unavailable / blocked" : "Not checked",
+    activation,
+    chooser: snapshot.chooser || "Idle",
+    stage: stageLabels[snapshot.stage] ?? snapshot.stage ?? "Idle",
+    gatt: `${snapshot.gattAttempt ?? 0} / ${snapshot.gattAttemptsTotal ?? 4}`,
+    pmd,
+    error: snapshot.lastErrorCode
+      ? `${snapshot.lastErrorCode} — ${snapshot.lastErrorMessage}`
+      : "None",
+  };
+  for (const output of elements.polarDiagnosticOutputs) {
+    output.value = values[output.dataset.polarDiagnostic] ?? "—";
+  }
+}
+
 function updateRemoteBroadcastUi(detail = flubberBroadcaster.snapshot()) {
   const broadcasting = detail.phase === "broadcasting";
   const connecting = detail.phase === "connecting";
@@ -830,7 +875,22 @@ function renderPolarMetrics() {
   elements.polarEcgRate.value = `${Math.round(polarObservedSampleRate)} Hz`;
 }
 
+function clearPolarLiveReadout() {
+  polarBatteryPercent = undefined;
+  polarEcgWindow = [];
+  polarObservedSampleRate = 130;
+  state.polarMetrics = {};
+  elements.polarSampleCount.value = "0";
+  elements.polarEcgPort.hidden = true;
+  renderPolarMetrics();
+  drawPolarEcg();
+}
+
 function handlePolarEvent(event) {
+  if (event.kind === "diagnostic") {
+    renderPolarDiagnostics(event.snapshot);
+    return;
+  }
   if (event.kind === "status") {
     updatePolarConnectionUi(event.message);
     return;
@@ -840,14 +900,7 @@ function handlePolarEvent(event) {
     state.polarConnected = event.connected;
     if (Number.isFinite(event.batteryPercent)) polarBatteryPercent = event.batteryPercent;
     if (!event.connected) {
-      polarBatteryPercent = undefined;
-      polarEcgWindow = [];
-      polarObservedSampleRate = 130;
-      state.polarMetrics = {};
-      elements.polarSampleCount.value = "0";
-      elements.polarEcgPort.hidden = true;
-      renderPolarMetrics();
-      drawPolarEcg();
+      clearPolarLiveReadout();
     }
     applyPolarMappings();
     updatePolarConnectionUi(event.message);
@@ -963,6 +1016,7 @@ function initializePolarUi() {
   const support = polarWebBluetoothSupport();
   elements.polarSupportNote.textContent = support.reason;
   elements.polarSupportNote.classList.toggle("is-unsupported", !support.supported);
+  renderPolarDiagnostics();
   updatePolarConnectionUi();
   updatePolarMappingControls();
   drawPolarEcg();
@@ -2494,13 +2548,18 @@ function initializeEvents() {
   });
 
   elements.polarConnectButton.addEventListener("click", async () => {
+    // A failed or cancelled chooser must never leave values from an earlier
+    // session looking live while no H10 is selected.
+    clearPolarLiveReadout();
+    applyPolarMappings();
     state.polarConnecting = true;
     updatePolarConnectionUi("Waiting for browser Bluetooth chooser…");
     try {
       await polarSession.connect(handlePolarEvent);
     } catch (error) {
       state.polarConnecting = false;
-      updatePolarConnectionUi(error?.message ?? String(error), true);
+      const chooserCancelled = error?.code === "BLUETOOTH_CHOOSER_CANCELLED";
+      updatePolarConnectionUi(error?.message ?? String(error), !chooserCancelled);
       announce(error?.message ?? String(error));
     }
   });

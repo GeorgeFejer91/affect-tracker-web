@@ -129,6 +129,58 @@ test("Web Bluetooth support requires a secure compatible desktop browser", () =>
   assert.match(questExperiment.reason, /not yet headset-qualified/);
 });
 
+test("browser chooser diagnostics distinguish cancellation, browser blocks, and policy blocks", async () => {
+  async function attempt(error) {
+    const diagnostics = [];
+    const session = new PolarH10BrowserSession({
+      navigatorObject: {
+        userAgent: "Chromium test",
+        userActivation: { isActive: true },
+        bluetooth: {
+          getAvailability: async () => true,
+          requestDevice: async () => { throw error; },
+        },
+      },
+      secureContext: true,
+    });
+    let thrown;
+    try {
+      await session.connect((event) => {
+        if (event.kind === "diagnostic") diagnostics.push(event.snapshot);
+      });
+    } catch (connectionError) {
+      thrown = connectionError;
+    }
+    return { thrown, last: diagnostics.at(-1) };
+  }
+
+  const cancelled = await attempt(new DOMException("User cancelled the chooser.", "NotFoundError"));
+  assert.equal(cancelled.thrown.code, "BLUETOOTH_CHOOSER_CANCELLED");
+  assert.match(cancelled.thrown.message, /wear the moistened strap/i);
+  assert.deepEqual(
+    {
+      adapterAvailability: cancelled.last.adapterAvailability,
+      userActivationAtRequest: cancelled.last.userActivationAtRequest,
+      chooser: cancelled.last.chooser,
+      stage: cancelled.last.stage,
+      lastErrorCode: cancelled.last.lastErrorCode,
+    },
+    {
+      adapterAvailability: "available",
+      userActivationAtRequest: true,
+      chooser: "closed without selection",
+      stage: "failed",
+      lastErrorCode: "BLUETOOTH_CHOOSER_CANCELLED",
+    },
+  );
+
+  const disabled = await attempt(new DOMException("Web Bluetooth API globally disabled.", "NotFoundError"));
+  assert.equal(disabled.thrown.code, "WEB_BLUETOOTH_DISABLED");
+
+  const policy = await attempt(new DOMException("Web Bluetooth is not allowed by permissions policy.", "NotAllowedError"));
+  assert.equal(policy.thrown.code, "WEB_BLUETOOTH_POLICY_BLOCKED");
+});
+
 test("browser session reports the exact failing GATT stage and a competing-session recovery hint", async () => {
   class Characteristic extends EventTarget {
     async startNotifications() {
@@ -193,7 +245,10 @@ test("browser session gives Windows a bounded exponential GATT recovery window",
   assert.equal(await session.connectGatt(), expectedServer);
   assert.equal(attempts, 4);
   assert.deepEqual(delays, [750, 1_500, 3_000]);
-  assert.deepEqual(events.map((event) => event.message.match(/retrying (\d\/4)/)?.[1]), ["2/4", "3/4", "4/4"]);
+  assert.deepEqual(
+    events.filter((event) => event.kind === "status").map((event) => event.message.match(/retrying (\d\/4)/)?.[1]),
+    ["2/4", "3/4", "4/4"],
+  );
 });
 
 test("browser session fails closed on rejected or missing ECG start acknowledgements", async () => {
@@ -243,6 +298,110 @@ test("browser session fails closed on rejected or missing ECG start acknowledgem
   await assert.rejects(
     attempt(Uint8Array.from([0xf0, 0x02, 0x00, 0x00, 0x00])),
     (error) => error.code === "PMD_FIRST_ECG_TIMEOUT" && /no live ECG packet/.test(error.message),
+  );
+});
+
+test("a valid live ECG frame confirms startup when Chromium omits the PMD indication", async () => {
+  class Characteristic extends EventTarget {
+    async startNotifications() { return this; }
+    async stopNotifications() { return this; }
+  }
+  const control = new Characteristic();
+  const pmdData = new Characteristic();
+  control.writeValueWithResponse = async () => {
+    queueMicrotask(() => {
+      const bytes = Uint8Array.from([0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0]);
+      pmdData.value = new DataView(bytes.buffer);
+      pmdData.dispatchEvent(new Event("characteristicvaluechanged"));
+    });
+  };
+  const pmdService = {
+    getCharacteristic: async (uuid) => uuid === POLAR_UUIDS.pmdControl ? control : pmdData,
+  };
+  const server = {
+    connected: true,
+    async getPrimaryService(uuid) {
+      if (uuid === POLAR_UUIDS.pmdService) return pmdService;
+      throw new DOMException("Optional service unavailable.", "NotFoundError");
+    },
+    disconnect() { this.connected = false; },
+  };
+  class Device extends EventTarget {}
+  const device = new Device();
+  device.gatt = { connect: async () => server };
+  const events = [];
+  const session = new PolarH10BrowserSession({
+    navigatorObject: {
+      userAgent: "Chromium test",
+      userActivation: { isActive: true },
+      bluetooth: {
+        getAvailability: async () => true,
+        requestDevice: async () => device,
+      },
+    },
+    secureContext: true,
+    controlResponseTimeoutMs: 50,
+    firstEcgTimeoutMs: 50,
+  });
+
+  await session.connect((event) => events.push(event));
+  assert.equal(session.connected, true);
+  assert.ok(events.some((event) => event.kind === "connection" && event.connected));
+  assert.ok(events.some((event) => event.kind === "status" && /PMD acknowledgement was not required/.test(event.message)));
+  const diagnostic = events.filter((event) => event.kind === "diagnostic").at(-1).snapshot;
+  assert.equal(diagnostic.firstEcgFrame, true);
+  assert.equal(diagnostic.stage, "live");
+  assert.match(diagnostic.pmdResponse, /live ECG confirmed/);
+  await session.disconnect();
+});
+
+test("an explicit delayed PMD rejection still wins over an earlier ECG data frame", async () => {
+  class Characteristic extends EventTarget {
+    async startNotifications() { return this; }
+    async stopNotifications() { return this; }
+  }
+  const control = new Characteristic();
+  const pmdData = new Characteristic();
+  control.writeValueWithResponse = async () => {
+    queueMicrotask(() => {
+      const frame = Uint8Array.from([0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0]);
+      pmdData.value = new DataView(frame.buffer);
+      pmdData.dispatchEvent(new Event("characteristicvaluechanged"));
+    });
+    setTimeout(() => {
+      const rejected = Uint8Array.from([0xf0, 0x02, 0x00, 0x05, 0x00]);
+      control.value = new DataView(rejected.buffer);
+      control.dispatchEvent(new Event("characteristicvaluechanged"));
+    }, 5);
+  };
+  const pmdService = {
+    getCharacteristic: async (uuid) => uuid === POLAR_UUIDS.pmdControl ? control : pmdData,
+  };
+  const server = {
+    connected: true,
+    async getPrimaryService(uuid) {
+      if (uuid === POLAR_UUIDS.pmdService) return pmdService;
+      throw new DOMException("Optional service unavailable.", "NotFoundError");
+    },
+    disconnect() { this.connected = false; },
+  };
+  class Device extends EventTarget {}
+  const device = new Device();
+  device.gatt = { connect: async () => server };
+  const session = new PolarH10BrowserSession({
+    navigatorObject: {
+      userAgent: "Chromium test",
+      userActivation: { isActive: true },
+      bluetooth: { requestDevice: async () => device },
+    },
+    secureContext: true,
+    controlResponseTimeoutMs: 50,
+    firstEcgTimeoutMs: 50,
+  });
+
+  await assert.rejects(
+    session.connect(() => {}),
+    (error) => error.code === "PMD_COMMAND_REJECTED",
   );
 });
 
@@ -321,7 +480,9 @@ test("browser session requests an H10, starts ECG notifications, emits metrics, 
   let chooserOptions;
   const navigatorObject = {
     userAgent: "Chromium test",
+    userActivation: { isActive: true },
     bluetooth: {
+      async getAvailability() { return true; },
       async requestDevice(options) { chooserOptions = options; return device; },
     },
   };
@@ -329,7 +490,10 @@ test("browser session requests an H10, starts ECG notifications, emits metrics, 
   const session = new PolarH10BrowserSession({ navigatorObject, secureContext: true });
 
   await session.connect((event) => events.push(event));
-  assert.deepEqual(chooserOptions.filters, [{ namePrefix: "Polar H10" }]);
+  assert.deepEqual(chooserOptions.filters, [
+    { namePrefix: "Polar H10" },
+    { services: [POLAR_UUIDS.heartRateService] },
+  ]);
   assert.ok(chooserOptions.optionalServices.includes(POLAR_UUIDS.pmdService));
   assert.deepEqual(control.writes[0], [...POLAR_COMMANDS.startEcg]);
   assert.equal(pmdData.started, 1);
@@ -337,6 +501,9 @@ test("browser session requests an H10, starts ECG notifications, emits metrics, 
   assert.equal(heartRate.started, 1);
   assert.ok(events.some((event) => event.kind === "connection" && event.connected && event.batteryPercent === 87));
   assert.ok(events.some((event) => event.kind === "ecg" && event.streamHealth.sampleCount === 2));
+  assert.ok(events.some((event) => event.kind === "diagnostic"
+    && event.snapshot.userActivationAtRequest === true
+    && event.snapshot.adapterAvailability === "available"));
 
   heartRate.notify(Uint8Array.from([0x10, 60, 0x00, 0x04]));
   pmdData.notify(pmdFrame);

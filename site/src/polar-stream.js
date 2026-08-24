@@ -64,6 +64,7 @@ const RR_WINDOW_VALUES = 300;
 const GATT_CONNECT_RETRY_DELAYS_MS = Object.freeze([750, 1_500, 3_000]);
 const CONTROL_RESPONSE_TIMEOUT_MS = 7_500;
 const FIRST_ECG_TIMEOUT_MS = 10_000;
+const PMD_RESPONSE_GRACE_AFTER_FRAME_MS = 250;
 
 export class PolarStreamError extends Error {
   constructor(code, message, retryable = false) {
@@ -346,15 +347,41 @@ export function polarWebBluetoothSupport({
 
 function normalizeBluetoothError(error, questBrowser = false) {
   if (error instanceof PolarStreamError) return error;
+  const browserMessage = String(error?.message ?? "");
+  const browserBlocked = error?.name === "NotSupportedError"
+    || /globally disabled|web bluetooth (?:is )?not supported|permission (?:has been |is )?blocked/i.test(browserMessage);
+  if (browserBlocked) {
+    return new PolarStreamError(
+      "WEB_BLUETOOTH_DISABLED",
+      "Chrome has Web Bluetooth disabled or blocked. Allow sites to ask for Bluetooth access, then reload this page.",
+      true,
+    );
+  }
   if (error?.name === "NotFoundError") {
     return new PolarStreamError(
       "BLUETOOTH_CHOOSER_CANCELLED",
-      questBrowser ? "Meta Quest Browser did not provide a usable H10 chooser." : "No Polar H10 was selected.",
+      questBrowser
+        ? "Meta Quest Browser did not provide a usable H10 chooser."
+        : "Chrome closed the Bluetooth chooser without a Polar H10 selection. Wear the moistened strap so it advertises, close other Polar apps or H10 tabs, then press Connect and select the H10.",
       true,
     );
   }
   if (error?.name === "SecurityError" || error?.name === "NotAllowedError") {
+    if (/permissions? policy|feature policy|not allowed to use (?:web )?bluetooth/i.test(browserMessage)) {
+      return new PolarStreamError(
+        "WEB_BLUETOOTH_POLICY_BLOCKED",
+        "This page's embedding policy blocks Web Bluetooth. Open Affect Tracker directly in a top-level Chrome tab.",
+        true,
+      );
+    }
     return new PolarStreamError("BLUETOOTH_PERMISSION_DENIED", "Bluetooth permission was not granted.", true);
+  }
+  if (error?.name === "InvalidStateError") {
+    return new PolarStreamError(
+      "BLUETOOTH_ADAPTER_UNAVAILABLE",
+      "Chrome could not use the Bluetooth adapter. Turn Bluetooth on, close other Bluetooth diagnostics, then retry.",
+      true,
+    );
   }
   if (error?.name === "NetworkError" || error?.name === "AbortError") {
     return new PolarStreamError("BLUETOOTH_CONNECTION_FAILED", "The Polar H10 Bluetooth connection failed.", true);
@@ -395,6 +422,7 @@ export class PolarH10BrowserSession {
     this.firstEcgTimeoutMs = firstEcgTimeoutMs;
     this.allowQuestExperiment = allowQuestExperiment;
     this.processor = new PolarMetricProcessor();
+    this.diagnosticState = this.createDiagnosticState();
     this.resetConnectionState();
     this.boundPmd = (event) => this.handlePmd(event);
     this.boundHeartRate = (event) => this.handleHeartRate(event);
@@ -422,6 +450,45 @@ export class PolarH10BrowserSession {
     this.maximumEcgGapMs = 0;
   }
 
+  createDiagnosticState() {
+    return {
+      secureContext: Boolean(this.secureContext),
+      apiAvailable: typeof this.navigatorObject?.bluetooth?.requestDevice === "function",
+      adapterAvailability: "unknown",
+      userActivationAtRequest: "unknown",
+      chooser: "idle",
+      stage: "idle",
+      gattAttempt: 0,
+      gattAttemptsTotal: GATT_CONNECT_RETRY_DELAYS_MS.length + 1,
+      pmdResponse: "not started",
+      firstEcgFrame: false,
+      lastErrorCode: "",
+      lastErrorMessage: "",
+    };
+  }
+
+  diagnosticSnapshot() {
+    return { ...this.diagnosticState };
+  }
+
+  updateDiagnostics(patch) {
+    Object.assign(this.diagnosticState, patch);
+    this.emit({ kind: "diagnostic", snapshot: this.diagnosticSnapshot() });
+  }
+
+  readBluetoothAvailability() {
+    if (typeof this.navigatorObject?.bluetooth?.getAvailability !== "function") {
+      return Promise.resolve("unknown");
+    }
+    try {
+      return Promise.resolve(this.navigatorObject.bluetooth.getAvailability())
+        .then((available) => available === true ? "available" : "unavailable")
+        .catch(() => "unknown");
+    } catch {
+      return Promise.resolve("unknown");
+    }
+  }
+
   async connect(onEvent) {
     const support = polarWebBluetoothSupport({
       secureContext: this.secureContext,
@@ -432,11 +499,36 @@ export class PolarH10BrowserSession {
     if (this.device || this.connected) throw new PolarStreamError("BROWSER_BLE_BUSY", "Disconnect the current H10 before choosing another.", true);
     this.onEvent = onEvent;
     this.processor.reset();
+    this.diagnosticState = this.createDiagnosticState();
+    this.updateDiagnostics({ stage: "chooser", chooser: "opening" });
     try {
       this.emit({ kind: "status", message: "Choose your Polar H10 in the browser Bluetooth prompt…" });
-      this.device = await this.navigatorObject.bluetooth.requestDevice({
-        filters: [{ namePrefix: "Polar H10" }],
+      const userActivation = this.navigatorObject?.userActivation?.isActive;
+      this.updateDiagnostics({
+        userActivationAtRequest: typeof userActivation === "boolean" ? userActivation : "unknown",
+      });
+      // Invoke requestDevice before any other asynchronous browser API so the
+      // chooser retains the initiating click/touch activation in strict Chromium.
+      const chooserPromise = this.navigatorObject.bluetooth.requestDevice({
+        filters: [
+          { namePrefix: "Polar H10" },
+          { services: [POLAR_UUIDS.heartRateService] },
+        ],
         optionalServices: [POLAR_UUIDS.pmdService, POLAR_UUIDS.heartRateService, POLAR_UUIDS.batteryService],
+      });
+      const availabilityPromise = this.readBluetoothAvailability();
+      try {
+        this.device = await chooserPromise;
+      } catch (error) {
+        this.updateDiagnostics({
+          adapterAvailability: await availabilityPromise,
+          chooser: "closed without selection",
+        });
+        throw error;
+      }
+      this.updateDiagnostics({
+        adapterAvailability: await availabilityPromise,
+        chooser: "selected",
       });
       this.device.addEventListener("gattserverdisconnected", this.boundDisconnected);
       this.emit({ kind: "status", message: "Connecting to the H10 Bluetooth link…" });
@@ -481,6 +573,7 @@ export class PolarH10BrowserSession {
         batteryPercent = undefined;
       }
       this.connected = true;
+      this.updateDiagnostics({ stage: "live" });
       this.emit({
         kind: "connection",
         connected: true,
@@ -489,8 +582,13 @@ export class PolarH10BrowserSession {
         message: "Polar H10 ECG is live at 130 Hz",
       });
     } catch (error) {
-      await this.disconnect({ emit: false });
       const normalized = normalizeBluetoothError(error, support.questBrowser);
+      await this.disconnect({ emit: false });
+      this.updateDiagnostics({
+        stage: "failed",
+        lastErrorCode: normalized.code,
+        lastErrorMessage: normalized.message,
+      });
       this.onEvent = null;
       throw normalized;
     }
@@ -500,6 +598,7 @@ export class PolarH10BrowserSession {
     let lastError;
     const totalAttempts = GATT_CONNECT_RETRY_DELAYS_MS.length + 1;
     for (let attempt = 0; attempt < totalAttempts; attempt += 1) {
+      this.updateDiagnostics({ gattAttempt: attempt + 1 });
       try {
         return await this.device.gatt.connect();
       } catch (error) {
@@ -519,10 +618,16 @@ export class PolarH10BrowserSession {
 
   async runStage(code, label, operation) {
     this.currentStage = code;
+    this.updateDiagnostics({ stage: code });
     try {
       return await operation();
     } catch (error) {
-      throw bluetoothStageError(error, code, label);
+      const staged = bluetoothStageError(error, code, label);
+      this.updateDiagnostics({
+        lastErrorCode: staged.code,
+        lastErrorMessage: staged.message,
+      });
+      throw staged;
     }
   }
 
@@ -561,6 +666,7 @@ export class PolarH10BrowserSession {
   }
 
   async startEcgAndWaitForData() {
+    this.updateDiagnostics({ pmdResponse: "waiting", firstEcgFrame: false });
     const response = this.createWaiter(
       this.controlResponseTimeoutMs,
       new PolarStreamError(
@@ -583,9 +689,63 @@ export class PolarH10BrowserSession {
     this.firstEcgFrame = firstFrame;
     try {
       await this.writeControl(POLAR_COMMANDS.startEcg);
-      await response.promise;
+      const responseOutcome = response.promise.then(
+        (value) => ({ kind: "response", value }),
+        (error) => ({ kind: "response-error", error }),
+      );
+      const frameOutcome = firstFrame.promise.then(
+        (value) => ({ kind: "frame", value }),
+        (error) => ({ kind: "frame-error", error }),
+      );
+      const firstOutcome = await Promise.race([responseOutcome, frameOutcome]);
+      if (firstOutcome.kind === "response-error") {
+        if (firstOutcome.error?.code !== "PMD_CONTROL_TIMEOUT") throw firstOutcome.error;
+        let streamHealth;
+        try {
+          streamHealth = await firstFrame.promise;
+        } catch {
+          throw firstOutcome.error;
+        }
+        this.updateDiagnostics({ pmdResponse: "not observed; live ECG confirmed", firstEcgFrame: true });
+        this.emit({
+          kind: "status",
+          message: "Live ECG confirmed even though Chrome did not deliver the PMD acknowledgement.",
+        });
+        return streamHealth;
+      }
+      if (firstOutcome.kind === "frame-error") throw firstOutcome.error;
+      if (firstOutcome.kind === "frame") {
+        // A valid decoded frame after this command is stronger startup evidence
+        // than a control indication that Chromium may omit under link pressure.
+        // Briefly preserve the response waiter so an explicit H10 rejection still
+        // wins when the data and control characteristics arrive out of order.
+        const graceOutcome = await Promise.race([
+          responseOutcome,
+          new Promise((resolve) => this.timer.setTimeout(
+            () => resolve({ kind: "response-grace-expired" }),
+            PMD_RESPONSE_GRACE_AFTER_FRAME_MS,
+          )),
+        ]);
+        if (graceOutcome.kind === "response-error" && graceOutcome.error?.code !== "PMD_CONTROL_TIMEOUT") {
+          throw graceOutcome.error;
+        }
+        if (graceOutcome.kind === "response") {
+          this.updateDiagnostics({ pmdResponse: "acknowledged", firstEcgFrame: true });
+          return firstOutcome.value;
+        }
+        response.resolve(firstOutcome.value);
+        this.updateDiagnostics({ pmdResponse: "not observed; live ECG confirmed", firstEcgFrame: true });
+        this.emit({
+          kind: "status",
+          message: "Live ECG confirmed; the PMD acknowledgement was not required.",
+        });
+        return firstOutcome.value;
+      }
+      this.updateDiagnostics({ pmdResponse: "acknowledged" });
       this.emit({ kind: "status", message: "H10 accepted ECG startup; waiting for live samples…" });
-      await firstFrame.promise;
+      const streamHealth = await firstFrame.promise;
+      this.updateDiagnostics({ firstEcgFrame: true });
+      return streamHealth;
     } catch (error) {
       this.rejectWaiter(response, error);
       this.rejectWaiter(firstFrame, error);
@@ -619,6 +779,7 @@ export class PolarH10BrowserSession {
       this.lastEcgFrameAtMs = receivedAtMs;
       this.ecgFrameCount += 1;
       const streamHealth = this.streamHealth();
+      this.updateDiagnostics({ firstEcgFrame: true });
       this.firstEcgFrame?.resolve(streamHealth);
       this.emit({ kind: "ecg", ...frame, snapshot, streamHealth });
       this.emit({ kind: "metrics", snapshot });
@@ -637,12 +798,22 @@ export class PolarH10BrowserSession {
     if (bytes.length < 4 || bytes[0] !== 0xf0) return;
     const pending = this.pendingControlResponse;
     if (!pending || bytes[1] !== pending.command || bytes[2] !== pending.measurement) return;
-    if (bytes[3] === 0) pending.resolve(bytes);
-    else pending.reject(new PolarStreamError(
-      "PMD_COMMAND_REJECTED",
-      `The H10 rejected ECG startup (PMD status ${bytes[3]}). Disconnect ECG streaming in another Polar app or tab, then retry.`,
-      true,
-    ));
+    if (bytes[3] === 0) {
+      this.updateDiagnostics({ pmdResponse: "acknowledged" });
+      pending.resolve(bytes);
+    } else {
+      const error = new PolarStreamError(
+        "PMD_COMMAND_REJECTED",
+        `The H10 rejected ECG startup (PMD status ${bytes[3]}). Disconnect ECG streaming in another Polar app or tab, then retry.`,
+        true,
+      );
+      this.updateDiagnostics({
+        pmdResponse: `rejected (status ${bytes[3]})`,
+        lastErrorCode: error.code,
+        lastErrorMessage: error.message,
+      });
+      pending.reject(error);
+    }
   }
 
   streamHealth() {
@@ -663,6 +834,7 @@ export class PolarH10BrowserSession {
   async disconnect({ emit = true } = {}) {
     if (this.disconnecting) return;
     this.disconnecting = true;
+    if (emit) this.updateDiagnostics({ stage: "disconnecting" });
     const wasConnected = this.connected;
     try {
       if (this.server?.connected && this.control) {
@@ -676,6 +848,14 @@ export class PolarH10BrowserSession {
     } finally {
       this.resetConnectionState();
     }
+    if (emit) this.updateDiagnostics({
+      stage: "idle",
+      chooser: "idle",
+      pmdResponse: "not started",
+      firstEcgFrame: false,
+      lastErrorCode: "",
+      lastErrorMessage: "",
+    });
     if (emit && (wasConnected || this.onEvent)) this.emit({ kind: "connection", connected: false, message: "Polar H10 disconnected" });
     if (emit) this.onEvent = null;
   }
@@ -689,6 +869,11 @@ export class PolarH10BrowserSession {
   handleDisconnected() {
     if (this.disconnecting) return;
     this.resetConnectionState();
+    this.updateDiagnostics({
+      stage: "disconnected",
+      lastErrorCode: "BLUETOOTH_LINK_LOST",
+      lastErrorMessage: "The Polar H10 left Bluetooth range or disconnected.",
+    });
     this.emit({ kind: "connection", connected: false, message: "The Polar H10 left Bluetooth range or disconnected" });
     this.onEvent = null;
   }

@@ -2,10 +2,10 @@
 
 The experimental Polar Stream browser module and its recreated module icon are
 adapted from Polar Stream at
-<https://github.com/GeorgeFejer91/Polar-Stream/tree/dff886e03205a2986d10a7c00528d09530bc053a>.
+<https://github.com/GeorgeFejer91/Polar-Stream/tree/a62f13edd10e02b04b5e5916500acf527c165cc5>.
 The browser adapter in this repository was independently structured for Affect
-Tracker, while retaining Polar PMD protocol constants and the visual identity of
-the referenced project.
+Tracker, while retaining Polar PMD protocol constants, the visual identity, and
+the reviewed browser-compatibility behaviors of the referenced project.
 
 Polar Stream is distributed under the MIT License:
 

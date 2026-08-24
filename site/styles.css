@@ -415,6 +415,26 @@ body.is-experiment-running .touch-trace-panel { z-index: 40; }
 .polar-support-details summary,
 .polar-mapping-details summary { min-height: 2rem; color: #b9c8cf; font-size: 0.68rem; cursor: pointer; }
 .polar-support-details .polar-support-note { margin: 0.25rem 0 0.55rem; }
+.polar-connection-diagnostics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.35rem;
+  margin: 0;
+}
+.polar-connection-diagnostics div {
+  min-width: 0;
+  padding: 0.42rem;
+  border-radius: 0.4rem;
+  background: rgb(0 0 0 / 24%);
+}
+.polar-connection-diagnostics dt { color: #8fa5af; font-size: 0.6rem; }
+.polar-connection-diagnostics dd {
+  margin: 0.14rem 0 0;
+  color: #e0f5ee;
+  font: 700 0.62rem/1.35 ui-monospace, SFMono-Regular, Consolas, monospace;
+  overflow-wrap: anywhere;
+}
+.polar-diagnostic-note { margin: 0.45rem 0 0; color: #8499a2; font-size: 0.62rem; line-height: 1.4; }
 
 .polar-ecg-port {
   margin-top: 0.35rem;

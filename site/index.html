@@ -443,6 +443,17 @@
             <details class="polar-support-details">
               <summary>Browser connection details</summary>
               <p id="polar-support-note" class="polar-support-note" role="status">Checking Web Bluetooth support…</p>
+              <dl id="polar-connection-diagnostics" class="polar-connection-diagnostics" aria-label="Live browser Bluetooth diagnostics">
+                <div><dt>Secure page / API</dt><dd><output data-polar-diagnostic="api">Checking…</output></dd></div>
+                <div><dt>Bluetooth adapter</dt><dd><output data-polar-diagnostic="adapter">Not checked</output></dd></div>
+                <div><dt>Connect gesture</dt><dd><output data-polar-diagnostic="activation">Not checked</output></dd></div>
+                <div><dt>Chrome chooser</dt><dd><output data-polar-diagnostic="chooser">Idle</output></dd></div>
+                <div><dt>Connection stage</dt><dd><output data-polar-diagnostic="stage">Idle</output></dd></div>
+                <div><dt>GATT attempts</dt><dd><output data-polar-diagnostic="gatt">0 / 4</output></dd></div>
+                <div><dt>PMD / ECG proof</dt><dd><output data-polar-diagnostic="pmd">Not started</output></dd></div>
+                <div><dt>Last issue</dt><dd><output data-polar-diagnostic="error">None</output></dd></div>
+              </dl>
+              <p class="polar-diagnostic-note">These attempt details stay in this tab and contain no Bluetooth identifier or raw physiology.</p>
             </details>
 
             <h4>Signal modules</h4>

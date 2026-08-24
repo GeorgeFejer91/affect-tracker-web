@@ -75,10 +75,23 @@ and never sends raw ECG or RR series through LSL.
 Browser connection is a staged protocol, not a successful `gatt.connect()`
 call. The adapter must discover PMD control/data, enable data notifications and
 control indications, send the canonical 130 Hz/14-bit ECG start command, match
-its exact successful PMD response, and decode the first valid ECG packet before
-setting `polarConnected` or showing the live port. Missing, rejected, or
-out-of-order responses and a missing first frame fail closed under bounded
-timeouts. Optional heart-rate and battery failures do not prevent raw ECG.
+its exact successful PMD response when Chrome delivers that indication, and
+decode the first valid ECG packet before setting `polarConnected` or showing
+the live port. An explicit PMD rejection or a missing first frame always fails
+closed. A valid decoded ECG frame received after the start write is stronger
+stream evidence and may qualify startup when Chromium omits only the successful
+control indication; the live diagnostics must label that fallback rather than
+pretend the acknowledgement was observed. Optional heart-rate and battery
+failures do not prevent raw ECG.
+
+The Connect gesture invokes `requestDevice()` before any other asynchronous
+browser API, uses both the exact H10 name prefix and advertised heart-rate
+service as alternative chooser filters, and grants PMD/heart-rate/battery as
+optional services. The in-page browser details retain only privacy-safe attempt
+state: secure/API availability, adapter availability, user activation, chooser
+outcome, current GATT stage/attempt, PMD/first-frame proof, and the last typed
+error. No device identifier, name suffix, raw sample, RR series, or physiology
+enters that diagnostic state.
 
 Required GATT failures retain the failing stage and the browser's safe error
 text in the visible connector status. `NetworkError`, `AbortError`, and
