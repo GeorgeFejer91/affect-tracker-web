@@ -124,6 +124,126 @@ dd {
   border-radius: 14px;
 }
 
+.polar-stream-options {
+  margin: 26px 0;
+  padding: 16px;
+  border: 1px solid rgb(111 222 176 / 42%);
+  border-radius: 14px;
+  background: rgb(22 70 52 / 10%);
+}
+
+.polar-stream-options legend {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 7px;
+  color: #dffff0;
+  font-weight: 800;
+}
+
+.polar-stream-options legend img {
+  width: 28px;
+  height: 28px;
+}
+
+.polar-stream-options legend span {
+  padding: 3px 7px;
+  border: 1px solid #ffd166;
+  border-radius: 999px;
+  color: #ffd166;
+  font-size: 0.68rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.polar-xr-connector {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 10px;
+  align-items: center;
+  padding: 12px;
+  border: 1px solid #31443e;
+  border-radius: 12px;
+  background: #090f10;
+}
+
+.polar-xr-connector > div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.polar-xr-connector output {
+  color: #a9e9ca;
+  font-size: 0.82rem;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.polar-xr-connector output.is-error {
+  color: #ffaaa3;
+}
+
+.polar-xr-connector button {
+  min-height: 44px;
+  padding: 8px 13px;
+  background: #79e2bd;
+}
+
+.polar-xr-connector button[hidden],
+.polar-xr-connector output[hidden] {
+  display: none;
+}
+
+.polar-xr-ecg-port {
+  margin-top: 8px;
+  padding: 8px;
+  border: 1px solid rgb(121 226 189 / 32%);
+  border-radius: 12px;
+  background: #05090b;
+}
+
+.polar-xr-ecg-port[hidden] {
+  display: none;
+}
+
+.polar-xr-ecg-port > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 5px;
+  color: #a9e9ca;
+  font: 700 0.75rem ui-monospace, SFMono-Regular, Consolas, monospace;
+}
+
+.polar-xr-ecg-port canvas {
+  display: block;
+  width: 100%;
+  height: 62px;
+  border-radius: 8px;
+  background: #030708;
+}
+
+.polar-xr-mappings {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.polar-xr-mappings label {
+  display: grid;
+  gap: 7px;
+  color: #f4f7fb;
+  font-weight: 750;
+}
+
+.polar-xr-mappings output {
+  min-height: 1.5em;
+  color: #a9e9ca;
+  font: 0.76rem ui-monospace, SFMono-Regular, Consolas, monospace;
+}
+
 .rigging-options legend {
   padding: 0 6px;
   color: #78d7ff;
@@ -275,5 +395,14 @@ a {
 
   .rigging-controls {
     grid-template-columns: 1fr;
+  }
+
+  .polar-xr-connector,
+  .polar-xr-mappings {
+    grid-template-columns: 1fr;
+  }
+
+  .polar-xr-connector button {
+    width: 100%;
   }
 }

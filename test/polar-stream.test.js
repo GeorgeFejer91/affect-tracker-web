@@ -118,6 +118,15 @@ test("Web Bluetooth support requires a secure compatible desktop browser", () =>
   assert.equal(quest.supported, false);
   assert.equal(quest.questBrowser, true);
   assert.match(quest.reason, /Meta Quest Browser/);
+
+  const questExperiment = polarWebBluetoothSupport({
+    secureContext: true,
+    navigatorObject: { userAgent: "Mozilla/5.0 OculusBrowser/40.0", bluetooth: { requestDevice() {} } },
+    allowQuestExperiment: true,
+  });
+  assert.equal(questExperiment.supported, true);
+  assert.equal(questExperiment.questBrowser, true);
+  assert.match(questExperiment.reason, /not yet headset-qualified/);
 });
 
 test("browser session reports the exact failing GATT stage and a competing-session recovery hint", async () => {

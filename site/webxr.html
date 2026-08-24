@@ -55,6 +55,44 @@
           <div><dt>Meta button</dt><dd>Use the system control to leave immersive mode</dd></div>
         </dl>
 
+        <fieldset id="webxr-polar-panel" class="polar-stream-options">
+          <legend>
+            <img src="./assets/polar-stream-logo.svg" alt="">
+            Polar Stream <span>Experimental</span>
+          </legend>
+          <div class="polar-xr-connector">
+            <div>
+              <strong>Polar H10</strong>
+              <output id="webxr-polar-status" aria-live="polite">Checking this browser…</output>
+            </div>
+            <output id="webxr-polar-battery" aria-label="Polar H10 battery" hidden>—</output>
+            <button id="webxr-polar-connect" type="button">Connect</button>
+            <button id="webxr-polar-disconnect" type="button" hidden>Disconnect</button>
+          </div>
+          <section id="webxr-polar-ecg-port" class="polar-xr-ecg-port" aria-label="Live Polar H10 ECG" hidden>
+            <div><strong>Live ECG</strong><span><output id="webxr-polar-rate">130 Hz</output> · <output id="webxr-polar-samples">0</output> samples</span></div>
+            <canvas id="webxr-polar-ecg" width="600" height="84" aria-label="Recent live Polar H10 ECG waveform"></canvas>
+          </section>
+          <div class="polar-xr-mappings">
+            <label for="webxr-polar-x">
+              X · Valence
+              <select id="webxr-polar-x"></select>
+              <output id="webxr-polar-x-value">Right thumbstick</output>
+            </label>
+            <label for="webxr-polar-y">
+              Y · Arousal
+              <select id="webxr-polar-y"></select>
+              <output id="webxr-polar-y-value">Right thumbstick</output>
+            </label>
+          </div>
+          <p id="webxr-polar-support" class="privacy-note" role="status"></p>
+          <p class="privacy-note">
+            Connect before entering immersive mode. A finite assigned metric drives only its selected axis;
+            the other axis remains on the right thumbstick. In passthrough, the same live values animate
+            Flubber locally and are logged as mapping context without raw ECG samples.
+          </p>
+        </fieldset>
+
         <fieldset class="rigging-options">
           <legend>Flubber placement</legend>
           <label class="toggle-field" for="controller-follow-enabled">

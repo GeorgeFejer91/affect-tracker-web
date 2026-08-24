@@ -25,27 +25,39 @@ selection; the application must not auto-connect or scan silently. Firefox,
 Safari, insecure HTTP, and browsers without `navigator.bluetooth.requestDevice`
 show a disabled Connect control with an actionable explanation.
 
-Stock Meta Quest Browser is explicitly unsupported for H10 pairing because it
-does not provide a usable Web Bluetooth device chooser, even on versions where
-feature detection can appear positive. The main page must identify the Quest
-user agent and fail closed. A sideloaded Chromium APK may expose ordinary 2D
-Web Bluetooth on some Quest builds, but it is not a qualified study path and is
-not integrated into the repository's separate immersive `webxr.html` flow.
+The main page identifies the Quest user agent and fails closed because its
+fourth accordion is a desktop-browser support path. The separate experimental
+`webxr.html` flow has a deliberately narrower diagnostic override: its Polar
+menu is enabled only when the exact headset browser exposes
+`navigator.bluetooth.requestDevice`, and it states that this does not qualify
+the browser or headset. The wearer must connect and receive the first valid ECG
+frame before entering immersive mode; the page never attempts to open a
+browser-owned Bluetooth chooser from inside XR. If the API is absent or the
+chooser/stream fails, Connect stays disabled or the failure remains visible and
+ordinary right-thumbstick control continues. A sideloaded Chromium APK may
+expose ordinary 2D Web Bluetooth on some Quest builds, but it is not a qualified
+study path. Physical Quest/H10 testing is required before claiming any headset
+browser combination works.
 
 ## Data flow and bounded state
 
 `site/src/polar-stream.js` owns browser capability detection, the Bluetooth GATT
 lifecycle, Polar PMD control/data framing, signed 24-bit ECG decoding, standard
 heart-rate/RR decoding, and bounded rolling metric state. `site/src/app.js` owns
-the accordion, connection status, waveform rendering, axis assignments,
-preference persistence, affect-target arbitration, and logging context.
+the main-page accordion, connection status, waveform rendering, axis
+assignments, preference persistence, affect-target arbitration, and logging
+context. `site/src/webxr-study.js` owns its separate pre-entry connector,
+waveform, non-persisted fixed-default assignments, controller-versus-Polar axis
+arbitration, in-world HUD feedback, and WebXR logging context.
 
 Raw ECG is held only in memory. The processor and waveform each retain at most
 650 samples (five seconds at 130 Hz); the RR window retains at most 300 positive
 intervals. Disconnect or refresh drops the waveform. No raw 130 Hz ECG frame or
-RR series is written to local storage or CSV. Browser-local axis assignments are
-stored in the existing preferences record and intentionally remain outside
-portable settings version 1, Tauri, LSL, the native Quest APK, and WebXR.
+RR series is written to local storage or CSV. Main-page axis assignments are
+stored in the existing browser preferences record. WebXR assignments exist only
+for the current page load and use each module's documented default range without
+the main page's low/high/reverse fine-tuning UI. Both intentionally remain
+outside portable settings version 1, Tauri, LSL, and the native Quest APK.
 
 ## Connection readiness and failure diagnosis
 
@@ -160,6 +172,17 @@ and resumes from the latest metric during playback; the last target is held
 during a pause. The connection itself remains open unless the user disconnects,
 the strap leaves range, or the page closes.
 
+The separate WebXR page defaults both axes to **Right thumbstick / manual**.
+Selecting a Polar metric does not change affect before a run. Starting immersive
+mode with any assigned axis requires an already-ready H10 connection. During a
+running virtual or passthrough session, each finite normalized Polar metric
+replaces only its assigned controller component; the other component continues
+to integrate the right thumbstick. Warm-up gaps, missing values, or a disconnect
+return the affected axis to thumbstick availability rather than fabricating a
+sample. X reset changes only axes without a currently finite Polar target. The
+pre-entry Bluetooth and mapping controls remain locked while immersed, while the
+Flubber HUD shows **POLAR STREAM • LIVE** plus each finite mapped X/Y value.
+
 ## Logging and privacy
 
 Normal 20 Hz and experiment sample/event rows include whether the H10 is
@@ -174,6 +197,13 @@ All Bluetooth data stays in the current tab. The module adds no server, upload,
 telemetry, CDN, account, or background connection. Browser/OS Bluetooth
 permission state remains under browser control. Researchers must obtain
 appropriate participant consent for physiological acquisition.
+
+WebXR rows add `polar_connected` plus the selected metric, current observed
+value, and normalized value for valence and arousal. They do not add raw ECG,
+sample arrays, or RR-series fields. If the researcher explicitly enters the
+existing per-run WebXR webhook, these same low-rate CSV fields travel with the
+completed study CSV; the Polar adapter itself adds no destination and the local
+download remains available.
 
 ## Source and validation status
 
@@ -198,3 +228,11 @@ run, disconnect/reconnect, waveform, heart-rate/RR availability, mapping
 ownership, and CSV context. Until physical-H10 acceptance is recorded, this
 remains an experimental implementation rather than a validated acquisition
 tool.
+
+WebXR qualification is a separate physical gate. Record Quest model, system and
+browser versions, Web Bluetooth API visibility, browser-owned chooser result,
+live sample count/rate before entry, at least two minutes of retained ECG in
+both immersive VR and passthrough, single- and dual-axis mappings, mixed
+thumbstick control, HUD feedback, range loss, exit, disconnect/reconnect, and
+console state. Desktop success or an API-positive Quest feature check cannot
+substitute for that wearer-observed headset pass.

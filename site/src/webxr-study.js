@@ -1,11 +1,12 @@
 import {
   affectParameters,
   buildFlubberPath,
+  clamp,
   createProfiles,
   createProjectionOffsets,
 } from "./math.js";
 import {
-  advanceWebXrAffect,
+  advanceWebXrAffectWithPolar,
   controllerFacingModelMatrix,
   createEquirectSphereVertices,
   matrixWithoutTranslation,
@@ -22,6 +23,12 @@ import {
   WEBXR_STIMULI,
   webXrStimulusById,
 } from "./webxr-stimuli.js";
+import {
+  createPolarH10BrowserSession,
+  normalizePolarMetric,
+  POLAR_METRICS,
+  polarWebBluetoothSupport,
+} from "./polar-stream.js";
 
 const VIDEO_MODEL = modelMatrix(0, 1.55, -2.8, 2.4, 1.35);
 const SPHERE_MODEL = modelMatrix(0, 0, 0, 1, 1);
@@ -47,6 +54,19 @@ const elements = {
   controllerFollowHand: document.querySelector("#controller-follow-hand"),
   flubberSize: document.querySelector("#flubber-size"),
   flubberSizeOutput: document.querySelector("#flubber-size-output"),
+  polarStatus: document.querySelector("#webxr-polar-status"),
+  polarSupport: document.querySelector("#webxr-polar-support"),
+  polarBattery: document.querySelector("#webxr-polar-battery"),
+  polarConnect: document.querySelector("#webxr-polar-connect"),
+  polarDisconnect: document.querySelector("#webxr-polar-disconnect"),
+  polarEcgPort: document.querySelector("#webxr-polar-ecg-port"),
+  polarEcg: document.querySelector("#webxr-polar-ecg"),
+  polarRate: document.querySelector("#webxr-polar-rate"),
+  polarSamples: document.querySelector("#webxr-polar-samples"),
+  polarX: document.querySelector("#webxr-polar-x"),
+  polarY: document.querySelector("#webxr-polar-y"),
+  polarXValue: document.querySelector("#webxr-polar-x-value"),
+  polarYValue: document.querySelector("#webxr-polar-y-value"),
   start: document.querySelector("#start-vr"),
   download: document.querySelector("#download-csv"),
   status: document.querySelector("#study-status"),
@@ -85,15 +105,188 @@ const state = {
   lastCsv: "",
   lastFilename: "",
   stimulus: WEBXR_STIMULI[0],
+  polarConnected: false,
+  polarConnecting: false,
+  polarBatteryPercent: undefined,
+  polarMetrics: {},
+  polarMappings: {
+    valence: { metric: "manual" },
+    arousal: { metric: "manual" },
+  },
+  polarHudText: "",
 };
 
 const profiles = createProfiles();
 let offsets = createProjectionOffsets("webxr-preview", profiles.waveCount);
 let renderer;
+const polarSession = createPolarH10BrowserSession({ allowQuestExperiment: true });
+let polarEcgWindow = [];
 
 function setStatus(message, error = false) {
   elements.status.textContent = message;
   elements.status.classList.toggle("is-error", error);
+}
+
+function polarMetricById(metricId) {
+  return POLAR_METRICS.find((metric) => metric.id === metricId);
+}
+
+function formatPolarMetric(metricId, value) {
+  const metric = polarMetricById(metricId);
+  if (!metric || !Number.isFinite(value)) return "Waiting for metric";
+  const magnitude = Math.abs(value);
+  const digits = magnitude >= 1_000 ? 0 : magnitude >= 100 ? 1 : magnitude >= 10 ? 2 : 3;
+  return `${value.toFixed(digits)} ${metric.unit}`;
+}
+
+function polarAxisReading(axis) {
+  const mapping = state.polarMappings[axis];
+  if (!mapping || mapping.metric === "manual") return { mapping: { metric: "manual" } };
+  const value = state.polarMetrics[mapping.metric];
+  return {
+    mapping,
+    value,
+    normalized: state.polarConnected ? normalizePolarMetric(value, mapping) : undefined,
+  };
+}
+
+function updatePolarMappingUi() {
+  for (const [axis, select, output] of [
+    ["valence", elements.polarX, elements.polarXValue],
+    ["arousal", elements.polarY, elements.polarYValue],
+  ]) {
+    const reading = polarAxisReading(axis);
+    if (reading.mapping.metric === "manual") output.value = "Right thumbstick";
+    else if (!state.polarConnected) output.value = "Connect H10 first";
+    else if (reading.normalized === undefined) output.value = formatPolarMetric(reading.mapping.metric, reading.value);
+    else output.value = `${formatPolarMetric(reading.mapping.metric, reading.value)} → ${reading.normalized.toFixed(3)}`;
+    select.disabled = Boolean(state.session);
+  }
+  const summaries = [
+    ["X", polarAxisReading("valence")],
+    ["Y", polarAxisReading("arousal")],
+  ].filter(([, reading]) => reading.normalized !== undefined).map(([axis, reading]) => {
+    const metric = polarMetricById(reading.mapping.metric);
+    return `${axis} ${metric?.shortLabel ?? reading.mapping.metric} ${reading.normalized >= 0 ? "+" : ""}${reading.normalized.toFixed(2)}`;
+  });
+  state.polarHudText = summaries.length ? summaries.join(" · ") : "";
+}
+
+function setPolarMapping(axis, metricId) {
+  const metric = polarMetricById(metricId);
+  state.polarMappings[axis] = metric
+    ? { metric: metric.id, minimum: metric.minimum, maximum: metric.maximum, invert: false }
+    : { metric: "manual" };
+  updatePolarMappingUi();
+  if (state.session) record("event", "polar-mapping", `${axis}:${state.polarMappings[axis].metric}`);
+}
+
+function populatePolarMappings() {
+  for (const select of [elements.polarX, elements.polarY]) {
+    const manual = document.createElement("option");
+    manual.value = "manual";
+    manual.textContent = "Right thumbstick / manual";
+    select.append(manual);
+    for (const metric of POLAR_METRICS) {
+      const option = document.createElement("option");
+      option.value = metric.id;
+      option.textContent = `${metric.label} (${metric.unit})`;
+      select.append(option);
+    }
+  }
+  setPolarMapping("valence", "manual");
+  setPolarMapping("arousal", "manual");
+}
+
+function updatePolarConnectionUi(message, error = false) {
+  const support = polarWebBluetoothSupport({ allowQuestExperiment: true });
+  state.polarStatusMessage = message;
+  elements.polarStatus.value = message;
+  elements.polarStatus.classList.toggle("is-error", error);
+  elements.polarConnect.hidden = state.polarConnected;
+  elements.polarDisconnect.hidden = !state.polarConnected;
+  elements.polarConnect.disabled = !support.supported || state.polarConnecting || Boolean(state.session);
+  elements.polarDisconnect.disabled = Boolean(state.session);
+  elements.polarBattery.hidden = !Number.isFinite(state.polarBatteryPercent);
+  elements.polarBattery.value = Number.isFinite(state.polarBatteryPercent) ? `${state.polarBatteryPercent}%` : "—";
+  updatePolarMappingUi();
+}
+
+function drawPolarEcg() {
+  const canvas = elements.polarEcg;
+  const context = canvas.getContext("2d");
+  context.clearRect(0, 0, canvas.width, canvas.height);
+  context.fillStyle = "#030708";
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  if (polarEcgWindow.length < 2) return;
+  const sorted = [...polarEcgWindow].sort((left, right) => left - right);
+  const lower = sorted[Math.floor(sorted.length * 0.02)];
+  const upper = sorted[Math.min(sorted.length - 1, Math.ceil(sorted.length * 0.98))];
+  const center = (lower + upper) / 2;
+  const halfRange = Math.max(50, (upper - lower) * 0.6);
+  context.strokeStyle = "#79e2bd";
+  context.lineWidth = 1.4;
+  context.beginPath();
+  for (let index = 0; index < polarEcgWindow.length; index += 1) {
+    const x = index / (polarEcgWindow.length - 1) * canvas.width;
+    const y = clamp(0.5 - (polarEcgWindow[index] - center) / (halfRange * 2), 0.04, 0.96) * canvas.height;
+    if (index === 0) context.moveTo(x, y);
+    else context.lineTo(x, y);
+  }
+  context.stroke();
+}
+
+function handlePolarEvent(event) {
+  if (event.kind === "status") {
+    updatePolarConnectionUi(event.message);
+    return;
+  }
+  if (event.kind === "connection") {
+    state.polarConnecting = false;
+    state.polarConnected = event.connected;
+    state.polarBatteryPercent = Number.isFinite(event.batteryPercent) ? event.batteryPercent : undefined;
+    if (!event.connected) {
+      state.polarMetrics = {};
+      polarEcgWindow = [];
+      elements.polarSamples.value = "0";
+      elements.polarEcgPort.hidden = true;
+      drawPolarEcg();
+    }
+    updatePolarConnectionUi(event.message);
+    if (state.session) record("event", event.connected ? "polar-connect" : "polar-disconnect", "web-bluetooth");
+    return;
+  }
+  if (event.kind === "ecg") {
+    polarEcgWindow.push(...event.microvolts);
+    if (polarEcgWindow.length > 650) polarEcgWindow.splice(0, polarEcgWindow.length - 650);
+    elements.polarSamples.value = event.snapshot.totalEcgSamples.toLocaleString();
+    const rate = event.streamHealth?.observedSampleRateHz;
+    elements.polarRate.value = `${Math.round(Number.isFinite(rate) ? rate : 130)} Hz`;
+    elements.polarEcgPort.hidden = false;
+    drawPolarEcg();
+    return;
+  }
+  if (event.kind === "metrics") {
+    state.polarMetrics = { ...event.snapshot.values };
+    updatePolarMappingUi();
+    return;
+  }
+  if (event.kind === "error") updatePolarConnectionUi(event.message, true);
+}
+
+async function connectPolar() {
+  state.polarConnecting = true;
+  updatePolarConnectionUi("Waiting for the browser Bluetooth chooser…");
+  try {
+    await polarSession.connect(handlePolarEvent);
+  } catch (error) {
+    state.polarConnecting = false;
+    updatePolarConnectionUi(error?.message ?? String(error), true);
+  }
+}
+
+async function disconnectPolar() {
+  await polarSession.disconnect();
 }
 
 function applyStimulus(stimulus, updateUrl = true) {
@@ -145,6 +338,8 @@ function rounded(value, digits = 6) {
 function record(recordType, event = "", detail = "") {
   const now = performance.now();
   const hasStimulus = state.presentationMode !== "passthrough-flubber";
+  const polarValence = polarAxisReading("valence");
+  const polarArousal = polarAxisReading("arousal");
   state.records.push({
     session_id: state.sessionId,
     stimulus_id: hasStimulus ? state.stimulus.id : "",
@@ -172,6 +367,13 @@ function record(recordType, event = "", detail = "") {
     flubber_follow_hand: state.controllerFollowEnabled ? state.controllerFollowHand : "",
     flubber_size_scale: rounded(state.flubberSize, 2),
     flubber_tracking: state.controllerFollowEnabled ? state.controllerTracking : "",
+    polar_connected: state.polarConnected,
+    polar_valence_metric: polarValence.mapping.metric,
+    polar_valence_value: rounded(polarValence.value),
+    polar_valence_normalized: rounded(polarValence.normalized),
+    polar_arousal_metric: polarArousal.mapping.metric,
+    polar_arousal_value: rounded(polarArousal.value),
+    polar_arousal_normalized: rounded(polarArousal.normalized),
     paused: state.paused,
     event,
     detail,
@@ -248,10 +450,14 @@ async function finalize(reason, partial = false, autoDownload = true) {
 }
 
 function resetAffect() {
-  state.targetX = 0;
-  state.targetY = 0;
-  state.currentX = 0;
-  state.currentY = 0;
+  if (polarAxisReading("valence").normalized === undefined) {
+    state.targetX = 0;
+    state.currentX = 0;
+  }
+  if (polarAxisReading("arousal").normalized === undefined) {
+    state.targetY = 0;
+    state.currentY = 0;
+  }
   record("event", "reset", "left-x");
 }
 
@@ -324,7 +530,12 @@ function updateStudy(now, deltaSeconds) {
   const input = readControllers();
   if (state.phase === "countdown" && now >= state.countdownEndsAt) beginPlayback();
   if (state.phase === "running" && !state.paused) {
-    const next = advanceWebXrAffect(state, input, deltaSeconds);
+    const polarValence = polarAxisReading("valence");
+    const polarArousal = polarAxisReading("arousal");
+    const next = advanceWebXrAffectWithPolar(state, input, deltaSeconds, {
+      x: polarValence.normalized,
+      y: polarArousal.normalized,
+    });
     Object.assign(state, next);
     const frequency = affectParameters(state.currentX, state.currentY).frequency;
     state.phaseRadians = (state.phaseRadians + deltaSeconds * Math.PI * 2 * frequency) % (Math.PI * 2);
@@ -359,12 +570,23 @@ async function startStudy() {
     return;
   }
 
+  const polarAssigned = Object.values(state.polarMappings).some((mapping) => mapping.metric !== "manual");
+  if (polarAssigned && !state.polarConnected) {
+    setStatus("Connect the Polar H10 before entering immersive mode, or return both Polar axes to the right thumbstick.", true);
+    elements.polarConnect.focus();
+    return;
+  }
+
   elements.start.disabled = true;
   elements.stimulus.disabled = true;
   elements.presentationMode.disabled = true;
   elements.controllerFollow.disabled = true;
   elements.controllerFollowHand.disabled = true;
   elements.flubberSize.disabled = true;
+  elements.polarConnect.disabled = true;
+  elements.polarDisconnect.disabled = true;
+  elements.polarX.disabled = true;
+  elements.polarY.disabled = true;
   elements.download.hidden = true;
   const presentationMode = elements.presentationMode.value;
   const passthrough = presentationMode !== "virtual";
@@ -441,6 +663,7 @@ async function startStudy() {
         elements.controllerFollow.disabled = false;
         elements.controllerFollowHand.disabled = !elements.controllerFollow.checked;
         elements.flubberSize.disabled = false;
+        updatePolarConnectionUi(state.polarStatusMessage ?? (state.polarConnected ? "Polar H10 ECG is live at 130 Hz" : "Not connected"));
         if (!state.finalizing) elements.start.disabled = false;
       });
     }, { once: true });
@@ -449,7 +672,15 @@ async function startStudy() {
       session.end().then(downloadLastCsv).catch(() => downloadLastCsv());
     };
     session.requestAnimationFrame(renderFrame);
-    setStatus(`${state.stimulus.title} is running. Use the right thumbstick to rate affect.`);
+    const polarAxes = [
+      state.polarMappings.valence.metric !== "manual" ? "valence (X)" : "",
+      state.polarMappings.arousal.metric !== "manual" ? "arousal (Y)" : "",
+    ].filter(Boolean);
+    setStatus(
+      polarAxes.length
+        ? `${state.stimulus.title} is running. Polar Stream drives ${polarAxes.join(" and ")}; use the right thumbstick for any manual axis.`
+        : `${state.stimulus.title} is running. Use the right thumbstick to rate affect.`,
+    );
   } catch (error) {
     requestedSession?.end().catch(() => {});
     elements.start.disabled = false;
@@ -458,6 +689,7 @@ async function startStudy() {
     elements.controllerFollow.disabled = false;
     elements.controllerFollowHand.disabled = !elements.controllerFollow.checked;
     elements.flubberSize.disabled = false;
+    updatePolarConnectionUi(state.polarStatusMessage ?? (state.polarConnected ? "Polar H10 ECG is live at 130 Hz" : "Not connected"));
     setStatus(
       error?.name === "NotSupportedError"
         ? `This browser could not start ${passthrough ? "passthrough" : "immersive VR"}. Try another presentation mode in Meta Quest Browser.`
@@ -567,6 +799,12 @@ function createRenderer(canvas, video) {
       phase: study.phaseRadians,
     });
     context.clearRect(0, 0, flubberCanvas.width, flubberCanvas.height);
+    if (study.polarConnected) {
+      context.fillStyle = "rgba(121,226,189,0.96)";
+      context.textAlign = "center";
+      context.font = "800 18px system-ui, sans-serif";
+      context.fillText("POLAR STREAM • LIVE", 256, 28);
+    }
     context.save();
     context.translate(FLUBBER_CANVAS_WIDTH / 2, 238);
     context.scale(165, -165);
@@ -586,7 +824,11 @@ function createRenderer(canvas, video) {
     context.fillText(`X ${study.currentX >= 0 ? "+" : ""}${study.currentX.toFixed(3)}   Y ${study.currentY >= 0 ? "+" : ""}${study.currentY.toFixed(3)}`, 256, 525);
     context.font = "600 19px system-ui, sans-serif";
     context.fillStyle = "rgba(220,230,240,0.92)";
-    context.fillText(study.paused ? "PAUSED — press Y to resume" : "Right stick: valence × arousal", 256, 558);
+    context.fillText(
+      study.paused ? "PAUSED — press Y to resume" : (study.polarHudText || "Right stick: valence × arousal"),
+      256,
+      558,
+    );
     if (countdown !== undefined) {
       context.fillStyle = "rgba(0,0,0,0.7)";
       context.beginPath();
@@ -725,6 +967,7 @@ function restoreControls() {
   elements.controllerFollow.disabled = false;
   elements.controllerFollowHand.disabled = !elements.controllerFollow.checked;
   elements.flubberSize.disabled = false;
+  updatePolarConnectionUi(state.polarStatusMessage ?? (state.polarConnected ? "Polar H10 ECG is live at 130 Hz" : "Not connected"));
 }
 function updatePresentationControls() {
   const passthrough = elements.presentationMode.value !== "virtual";
@@ -754,6 +997,15 @@ function updatePresentationControls() {
 elements.controllerFollow.addEventListener("change", updateRiggingControls);
 elements.flubberSize.addEventListener("input", updateRiggingControls);
 elements.presentationMode.addEventListener("change", updatePresentationControls);
+elements.polarConnect.addEventListener("click", connectPolar);
+elements.polarDisconnect.addEventListener("click", disconnectPolar);
+elements.polarX.addEventListener("change", () => setPolarMapping("valence", elements.polarX.value));
+elements.polarY.addEventListener("change", () => setPolarMapping("arousal", elements.polarY.value));
+window.addEventListener("pagehide", () => { void polarSession.disconnect({ emit: false }); }, { once: true });
 populateStimulusLibrary();
+populatePolarMappings();
 updateRiggingControls();
+const polarSupport = polarWebBluetoothSupport({ allowQuestExperiment: true });
+elements.polarSupport.textContent = polarSupport.reason;
+updatePolarConnectionUi(polarSupport.supported ? "Not connected" : polarSupport.reason, !polarSupport.supported);
 initialize();

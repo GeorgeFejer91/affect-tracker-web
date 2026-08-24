@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync, statSync } from "node:fs";
 import {
   advanceWebXrAffect,
+  advanceWebXrAffectWithPolar,
   controllerAxes,
   controllerFacingModelMatrix,
   createEquirectSphereVertices,
@@ -22,6 +23,7 @@ import {
 } from "../site/src/webxr-stimuli.js";
 
 const page = readFileSync(new URL("../site/webxr.html", import.meta.url), "utf8");
+const styles = readFileSync(new URL("../site/webxr.css", import.meta.url), "utf8");
 const runtime = readFileSync(new URL("../site/src/webxr-study.js", import.meta.url), "utf8");
 const index = readFileSync(new URL("../site/index.html", import.meta.url), "utf8");
 const launcher = readFileSync(
@@ -67,6 +69,28 @@ test("WebXR affect state advances, smooths, and clamps in the canonical range", 
   assert.ok(next.currentY < 0 && next.currentY > -1);
 });
 
+test("WebXR Polar targets override only their assigned Flubber axis", () => {
+  const next = advanceWebXrAffectWithPolar(
+    { currentX: 0, currentY: 0, targetX: 0, targetY: 0 },
+    { x: -1, y: 1 },
+    0.05,
+    { x: 0.75 },
+    { speed: 1, response: 100 },
+  );
+  assert.equal(next.targetX, 0.75);
+  assert.equal(next.targetY, 0.05);
+  assert.ok(next.currentX > next.currentY);
+
+  const clamped = advanceWebXrAffectWithPolar(
+    { currentX: 0, currentY: 0, targetX: 0, targetY: 0 },
+    { x: 1, y: -1 },
+    0.05,
+    { x: 8, y: -8 },
+  );
+  assert.equal(clamped.targetX, 1);
+  assert.equal(clamped.targetY, -1);
+});
+
 test("WebXR webhook is optional and HTTPS-only", () => {
   assert.equal(normalizeWebhookUrl(""), "");
   assert.equal(normalizeWebhookUrl("https://example.org/hook#private"), "https://example.org/hook");
@@ -79,6 +103,10 @@ test("WebXR CSV has fixed reconstructable columns and escapes details", () => {
   assert.equal(csv.split("\r\n")[0], WEBXR_CSV_COLUMNS.join(","));
   assert.match(csv, /"comma, quote "" and newline\n"/);
   assert.ok(csv.endsWith("\r\n"));
+  for (const column of ["polar_connected", "polar_valence_metric", "polar_valence_normalized", "polar_arousal_metric", "polar_arousal_normalized"]) {
+    assert.ok(WEBXR_CSV_COLUMNS.includes(column));
+  }
+  assert.doesNotMatch(WEBXR_CSV_COLUMNS.join(","), /raw_ecg|ecg_samples|rr_series/);
 });
 
 test("WebXR matrix helpers preserve model transforms through identity", () => {
@@ -155,6 +183,12 @@ test("experimental page is local-first and wires the selectable WebXR study libr
   assert.match(page, /id="controller-follow-hand"/);
   assert.match(page, /id="flubber-size"/);
   assert.match(page, /id="presentation-mode"/);
+  assert.match(page, /id="webxr-polar-panel"/);
+  assert.match(page, /id="webxr-polar-connect"/);
+  assert.match(page, /id="webxr-polar-x"/);
+  assert.match(page, /id="webxr-polar-y"/);
+  assert.match(page, /Connect before entering immersive mode/);
+  assert.match(styles, /\.polar-xr-connector button\[hidden\][\s\S]*display: none/);
   assert.match(page, /src="\.\/src\/webxr-study\.js"/);
   assert.doesNotMatch(page, /https:\/\/(?!example\.org)/);
   assert.match(runtime, /navigator\.xr\.requestSession\(sessionMode/);
@@ -164,6 +198,9 @@ test("experimental page is local-first and wires the selectable WebXR study libr
   assert.match(runtime, /makeXRCompatible/);
   assert.match(runtime, /experimental-webgl/);
   assert.match(runtime, /readQuestControllerState/);
+  assert.match(runtime, /createPolarH10BrowserSession\(\{ allowQuestExperiment: true \}\)/);
+  assert.match(runtime, /advanceWebXrAffectWithPolar/);
+  assert.match(runtime, /POLAR STREAM • LIVE/);
   assert.match(runtime, /frame\.getPose\(source\.gripSpace, state\.referenceSpace\)/);
   assert.match(runtime, /controllerFacingModelMatrix/);
   assert.match(runtime, /equirectangular-360/);

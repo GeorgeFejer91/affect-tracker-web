@@ -314,11 +314,12 @@ export function normalizePolarMetric(value, mapping) {
 export function polarWebBluetoothSupport({
   secureContext = globalThis.isSecureContext,
   navigatorObject = globalThis.navigator,
+  allowQuestExperiment = false,
 } = {}) {
   if (!secureContext) return { supported: false, questBrowser: false, reason: "Web Bluetooth requires HTTPS or localhost." };
   const userAgent = String(navigatorObject?.userAgent ?? "");
   const questBrowser = /OculusBrowser|Meta Quest Browser/i.test(userAgent);
-  if (questBrowser) {
+  if (questBrowser && !allowQuestExperiment) {
     return {
       supported: false,
       questBrowser: true,
@@ -336,8 +337,10 @@ export function polarWebBluetoothSupport({
   }
   return {
     supported: true,
-    questBrowser: false,
-    reason: "Web Bluetooth is available. Connection still requires a user-selected Polar H10.",
+    questBrowser,
+    reason: questBrowser
+      ? "This Quest browser exposes Web Bluetooth. The H10 chooser and streaming path are experimental and not yet headset-qualified."
+      : "Web Bluetooth is available. Connection still requires a user-selected Polar H10.",
   };
 }
 
@@ -382,6 +385,7 @@ export class PolarH10BrowserSession {
     now = () => Date.now(),
     controlResponseTimeoutMs = CONTROL_RESPONSE_TIMEOUT_MS,
     firstEcgTimeoutMs = FIRST_ECG_TIMEOUT_MS,
+    allowQuestExperiment = false,
   } = {}) {
     this.navigatorObject = navigatorObject;
     this.timer = timer;
@@ -389,6 +393,7 @@ export class PolarH10BrowserSession {
     this.now = now;
     this.controlResponseTimeoutMs = controlResponseTimeoutMs;
     this.firstEcgTimeoutMs = firstEcgTimeoutMs;
+    this.allowQuestExperiment = allowQuestExperiment;
     this.processor = new PolarMetricProcessor();
     this.resetConnectionState();
     this.boundPmd = (event) => this.handlePmd(event);
@@ -418,7 +423,11 @@ export class PolarH10BrowserSession {
   }
 
   async connect(onEvent) {
-    const support = polarWebBluetoothSupport({ secureContext: this.secureContext, navigatorObject: this.navigatorObject });
+    const support = polarWebBluetoothSupport({
+      secureContext: this.secureContext,
+      navigatorObject: this.navigatorObject,
+      allowQuestExperiment: this.allowQuestExperiment,
+    });
     if (!support.supported) throw new PolarStreamError("WEB_BLUETOOTH_UNAVAILABLE", support.reason);
     if (this.device || this.connected) throw new PolarStreamError("BROWSER_BLE_BUSY", "Disconnect the current H10 before choosing another.", true);
     this.onEvent = onEvent;

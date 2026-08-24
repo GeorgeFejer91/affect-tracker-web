@@ -52,6 +52,31 @@ export function advanceWebXrAffect(
   };
 }
 
+export function advanceWebXrAffectWithPolar(
+  state,
+  input,
+  deltaSeconds,
+  polarTargets = {},
+  options,
+) {
+  const polarX = Number.isFinite(polarTargets.x) ? clamp(polarTargets.x) : undefined;
+  const polarY = Number.isFinite(polarTargets.y) ? clamp(polarTargets.y) : undefined;
+  return advanceWebXrAffect(
+    {
+      ...state,
+      targetX: polarX ?? state.targetX,
+      targetY: polarY ?? state.targetY,
+    },
+    {
+      ...input,
+      x: polarX === undefined ? input.x : 0,
+      y: polarY === undefined ? input.y : 0,
+    },
+    deltaSeconds,
+    options,
+  );
+}
+
 export function normalizeWebhookUrl(value) {
   const trimmed = String(value ?? "").trim();
   if (!trimmed) return "";
@@ -93,6 +118,13 @@ export const WEBXR_CSV_COLUMNS = Object.freeze([
   "flubber_follow_hand",
   "flubber_size_scale",
   "flubber_tracking",
+  "polar_connected",
+  "polar_valence_metric",
+  "polar_valence_value",
+  "polar_valence_normalized",
+  "polar_arousal_metric",
+  "polar_arousal_value",
+  "polar_arousal_normalized",
   "paused",
   "event",
   "detail",
