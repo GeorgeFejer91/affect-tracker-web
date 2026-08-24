@@ -5,6 +5,7 @@ import { readFileSync } from "node:fs";
 import {
   FLUBBER_REMOTE_CHANNEL,
   FLUBBER_REMOTE_HEARTBEAT_MS,
+  FLUBBER_REMOTE_RECOVERY_FRAMES,
   FLUBBER_REMOTE_ROOM,
   FLUBBER_REMOTE_STALE_MS,
   FLUBBER_REMOTE_WIRE_BYTES,
@@ -333,7 +334,7 @@ test("receiver discovers one source without typing and exposes multiple sources 
   await shrinking.stop();
 });
 
-test("receiver validates packets, holds stale coordinates at 500 ms, and recovers on the same source", async () => {
+test("receiver tolerates scheduler gaps, holds stale coordinates at two seconds, and requires stable recovery", async () => {
   const clock = new FakeClock();
   const sdk = new MockSdk();
   const receiver = new FlubberReceiver(clock.options(() => sdk));
@@ -367,7 +368,21 @@ test("receiver validates packets, holds stale coordinates at 500 ms, and recover
   assert.equal(stale.latest.currentY, decodeFlubberFrame(encodeFlubberFrame(10, 0.4, -0.6)).currentY);
 
   channel.message(encodeFlubberFrame(11, -0.2, 0.7));
+  assert.equal(receiver.snapshot().phase, "stale", "one returning frame must not flap the status back to live");
+  channel.message(encodeFlubberFrame(12, -0.1, 0.6));
+  assert.equal(receiver.snapshot().phase, "stale");
+  channel.message(encodeFlubberFrame(13, -0.2, 0.7));
   assert.equal(receiver.snapshot().phase, "live");
+  assert.equal(FLUBBER_REMOTE_RECOVERY_FRAMES, 3);
+  assert.deepEqual(receiver.snapshot().diagnostics, {
+    receivedFrames: 4,
+    lastGapMs: 0,
+    p95GapMs: FLUBBER_REMOTE_STALE_MS,
+    maxGapMs: FLUBBER_REMOTE_STALE_MS,
+    lateGapCount: 1,
+    staleTransitions: 1,
+    recoveryTransitions: 1,
+  });
   assert.deepEqual(transitions.filter((value) => ["live", "stale", "recovered"].includes(value)), ["live", "stale", "recovered"]);
   await receiver.stop();
   assert.equal(transitions.at(-1), "disconnected");
@@ -482,9 +497,12 @@ test("remote pages load only the local SDK and feature code makes no microphone 
   }
   assert.match(index, />Broadcast this to VR \/ remote interface</);
   assert.match(webxr, />Use incoming signal</);
+  assert.match(webxr, /id="webxr-remote-quality"/);
+  assert.match(webxr, /id="webxr-remote-mode"/);
   assert.doesNotMatch(`${app}\n${receiver}\n${transport}`, /getUserMedia|mediaDevices|audio:\s*true/);
   assert.match(transport, /audio: false,\s*video: false/);
   assert.match(receiver, /pendingRemoteEvents/);
   assert.match(receiver, /record\("event", remoteEvent\.event/);
   assert.match(receiver, /setAttribute\("aria-pressed"/);
+  assert.match(receiver, /navigator\.wakeLock\.request\("screen"\)/);
 });

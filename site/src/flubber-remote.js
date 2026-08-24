@@ -6,10 +6,13 @@ export const FLUBBER_REMOTE_CHANNEL = "flubberxyv1";
 export const FLUBBER_REMOTE_WIRE_BYTES = 12;
 export const FLUBBER_REMOTE_MAX_HZ = 60;
 export const FLUBBER_REMOTE_HEARTBEAT_MS = 100;
-export const FLUBBER_REMOTE_STALE_MS = 500;
+export const FLUBBER_REMOTE_STALE_MS = 2_000;
+export const FLUBBER_REMOTE_RECOVERY_FRAMES = 3;
 export const FLUBBER_REMOTE_DISCOVERY_SETTLE_MS = 300;
 
 const MIN_SEND_INTERVAL_MS = 1_000 / FLUBBER_REMOTE_MAX_HZ;
+const DIAGNOSTIC_GAP_WINDOW = 128;
+const DIAGNOSTIC_LATE_GAP_MS = 500;
 const SDK_OPTIONS = Object.freeze({
   password: false,
   salt: "affect-tracker-web-v1",
@@ -117,6 +120,13 @@ function qualitySummary(quality) {
     route: quality.relayed === true ? "relay" : quality.relayed === false ? "direct" : "unknown",
     rttMs: Number.isFinite(quality.rttMs) ? Math.round(quality.rttMs) : undefined,
   };
+}
+
+function roundedPercentile(values, proportion) {
+  if (!values.length) return undefined;
+  const sorted = [...values].sort((left, right) => left - right);
+  const index = Math.min(sorted.length - 1, Math.max(0, Math.ceil(sorted.length * proportion) - 1));
+  return Math.round(sorted[index]);
 }
 
 class FlubberRemoteBase extends EventTarget {
@@ -417,6 +427,29 @@ export class FlubberReceiver extends FlubberRemoteBase {
     this.staleTimer = undefined;
     this.disconnectNotified = false;
     this.tearingDown = false;
+    this.resetDiagnostics();
+  }
+
+  resetDiagnostics() {
+    this.recoveryFrameCount = 0;
+    this.receivedFrames = 0;
+    this.packetGaps = [];
+    this.lastGapMs = undefined;
+    this.maxGapMs = undefined;
+    this.lateGapCount = 0;
+    this.staleTransitions = 0;
+    this.recoveryTransitions = 0;
+  }
+
+  recordPacketGap(gapMs) {
+    this.receivedFrames += 1;
+    if (!Number.isFinite(gapMs)) return;
+    const normalized = Math.max(0, gapMs);
+    this.lastGapMs = normalized;
+    this.maxGapMs = Math.max(this.maxGapMs ?? 0, normalized);
+    if (normalized >= DIAGNOSTIC_LATE_GAP_MS) this.lateGapCount += 1;
+    this.packetGaps.push(normalized);
+    if (this.packetGaps.length > DIAGNOSTIC_GAP_WINDOW) this.packetGaps.shift();
   }
 
   snapshot(now = this.now()) {
@@ -437,6 +470,15 @@ export class FlubberReceiver extends FlubberRemoteBase {
       packetAgeMs,
       route: this.quality.route,
       rttMs: this.quality.rttMs,
+      diagnostics: {
+        receivedFrames: this.receivedFrames,
+        lastGapMs: Number.isFinite(this.lastGapMs) ? Math.round(this.lastGapMs) : undefined,
+        p95GapMs: roundedPercentile(this.packetGaps, 0.95),
+        maxGapMs: Number.isFinite(this.maxGapMs) ? Math.round(this.maxGapMs) : undefined,
+        lateGapCount: this.lateGapCount,
+        staleTransitions: this.staleTransitions,
+        recoveryTransitions: this.recoveryTransitions,
+      },
     };
   }
 
@@ -561,6 +603,7 @@ export class FlubberReceiver extends FlubberRemoteBase {
     this.staleTimer = undefined;
     this.disconnectNotified = false;
     this.quality = { route: "unknown", rttMs: undefined };
+    this.resetDiagnostics();
     this.phase = "connecting";
     this.emitState({
       transition: previous ? "switched" : "selected",
@@ -608,22 +651,46 @@ export class FlubberReceiver extends FlubberRemoteBase {
   acceptFrame(value, receivedAt = this.now()) {
     const frame = decodeFlubberFrame(value);
     if (!frame || !isNewerFlubberSequence(frame.sequence, this.lastSequence)) return false;
-    const recovered = this.phase === "stale";
-    const first = this.phase !== "live" && !recovered;
+    const previousReceivedAt = this.latest?.receivedAt;
+    const packetGapMs = Number.isFinite(previousReceivedAt) ? Math.max(0, receivedAt - previousReceivedAt) : undefined;
+    const gapTimedOut = Number.isFinite(packetGapMs) && packetGapMs >= FLUBBER_REMOTE_STALE_MS;
+    if (gapTimedOut && this.phase === "live") {
+      this.markStale(`No coordinate update arrived for ${FLUBBER_REMOTE_STALE_MS / 1_000} seconds; holding the last position.`);
+    }
+    const wasStale = this.phase === "stale";
+    const first = this.phase !== "live" && !wasStale;
     this.disconnectNotified = false;
     this.lastSequence = frame.sequence;
     this.latest = { ...frame, receivedAt };
-    this.phase = "live";
+    this.recordPacketGap(packetGapMs);
+    if (wasStale) {
+      this.recoveryFrameCount = !gapTimedOut && Number.isFinite(packetGapMs)
+        ? this.recoveryFrameCount + 1
+        : 1;
+    } else {
+      this.recoveryFrameCount = 0;
+    }
+    const recovered = wasStale && this.recoveryFrameCount >= FLUBBER_REMOTE_RECOVERY_FRAMES;
+    this.phase = wasStale && !recovered ? "stale" : "live";
     this.clearTimeout(this.staleTimer);
-    this.staleTimer = this.timeout(() => {
-      this.staleTimer = undefined;
-      this.checkStale();
-    }, FLUBBER_REMOTE_STALE_MS);
+    this.staleTimer = undefined;
+    if (this.phase === "live") {
+      this.staleTimer = this.timeout(() => {
+        this.staleTimer = undefined;
+        this.checkStale();
+      }, FLUBBER_REMOTE_STALE_MS);
+    }
     this.dispatchEvent(detailEvent("frame", this.snapshot(receivedAt)));
     if (first || recovered) {
+      if (recovered) {
+        this.recoveryTransitions += 1;
+        this.recoveryFrameCount = 0;
+      }
       this.emitState({
         transition: recovered ? "recovered" : "live",
-        message: recovered ? "Incoming Flubber coordinates recovered." : "Incoming Flubber coordinates are live.",
+        message: recovered
+          ? `Incoming Flubber coordinates recovered after ${FLUBBER_REMOTE_RECOVERY_FRAMES} consecutive frames.`
+          : "Incoming Flubber coordinates are live.",
       });
     }
     return true;
@@ -632,7 +699,7 @@ export class FlubberReceiver extends FlubberRemoteBase {
   checkStale(now = this.now()) {
     if (this.phase !== "live" || !this.latest) return false;
     if (now - this.latest.receivedAt < FLUBBER_REMOTE_STALE_MS) return false;
-    this.markStale("No coordinate update arrived for 500 ms; holding the last position.");
+    this.markStale(`No coordinate update arrived for ${FLUBBER_REMOTE_STALE_MS / 1_000} seconds; holding the last position.`);
     return true;
   }
 
@@ -640,7 +707,11 @@ export class FlubberReceiver extends FlubberRemoteBase {
     if (!this.selectedStreamId || this.tearingDown) return;
     const changed = this.phase !== "stale";
     this.phase = "stale";
-    if (changed) this.emitState({ transition: "stale", message });
+    this.recoveryFrameCount = 0;
+    if (changed) {
+      this.staleTransitions += 1;
+      this.emitState({ transition: "stale", message });
+    }
   }
 
   markDisconnected(message) {
@@ -685,6 +756,7 @@ export class FlubberReceiver extends FlubberRemoteBase {
     this.staleTimer = undefined;
     this.disconnectNotified = false;
     this.tearingDown = false;
+    this.resetDiagnostics();
     this.emitState({ transition: previous ? "disconnected" : undefined });
   }
 }

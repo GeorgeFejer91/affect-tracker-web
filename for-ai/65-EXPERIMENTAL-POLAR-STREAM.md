@@ -58,6 +58,17 @@ context. `site/src/webxr-study.js` owns its separate pre-entry connector,
 waveform, non-persisted fixed-default assignments, controller-versus-Polar axis
 arbitration, in-world HUD feedback, and WebXR logging context.
 
+`site/src/polar-replay.js` is an explicit research-qualification fixture enabled
+only when the main page is loaded with `?mock-polar=1` and the user presses
+**Start synthetic replay**. It produces deterministic finite ECG-like samples
+through a self-correcting 130 Hz scheduler plus synthetic HR/RR observations,
+then enters the same bounded metric processor, mapping, desktop smoothing, and
+remote-Flubber broadcaster as the physical browser adapter. It requests no
+Bluetooth permission, never starts automatically, is not persisted across
+reloads, and is clearly labeled as synthetic. It is useful for repeatable soak,
+loss/recovery, and coordinate-latency tests; it is not physiology and cannot
+replace a worn-H10 qualification receipt.
+
 Raw ECG is held only in memory. The browser processor and waveform each retain at most
 650 samples (five seconds at 130 Hz); the RR window retains at most 300 positive
 intervals. Disconnect or refresh drops the waveform. No raw 130 Hz ECG frame or
@@ -278,7 +289,9 @@ mapping.
 Release qualification requires unit fixtures for byte decoding, bounds,
 mapping/clamping/reversal, capability detection, exact PMD acknowledgement,
 first-frame readiness, stage-specific failure reporting, and sustained bounded
-130 Hz processing; a real desktop Chromium UI smoke test; and physical H10
+130 Hz processing. The synthetic replay additionally requires deterministic
+waveform, exact-rate, event-contract, query-gate, and clean-stop tests. A real
+desktop Chromium UI smoke test and physical H10
 acceptance for chooser, start/stop, at least a two-minute live sample-count/rate
 run, disconnect/reconnect, waveform, heart-rate/RR availability, mapping
 ownership, and CSV context. Until physical-H10 acceptance is recorded, this

@@ -78,6 +78,8 @@ const elements = {
   remoteSource: document.querySelector("#webxr-remote-source"),
   remoteValues: document.querySelector("#webxr-remote-values"),
   remoteRoute: document.querySelector("#webxr-remote-route"),
+  remoteQuality: document.querySelector("#webxr-remote-quality"),
+  remoteMode: document.querySelector("#webxr-remote-mode"),
   start: document.querySelector("#start-vr"),
   download: document.querySelector("#download-csv"),
   status: document.querySelector("#study-status"),
@@ -127,6 +129,7 @@ const state = {
   polarHudText: "",
   remote: { enabled: false, phase: "idle", sources: [] },
   remoteHudText: "",
+  wakeLock: undefined,
   pendingRemoteEvents: [],
 };
 
@@ -243,6 +246,22 @@ function remoteRouteText(snapshot) {
   return parts.join(" · ") || "Negotiating";
 }
 
+function remoteQualityText(snapshot) {
+  const diagnostics = snapshot?.diagnostics;
+  if (!diagnostics?.receivedFrames) return "Waiting for coordinate frames";
+  const parts = [`${diagnostics.receivedFrames.toLocaleString()} frames`];
+  if (Number.isFinite(diagnostics.p95GapMs)) parts.push(`p95 gap ${diagnostics.p95GapMs} ms`);
+  if (Number.isFinite(diagnostics.maxGapMs)) parts.push(`max ${diagnostics.maxGapMs} ms`);
+  parts.push(`${diagnostics.staleTransitions} loss warning${diagnostics.staleTransitions === 1 ? "" : "s"}`);
+  return parts.join(" · ");
+}
+
+function remoteModeText() {
+  if (state.session) return "Immersive WebXR foreground";
+  if (state.wakeLock && !state.wakeLock.released) return "Screen wake lock active · enter WebXR for lowest latency";
+  return "Browser panel · Meta may deprioritize delivery";
+}
+
 function renderRemoteSources(snapshot) {
   elements.remoteSources.replaceChildren();
   const show = snapshot.enabled && !state.session && (
@@ -274,6 +293,8 @@ function updateRemoteUi(detail = flubberReceiver.snapshot()) {
   elements.remoteSource.value = detail.sourceLabel || "—";
   elements.remoteValues.value = formatRemoteValues(detail);
   elements.remoteRoute.value = remoteRouteText(detail);
+  elements.remoteQuality.value = remoteQualityText(detail);
+  elements.remoteMode.value = remoteModeText();
   renderRemoteSources(detail);
 
   let fallback = "Incoming signal off";
@@ -382,10 +403,37 @@ async function disconnectPolar() {
   await polarSession.disconnect();
 }
 
+async function acquireLowLatencyWakeLock() {
+  if (!navigator.wakeLock?.request || document.visibilityState !== "visible") return false;
+  if (state.wakeLock && !state.wakeLock.released) return true;
+  try {
+    const wakeLock = await navigator.wakeLock.request("screen");
+    state.wakeLock = wakeLock;
+    wakeLock.addEventListener("release", () => {
+      if (state.wakeLock === wakeLock) state.wakeLock = undefined;
+      elements.remoteMode.value = remoteModeText();
+    }, { once: true });
+    elements.remoteMode.value = remoteModeText();
+    return true;
+  } catch {
+    state.wakeLock = undefined;
+    elements.remoteMode.value = remoteModeText();
+    return false;
+  }
+}
+
+async function releaseLowLatencyWakeLock() {
+  const wakeLock = state.wakeLock;
+  state.wakeLock = undefined;
+  if (wakeLock && !wakeLock.released) await wakeLock.release().catch(() => {});
+  elements.remoteMode.value = remoteModeText();
+}
+
 async function useIncomingSignal() {
   if (state.session) return;
   elements.remoteUse.disabled = true;
   try {
+    await acquireLowLatencyWakeLock();
     if (state.polarConnected || state.polarConnecting) await polarSession.disconnect();
     await flubberReceiver.startDiscovery();
   } catch (error) {
@@ -399,6 +447,7 @@ async function stopIncomingSignal() {
   if (state.session) return;
   await flubberReceiver.stop();
   state.remoteHudText = "";
+  await releaseLowLatencyWakeLock();
   updateRemoteUi();
   setStatus("Incoming signal stopped. Quest controller and direct Polar input are available again.");
 }
@@ -711,6 +760,8 @@ async function startStudy() {
     return;
   }
 
+  await acquireLowLatencyWakeLock();
+
   elements.start.disabled = true;
   elements.stimulus.disabled = true;
   elements.presentationMode.disabled = true;
@@ -763,6 +814,7 @@ async function startStudy() {
     ]);
 
     state.session = session;
+    elements.remoteMode.value = remoteModeText();
     state.referenceSpace = referenceSpace;
     state.viewerSpace = viewerSpace;
     state.sessionId = crypto.randomUUID?.() ?? `webxr-${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -805,6 +857,7 @@ async function startStudy() {
         state.session = undefined;
         state.referenceSpace = undefined;
         state.viewerSpace = undefined;
+        elements.remoteMode.value = remoteModeText();
         elements.stimulus.disabled = elements.presentationMode.value === "passthrough-flubber";
         elements.presentationMode.disabled = false;
         elements.controllerFollow.disabled = false;
@@ -1163,13 +1216,22 @@ elements.remoteStop.addEventListener("click", stopIncomingSignal);
 flubberReceiver.addEventListener("statechange", (event) => updateRemoteUi(event.detail));
 flubberReceiver.addEventListener("frame", (event) => {
   state.remote = event.detail;
-  state.remoteHudText = `${event.detail.sourceLabel.toUpperCase()} • LIVE`;
+  state.remoteHudText = event.detail.phase === "live"
+    ? `${event.detail.sourceLabel.toUpperCase()} • LIVE`
+    : "REMOTE • SIGNAL LOST — HOLDING";
+  elements.remoteQuality.value = remoteQualityText(event.detail);
   if (!state.session) elements.remoteValues.value = formatRemoteValues(event.detail);
 });
 window.addEventListener("pagehide", () => {
   void polarSession.disconnect({ emit: false });
   void flubberReceiver.stop();
+  void releaseLowLatencyWakeLock();
 }, { once: true });
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible" && (state.session || flubberReceiver.snapshot().enabled)) {
+    void acquireLowLatencyWakeLock();
+  }
+});
 populateStimulusLibrary();
 populatePolarMappings();
 updateRiggingControls();

@@ -52,6 +52,7 @@ import {
   polarMetricDefinition,
   polarWebBluetoothSupport,
 } from "./polar-stream.js";
+import { createPolarH10ReplaySession, polarReplayEnabled } from "./polar-replay.js";
 import { createFlubberBroadcaster } from "./flubber-remote.js";
 import {
   actionForBinding,
@@ -400,7 +401,8 @@ const touchTrace = new TouchTraceAnalyzer({
   height: window.innerHeight,
   feedbackMode: state.touchFeedbackMode,
 });
-const polarSession = createPolarH10BrowserSession();
+const polarReplay = polarReplayEnabled();
+const polarSession = polarReplay ? createPolarH10ReplaySession() : createPolarH10BrowserSession();
 const flubberBroadcaster = createFlubberBroadcaster();
 let polarEcgWindow = [];
 let polarBatteryPercent;
@@ -1013,10 +1015,14 @@ function initializePolarUi() {
     card.append(heading, output, detail, buttons);
     elements.polarMetricCards.append(card);
   }
-  const support = polarWebBluetoothSupport();
+  const support = polarReplay ? {
+    supported: true,
+    reason: "Deterministic synthetic 130 Hz ECG replay is enabled for bridge qualification. No Bluetooth or real physiology is used.",
+  } : polarWebBluetoothSupport();
   elements.polarSupportNote.textContent = support.reason;
   elements.polarSupportNote.classList.toggle("is-unsupported", !support.supported);
   renderPolarDiagnostics();
+  if (polarReplay) elements.polarConnectButton.textContent = "Start synthetic replay";
   updatePolarConnectionUi();
   updatePolarMappingControls();
   drawPolarEcg();
@@ -2553,7 +2559,7 @@ function initializeEvents() {
     clearPolarLiveReadout();
     applyPolarMappings();
     state.polarConnecting = true;
-    updatePolarConnectionUi("Waiting for browser Bluetooth chooser…");
+    updatePolarConnectionUi(polarReplay ? "Starting deterministic synthetic ECG replay…" : "Waiting for browser Bluetooth chooser…");
     try {
       await polarSession.connect(handlePolarEvent);
     } catch (error) {
