@@ -497,10 +497,10 @@ test("remote pages load only the local SDK and feature code makes no microphone 
   }
   assert.match(index, />Broadcast this to VR \/ remote interface</);
   assert.match(webxr, />Use incoming signal</);
-  assert.match(index, /src="\.\/src\/app\.js\?v=remote-3"/);
-  assert.match(webxr, /src="\.\/src\/webxr-study\.js\?v=remote-3"/);
-  assert.match(app, /from "\.\/flubber-remote\.js\?v=remote-3"/);
-  assert.match(receiver, /from "\.\/flubber-remote\.js\?v=remote-3"/);
+  assert.match(index, /src="\.\/src\/app\.js\?v=remote-4"/);
+  assert.match(webxr, /src="\.\/src\/webxr-study\.js\?v=remote-4"/);
+  assert.match(app, /from "\.\/flubber-remote\.js\?v=remote-4"/);
+  assert.match(receiver, /from "\.\/flubber-remote\.js\?v=remote-4"/);
   assert.match(webxr, /id="webxr-remote-quality"/);
   assert.match(webxr, /id="webxr-remote-mode"/);
   assert.doesNotMatch(`${app}\n${receiver}\n${transport}`, /getUserMedia|mediaDevices|audio:\s*true/);

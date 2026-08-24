@@ -106,6 +106,24 @@ test("synthetic Polar session follows the real event contract at a self-correcti
   assert.equal(events.at(-1).snapshot.stage, "idle");
 });
 
+test("foreground animation pumping cannot oversample the prerecorded fixture", async () => {
+  const clock = new FakeClock();
+  const events = [];
+  const session = new PolarH10ReplaySession({ timer: clock, now: clock.now, tickMs: 20 });
+  await session.connect((event) => events.push(event));
+
+  for (let elapsed = 0; elapsed < 1_000; elapsed += 5) {
+    clock.advance(5);
+    session.tick();
+  }
+
+  const totalSamples = events
+    .filter((event) => event.kind === "ecg")
+    .reduce((sum, event) => sum + event.microvolts.length, 0);
+  assert.equal(totalSamples, POLAR_REPLAY_SAMPLE_RATE_HZ);
+  await session.disconnect({ emit: false });
+});
+
 test("synthetic Polar replay requires the explicit non-persistent query flag", () => {
   assert.equal(polarReplayEnabled({ href: "https://example.test/?mock-polar=1" }), true);
   assert.equal(polarReplayEnabled({ href: "https://example.test/?mock-polar=0" }), false);

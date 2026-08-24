@@ -52,8 +52,8 @@ import {
   polarMetricDefinition,
   polarWebBluetoothSupport,
 } from "./polar-stream.js";
-import { createPolarH10ReplaySession, polarReplayEnabled } from "./polar-replay.js?v=remote-3";
-import { createFlubberBroadcaster } from "./flubber-remote.js?v=remote-3";
+import { createPolarH10ReplaySession, polarReplayEnabled } from "./polar-replay.js?v=remote-4";
+import { createFlubberBroadcaster } from "./flubber-remote.js?v=remote-4";
 import {
   actionForBinding,
   ADVANCED_BINDING_LABELS,
@@ -2901,6 +2901,11 @@ function animationFrame(timestamp) {
   if (previousTimestamp === undefined) previousTimestamp = timestamp;
   const deltaSeconds = Math.min((timestamp - previousTimestamp) / 1000, MAX_DELTA_SECONDS);
   previousTimestamp = timestamp;
+
+  // The explicit replay fixture uses the same browser foreground frame owner
+  // as broadcasting. This catch-up pump prevents background timer clamping
+  // from reducing a prerecorded 130 Hz qualification source to a slow trickle.
+  if (polarReplay && polarSession.connected) polarSession.tick();
 
   updateContinuousInput(deltaSeconds);
   const touchMetric = touchTrace.update(timestamp, deltaSeconds);

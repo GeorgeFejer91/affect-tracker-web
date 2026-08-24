@@ -81,22 +81,23 @@ export class PolarH10ReplaySession {
       streamHealth: this.streamHealth(),
       message: "Synthetic Polar replay is live at 130 Hz",
     });
-    this.tick();
+    this.tick({ ensureSample: true });
     this.emit({ kind: "diagnostic", snapshot: this.diagnosticSnapshot(), mock: true });
     this.intervalId = this.timer.setInterval(() => this.tick(), this.tickMs);
   }
 
-  tick() {
+  tick({ ensureSample = false } = {}) {
     if (!this.connected) return;
     const nowMs = this.now();
     this.maximumGapMs = Math.max(this.maximumGapMs, nowMs - this.lastTickAtMs);
     this.lastTickAtMs = nowMs;
     const elapsedMs = Math.max(0, nowMs - this.startedAtMs);
     const targetSamples = Math.max(
-      this.generatedSamples + 1,
+      ensureSample ? this.generatedSamples + 1 : this.generatedSamples,
       Math.floor(elapsedMs * this.sampleRateHz / 1_000),
     );
     const sampleCount = Math.min(this.sampleRateHz * 2, targetSamples - this.generatedSamples);
+    if (sampleCount <= 0) return;
     const microvolts = [];
     for (let offset = 0; offset < sampleCount; offset += 1) {
       const sampleIndex = this.generatedSamples + offset;

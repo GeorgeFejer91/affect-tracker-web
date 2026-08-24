@@ -63,7 +63,9 @@ only when the main page is loaded with `?mock-polar=1` and the user presses
 **Start synthetic replay**. It produces deterministic finite ECG-like samples
 through a self-correcting 130 Hz scheduler plus synthetic HR/RR observations,
 then enters the same bounded metric processor, mapping, desktop smoothing, and
-remote-Flubber broadcaster as the physical browser adapter. It requests no
+remote-Flubber broadcaster as the physical browser adapter. The active
+foreground animation frame also pumps the same catch-up clock without
+oversampling, so covered-tab timer clamping cannot weaken a remote soak test. It requests no
 Bluetooth permission, never starts automatically, is not persisted across
 reloads, and is clearly labeled as synthetic. It is useful for repeatable soak,
 loss/recovery, and coordinate-latency tests; it is not physiology and cannot
