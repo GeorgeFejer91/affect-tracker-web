@@ -32,7 +32,17 @@ android {
     sourceCompatibility = JavaVersion.VERSION_17
     targetCompatibility = JavaVersion.VERSION_17
   }
-  kotlinOptions { jvmTarget = "17" }
+  kotlinOptions {
+    jvmTarget = "17"
+    // Polar BLE SDK 8.1.0 publishes a newer Kotlin metadata version while retaining the
+    // Kotlin 2.1-compatible runtime ABI used by the pinned Spatial SDK project.
+    freeCompilerArgs += "-Xskip-metadata-version-check"
+  }
+  packaging {
+    resources.excludes.add("META-INF/LICENSE")
+    resources.excludes.add("META-INF/LICENSE.md")
+    resources.excludes.add("META-INF/LICENSE-notice.md")
+  }
   sourceSets.getByName("main").jniLibs.srcDir("../native-lsl/target/jniLibs")
   sourceSets.getByName("test").resources.srcDir("../contracts")
   testOptions { unitTests.isReturnDefaultValues = true }
@@ -49,6 +59,8 @@ dependencies {
   implementation(libs.androidx.media3.common)
   implementation(libs.androidx.media3.exoplayer)
   implementation(libs.kotlinx.coroutines.android)
+  implementation(libs.kotlinx.coroutines.rx3)
+  implementation(libs.polar.ble.sdk)
   implementation(libs.meta.spatial.sdk.base)
   implementation(libs.meta.spatial.sdk.compose)
   implementation(libs.meta.spatial.sdk.isdk)

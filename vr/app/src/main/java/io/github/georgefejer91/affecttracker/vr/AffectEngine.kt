@@ -27,6 +27,8 @@ class AffectEngine(private var settings: AffectSettings) {
   private var targetY = 0f
   private var stickX = 0f
   private var stickY = 0f
+  private var externalX: Float? = null
+  private var externalY: Float? = null
   private var stepArmed = true
   private var paused = false
   private val snapshotBuffer = AffectSnapshot(0f, 0f, 0f, 0f, 0f, 0f, true, false)
@@ -45,26 +47,40 @@ class AffectEngine(private var settings: AffectSettings) {
     stickX = rawX / magnitude * normalized
     stickY = -rawY / magnitude * normalized
     if (settings.inputMode == "step" && stepArmed && magnitude >= STEP_THRESHOLD) {
-      targetX = clamp(targetX + axisStep(stickX) * settings.stepSize.toFloat())
-      targetY = clamp(targetY + axisStep(stickY) * settings.stepSize.toFloat())
+      if (externalX == null) targetX = clamp(targetX + axisStep(stickX) * settings.stepSize.toFloat())
+      if (externalY == null) targetY = clamp(targetY + axisStep(stickY) * settings.stepSize.toFloat())
       stepArmed = false
     }
+  }
+
+  /**
+   * Supplies optional per-axis sensor targets. A null/non-finite axis remains controller-owned.
+   * Targets are applied only while running, so pause holds the visible affect state.
+   */
+  fun setExternalTargets(x: Float?, y: Float?) {
+    externalX = x?.takeIf(Float::isFinite)?.coerceIn(-1f, 1f)
+    externalY = y?.takeIf(Float::isFinite)?.coerceIn(-1f, 1f)
   }
 
   fun tick(deltaSeconds: Float): AffectSnapshot {
     val dt = deltaSeconds.coerceIn(0f, 0.05f)
     if (!paused && settings.inputMode == "continuous") {
-      targetX = clamp(targetX + stickX * settings.continuousSpeed.toFloat() * dt)
-      targetY = clamp(targetY + stickY * settings.continuousSpeed.toFloat() * dt)
+      if (externalX == null) targetX = clamp(targetX + stickX * settings.continuousSpeed.toFloat() * dt)
+      if (externalY == null) targetY = clamp(targetY + stickY * settings.continuousSpeed.toFloat() * dt)
     }
     if (!paused) {
+      externalX?.let { targetX = it }
+      externalY?.let { targetY = it }
       currentX = smoothToward(currentX, targetX, settings.response, dt)
       currentY = smoothToward(currentY, targetY, settings.response, dt)
     }
     return snapshot()
   }
 
-  fun reset() { targetX = 0f; targetY = 0f }
+  fun reset() {
+    if (externalX == null) targetX = 0f
+    if (externalY == null) targetY = 0f
+  }
   fun togglePause(): Boolean { paused = !paused; return paused }
   fun isPaused(): Boolean = paused
 
@@ -78,7 +94,8 @@ class AffectEngine(private var settings: AffectSettings) {
     snapshotBuffer.radius = radius
     snapshotBuffer.angleDegrees = degrees
     snapshotBuffer.animationActive = !paused
-    snapshotBuffer.inputActive = kotlin.math.abs(stickX) > 0f || kotlin.math.abs(stickY) > 0f
+    snapshotBuffer.inputActive = kotlin.math.abs(stickX) > 0f || kotlin.math.abs(stickY) > 0f ||
+        externalX != null || externalY != null
     return snapshotBuffer
   }
 

@@ -52,6 +52,7 @@ import {
   polarMetricDefinition,
   polarWebBluetoothSupport,
 } from "./polar-stream.js";
+import { createFlubberBroadcaster } from "./flubber-remote.js";
 import {
   actionForBinding,
   ADVANCED_BINDING_LABELS,
@@ -104,6 +105,12 @@ const elements = {
   polarSampleCount: document.querySelector("#polar-sample-count"),
   polarMetricCards: document.querySelector("#polar-metric-cards"),
   polarAxisFields: [...document.querySelectorAll("[data-polar-axis]")],
+  remoteBroadcastButton: document.querySelector("#flubber-remote-broadcast-button"),
+  remoteBroadcastStatus: document.querySelector("#flubber-remote-broadcast-status"),
+  remoteBroadcastDetails: document.querySelector("#flubber-remote-broadcast-details"),
+  remoteBroadcastSource: document.querySelector("#flubber-remote-source"),
+  remoteBroadcastListeners: document.querySelector("#flubber-remote-listeners"),
+  remoteBroadcastRoute: document.querySelector("#flubber-remote-route"),
   valenceOutput: document.querySelector("#valence-output"),
   arousalOutput: document.querySelector("#arousal-output"),
   modeInputs: [...document.querySelectorAll("input[name='input-mode']")],
@@ -393,6 +400,7 @@ const touchTrace = new TouchTraceAnalyzer({
   feedbackMode: state.touchFeedbackMode,
 });
 const polarSession = createPolarH10BrowserSession();
+const flubberBroadcaster = createFlubberBroadcaster();
 let polarEcgWindow = [];
 let polarBatteryPercent;
 let polarObservedSampleRate = 130;
@@ -722,6 +730,30 @@ function updatePolarConnectionUi(message = state.polarConnected ? "Polar H10 con
   elements.polarBattery.value = Number.isFinite(polarBatteryPercent) ? `${polarBatteryPercent}%` : "—";
   elements.polarBattery.hidden = !Number.isFinite(polarBatteryPercent);
   elements.polarStreamPanel.classList.toggle("is-connected", state.polarConnected);
+}
+
+function updateRemoteBroadcastUi(detail = flubberBroadcaster.snapshot()) {
+  const broadcasting = detail.phase === "broadcasting";
+  const connecting = detail.phase === "connecting";
+  elements.remoteBroadcastButton.disabled = connecting;
+  elements.remoteBroadcastButton.textContent = broadcasting
+    ? "Stop broadcast"
+    : connecting ? "Starting broadcast…" : "Broadcast this to VR / remote interface";
+  elements.remoteBroadcastDetails.hidden = !detail.streamId;
+  elements.remoteBroadcastSource.value = detail.sourceLabel || "—";
+  elements.remoteBroadcastListeners.value = String(detail.listenerCount ?? 0);
+  const routeParts = [];
+  if (detail.directListeners) routeParts.push(`${detail.directListeners} direct`);
+  if (detail.relayedListeners) routeParts.push(`${detail.relayedListeners} relayed`);
+  if (Number.isFinite(detail.rttMs)) routeParts.push(`${detail.rttMs} ms RTT`);
+  if (detail.sequence) routeParts.push(`sequence ${detail.sequence}`);
+  if (detail.droppedBackpressure) routeParts.push(`${detail.droppedBackpressure} backpressure drops`);
+  elements.remoteBroadcastRoute.value = routeParts.join(" · ") || (broadcasting ? "Waiting for listeners" : "Waiting");
+  elements.remoteBroadcastStatus.value = detail.message
+    || (broadcasting
+      ? `${detail.sourceLabel} is public and ready.`
+      : connecting ? "Connecting to VDO.Ninja signaling…" : "Broadcast off");
+  elements.remoteBroadcastStatus.classList.toggle("is-error", Boolean(detail.error || detail.phase === "error"));
 }
 
 function drawPolarEcg() {
@@ -2393,6 +2425,7 @@ function clearLog() {
 }
 
 function initializeEvents() {
+  flubberBroadcaster.addEventListener("statechange", (event) => updateRemoteBroadcastUi(event.detail));
   window.addEventListener("pointerdown", (event) => ingestPointerEvent(event, "down"), { capture: true, passive: false });
   window.addEventListener("pointermove", (event) => ingestPointerEvent(event, "move"), { capture: true, passive: false });
   window.addEventListener("pointerup", (event) => ingestPointerEvent(event, "up"), { capture: true, passive: false });
@@ -2473,6 +2506,24 @@ function initializeEvents() {
   });
   elements.polarDisconnectButton.addEventListener("click", async () => {
     await polarSession.disconnect();
+  });
+  elements.remoteBroadcastButton.addEventListener("click", async () => {
+    const snapshot = flubberBroadcaster.snapshot();
+    elements.remoteBroadcastButton.disabled = true;
+    try {
+      if (snapshot.phase === "broadcasting") {
+        const sourceLabel = snapshot.sourceLabel;
+        await flubberBroadcaster.stop();
+        recordEvent("remote-flubber", "remote-broadcast-stop", sourceLabel, 0);
+        announce("Remote Flubber broadcast stopped.");
+      } else {
+        const started = await flubberBroadcaster.start();
+        recordEvent("remote-flubber", "remote-broadcast-start", started.sourceLabel, 1);
+        announce(`${started.sourceLabel} is broadcasting final Flubber coordinates.`);
+      }
+    } catch (error) {
+      announce(`Remote broadcast could not start: ${error?.message ?? String(error)}`);
+    }
   });
   for (const fieldset of elements.polarAxisFields) {
     const axis = fieldset.dataset.polarAxis;
@@ -2707,7 +2758,13 @@ function initializeEvents() {
   elements.widget.addEventListener("pointermove", handleWidgetPointerMove);
   elements.widget.addEventListener("pointerup", finishWidgetDrag);
   elements.widget.addEventListener("pointercancel", finishWidgetDrag);
-  window.addEventListener("beforeunload", () => { void polarSession.disconnect({ emit: false }); });
+  window.addEventListener("beforeunload", () => {
+    void polarSession.disconnect({ emit: false });
+    void flubberBroadcaster.stop();
+  });
+  window.addEventListener("pagehide", () => {
+    void flubberBroadcaster.stop();
+  }, { once: true });
 }
 
 function animationFrame(timestamp) {
@@ -2731,6 +2788,8 @@ function animationFrame(timestamp) {
     state.currentX = smoothToward(state.currentX, state.targetX, state.response, deltaSeconds);
     state.currentY = smoothToward(state.currentY, state.targetY, state.response, deltaSeconds);
   }
+
+  flubberBroadcaster.offer(state.currentX, state.currentY, timestamp);
 
   const currentParameters = affectParameters(state.currentX, state.currentY);
   if (state.animationActive) {
@@ -2784,6 +2843,7 @@ function initialize() {
   updateExperimentSourceControls();
   constrainAndRenderWidget();
   initializeEvents();
+  updateRemoteBroadcastUi();
   updateLoggerDisplay();
   savePreferences();
   recordEvent("system", "session-start", "session", logger.sessionId);

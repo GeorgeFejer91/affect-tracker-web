@@ -34,6 +34,7 @@ class FlubberView(context: Context, private val onShapeDrawn: (Float, Float) -> 
   private var valence = 0f
   private var arousal = 0f
   private var showAffectValues = false
+  private var showPolarLive = false
 
   init {
     setBackgroundColor(Color.TRANSPARENT)
@@ -50,6 +51,7 @@ class FlubberView(context: Context, private val onShapeDrawn: (Float, Float) -> 
       currentValence: Float,
       currentArousal: Float,
       displayAffectValues: Boolean,
+      displayPolarLive: Boolean = false,
       nowNanos: Long = System.nanoTime(),
   ) {
     geometry = next
@@ -58,9 +60,10 @@ class FlubberView(context: Context, private val onShapeDrawn: (Float, Float) -> 
     visibleShape = visible
     valence = currentValence
     arousal = currentArousal
-    if (showAffectValues && !displayAffectValues) telemetry.reset()
+    if ((showAffectValues || showPolarLive) && !displayAffectValues && !displayPolarLive) telemetry.reset()
     showAffectValues = displayAffectValues
-    if (showAffectValues) {
+    showPolarLive = displayPolarLive
+    if (showAffectValues || showPolarLive) {
       telemetry.update(nowNanos, currentValence, currentArousal)
     }
     postInvalidateOnAnimation()
@@ -88,7 +91,7 @@ class FlubberView(context: Context, private val onShapeDrawn: (Float, Float) -> 
     canvas.drawPath(path, halo)
     canvas.drawPath(path, fill)
     canvas.drawPath(path, outline)
-    if (showAffectValues) drawTelemetry(canvas)
+    if (showAffectValues || showPolarLive) drawTelemetry(canvas)
     onShapeDrawn(valence, arousal)
   }
 
@@ -98,6 +101,9 @@ class FlubberView(context: Context, private val onShapeDrawn: (Float, Float) -> 
     telemetryStroke.textSize = textSize
     telemetryStroke.strokeWidth = textSize * 0.19f
     telemetryFill.textSize = textSize
+    if (showPolarLive) {
+      drawTelemetryLine(canvas, "POLAR STREAM • LIVE", baseline - textSize * 1.15f)
+    }
     drawTelemetryLine(canvas, telemetry.coordinateLine, baseline)
   }
 

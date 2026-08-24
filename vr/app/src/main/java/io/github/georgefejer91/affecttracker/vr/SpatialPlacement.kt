@@ -41,7 +41,7 @@ object SpatialPlacement {
     )
   }
 
-  /** Keeps Flubber just beyond a tracked controller and continuously aimed at the wearer. */
+  /** Keeps Flubber between the wearer and tracked controller, continuously aimed at the wearer. */
   fun controllerFollowFlubberPose(
       viewer: Pose,
       controller: Pose,
@@ -54,7 +54,7 @@ object SpatialPlacement {
     } else {
       uprightForward(viewer)
     }
-    val distance = (controllerDistance + controllerDistanceMeters.coerceIn(0.05f, 0.6f))
+    val distance = (controllerDistance - controllerDistanceMeters.coerceIn(0.05f, 0.6f))
         .coerceIn(0.35f, 5f)
     return Pose(
         viewer.t + direction * distance,

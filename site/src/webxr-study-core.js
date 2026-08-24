@@ -77,6 +77,19 @@ export function advanceWebXrAffectWithPolar(
   );
 }
 
+export function applyWebXrRemoteCoordinates(state, remoteSnapshot) {
+  const latest = remoteSnapshot?.enabled ? remoteSnapshot.latest : undefined;
+  if (!latest || !Number.isFinite(latest.currentX) || !Number.isFinite(latest.currentY)) return undefined;
+  const currentX = clamp(latest.currentX);
+  const currentY = clamp(latest.currentY);
+  return {
+    targetX: currentX,
+    targetY: currentY,
+    currentX,
+    currentY,
+  };
+}
+
 export function normalizeWebhookUrl(value) {
   const trimmed = String(value ?? "").trim();
   if (!trimmed) return "";
@@ -125,6 +138,11 @@ export const WEBXR_CSV_COLUMNS = Object.freeze([
   "polar_arousal_metric",
   "polar_arousal_value",
   "polar_arousal_normalized",
+  "remote_enabled",
+  "remote_source",
+  "remote_signal_state",
+  "remote_sequence",
+  "remote_packet_age_ms",
   "paused",
   "event",
   "detail",

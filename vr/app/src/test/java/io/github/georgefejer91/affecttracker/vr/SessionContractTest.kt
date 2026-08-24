@@ -87,17 +87,22 @@ class SessionContractTest {
     val original = SessionContract.parse(manifest(JSONObject()))
     val effective = original.withLauncherRuntimeOverrides(
         mixedRealityEnabled = true,
+        flubberOnlyPassthrough = true,
         controllerFollowEnabled = true,
         controllerFollowHand = StickHand.RIGHT,
+        followedControllerVisible = false,
     )
 
     assertEquals(VrEnvironment.PASSTHROUGH, effective.environment)
+    assertEquals(VrPresentationMode.FLUBBER_ONLY, effective.presentationMode)
     assertEquals(true, effective.flubber.controllerFollow.enabled)
     assertEquals(StickHand.RIGHT, effective.flubber.controllerFollow.hand)
+    assertEquals(false, effective.flubber.controllerFollow.showControllerModel)
     assertEquals(original.flubber.controllerFollow.distanceMeters, effective.flubber.controllerFollow.distanceMeters)
     assertEquals(original.video, effective.video)
     assertEquals(original.controls, effective.controls)
     assertEquals(VrEnvironment.DARK, original.environment)
+    assertEquals(VrPresentationMode.VIDEO, original.presentationMode)
     assertEquals(false, original.flubber.controllerFollow.enabled)
   }
 

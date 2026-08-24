@@ -4,6 +4,7 @@ import { readFileSync, statSync } from "node:fs";
 import {
   advanceWebXrAffect,
   advanceWebXrAffectWithPolar,
+  applyWebXrRemoteCoordinates,
   controllerAxes,
   controllerFacingModelMatrix,
   createEquirectSphereVertices,
@@ -91,6 +92,15 @@ test("WebXR Polar targets override only their assigned Flubber axis", () => {
   assert.equal(clamped.targetY, -1);
 });
 
+test("WebXR remote coordinates own both axes, bypass smoothing, hold while stale, and release only when disabled", () => {
+  const local = { currentX: -0.8, currentY: 0.8, targetX: -0.7, targetY: 0.7 };
+  const latest = { sequence: 12, currentX: 0.375, currentY: -0.625 };
+  const expected = { currentX: 0.375, currentY: -0.625, targetX: 0.375, targetY: -0.625 };
+  assert.deepEqual(applyWebXrRemoteCoordinates(local, { enabled: true, phase: "live", latest }), expected);
+  assert.deepEqual(applyWebXrRemoteCoordinates(local, { enabled: true, phase: "stale", latest }), expected);
+  assert.equal(applyWebXrRemoteCoordinates(local, { enabled: false, phase: "idle", latest }), undefined);
+});
+
 test("WebXR webhook is optional and HTTPS-only", () => {
   assert.equal(normalizeWebhookUrl(""), "");
   assert.equal(normalizeWebhookUrl("https://example.org/hook#private"), "https://example.org/hook");
@@ -104,6 +114,9 @@ test("WebXR CSV has fixed reconstructable columns and escapes details", () => {
   assert.match(csv, /"comma, quote "" and newline\n"/);
   assert.ok(csv.endsWith("\r\n"));
   for (const column of ["polar_connected", "polar_valence_metric", "polar_valence_normalized", "polar_arousal_metric", "polar_arousal_normalized"]) {
+    assert.ok(WEBXR_CSV_COLUMNS.includes(column));
+  }
+  for (const column of ["remote_enabled", "remote_source", "remote_signal_state", "remote_sequence", "remote_packet_age_ms"]) {
     assert.ok(WEBXR_CSV_COLUMNS.includes(column));
   }
   assert.doesNotMatch(WEBXR_CSV_COLUMNS.join(","), /raw_ecg|ecg_samples|rr_series/);
@@ -188,6 +201,11 @@ test("experimental page is local-first and wires the selectable WebXR study libr
   assert.match(page, /id="webxr-polar-x"/);
   assert.match(page, /id="webxr-polar-y"/);
   assert.match(page, /Connect before entering immersive mode/);
+  assert.match(page, /id="webxr-remote-panel"/);
+  assert.match(page, /id="webxr-remote-status"[^>]*aria-live="polite"/);
+  assert.match(page, /id="webxr-remote-use"[^>]*>Use incoming signal</);
+  assert.match(page, /id="webxr-remote-sources"[^>]*role="group"/);
+  assert.match(page, /src="\.\/vendor\/vdoninja\/1\.5\.5\/vdoninja-sdk\.min\.js"/);
   assert.match(styles, /\.polar-xr-connector button\[hidden\][\s\S]*display: none/);
   assert.match(page, /src="\.\/src\/webxr-study\.js"/);
   assert.doesNotMatch(page, /https:\/\/(?!example\.org)/);
@@ -200,6 +218,10 @@ test("experimental page is local-first and wires the selectable WebXR study libr
   assert.match(runtime, /readQuestControllerState/);
   assert.match(runtime, /createPolarH10BrowserSession\(\{ allowQuestExperiment: true \}\)/);
   assert.match(runtime, /advanceWebXrAffectWithPolar/);
+  assert.match(runtime, /applyWebXrRemoteCoordinates/);
+  assert.match(runtime, /REMOTE • SIGNAL LOST — HOLDING/);
+  assert.match(runtime, /Wait for the incoming Flubber signal to become live before entering immersive mode/);
+  assert.match(runtime, /incoming Flubber signal was lost before immersive mode started/);
   assert.match(runtime, /POLAR STREAM • LIVE/);
   assert.match(runtime, /frame\.getPose\(source\.gripSpace, state\.referenceSpace\)/);
   assert.match(runtime, /controllerFacingModelMatrix/);

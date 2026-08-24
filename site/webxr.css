@@ -244,6 +244,88 @@ dd {
   font: 0.76rem ui-monospace, SFMono-Regular, Consolas, monospace;
 }
 
+.remote-stream-options {
+  margin: 26px 0;
+  padding: 16px;
+  border: 1px solid rgb(120 215 255 / 42%);
+  border-radius: 14px;
+  background: rgb(32 79 105 / 12%);
+}
+
+.remote-stream-options legend {
+  padding: 0 7px;
+  color: #dff5ff;
+  font-weight: 800;
+}
+
+.remote-stream-options legend span {
+  margin-left: 6px;
+  padding: 3px 7px;
+  border: 1px solid #ffd166;
+  border-radius: 999px;
+  color: #ffd166;
+  font-size: 0.68rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.remote-xr-connector {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 12px;
+  border: 1px solid #31444d;
+  border-radius: 12px;
+  background: #090f12;
+}
+
+.remote-xr-connector > div { display: grid; gap: 3px; min-width: 0; }
+.remote-xr-connector output {
+  color: #a9e9ca;
+  font-size: 0.82rem;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+.remote-xr-connector output.is-error { color: #ffaaa3; }
+.remote-xr-connector button { min-height: 48px; }
+.remote-xr-connector button[hidden] { display: none; }
+
+.remote-xr-sources {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+.remote-xr-sources[hidden] { display: none; }
+.remote-xr-sources button {
+  min-height: 56px;
+  border: 1px solid rgb(120 215 255 / 32%);
+  background: #102a38;
+  color: #eaf8ff;
+}
+
+.remote-xr-details {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin: 12px 0 0;
+}
+.remote-xr-details[hidden] { display: none; }
+.remote-xr-details div {
+  min-width: 0;
+  padding: 10px;
+  border-radius: 10px;
+  background: rgb(0 0 0 / 24%);
+}
+.remote-xr-details dt { color: #9babbc; font-size: 0.75rem; }
+.remote-xr-details dd {
+  margin-top: 4px;
+  color: #dff5ff;
+  font: 700 0.8rem ui-monospace, SFMono-Regular, Consolas, monospace;
+  overflow-wrap: anywhere;
+}
+
 .rigging-options legend {
   padding: 0 6px;
   color: #78d7ff;
@@ -398,11 +480,15 @@ a {
   }
 
   .polar-xr-connector,
-  .polar-xr-mappings {
+  .polar-xr-mappings,
+  .remote-xr-connector,
+  .remote-xr-sources,
+  .remote-xr-details {
     grid-template-columns: 1fr;
   }
 
-  .polar-xr-connector button {
+  .polar-xr-connector button,
+  .remote-xr-connector button {
     width: 100%;
   }
 }

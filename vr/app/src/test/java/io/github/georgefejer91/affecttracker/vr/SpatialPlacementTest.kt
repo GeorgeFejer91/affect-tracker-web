@@ -54,7 +54,7 @@ class SpatialPlacementTest {
     assertTrue(abs(delta.y) > 0.01f)
   }
 
-  @Test fun controllerFollowStaysBeyondTheControllerAndFacesTheViewer() {
+  @Test fun controllerFollowStaysBetweenViewerAndControllerAndFacesTheViewer() {
     val viewer = Pose(Vector3(0f, 1.65f, 0f), Quaternion())
     val controller = Pose(Vector3(-0.28f, 1.25f, 0.65f), Quaternion(20f, 10f, 5f))
     val followed = SpatialPlacement.controllerFollowFlubberPose(viewer, controller, 0.18f)
@@ -68,7 +68,7 @@ class SpatialPlacementTest {
     val facingAlignment = dot(facing, flubberDirection) /
         (vectorLength(facing) * vectorLength(flubberDirection))
 
-    assertEquals(controllerDistance + 0.18f, flubberDistance, 0.001f)
+    assertEquals(controllerDistance - 0.18f, flubberDistance, 0.001f)
     assertTrue(alignment > 0.999f)
     assertTrue(facingAlignment > 0.999f)
   }

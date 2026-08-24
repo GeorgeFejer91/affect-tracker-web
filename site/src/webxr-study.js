@@ -7,6 +7,7 @@ import {
 } from "./math.js";
 import {
   advanceWebXrAffectWithPolar,
+  applyWebXrRemoteCoordinates,
   controllerFacingModelMatrix,
   createEquirectSphereVertices,
   matrixWithoutTranslation,
@@ -29,6 +30,7 @@ import {
   POLAR_METRICS,
   polarWebBluetoothSupport,
 } from "./polar-stream.js";
+import { createFlubberReceiver } from "./flubber-remote.js";
 
 const VIDEO_MODEL = modelMatrix(0, 1.55, -2.8, 2.4, 1.35);
 const SPHERE_MODEL = modelMatrix(0, 0, 0, 1, 1);
@@ -67,6 +69,15 @@ const elements = {
   polarY: document.querySelector("#webxr-polar-y"),
   polarXValue: document.querySelector("#webxr-polar-x-value"),
   polarYValue: document.querySelector("#webxr-polar-y-value"),
+  remotePanel: document.querySelector("#webxr-remote-panel"),
+  remoteStatus: document.querySelector("#webxr-remote-status"),
+  remoteUse: document.querySelector("#webxr-remote-use"),
+  remoteStop: document.querySelector("#webxr-remote-stop"),
+  remoteSources: document.querySelector("#webxr-remote-sources"),
+  remoteDetails: document.querySelector("#webxr-remote-details"),
+  remoteSource: document.querySelector("#webxr-remote-source"),
+  remoteValues: document.querySelector("#webxr-remote-values"),
+  remoteRoute: document.querySelector("#webxr-remote-route"),
   start: document.querySelector("#start-vr"),
   download: document.querySelector("#download-csv"),
   status: document.querySelector("#study-status"),
@@ -114,12 +125,16 @@ const state = {
     arousal: { metric: "manual" },
   },
   polarHudText: "",
+  remote: { enabled: false, phase: "idle", sources: [] },
+  remoteHudText: "",
+  pendingRemoteEvents: [],
 };
 
 const profiles = createProfiles();
 let offsets = createProjectionOffsets("webxr-preview", profiles.waveCount);
 let renderer;
 const polarSession = createPolarH10BrowserSession({ allowQuestExperiment: true });
+const flubberReceiver = createFlubberReceiver();
 let polarEcgWindow = [];
 
 function setStatus(message, error = false) {
@@ -156,11 +171,12 @@ function updatePolarMappingUi() {
     ["arousal", elements.polarY, elements.polarYValue],
   ]) {
     const reading = polarAxisReading(axis);
-    if (reading.mapping.metric === "manual") output.value = "Right thumbstick";
+    if (state.remote.enabled) output.value = "Incoming signal owns this axis";
+    else if (reading.mapping.metric === "manual") output.value = "Right thumbstick";
     else if (!state.polarConnected) output.value = "Connect H10 first";
     else if (reading.normalized === undefined) output.value = formatPolarMetric(reading.mapping.metric, reading.value);
     else output.value = `${formatPolarMetric(reading.mapping.metric, reading.value)} → ${reading.normalized.toFixed(3)}`;
-    select.disabled = Boolean(state.session);
+    select.disabled = Boolean(state.session) || state.remote.enabled;
   }
   const summaries = [
     ["X", polarAxisReading("valence")],
@@ -205,11 +221,88 @@ function updatePolarConnectionUi(message, error = false) {
   elements.polarStatus.classList.toggle("is-error", error);
   elements.polarConnect.hidden = state.polarConnected;
   elements.polarDisconnect.hidden = !state.polarConnected;
-  elements.polarConnect.disabled = !support.supported || state.polarConnecting || Boolean(state.session);
-  elements.polarDisconnect.disabled = Boolean(state.session);
+  elements.polarConnect.disabled = !support.supported || state.polarConnecting || Boolean(state.session) || state.remote.enabled;
+  elements.polarDisconnect.disabled = Boolean(state.session) || state.remote.enabled;
   elements.polarBattery.hidden = !Number.isFinite(state.polarBatteryPercent);
   elements.polarBattery.value = Number.isFinite(state.polarBatteryPercent) ? `${state.polarBatteryPercent}%` : "—";
   updatePolarMappingUi();
+}
+
+function formatRemoteValues(snapshot) {
+  const latest = snapshot.latest;
+  if (!latest) return "Waiting";
+  const prefix = snapshot.phase === "stale" ? "Holding " : "";
+  return `${prefix}X ${latest.currentX >= 0 ? "+" : ""}${latest.currentX.toFixed(3)} · Y ${latest.currentY >= 0 ? "+" : ""}${latest.currentY.toFixed(3)}`;
+}
+
+function remoteRouteText(snapshot) {
+  const parts = [];
+  if (snapshot.route === "direct") parts.push("Direct P2P");
+  else if (snapshot.route === "relay") parts.push("TURN relay");
+  if (Number.isFinite(snapshot.rttMs)) parts.push(`${snapshot.rttMs} ms RTT`);
+  return parts.join(" · ") || "Negotiating";
+}
+
+function renderRemoteSources(snapshot) {
+  elements.remoteSources.replaceChildren();
+  const show = snapshot.enabled && !state.session && (
+    snapshot.sources.length > 1
+    || snapshot.phase === "stale" && snapshot.sources.length > 0
+  );
+  elements.remoteSources.hidden = !show;
+  if (!show) return;
+  for (const source of snapshot.sources) {
+    const button = document.createElement("button");
+    button.type = "button";
+    const selected = source.streamId === snapshot.selectedStreamId;
+    button.textContent = selected ? `${source.label} — selected` : source.label;
+    button.disabled = selected;
+    button.setAttribute("aria-pressed", String(selected));
+    button.addEventListener("click", () => { void flubberReceiver.selectSource(source.streamId); });
+    elements.remoteSources.append(button);
+  }
+}
+
+function updateRemoteUi(detail = flubberReceiver.snapshot()) {
+  state.remote = detail;
+  const enabled = detail.enabled;
+  elements.remoteUse.hidden = enabled;
+  elements.remoteStop.hidden = !enabled;
+  elements.remoteUse.disabled = Boolean(state.session);
+  elements.remoteStop.disabled = Boolean(state.session);
+  elements.remoteDetails.hidden = !detail.selectedStreamId;
+  elements.remoteSource.value = detail.sourceLabel || "—";
+  elements.remoteValues.value = formatRemoteValues(detail);
+  elements.remoteRoute.value = remoteRouteText(detail);
+  renderRemoteSources(detail);
+
+  let fallback = "Incoming signal off";
+  if (detail.phase === "discovering") fallback = "Looking for public Affect Tracker broadcasts…";
+  else if (detail.phase === "selecting") fallback = "Choose a source below.";
+  else if (detail.phase === "connecting") fallback = `Connecting to ${detail.sourceLabel}…`;
+  else if (detail.phase === "live") fallback = detail.route === "relay"
+    ? `${detail.sourceLabel} is live through a TURN relay.`
+    : `${detail.sourceLabel} is live.`;
+  else if (detail.phase === "stale") fallback = `${detail.sourceLabel} signal lost; holding the last position.`;
+  else if (detail.phase === "error") fallback = "Incoming signal could not connect.";
+  elements.remoteStatus.value = detail.message || fallback;
+  elements.remoteStatus.classList.toggle("is-error", Boolean(detail.error || detail.phase === "error" || detail.phase === "stale"));
+  state.remoteHudText = detail.phase === "stale"
+    ? "REMOTE • SIGNAL LOST — HOLDING"
+    : detail.phase === "live" ? `${detail.sourceLabel.toUpperCase()} • LIVE` : "";
+
+  updatePolarConnectionUi(state.polarStatusMessage ?? (state.polarConnected ? "Polar H10 ECG is live at 130 Hz" : "Not connected"));
+  if (detail.transition) {
+    const remoteEvent = {
+      event: `remote-${detail.transition}`,
+      detail: detail.sourceLabel || detail.message || "incoming",
+    };
+    if (state.session) record("event", remoteEvent.event, remoteEvent.detail);
+    else {
+      state.pendingRemoteEvents.push(remoteEvent);
+      if (state.pendingRemoteEvents.length > 32) state.pendingRemoteEvents.shift();
+    }
+  }
 }
 
 function drawPolarEcg() {
@@ -289,6 +382,27 @@ async function disconnectPolar() {
   await polarSession.disconnect();
 }
 
+async function useIncomingSignal() {
+  if (state.session) return;
+  elements.remoteUse.disabled = true;
+  try {
+    if (state.polarConnected || state.polarConnecting) await polarSession.disconnect();
+    await flubberReceiver.startDiscovery();
+  } catch (error) {
+    setStatus(`Incoming signal could not start: ${error?.message ?? String(error)}`, true);
+  } finally {
+    updateRemoteUi();
+  }
+}
+
+async function stopIncomingSignal() {
+  if (state.session) return;
+  await flubberReceiver.stop();
+  state.remoteHudText = "";
+  updateRemoteUi();
+  setStatus("Incoming signal stopped. Quest controller and direct Polar input are available again.");
+}
+
 function applyStimulus(stimulus, updateUrl = true) {
   if (state.session) return;
   state.stimulus = stimulus;
@@ -340,6 +454,7 @@ function record(recordType, event = "", detail = "") {
   const hasStimulus = state.presentationMode !== "passthrough-flubber";
   const polarValence = polarAxisReading("valence");
   const polarArousal = polarAxisReading("arousal");
+  const remote = flubberReceiver.snapshot(now);
   state.records.push({
     session_id: state.sessionId,
     stimulus_id: hasStimulus ? state.stimulus.id : "",
@@ -374,6 +489,11 @@ function record(recordType, event = "", detail = "") {
     polar_arousal_metric: polarArousal.mapping.metric,
     polar_arousal_value: rounded(polarArousal.value),
     polar_arousal_normalized: rounded(polarArousal.normalized),
+    remote_enabled: remote.enabled,
+    remote_source: remote.sourceLabel,
+    remote_signal_state: remote.enabled ? remote.phase : "off",
+    remote_sequence: remote.latest?.sequence ?? "",
+    remote_packet_age_ms: rounded(remote.packetAgeMs, 3),
     paused: state.paused,
     event,
     detail,
@@ -450,6 +570,10 @@ async function finalize(reason, partial = false, autoDownload = true) {
 }
 
 function resetAffect() {
+  if (state.remote.enabled) {
+    record("event", "reset-ignored", "incoming-signal-owns-both-axes");
+    return;
+  }
   if (polarAxisReading("valence").normalized === undefined) {
     state.targetX = 0;
     state.currentX = 0;
@@ -530,9 +654,12 @@ function updateStudy(now, deltaSeconds) {
   const input = readControllers();
   if (state.phase === "countdown" && now >= state.countdownEndsAt) beginPlayback();
   if (state.phase === "running" && !state.paused) {
+    const remote = flubberReceiver.snapshot(now);
+    state.remote = remote;
+    const remoteNext = applyWebXrRemoteCoordinates(state, remote);
     const polarValence = polarAxisReading("valence");
     const polarArousal = polarAxisReading("arousal");
-    const next = advanceWebXrAffectWithPolar(state, input, deltaSeconds, {
+    const next = remoteNext ?? advanceWebXrAffectWithPolar(state, input, deltaSeconds, {
       x: polarValence.normalized,
       y: polarArousal.normalized,
     });
@@ -570,8 +697,15 @@ async function startStudy() {
     return;
   }
 
+  const remote = flubberReceiver.snapshot();
+  if (remote.enabled && (remote.phase !== "live" || !remote.latest)) {
+    setStatus("Wait for the incoming Flubber signal to become live before entering immersive mode.", true);
+    elements.remoteStop.focus();
+    return;
+  }
+
   const polarAssigned = Object.values(state.polarMappings).some((mapping) => mapping.metric !== "manual");
-  if (polarAssigned && !state.polarConnected) {
+  if (!remote.enabled && polarAssigned && !state.polarConnected) {
     setStatus("Connect the Polar H10 before entering immersive mode, or return both Polar axes to the right thumbstick.", true);
     elements.polarConnect.focus();
     return;
@@ -587,6 +721,9 @@ async function startStudy() {
   elements.polarDisconnect.disabled = true;
   elements.polarX.disabled = true;
   elements.polarY.disabled = true;
+  elements.remoteUse.disabled = true;
+  elements.remoteStop.disabled = true;
+  for (const button of elements.remoteSources.querySelectorAll("button")) button.disabled = true;
   elements.download.hidden = true;
   const presentationMode = elements.presentationMode.value;
   const passthrough = presentationMode !== "virtual";
@@ -608,6 +745,12 @@ async function startStudy() {
     const session = await sessionPromise;
     requestedSession = session;
     await mediaUnlock;
+    const entryRemote = flubberReceiver.snapshot();
+    if (entryRemote.enabled && (entryRemote.phase !== "live" || !entryRemote.latest)) {
+      requestedSession = undefined;
+      await session.end().catch(() => {});
+      throw new Error("The incoming Flubber signal was lost before immersive mode started.");
+    }
     if (!renderer) renderer = createRenderer(elements.canvas, elements.video);
     if (typeof renderer.gl.makeXRCompatible === "function") {
       await renderer.gl.makeXRCompatible();
@@ -649,6 +792,10 @@ async function startStudy() {
     state.finalizing = false;
     state.records = [];
     offsets = createProjectionOffsets(state.sessionId, profiles.waveCount);
+    for (const remoteEvent of state.pendingRemoteEvents) {
+      record("event", remoteEvent.event, `pre-entry:${remoteEvent.detail}`);
+    }
+    state.pendingRemoteEvents = [];
     record("event", "xr-session-start", `${sessionMode}:${presentationMode}:${state.stimulus.id}:${state.stimulus.projection}`);
     session.addEventListener("end", () => {
       const wasFinished = state.phase === "finished";
@@ -664,6 +811,7 @@ async function startStudy() {
         elements.controllerFollowHand.disabled = !elements.controllerFollow.checked;
         elements.flubberSize.disabled = false;
         updatePolarConnectionUi(state.polarStatusMessage ?? (state.polarConnected ? "Polar H10 ECG is live at 130 Hz" : "Not connected"));
+        updateRemoteUi();
         if (!state.finalizing) elements.start.disabled = false;
       });
     }, { once: true });
@@ -677,7 +825,9 @@ async function startStudy() {
       state.polarMappings.arousal.metric !== "manual" ? "arousal (Y)" : "",
     ].filter(Boolean);
     setStatus(
-      polarAxes.length
+      remote.enabled
+        ? `${state.stimulus.title} is running. ${remote.sourceLabel} directly drives both Flubber axes.`
+        : polarAxes.length
         ? `${state.stimulus.title} is running. Polar Stream drives ${polarAxes.join(" and ")}; use the right thumbstick for any manual axis.`
         : `${state.stimulus.title} is running. Use the right thumbstick to rate affect.`,
     );
@@ -690,6 +840,7 @@ async function startStudy() {
     elements.controllerFollowHand.disabled = !elements.controllerFollow.checked;
     elements.flubberSize.disabled = false;
     updatePolarConnectionUi(state.polarStatusMessage ?? (state.polarConnected ? "Polar H10 ECG is live at 130 Hz" : "Not connected"));
+    updateRemoteUi();
     setStatus(
       error?.name === "NotSupportedError"
         ? `This browser could not start ${passthrough ? "passthrough" : "immersive VR"}. Try another presentation mode in Meta Quest Browser.`
@@ -799,7 +950,12 @@ function createRenderer(canvas, video) {
       phase: study.phaseRadians,
     });
     context.clearRect(0, 0, flubberCanvas.width, flubberCanvas.height);
-    if (study.polarConnected) {
+    if (study.remote.enabled) {
+      context.fillStyle = study.remote.phase === "stale" ? "rgba(255,177,138,0.98)" : "rgba(120,215,255,0.98)";
+      context.textAlign = "center";
+      context.font = "800 18px system-ui, sans-serif";
+      context.fillText(study.remote.phase === "stale" ? "REMOTE • SIGNAL LOST" : "REMOTE • LIVE", 256, 28);
+    } else if (study.polarConnected) {
       context.fillStyle = "rgba(121,226,189,0.96)";
       context.textAlign = "center";
       context.font = "800 18px system-ui, sans-serif";
@@ -825,7 +981,7 @@ function createRenderer(canvas, video) {
     context.font = "600 19px system-ui, sans-serif";
     context.fillStyle = "rgba(220,230,240,0.92)";
     context.fillText(
-      study.paused ? "PAUSED — press Y to resume" : (study.polarHudText || "Right stick: valence × arousal"),
+      study.paused ? "PAUSED — press Y to resume" : (study.remoteHudText || study.polarHudText || "Right stick: valence × arousal"),
       256,
       558,
     );
@@ -968,6 +1124,7 @@ function restoreControls() {
   elements.controllerFollowHand.disabled = !elements.controllerFollow.checked;
   elements.flubberSize.disabled = false;
   updatePolarConnectionUi(state.polarStatusMessage ?? (state.polarConnected ? "Polar H10 ECG is live at 130 Hz" : "Not connected"));
+  updateRemoteUi();
 }
 function updatePresentationControls() {
   const passthrough = elements.presentationMode.value !== "virtual";
@@ -1001,10 +1158,22 @@ elements.polarConnect.addEventListener("click", connectPolar);
 elements.polarDisconnect.addEventListener("click", disconnectPolar);
 elements.polarX.addEventListener("change", () => setPolarMapping("valence", elements.polarX.value));
 elements.polarY.addEventListener("change", () => setPolarMapping("arousal", elements.polarY.value));
-window.addEventListener("pagehide", () => { void polarSession.disconnect({ emit: false }); }, { once: true });
+elements.remoteUse.addEventListener("click", useIncomingSignal);
+elements.remoteStop.addEventListener("click", stopIncomingSignal);
+flubberReceiver.addEventListener("statechange", (event) => updateRemoteUi(event.detail));
+flubberReceiver.addEventListener("frame", (event) => {
+  state.remote = event.detail;
+  state.remoteHudText = `${event.detail.sourceLabel.toUpperCase()} • LIVE`;
+  if (!state.session) elements.remoteValues.value = formatRemoteValues(event.detail);
+});
+window.addEventListener("pagehide", () => {
+  void polarSession.disconnect({ emit: false });
+  void flubberReceiver.stop();
+}, { once: true });
 populateStimulusLibrary();
 populatePolarMappings();
 updateRiggingControls();
+updateRemoteUi();
 const polarSupport = polarWebBluetoothSupport({ allowQuestExperiment: true });
 elements.polarSupport.textContent = polarSupport.reason;
 updatePolarConnectionUi(polarSupport.supported ? "Not connected" : polarSupport.reason, !polarSupport.supported);

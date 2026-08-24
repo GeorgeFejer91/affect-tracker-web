@@ -24,7 +24,8 @@
         <h1 id="study-title">Immersive affect study</h1>
         <p>
           Choose a repository-hosted stimulus, enter VR, and move the affect tracker with the right
-          Touch thumbstick. Nothing is uploaded unless you enter a webhook below.
+          Touch thumbstick. Study records stay on the headset unless you enter a webhook below; the separate
+          incoming-signal button exchanges only anonymous Flubber X/Y coordinates after you press it.
         </p>
 
         <label class="stimulus-field" for="stimulus-select">
@@ -90,6 +91,34 @@
             Connect before entering immersive mode. A finite assigned metric drives only its selected axis;
             the other axis remains on the right thumbstick. In passthrough, the same live values animate
             Flubber locally and are logged as mapping context without raw ECG samples.
+          </p>
+        </fieldset>
+
+        <fieldset id="webxr-remote-panel" class="remote-stream-options">
+          <legend>Incoming Flubber signal <span>Experimental</span></legend>
+          <div class="remote-xr-connector">
+            <div>
+              <strong>Desktop browser coordinates</strong>
+              <output id="webxr-remote-status" aria-live="polite">Incoming signal off</output>
+            </div>
+            <button id="webxr-remote-use" type="button">Use incoming signal</button>
+            <button id="webxr-remote-stop" type="button" hidden>Stop using incoming signal</button>
+          </div>
+          <div id="webxr-remote-sources" class="remote-xr-sources" role="group" aria-label="Available Flubber sources" hidden></div>
+          <dl id="webxr-remote-details" class="remote-xr-details" hidden>
+            <div><dt>Source</dt><dd><output id="webxr-remote-source">—</output></dd></div>
+            <div><dt>Values</dt><dd><output id="webxr-remote-values">Waiting</output></dd></div>
+            <div><dt>Route</dt><dd><output id="webxr-remote-route">Waiting</output></dd></div>
+          </dl>
+          <p class="privacy-note">
+            Connect before entering immersive mode. When live, the incoming desktop X/Y coordinates own
+            both axes and are applied directly without another smoothing delay. If updates stop, Quest holds
+            the last position and warns instead of silently returning to controller input.
+          </p>
+          <p class="privacy-note">
+            The discovery room is public. VDO.Ninja supplies signaling and may use STUN/TURN; peers may learn
+            the headset's IP address and relay routes can add latency. No ECG, RR, heart rate, metric name,
+            participant identifier, or source timestamp is received.
           </p>
         </fieldset>
 
@@ -159,6 +188,7 @@
       </section>
     </main>
 
+    <script src="./vendor/vdoninja/1.5.5/vdoninja-sdk.min.js"></script>
     <script type="module" src="./src/webxr-study.js"></script>
   </body>
 </html>

@@ -8,6 +8,7 @@
     <uses-feature android:name="oculus.software.handtracking" android:required="false" />
     <uses-feature android:name="com.oculus.feature.RENDER_MODEL" android:required="false" />
     <uses-feature android:name="com.oculus.feature.PASSTHROUGH" android:required="false" />
+    <uses-feature android:name="android.hardware.bluetooth_le" android:required="false" />
     <uses-feature android:glEsVersion="0x00030001" android:required="true" />
 
     <uses-permission android:name="com.oculus.permission.HAND_TRACKING" />
@@ -16,6 +17,10 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
+    <uses-permission
+        android:name="android.permission.BLUETOOTH_SCAN"
+        android:usesPermissionFlags="neverForLocation" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
 
     <application
         android:name=".AffectTrackerVrApplication"

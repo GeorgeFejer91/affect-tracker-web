@@ -10,6 +10,7 @@ import com.meta.spatial.toolkit.AvatarBody
 import com.meta.spatial.toolkit.Controller
 import com.meta.spatial.toolkit.ControllerType
 import com.meta.spatial.toolkit.Transform
+import com.meta.spatial.toolkit.Visible
 
 /**
  * Registers controller polling in Spatial SDK's late-system phase.
@@ -51,6 +52,56 @@ internal data class TouchControllerFrame(
 
 /** Selects the hand-specific local attachment, then avatar hand, then all-controller fallback. */
 internal object TouchControllerAdapter {
+  data class ModelVisibilityReceipt(val leftEntities: Int, val rightEntities: Int)
+
+  /**
+   * Applies model visibility per hand without touching Controller components or input ownership.
+   * AvatarSystem exposes only a global switch, so this narrow entity-level pass runs periodically
+   * to cover controller entities recreated after sleep/wake or tracking reacquisition.
+   */
+  fun setModelVisibility(
+      scene: Scene,
+      leftVisible: Boolean,
+      rightVisible: Boolean,
+  ): ModelVisibilityReceipt {
+    val dataModel = scene.spatialInterface.dataModel
+    val updated = mutableSetOf<Long>()
+    var leftEntities = 0
+    var rightEntities = 0
+
+    fun apply(entity: com.meta.spatial.core.Entity, hand: StickHand) {
+      if (!updated.add(entity.id)) return
+      entity.setComponent(Visible(if (hand == StickHand.LEFT) leftVisible else rightVisible))
+      if (hand == StickHand.LEFT) leftEntities += 1 else rightEntities += 1
+    }
+
+    Query.where { has(Controller.id) }.eval(dataModel).forEach { entity ->
+      if (!runCatching { entity.isLocal() }.getOrDefault(false)) return@forEach
+      val controller = runCatching { entity.getComponent<Controller>() }.getOrNull() ?: return@forEach
+      if (controller.type != ControllerType.CONTROLLER) return@forEach
+      when (entity.tryGetComponent<AvatarAttachment>()?.type) {
+        "left_controller", "left_hand" -> apply(entity, StickHand.LEFT)
+        "right_controller", "right_hand" -> apply(entity, StickHand.RIGHT)
+      }
+    }
+
+    Query.where { has(AvatarBody.id) }.eval(dataModel).forEach { entity ->
+      val body = runCatching { entity.getComponent<AvatarBody>() }.getOrNull() ?: return@forEach
+      if (!body.isPlayerControlled || !runCatching { entity.isLocal() }.getOrDefault(false)) return@forEach
+      body.leftHand.takeIf { it.id != 0L }?.let { handEntity ->
+        if (runCatching { handEntity.tryGetComponent<Controller>()?.type }.getOrNull() == ControllerType.CONTROLLER) {
+          apply(handEntity, StickHand.LEFT)
+        }
+      }
+      body.rightHand.takeIf { it.id != 0L }?.let { handEntity ->
+        if (runCatching { handEntity.tryGetComponent<Controller>()?.type }.getOrNull() == ControllerType.CONTROLLER) {
+          apply(handEntity, StickHand.RIGHT)
+        }
+      }
+    }
+    return ModelVisibilityReceipt(leftEntities, rightEntities)
+  }
+
   /** Must run from [SystemBase.execute] after VRFeature has created the live scene data model. */
   fun capture(scene: Scene): TouchControllerFrame {
     var localLeftState = 0

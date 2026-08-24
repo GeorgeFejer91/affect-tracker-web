@@ -12,6 +12,7 @@ import android.view.InputDevice
 import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View
+import android.view.WindowManager
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -73,6 +74,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import java.util.Locale
 import kotlin.math.abs
 
 @OptIn(SpatialSDKExperimentalAPI::class)
@@ -97,6 +99,8 @@ class AffectTrackerVrActivity : AppSystemActivity() {
   private var phase = 0.0
   private var lastTickNanos = 0L
   private var lslAccumulator = 0f
+  private var polarMarkerAccumulator = 0f
+  private var lastPolarRouteReceipt = ""
   private var lastHorizontalDirection = "neutral"
   private var lastVerticalDirection = "neutral"
   private var lastGrabbed = false
@@ -109,6 +113,10 @@ class AffectTrackerVrActivity : AppSystemActivity() {
   private var controllerFollowTracking: Boolean? = null
   private var controllerFollowStartPosition: Vector3? = null
   private var controllerFollowMoveLogged = false
+  private var controllerModelLeftVisible = true
+  private var controllerModelRightVisible = true
+  private var nextControllerModelVisibilityNanos = 0L
+  private var lastControllerModelVisibilityReceipt = ""
   private var isdkSystem: IsdkSystem? = null
   private lateinit var locomotionInputBridge: LocomotionSystem
   private var spatialStickX = 0f
@@ -140,6 +148,7 @@ class AffectTrackerVrActivity : AppSystemActivity() {
   private var status by mutableStateOf("Preparing experiment…")
   private var details by mutableStateOf("Flubber will appear before the countdown.")
   private var controllerInputStatus by mutableStateOf("Right Touch: waiting for immersive input")
+  private var polarInputStatus by mutableStateOf("Polar Stream: manual X/Y")
   private var lastControllerStatusLabel = ""
   private var lastControllerStatusSource = ""
   private var lastControllerStatusX = Float.NaN
@@ -227,9 +236,13 @@ class AffectTrackerVrActivity : AppSystemActivity() {
     lastTickNanos = now
     val localEngine = engine ?: return
     ensureGameControllerPins()
+    val polarState = runtime.polar.state.value
+    val polarDrive = if (sessionActive) polarState.drive() else PolarDrive(null, null, null, null)
+    localEngine.setExternalTargets(polarDrive.x, polarDrive.y)
     applyControllerStick(localEngine, now)
     val snapshot = localEngine.tick(dt)
     val session = staged?.session ?: return
+    updatePolarRouting(polarState, polarDrive, dt)
     updateControllerFollow(session)
     if (!localEngine.isPaused()) {
       phase = advanceFlubberPhase(
@@ -249,6 +262,7 @@ class AffectTrackerVrActivity : AppSystemActivity() {
           snapshot.currentX,
           snapshot.currentY,
           effectiveShowAffectValues(session),
+          polarDrive.active,
           now,
       )
     }
@@ -305,6 +319,7 @@ class AffectTrackerVrActivity : AppSystemActivity() {
       diagnosticReceiverRegistered = false
     }
     if (lslSamplingActive) runtime.finish("app_destroyed")
+    window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
     player.release()
     videoCoordinator.detachForRuntimeTeardown()
     // AppSystemActivity owns its scene and destroys these entities with the native DataModel.
@@ -321,28 +336,61 @@ class AffectTrackerVrActivity : AppSystemActivity() {
     controllerFollowStartPosition = null
     controllerFollowMoveLogged = false
     engine = AffectEngine(next.session.affect)
+    polarMarkerAccumulator = 0f
+    lastPolarRouteReceipt = ""
+    val polarState = runtime.polar.state.value
+    polarInputStatus = if (polarState.mappings.anyAssigned) {
+      "Polar armed · X ${polarState.mappings.x.metricId} · Y ${polarState.mappings.y.metricId}"
+    } else {
+      "Polar Stream: manual X/Y"
+    }
     geometry = FlubberGeometry(next.session.sessionId)
     telemetryStickX = 0f
     telemetryStickY = 0f
     flubberView?.resetTelemetry()
-    status = "Preparing ${next.session.video.file}"
+    val videoEnabled = next.session.presentationMode == VrPresentationMode.VIDEO
+    status = if (videoEnabled) "Preparing ${next.session.video.file}" else "Preparing Flubber-only passthrough"
     details = if (next.session.flubber.controllerFollow.enabled) {
-      "LSL is running. Flubber follows ${next.session.flubber.controllerFollow.hand.token} Touch. Waiting for the video decoder…"
+      if (videoEnabled) {
+        "LSL is running. Flubber follows ${next.session.flubber.controllerFollow.hand.token} Touch. Waiting for the video decoder…"
+      } else {
+        "LSL is running. Flubber follows ${next.session.flubber.controllerFollow.hand.token} Touch; no video will be shown."
+      }
     } else {
-      "LSL is running. A recenters Flubber on your gaze. Waiting for the video decoder…"
+      if (videoEnabled) {
+        "LSL is running. A recenters Flubber on your gaze. Waiting for the video decoder…"
+      } else {
+        "LSL is running. A recenters Flubber on your gaze; no video will be shown."
+      }
     }
     Log.i(
         ExperimentRuntime.READINESS_TAG,
         "runtime_profile source=active-session.json video=${next.session.video.file} " +
             "layout_source=${next.choiceSource.name.lowercase()} stick=${next.session.controls.stick.token}",
     )
+    Log.i(
+        ExperimentRuntime.READINESS_TAG,
+        "polar_profile sdk=${PolarH10Manager.SDK_VERSION} ready=${polarState.readiness.ready} " +
+            "x_metric=${polarState.mappings.x.metricId} y_metric=${polarState.mappings.y.metricId} " +
+            "raw_ecg_persisted=false mappings_scope=run-only",
+    )
     lslSamplingActive = true
     if (sceneReady) {
       val viewer = scene.getViewerPose()
       configureEnvironment(next)
-      videoCoordinator.present(next, viewer)
+      if (videoEnabled) {
+        videoCoordinator.present(next, viewer)
+      } else {
+        playerReady = true
+        lsl.marker("presentation:flubber_only:ready")
+        Log.i(
+            ExperimentRuntime.READINESS_TAG,
+            "presentation_ready mode=flubber-only passthrough=true video_prepared=false video_rendered=false",
+        )
+      }
       placeFlubber(next, viewer, create = true)
       configureControllerModels(next)
+      if (!videoEnabled) maybeBeginCountdown()
     }
   }
 
@@ -414,48 +462,61 @@ class AffectTrackerVrActivity : AppSystemActivity() {
     val next = staged ?: return
     if (countdownStarted || !playerReady || lsl.status != "running" || !sceneReady) return
     countdownStarted = true
-    Log.i(ExperimentRuntime.READINESS_TAG, "decoder_ready session=${next.session.sessionId}")
+    val videoEnabled = next.session.presentationMode == VrPresentationMode.VIDEO
+    Log.i(
+        ExperimentRuntime.READINESS_TAG,
+        if (videoEnabled) "decoder_ready session=${next.session.sessionId}" else "flubber_only_ready session=${next.session.sessionId}",
+    )
     scope.launch {
       val viewer = scene.getViewerPose()
-      val videoPose = videoCoordinator.recenter(viewer)
+      val videoPose = if (videoEnabled) videoCoordinator.recenter(viewer) else null
       val flubberPose = placeFlubber(next, viewer, create = false)
       controlEntity?.setComponent(Transform(viewerRelativePose(1.35f, 0f, 0f)))
       Log.i(
           ExperimentRuntime.READINESS_TAG,
-          "spatial_lock projection=${next.session.video.projection.token} " +
-              "video_distance=${SpatialPlacement.distance(viewer.t, videoPose.t)} " +
+          "spatial_lock projection=${if (videoEnabled) next.session.video.projection.token else "none"} " +
+              "video_distance=${videoPose?.let { SpatialPlacement.distance(viewer.t, it.t) } ?: "none"} " +
               "flubber_distance=${SpatialPlacement.distance(viewer.t, flubberPose.t)} " +
               "viewer=${viewer.t.x},${viewer.t.y},${viewer.t.z} " +
-              "video=${videoPose.t.x},${videoPose.t.y},${videoPose.t.z} " +
+              "video=${videoPose?.let { "${it.t.x},${it.t.y},${it.t.z}" } ?: "none"} " +
               "flubber=${flubberPose.t.x},${flubberPose.t.y},${flubberPose.t.z}",
       )
       delay(150)
       for (value in 3 downTo 1) {
         status = value.toString()
-        details = "Video begins in $value"
+        details = if (videoEnabled) "Video begins in $value" else "Flubber session begins in $value"
         lsl.marker("countdown:$value")
         Log.i(ExperimentRuntime.READINESS_TAG, "countdown:$value")
         delay(1_000)
       }
       sessionActive = true
       lsl.marker("system:session_started:${next.session.sessionId}")
-      lsl.marker("video:start_requested:${next.session.video.file}")
-      Log.i(ExperimentRuntime.READINESS_TAG, "video_play_requested file=${next.session.video.file}")
       controlEntity?.setComponent(Visible(false))
-      player.play()
       status = "Session running"
-      details = next.session.video.file
+      if (videoEnabled) {
+        lsl.marker("video:start_requested:${next.session.video.file}")
+        Log.i(ExperimentRuntime.READINESS_TAG, "video_play_requested file=${next.session.video.file}")
+        player.play()
+        details = next.session.video.file
+      } else {
+        lsl.marker("system:flubber_only_started")
+        Log.i(ExperimentRuntime.READINESS_TAG, "flubber_only_started video_playback=false")
+        details = "Passthrough · Flubber only · no video"
+      }
     }
   }
 
   private fun togglePause() {
     val paused = engine?.togglePause() ?: return
-    if (paused) player.pause() else player.play()
+    if (staged?.session?.presentationMode == VrPresentationMode.VIDEO) {
+      if (paused) player.pause() else player.play()
+    }
     lsl.marker(if (paused) "system:paused" else "system:resumed")
     status = if (paused) "Session paused" else "Session running"
   }
 
   private fun onPlayerState(next: VideoPlaybackState) = runOnUiThread {
+    if (staged?.session?.presentationMode != VrPresentationMode.VIDEO) return@runOnUiThread
     playerReady = next.ready
     if (!sessionActive && next.ready) {
       status = "Flubber ready"
@@ -495,7 +556,7 @@ class AffectTrackerVrActivity : AppSystemActivity() {
   override fun onPause() {
     if (sessionActive && engine?.isPaused() == false) {
       engine?.togglePause()
-      player.pause()
+      if (staged?.session?.presentationMode == VrPresentationMode.VIDEO) player.pause()
       pausedForFocus = true
       lsl.marker("system:paused:focus_loss")
     }
@@ -504,10 +565,11 @@ class AffectTrackerVrActivity : AppSystemActivity() {
 
   override fun onResume() {
     super.onResume()
+    runtime.polar.onForeground()
     if (sessionActive && pausedForFocus) {
       pausedForFocus = false
       engine?.togglePause()
-      player.play()
+      if (staged?.session?.presentationMode == VrPresentationMode.VIDEO) player.play()
       lsl.marker("system:resumed:focus_gain")
     }
   }
@@ -566,6 +628,15 @@ class AffectTrackerVrActivity : AppSystemActivity() {
           Text(status, style = MaterialTheme.typography.titleMedium)
           Text(details, style = MaterialTheme.typography.bodyMedium, color = Color(0xFFB8C2CE))
           Text(controllerInputStatus, style = MaterialTheme.typography.labelLarge, color = Color(0xFFFFD166))
+          Text(
+              polarInputStatus,
+              style = MaterialTheme.typography.labelLarge,
+              color = if (polarInputStatus.startsWith("POLAR STREAM • LIVE")) {
+                Color(0xFF9DE5B3)
+              } else {
+                Color(0xFFFFC46B)
+              },
+          )
           Text("LSL: ${lsl.status}", style = MaterialTheme.typography.labelLarge, color = Color(0xFF78D7FF))
         }
       }
@@ -596,6 +667,61 @@ class AffectTrackerVrActivity : AppSystemActivity() {
     lastVerticalDirection = emitDirectionEdge(lastVerticalDirection, vertical)
   }
 
+  private fun updatePolarRouting(state: PolarH10State, drive: PolarDrive, deltaSeconds: Float) {
+    val mappings = state.mappings
+    polarInputStatus = when {
+      !mappings.anyAssigned -> "Polar Stream: manual X/Y"
+      drive.active -> {
+        val x = if (drive.x != null) "X ${mappings.x.metricId}" else "X Touch"
+        val y = if (drive.y != null) "Y ${mappings.y.metricId}" else "Y Touch"
+        "POLAR STREAM • LIVE · $x · $y"
+      }
+      else -> "Polar fallback: Touch controller · ${state.readiness.reason.replace('-', ' ')}"
+    }
+    if (!sessionActive || !mappings.anyAssigned || lsl.status != "running") return
+    val receipt = listOf(
+        state.readiness.reason,
+        mappings.x.metricId,
+        mappings.y.metricId,
+        drive.x != null,
+        drive.y != null,
+    ).joinToString("|")
+    if (receipt != lastPolarRouteReceipt) {
+      lastPolarRouteReceipt = receipt
+      lsl.marker(
+          "polar:route:readiness=${state.readiness.reason}:x=${mappings.x.metricId}:" +
+              "y=${mappings.y.metricId}:x_live=${drive.x != null}:y_live=${drive.y != null}",
+      )
+      Log.i(
+          ExperimentRuntime.READINESS_TAG,
+          "polar_route readiness=${state.readiness.reason} x_metric=${mappings.x.metricId} " +
+              "y_metric=${mappings.y.metricId} x_live=${drive.x != null} y_live=${drive.y != null}",
+      )
+    }
+    polarMarkerAccumulator += deltaSeconds
+    if (polarMarkerAccumulator < POLAR_CONTEXT_INTERVAL_SECONDS) return
+    polarMarkerAccumulator %= POLAR_CONTEXT_INTERVAL_SECONDS
+    emitPolarAxisContext(PolarAffectAxis.X, mappings.x, drive.xObserved, drive.x)
+    emitPolarAxisContext(PolarAffectAxis.Y, mappings.y, drive.yObserved, drive.y)
+  }
+
+  private fun emitPolarAxisContext(
+      axis: PolarAffectAxis,
+      mapping: PolarAxisMapping,
+      observed: Double?,
+      normalized: Float?,
+  ) {
+    if (!mapping.assigned) return
+    lsl.marker(
+        "polar:axis:${axis.token}:metric=${mapping.metricId}:observed=${formatPolarNumber(observed)}:" +
+            "normalized=${formatPolarNumber(normalized?.toDouble())}:low=${formatPolarNumber(mapping.minimum)}:" +
+            "high=${formatPolarNumber(mapping.maximum)}:invert=${mapping.invert}",
+    )
+  }
+
+  private fun formatPolarNumber(value: Double?): String =
+      value?.takeIf(Double::isFinite)?.let { String.format(Locale.US, "%.6f", it) } ?: "unavailable"
+
   private fun emitDirectionEdge(previous: String, next: String): String {
     if (previous == next) return previous
     if (previous != "neutral") lsl.marker("controller:$previous:released")
@@ -607,12 +733,38 @@ class AffectTrackerVrActivity : AppSystemActivity() {
   }
 
   private fun configureControllerModels(next: StagedSession) {
-    val visible = next.session.controls.showControllerModels
+    val defaultVisible = next.session.controls.showControllerModels
+    val follow = next.session.flubber.controllerFollow
+    controllerModelLeftVisible = if (follow.enabled && follow.hand == StickHand.LEFT) {
+      follow.showControllerModel
+    } else defaultVisible
+    controllerModelRightVisible = if (follow.enabled && follow.hand == StickHand.RIGHT) {
+      follow.showControllerModel
+    } else defaultVisible
     systemManager.findSystem<AvatarSystem>().apply {
       setShowHands(false)
-      setShowControllers(visible)
+      setShowControllers(controllerModelLeftVisible || controllerModelRightVisible)
     }
-    Log.i(ExperimentRuntime.READINESS_TAG, "controller_models visible=$visible")
+    nextControllerModelVisibilityNanos = 0L
+    lastControllerModelVisibilityReceipt = ""
+    if (follow.enabled) {
+      // Keep the headset/session awake and keep Spatial controller polling active. Quest firmware,
+      // not the public Spatial SDK, controls physical Touch-controller power sleep.
+      window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+      lsl.marker("flubber:controller_follow:polling_active:${follow.hand.token}")
+    } else {
+      window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+    }
+    Log.i(
+        ExperimentRuntime.READINESS_TAG,
+        "controller_models left_visible=$controllerModelLeftVisible right_visible=$controllerModelRightVisible " +
+            "follow_enabled=${follow.enabled} followed_hand=${follow.hand.token}",
+    )
+    Log.i(
+        ExperimentRuntime.READINESS_TAG,
+        "controller_follow_keepalive app_polling=per_frame headset_awake=${follow.enabled} " +
+            "hardware_controller_sleep_control=platform",
+    )
   }
 
   private fun onSpatialControllerFrame(frame: TouchControllerFrame) {
@@ -664,7 +816,23 @@ class AffectTrackerVrActivity : AppSystemActivity() {
       locomotionInputBridge.enableLocomotion(false)
       Log.w(ExperimentRuntime.READINESS_TAG, "locomotion_reasserted state=Disabled")
     }
-    onSpatialControllerFrame(TouchControllerAdapter.capture(scene))
+    val frame = TouchControllerAdapter.capture(scene)
+    val now = System.nanoTime()
+    if (now >= nextControllerModelVisibilityNanos) {
+      val receipt = TouchControllerAdapter.setModelVisibility(
+          scene,
+          controllerModelLeftVisible,
+          controllerModelRightVisible,
+      )
+      val text = "left=${receipt.leftEntities}:${controllerModelLeftVisible} " +
+          "right=${receipt.rightEntities}:${controllerModelRightVisible}"
+      if (text != lastControllerModelVisibilityReceipt) {
+        lastControllerModelVisibilityReceipt = text
+        Log.i(ExperimentRuntime.READINESS_TAG, "controller_model_visibility_applied $text input_unchanged=true")
+      }
+      nextControllerModelVisibilityNanos = now + CONTROLLER_MODEL_VISIBILITY_REFRESH_NANOS
+    }
+    onSpatialControllerFrame(frame)
   }
 
   private fun frameSource(frame: TouchControllerFrame, hand: StickHand): String =
@@ -1010,7 +1178,9 @@ class AffectTrackerVrActivity : AppSystemActivity() {
     const val EXTRA_SHOW_AFFECT_VALUES = "show_affect_values"
     private const val ANDROID_STICK_FRESH_NANOS = 250_000_000L
     private const val GAME_CONTROLLER_SCAN_NANOS = 1_000_000_000L
+    private const val CONTROLLER_MODEL_VISIBILITY_REFRESH_NANOS = 1_000_000_000L
     private const val ISDK_SCROLL_FRESH_NANOS = 250_000_000L
+    private const val POLAR_CONTEXT_INTERVAL_SECONDS = 1f
     private const val ACTION_DEBUG_JOYSTICK = "io.github.georgefejer91.affecttracker.vr.DEBUG_JOYSTICK"
     private const val EXTRA_DEBUG_X = "x"
     private const val EXTRA_DEBUG_Y = "y"

@@ -10,6 +10,7 @@ class AffectTrackerVrApplication : Application() {
 class ExperimentRuntime(application: Application) {
   val loader = SessionLoader(application)
   val lsl = LslService(application)
+  val polar = PolarH10Manager(application)
 
   @Volatile var armedSession: StagedSession? = null
     private set

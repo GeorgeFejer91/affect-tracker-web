@@ -1,1 +1,3 @@
 * text=auto eol=lf
+site/vendor/vdoninja/1.5.5/vdoninja-sdk.js whitespace=-trailing-space
+vr/app/src/main/assets/Polar_SDK_License.txt whitespace=-trailing-space

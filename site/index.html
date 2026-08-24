@@ -472,7 +472,24 @@
               </div>
             </details>
 
-            <p class="experiment-privacy"><strong>Local and experimental:</strong> ECG and RR data stay in this tab. The waveform keeps only the latest five seconds in memory; CSV samples contain mapped state and current metric context, not the 130 Hz raw ECG. These signals are not a diagnosis or a direct measure of emotion.</p>
+            <section class="flubber-remote-broadcast" aria-labelledby="flubber-remote-broadcast-title">
+              <div class="flubber-remote-broadcast-head">
+                <div>
+                  <h4 id="flubber-remote-broadcast-title">VR / remote output</h4>
+                  <output id="flubber-remote-broadcast-status" aria-live="polite">Broadcast off</output>
+                </div>
+                <button id="flubber-remote-broadcast-button" type="button">Broadcast this to VR / remote interface</button>
+              </div>
+              <dl id="flubber-remote-broadcast-details" class="flubber-remote-broadcast-details" hidden>
+                <div><dt>Public source</dt><dd><output id="flubber-remote-source">—</output></dd></div>
+                <div><dt>Listeners</dt><dd><output id="flubber-remote-listeners">0</output></dd></div>
+                <div><dt>Route</dt><dd><output id="flubber-remote-route">Waiting</output></dd></div>
+              </dl>
+              <p>Only the final smoothed X/Y coordinates used to draw Flubber are sent. Raw ECG, RR intervals, heart rate, metric choices, timestamps, and participant identifiers are never included.</p>
+              <p class="experiment-privacy"><strong>Public experimental connection:</strong> VDO.Ninja supplies signaling and may use STUN/TURN. Remote peers may learn this device's IP address, relayed connections can add latency, and the free service has no availability guarantee.</p>
+            </section>
+
+            <p class="experiment-privacy"><strong>Local physiology:</strong> ECG and RR data stay in this tab. The waveform keeps only the latest five seconds in memory; CSV samples contain mapped state and current metric context, not the 130 Hz raw ECG. The optional remote output sends only final X/Y coordinates. These signals are not a diagnosis or a direct measure of emotion.</p>
           </section>
         </div>
       </section>
@@ -501,6 +518,7 @@
       <p id="status-region" class="visually-hidden" aria-live="polite"></p>
     </main>
 
+    <script src="./vendor/vdoninja/1.5.5/vdoninja-sdk.min.js"></script>
     <script type="module" src="./src/app.js"></script>
   </body>
 </html>

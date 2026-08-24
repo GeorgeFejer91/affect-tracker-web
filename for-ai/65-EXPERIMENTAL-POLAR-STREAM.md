@@ -1,4 +1,4 @@
-# Experimental Polar Stream browser module
+# Experimental Polar Stream browser and native Quest modules
 
 ## Scope and support boundary
 
@@ -7,6 +7,14 @@ browser-only adapter for a Polar H10. It connects directly from the page through
 Web Bluetooth, starts the H10 PMD ECG stream at 130 Hz, subscribes to the
 standard heart-rate/RR characteristic when available, and reads battery level
 when available. Connecting the sensor alone must never change affect.
+
+The native Quest APK has a separate opt-in **Polar Stream · H10** launcher
+module. It uses Polar BLE SDK 8.1.0 rather than Web Bluetooth, requests Android
+nearby-device permission from the Connect action, and auto-discovers a nearby
+H10. Browser and native transports remain separate, but expose the same ten
+metric IDs, default ranges, normalization, independent X/Y assignment, and
+bounded-physiology privacy contract. Native mappings exist only in application
+memory for the upcoming/running run and do not extend session JSON v1.
 
 The accordion is the fourth top-level control surface. Its connector is a
 compact logo/status/battery/action module rather than a second settings panel.
@@ -50,14 +58,17 @@ context. `site/src/webxr-study.js` owns its separate pre-entry connector,
 waveform, non-persisted fixed-default assignments, controller-versus-Polar axis
 arbitration, in-world HUD feedback, and WebXR logging context.
 
-Raw ECG is held only in memory. The processor and waveform each retain at most
+Raw ECG is held only in memory. The browser processor and waveform each retain at most
 650 samples (five seconds at 130 Hz); the RR window retains at most 300 positive
 intervals. Disconnect or refresh drops the waveform. No raw 130 Hz ECG frame or
 RR series is written to local storage or CSV. Main-page axis assignments are
 stored in the existing browser preferences record. WebXR assignments exist only
 for the current page load and use each module's documented default range without
 the main page's low/high/reverse fine-tuning UI. Both intentionally remain
-outside portable settings version 1, Tauri, LSL, and the native Quest APK.
+outside portable settings version 1 and Tauri. The native Quest processor
+independently retains at most 650 ECG samples for metrics plus a 160-sample
+waveform preview and at most 300 positive RR intervals. It performs no file I/O
+and never sends raw ECG or RR series through LSL.
 
 ## Connection readiness and failure diagnosis
 
@@ -80,6 +91,16 @@ both public projects share the `georgefejer91.github.io` origin while each tab
 still owns an independent GATT/notification lifecycle. Teardown removes every
 listener, stops notifications best-effort, disconnects GATT, rejects pending
 readiness waits, and clears the bounded signal state.
+
+Native readiness follows the Study 6 gate rather than treating BLE connection
+or stream subscription as success. The official SDK requests maximum ECG
+settings; the APK requires exact 130 Hz configuration, at least one real ECG
+sample, three seconds since the first sample, and a latest sample no older than
+five seconds. Permission denial, Bluetooth off, discovery retry, connected but
+waiting, stream error, stabilization, and stale stream remain distinct visible
+states. Explicit Disconnect shuts down the SDK/streams, clears bounded signal
+state, and forgets transport identifiers. Automatic reconnection is enabled
+only after the wearer explicitly enables the module.
 
 ## Exposed metrics
 
@@ -183,6 +204,16 @@ sample. X reset changes only axes without a currently finite Polar target. The
 pre-entry Bluetooth and mapping controls remain locked while immersed, while the
 Flubber HUD shows **POLAR STREAM • LIVE** plus each finite mapped X/Y value.
 
+The native launcher provides the same ten direct X/Y selectors plus explicit
+low/high/reverse controls. An assigned run cannot start until the native gate is
+Ready; a manual-only run never requires an H10. No sensor target is applied
+during preload or countdown. During `sessionActive`, each ready finite mapped
+metric replaces only its axis in the one native `AffectEngine`; every other,
+warming, stale, or disconnected axis remains controller-owned. Whole-session
+pause holds the last target and Reset changes only manual axes. The behavior is
+identical in dark video, video passthrough, and Flubber-only passthrough, so all
+ten metrics remain available for both Flubber axes in the passthrough condition.
+
 ## Logging and privacy
 
 Normal 20 Hz and experiment sample/event rows include whether the H10 is
@@ -205,6 +236,14 @@ existing per-run WebXR webhook, these same low-rate CSV fields travel with the
 completed study CSV; the Polar adapter itself adds no destination and the local
 download remains available.
 
+The native APK preserves the eight ordered Float32 LSL state channels exactly.
+It emits only bounded one-hertz semantic marker context for assigned axes:
+readiness, fixed metric ID, observed scalar, normalized scalar, low/high bounds,
+and reverse flag. Raw ECG samples, sample arrays, RR series, and the H10 device
+identifier never enter either outlet or Android logs. The official SDK license
+is packaged as `Polar_SDK_License.txt`; the module is experimental and not a
+medical device or validated affect estimator.
+
 ## Source and validation status
 
 The PMD UUIDs, ECG start/stop commands, signed 24-bit framing, module visual
@@ -213,7 +252,11 @@ MIT-licensed Polar Stream repository pinned in
 `site/assets/POLAR-STREAM-NOTICE.md`. The Excite-O-Meter paper/source supplies
 the retrospective score concept; the browser's causal session-to-date baseline
 is an explicitly provisional adaptation. Polar's official BLE SDK is a protocol
-and device-compatibility reference; it is not shipped as a dependency. H10 HRV
+and device-compatibility reference for the browser and is shipped only by the
+native APK at pinned version 8.1.0 under its original license. Study 6 supplies
+the native SDK callback/auto-connect/readiness precedent; Rusty Quest supplies
+an independently reviewed raw-GATT Android/Rust ownership comparison. No source
+from either APK was copied into the browser adapter. H10 HRV
 validation literature supports the sensor for appropriate resting RR work but
 does not validate this browser implementation, its uncorrected rolling metrics,
 the five-second amplitude features, either composite, or any metric-to-affect
@@ -236,3 +279,23 @@ both immersive VR and passthrough, single- and dual-axis mappings, mixed
 thumbstick control, HUD feedback, range loss, exit, disconnect/reconnect, and
 console state. Desktop success or an API-positive Quest feature check cannot
 substitute for that wearer-observed headset pass.
+
+Native APK qualification is also separate. A host compile and simulated metric
+test cannot qualify BLE. With a worn H10, record Quest model/OS, permission and
+Bluetooth recovery, 130 Hz/14-bit settings, real sample count and observed rate,
+at least two minutes of stable data, HR/RR availability, every metric as X and
+Y, partial-axis Touch control, both passthrough modes, pause/reset/fallback,
+range loss, reconnect, explicit disconnect, LSL marker/state behavior, and
+absence of raw physiology from files/logs. Repeat on Quest 2, Quest Pro, Quest 3,
+and Quest 3S before claiming the full supported matrix.
+
+The repository's focused `verify-readiness.ps1 -Gate Polar` provides the first
+attended native smoke: it binds the exact Host-admitted APK, clears stale logs,
+requires increasing ten-second sample-count receipts within one unchanged anonymous stream epoch for at least two minutes,
+exact 130 Hz/14-bit configuration, a 120–140 Hz observed rate, five-second ECG
+freshness, HR/RR observations no older than ten seconds, all ten finite metric IDs, and one dual-axis live
+Flubber-only-passthrough route. These receipts are deliberately sanitized to
+counts, anonymous stream epoch, timing/rate, stream format, availability flags, and metric IDs; they
+contain no ECG values, RR series, scalar metric values, or device identifier.
+Passing this focused gate does not replace the every-metric/every-axis, video
+passthrough, reconnect, independent-LSL-consumer, or four-headset matrix above.

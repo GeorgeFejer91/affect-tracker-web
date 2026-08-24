@@ -109,9 +109,15 @@ test("Quest passthrough and controller-follow stay in the single immersive frame
   assert.match(activity, /flubber:controller_follow:\$state:\$\{follow\.hand\.token\}/);
   assert.match(activity, /val grabEnabled = !next\.session\.flubber\.controllerFollow\.enabled/);
   assert.match(launcher, /Text\("Mixed reality passthrough"\)/);
+  assert.match(launcher, /Text\("Flubber-only passthrough"\)/);
+  assert.match(launcher, /no video is decoded or shown/);
   assert.match(launcher, /Text\("Track Flubber near a controller"\)/);
+  assert.match(launcher, /Text\("Show followed controller"\)/);
   assert.match(launcher, /Left is the default; Flubber faces the headset/);
   assert.match(launcher, /withLauncherRuntimeOverrides\(/);
   assert.match(launcher, /launcher_runtime_options environment=/);
-  assert.match(launcher, /launcher_controls_rendered mixed_reality=true controller_follow=true follow_hand_selector=true/);
+  assert.match(launcher, /launcher_controls_rendered mixed_reality=true flubber_only_passthrough=true/);
+  assert.match(activity, /presentation_ready mode=flubber-only passthrough=true video_prepared=false video_rendered=false/);
+  assert.match(activity, /hardware_controller_sleep_control=platform/);
+  assert.match(activity, /TouchControllerAdapter\.setModelVisibility/);
 });

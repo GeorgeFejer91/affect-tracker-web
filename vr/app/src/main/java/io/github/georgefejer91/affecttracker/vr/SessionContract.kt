@@ -6,6 +6,7 @@ enum class Projection(val token: String) { FLAT("flat"), EQUIRECT_180("equirect-
 enum class StereoLayout(val token: String) { MONO("mono"), SIDE_BY_SIDE("side-by-side-left-right"), TOP_BOTTOM("top-bottom") }
 enum class StickHand(val token: String) { LEFT("left"), RIGHT("right") }
 enum class VrEnvironment(val token: String) { DARK("dark"), PASSTHROUGH("passthrough") }
+enum class VrPresentationMode(val token: String) { VIDEO("video"), FLUBBER_ONLY("flubber-only") }
 
 data class VideoSpec(
     val file: String,
@@ -51,6 +52,8 @@ data class ControllerFollowSettings(
     val enabled: Boolean,
     val hand: StickHand,
     val distanceMeters: Float,
+    /** Runtime-only launcher choice; it is deliberately not part of session JSON v1. */
+    val showControllerModel: Boolean = true,
 )
 
 data class ControllerBindings(
@@ -67,6 +70,8 @@ data class VrSession(
     val environment: VrEnvironment,
     val flubber: FlubberPlacement,
     val controls: ControllerBindings,
+    /** Runtime-only presentation choice; admitted v1 manifests always parse as [VIDEO]. */
+    val presentationMode: VrPresentationMode = VrPresentationMode.VIDEO,
 )
 
 /**
@@ -85,14 +90,18 @@ internal fun VrSession.withRuntimeProfile(profile: VrSession): VrSession = copy(
 /** Applies transient headset-launcher choices without rewriting the admitted JSON profile. */
 internal fun VrSession.withLauncherRuntimeOverrides(
     mixedRealityEnabled: Boolean,
+    flubberOnlyPassthrough: Boolean,
     controllerFollowEnabled: Boolean,
     controllerFollowHand: StickHand,
+    followedControllerVisible: Boolean,
 ): VrSession = copy(
-    environment = if (mixedRealityEnabled) VrEnvironment.PASSTHROUGH else VrEnvironment.DARK,
+    environment = if (mixedRealityEnabled || flubberOnlyPassthrough) VrEnvironment.PASSTHROUGH else VrEnvironment.DARK,
+    presentationMode = if (flubberOnlyPassthrough) VrPresentationMode.FLUBBER_ONLY else VrPresentationMode.VIDEO,
     flubber = flubber.copy(
         controllerFollow = flubber.controllerFollow.copy(
             enabled = controllerFollowEnabled,
             hand = controllerFollowHand,
+            showControllerModel = followedControllerVisible,
         ),
     ),
 )

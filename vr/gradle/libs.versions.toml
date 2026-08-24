@@ -5,7 +5,8 @@ kotlin = "2.1.0"
 coreKtx = "1.13.1"
 composeBom = "2024.09.03"
 media3 = "1.4.1"
-coroutines = "1.9.0"
+coroutines = "1.10.2"
+polarBleSdk = "8.1.0"
 documentFile = "1.0.1"
 activityCompose = "1.8.2"
 
@@ -20,6 +21,8 @@ androidx-activity-compose = { group = "androidx.activity", name = "activity-comp
 androidx-media3-common = { group = "androidx.media3", name = "media3-common", version.ref = "media3" }
 androidx-media3-exoplayer = { group = "androidx.media3", name = "media3-exoplayer", version.ref = "media3" }
 kotlinx-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "coroutines" }
+kotlinx-coroutines-rx3 = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-rx3", version.ref = "coroutines" }
+polar-ble-sdk = { group = "com.github.polarofficial", name = "polar-ble-sdk", version.ref = "polarBleSdk" }
 meta-spatial-sdk-base = { group = "com.meta.spatial", name = "meta-spatial-sdk", version.ref = "spatialSdk" }
 meta-spatial-sdk-compose = { group = "com.meta.spatial", name = "meta-spatial-sdk-compose", version.ref = "spatialSdk" }
 meta-spatial-sdk-isdk = { group = "com.meta.spatial", name = "meta-spatial-sdk-isdk", version.ref = "spatialSdk" }

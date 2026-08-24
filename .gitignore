@@ -3,5 +3,6 @@ Thumbs.db
 node_modules/
 desktop/dist/
 src-tauri/target/
+src-tauri/gen/schemas/
 coverage/
 *.log

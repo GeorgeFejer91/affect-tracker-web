@@ -23,7 +23,7 @@ Controller input remains in the immersive `VrActivity`. The activity explicitly 
 
 `vr.environment` is `dark` by default. Selecting the exporter checkbox writes `passthrough`, which asks the Quest compositor to show the wearer's normal see-through view behind flat video and spatial panels. The app does not request or record camera frames. An immersive 180°/360° carrier can still cover the passthrough background where the video surface renders.
 
-The headset Ready screen also contains **Mixed reality passthrough** and **Track Flubber near a controller** switches. The follow control reveals explicit **Left** and **Right** choices, with left as the default for a new profile. These controls initialize from `active-session.json`, affect only the next run, and never rewrite the researcher's files.
+The headset Ready screen also contains **Mixed reality passthrough**, **Flubber-only passthrough**, and **Track Flubber near a controller** switches. The first mixed mode keeps the selected video over passthrough. Flubber-only forces clear passthrough and never creates or decodes a video surface; the validated bundle still supplies session identity and settings. The follow control reveals explicit **Left** and **Right** choices plus **Show followed controller**, with left as the default for a new profile. These controls initialize from `active-session.json` where applicable, affect only the next run, and never rewrite the researcher's files.
 
 `vr.flubber.controllerFollow` is additive and backward compatible:
 
@@ -35,7 +35,7 @@ The headset Ready screen also contains **Mixed reality passthrough** and **Track
 }
 ```
 
-When enabled, the one immersive frame loop reads the selected Touch controller's already-owned world pose, keeps Flubber just beyond it on the wearer-to-controller ray, and continually turns the panel toward the current viewer position. The panel holds its last safe pose if that controller temporarily loses tracking. Because controller-follow becomes the transform authority, world dragging and A-button gaze recentering are available only when the checkbox is off; joystick affect input remains active in either mode.
+When enabled, the one immersive frame loop reads the selected Touch controller's already-owned world pose, keeps Flubber in front of it—between the controller and wearer—on the wearer-to-controller ray, and continually turns the panel toward the current viewer position. The panel holds its last safe pose if that controller temporarily loses tracking. The app keeps the immersive window awake and continues controller polling every frame; Quest firmware still owns physical controller sleep, so moving or pressing a sleeping controller may be required to wake it. **Show followed controller** changes only that hand's rendered model and never its tracking or joystick route. Because controller-follow becomes the transform authority, world dragging and A-button gaze recentering are available only when the checkbox is off; joystick affect input remains active in either mode.
 
 ## Build
 
@@ -53,6 +53,14 @@ pwsh -NoProfile -File .\build-native-lsl.ps1 -Profile release
 Media3 uses the headset's Android platform decoders and renders directly to a Spatial SDK surface. FFmpeg is intentionally not bundled: Media3's FFmpeg extension is an audio decoder, while a software video pipeline would enlarge the APK and compete with the Spatial renderer for CPU and thermal budget. Rust is isolated to one in-process JNI library for LSL; it does not create another Android process. See [`docs/ENGINE-DECISION.md`](./docs/ENGINE-DECISION.md) for the evidence, alternatives, and official-liblsl fallback gate.
 
 The native library must exist at `native-lsl/target/jniLibs/arm64-v8a/libaffect_tracker_vr_lsl.so`. The Ready screen blocks Start when the library or LSL outlet construction is unavailable.
+
+## Polar H10 streaming
+
+The Ready screen includes a native **Polar Stream · H10** module. Press **Connect H10** to request Android nearby-device permission and start application-scoped discovery through Polar BLE SDK 8.1.0. Wear and moisten the strap; readiness requires configured 130 Hz ECG, real samples for at least three seconds, and a newest sample no older than five seconds. The card shows connection state, ECG count/settings, a 160-sample waveform, the same ten metrics as the web tracker, direct X/Y assignment, and low/high/reverse fine tuning. **Retry** restarts discovery; **Disconnect H10** terminates the SDK streams and clears bounded signal state.
+
+Mappings apply only to the current app/run and do not modify `active-session.json`. Start is blocked only when at least one axis is assigned and the H10 is not Ready. After countdown, a finite metric drives only its assigned axis; the configured Touch stick retains every manual, warming, stale, or disconnected axis. Pause holds the last target and Reset changes only manual axes. This works in dark video, video passthrough, and Flubber-only passthrough. Raw ECG is retained only in the 650-sample metric window plus waveform preview; raw ECG and RR series are never saved or published through LSL. The existing eight-channel state outlet is unchanged, with one-hertz mapping/value context sent only as semantic markers.
+
+Host build/tests do not qualify the sensor path. Before research use, run the attended worn-H10 checklist in [`docs/POLAR-H10-HANDOFF.md`](./docs/POLAR-H10-HANDOFF.md) and [`../for-ai/30-TESTING-AND-RELEASE.md`](../for-ai/30-TESTING-AND-RELEASE.md) on the required Quest models, including sustained rate, all metric/axis routes, passthrough, range loss, reconnect, and explicit stream termination. The packaged Polar SDK license is available as `assets/Polar_SDK_License.txt` inside the APK; the module is not a medical device.
 
 ## Network boundary
 
@@ -80,10 +88,13 @@ Debug APKs expose one narrow, `android.permission.DUMP`-protected broadcast whil
 .\verify-readiness.ps1 -Gate Host
 .\verify-readiness.ps1 -Gate Launcher -DeviceSerial <serial>
 .\verify-readiness.ps1 -Gate Session -DeviceSerial <serial>
+.\verify-readiness.ps1 -Gate Polar -DeviceSerial <serial> -ExpectedAdmittedApkSha256 <sha256>
 .\verify-readiness.ps1 -Gate Full -DeviceSerial <serial>
 .\verify-readiness.ps1 -Gate Soak -DeviceSerial <serial> -SoakMinutes 30
 ```
 
 After a Host gate passes, later headset gates can reuse those exact APK bytes without recompiling by passing the printed hash as `-ExpectedAdmittedApkSha256 <sha256>`. The verifier rejects any byte mismatch. Device gates apply a bounded one-hour QFM keep-awake hold by default so a doffed/asleep display cannot masquerade as a renderer failure.
+
+The attended `Polar` gate requires a worn H10, real 130 Hz/14-bit ECG, fresh HR and RR observations, all ten finite metrics, increasing sanitized sample-count receipts within one unchanged stream epoch for at least two minutes, and one dual-axis live route in Flubber-only passthrough. It records counts, anonymous stream epoch, rate, freshness, stream format, and metric availability without ECG values, RR series, metric values, or a device identifier. That gate is a focused transport/routing smoke test; it does not replace the all-metric/all-axis, video-passthrough, reconnect, LSL-consumer, and four-headset matrix in the Polar handoff.
 
 The tiers are shared web/Quest contract tests, pure viewer-placement tests, and a simulated 30-minute Flubber soak; locked Kotlin/Rust builds and lint; immutable APK inspection; exact-device preflight/deployment plus consuming-runtime UI text and screenshot; then attended controller Start, live-pose lock, completed alpha-blended Flubber draw, controller inventory, countdown/first-frame markers, a physical thumbstick edge, a post-input reactive Flubber draw, a transparent-corner trigger grab with measured movement/release, an A-button gaze recenter receipt, screenshot, and bounded device soak. A foreground process or entity-created marker alone never passes readiness.

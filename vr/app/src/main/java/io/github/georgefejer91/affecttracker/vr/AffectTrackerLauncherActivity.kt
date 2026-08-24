@@ -7,12 +7,15 @@ import android.os.Bundle
 import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -20,13 +23,16 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -133,26 +139,47 @@ class AffectTrackerLauncherActivity : ComponentActivity() {
   private var starting by mutableStateOf(false)
   private var showAffectValues by mutableStateOf(false)
   private var mixedRealityEnabled by mutableStateOf(false)
+  private var flubberOnlyPassthrough by mutableStateOf(false)
   private var controllerFollowEnabled by mutableStateOf(false)
   private var controllerFollowHand by mutableStateOf(StickHand.LEFT)
+  private var followedControllerVisible by mutableStateOf(true)
   private var presentation by mutableStateOf(LauncherPresentation.from(LoadResult.NoFolder))
+  private val polarPermissionRequest = registerForActivityResult(
+      ActivityResultContracts.RequestMultiplePermissions(),
+  ) { runtime.polar.onPermissionsChanged() }
 
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
     setContent {
+      val polarState by runtime.polar.state.collectAsState()
       LauncherScreen(
           presentation,
           starting,
           showAffectValues,
           mixedRealityEnabled,
+          flubberOnlyPassthrough,
           controllerFollowEnabled,
           controllerFollowHand,
+          followedControllerVisible,
+          polarState,
           ::chooseFolder,
           ::selectSession,
           { showAffectValues = it },
           { mixedRealityEnabled = it },
+          {
+            flubberOnlyPassthrough = it
+            if (it) mixedRealityEnabled = true
+          },
           { controllerFollowEnabled = it },
           { controllerFollowHand = it },
+          { followedControllerVisible = it },
+          ::connectPolar,
+          { runtime.polar.disconnect() },
+          { runtime.polar.restartDiscovery() },
+          { axis, metricId -> runtime.polar.toggleMetric(axis, metricId) },
+          { axis, minimum, maximum, invert ->
+            runtime.polar.updateMapping(axis, minimum, maximum, invert)
+          },
           ::openWebXrStudy,
           ::startExperiment,
       )
@@ -160,7 +187,8 @@ class AffectTrackerLauncherActivity : ComponentActivity() {
     Log.i(ExperimentRuntime.READINESS_TAG, "launcher_rendered")
     Log.i(
         ExperimentRuntime.READINESS_TAG,
-        "launcher_controls_rendered mixed_reality=true controller_follow=true follow_hand_selector=true",
+        "launcher_controls_rendered mixed_reality=true flubber_only_passthrough=true " +
+            "controller_follow=true follow_hand_selector=true followed_controller_visibility=true webxr_link=true",
     )
     // Three bounded passes settle the active file, then optional/automatic media, even when
     // Horizon creates this launcher but has not yet projected it as resumed.
@@ -174,6 +202,7 @@ class AffectTrackerLauncherActivity : ComponentActivity() {
 
   override fun onResume() {
     super.onResume()
+    runtime.polar.onForeground()
     starting = false
     beginPolling()
   }
@@ -255,8 +284,10 @@ class AffectTrackerLauncherActivity : ComponentActivity() {
     runtimeSettingsFingerprint = next.fingerprint
     showAffectValues = next.session.flubber.showAffectValues
     mixedRealityEnabled = next.session.environment == VrEnvironment.PASSTHROUGH
+    flubberOnlyPassthrough = false
     controllerFollowEnabled = next.session.flubber.controllerFollow.enabled
     controllerFollowHand = next.session.flubber.controllerFollow.hand
+    followedControllerVisible = next.session.controls.showControllerModels
   }
 
   private fun chooseFolder() {
@@ -297,14 +328,35 @@ class AffectTrackerLauncherActivity : ComponentActivity() {
         }
   }
 
+  private fun connectPolar() {
+    runtime.polar.connect()
+    if (!runtime.polar.permissionsGranted()) {
+      polarPermissionRequest.launch(PolarH10Manager.requiredRuntimePermissions())
+    }
+  }
+
   private fun startExperiment() {
     val next = staged ?: return
     if (starting) return
+    val polarState = runtime.polar.state.value
+    if (polarState.mappings.anyAssigned && !polarState.readiness.ready) {
+      presentation = presentation.copy(
+          title = "Polar H10 not ready",
+          detail = "This run maps Polar data to Flubber. Connect and wear the H10 until 130 Hz ECG is stable for three seconds.",
+      )
+      Log.w(
+          ExperimentRuntime.READINESS_TAG,
+          "start_blocked polar_required=true readiness=${polarState.readiness.reason}",
+      )
+      return
+    }
     val effective = next.copy(
         session = next.session.withLauncherRuntimeOverrides(
             mixedRealityEnabled,
+            flubberOnlyPassthrough,
             controllerFollowEnabled,
             controllerFollowHand,
+            followedControllerVisible,
         ),
     )
     starting = true
@@ -313,8 +365,10 @@ class AffectTrackerLauncherActivity : ComponentActivity() {
     Log.i(
         ExperimentRuntime.READINESS_TAG,
         "launcher_runtime_options environment=${effective.session.environment.token} " +
+            "presentation=${effective.session.presentationMode.token} " +
             "controller_follow=${effective.session.flubber.controllerFollow.enabled} " +
             "follow_hand=${effective.session.flubber.controllerFollow.hand.token} " +
+            "followed_controller_visible=${effective.session.flubber.controllerFollow.showControllerModel} " +
             "show_affect_values=$showAffectValues",
     )
     val queued = runtime.arm(effective) { ready ->
@@ -351,14 +405,24 @@ private fun LauncherScreen(
     starting: Boolean,
     showAffectValues: Boolean,
     mixedRealityEnabled: Boolean,
+    flubberOnlyPassthrough: Boolean,
     controllerFollowEnabled: Boolean,
     controllerFollowHand: StickHand,
+    followedControllerVisible: Boolean,
+    polarState: PolarH10State,
     chooseFolder: () -> Unit,
     selectSession: (String) -> Unit,
     setShowAffectValues: (Boolean) -> Unit,
     setMixedRealityEnabled: (Boolean) -> Unit,
+    setFlubberOnlyPassthrough: (Boolean) -> Unit,
     setControllerFollowEnabled: (Boolean) -> Unit,
     setControllerFollowHand: (StickHand) -> Unit,
+    setFollowedControllerVisible: (Boolean) -> Unit,
+    connectPolar: () -> Unit,
+    disconnectPolar: () -> Unit,
+    retryPolar: () -> Unit,
+    togglePolarMetric: (PolarAffectAxis, String) -> Unit,
+    updatePolarMapping: (PolarAffectAxis, Double, Double, Boolean) -> Boolean,
     openWebXrStudy: () -> Unit,
     startExperiment: () -> Unit,
 ) {
@@ -410,6 +474,15 @@ private fun LauncherScreen(
               }
             }
           }
+          PolarStreamCard(
+              polarState,
+              starting,
+              connectPolar,
+              disconnectPolar,
+              retryPolar,
+              togglePolarMetric,
+              updatePolarMapping,
+          )
           Text(
               "PC folder: Documents/AffectTrackerVR — add videos to media/. Optional sessions/*.json files declare only per-video projection/stereo; videos without one use the active layout defaults.",
               color = Color(0xFFAAB4C2),
@@ -441,6 +514,21 @@ private fun LauncherScreen(
           Switch(
               checked = mixedRealityEnabled,
               onCheckedChange = setMixedRealityEnabled,
+              enabled = state.ready && !starting && !flubberOnlyPassthrough,
+          )
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+          Column(modifier = Modifier.weight(1f)) {
+            Text("Flubber-only passthrough")
+            Text("Clear see-through view with Flubber only; no video is decoded or shown", style = MaterialTheme.typography.bodySmall, color = Color(0xFFAAB4C2))
+          }
+          Switch(
+              checked = flubberOnlyPassthrough,
+              onCheckedChange = setFlubberOnlyPassthrough,
               enabled = state.ready && !starting,
           )
         }
@@ -475,14 +563,36 @@ private fun LauncherScreen(
                 enabled = state.ready && !starting,
             ) { Text(if (controllerFollowHand == StickHand.RIGHT) "✓ Right" else "Right") }
           }
+          Row(
+              modifier = Modifier.fillMaxWidth(),
+              horizontalArrangement = Arrangement.SpaceBetween,
+              verticalAlignment = Alignment.CenterVertically,
+          ) {
+            Column(modifier = Modifier.weight(1f)) {
+              Text("Show followed controller")
+              Text("Visibility does not affect tracking or joystick input", style = MaterialTheme.typography.bodySmall, color = Color(0xFFAAB4C2))
+            }
+            Switch(
+                checked = followedControllerVisible,
+                onCheckedChange = setFollowedControllerVisible,
+                enabled = state.ready && !starting,
+            )
+          }
         }
         Text(
-            "This run: ${if (mixedRealityEnabled) "passthrough" else "dark room"} · " +
+            "This run: ${if (flubberOnlyPassthrough) "passthrough · Flubber only · no video" else if (mixedRealityEnabled) "passthrough · video" else "dark room · video"} · " +
                 if (controllerFollowEnabled) "Flubber follows ${controllerFollowHand.token} controller" else "Flubber is world-anchored",
             style = MaterialTheme.typography.bodySmall,
             color = Color(0xFF9DE5B3),
         )
-        Text("These switches apply to this run only. Start opens LSL, shows Flubber and a 3-second countdown, then plays the selected video.", color = Color(0xFFB9C5D4))
+        Text(
+            if (flubberOnlyPassthrough) {
+              "These switches apply to this run only. Start opens LSL, shows Flubber and a 3-second countdown, then keeps the Flubber session running without video."
+            } else {
+              "These switches apply to this run only. Start opens LSL, shows Flubber and a 3-second countdown, then plays the selected video."
+            },
+            color = Color(0xFFB9C5D4),
+        )
         }
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
           Button(onClick = chooseFolder, modifier = Modifier.weight(1f)) { Text("Authorize / change folder") }
@@ -493,4 +603,167 @@ private fun LauncherScreen(
       }
     }
   }
+}
+
+@Composable
+private fun PolarStreamCard(
+    state: PolarH10State,
+    starting: Boolean,
+    connect: () -> Unit,
+    disconnect: () -> Unit,
+    retry: () -> Unit,
+    toggleMetric: (PolarAffectAxis, String) -> Unit,
+    updateMapping: (PolarAffectAxis, Double, Double, Boolean) -> Boolean,
+) {
+  Card(
+      colors = CardDefaults.cardColors(containerColor = Color(0xFF101D1B)),
+      modifier = Modifier.fillMaxWidth(),
+  ) {
+    Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+      Text("Polar Stream · H10", style = MaterialTheme.typography.titleLarge)
+      Text(
+          state.compactLabel(),
+          color = if (state.readiness.ready) Color(0xFF9DE5B3) else Color(0xFFFFC46B),
+      )
+      Text(
+          "Official Polar SDK ${PolarH10Manager.SDK_VERSION} · ECG ${state.ecgSampleRateHz ?: 0} Hz / " +
+              "${state.ecgResolutionBits ?: 0} bit · ${state.ecgSampleCount} samples · raw ECG is never saved",
+          style = MaterialTheme.typography.bodySmall,
+          color = Color(0xFFAAB4C2),
+      )
+      Text(
+          "Uses Polar BLE SDK © Polar Electro Oy under its packaged license. Experimental; not a medical device.",
+          style = MaterialTheme.typography.bodySmall,
+          color = Color(0xFFAAB4C2),
+      )
+      Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+        Button(
+            onClick = if (state.enabled) disconnect else connect,
+            enabled = !starting,
+            modifier = Modifier.weight(1f),
+        ) { Text(if (state.enabled) "Disconnect H10" else "Connect H10") }
+        Button(onClick = retry, enabled = state.enabled && !starting, modifier = Modifier.weight(1f)) {
+          Text("Retry")
+        }
+      }
+      PolarWaveform(state.recentEcgSamplesUv)
+      Text(
+          "Assign any metric independently to Flubber X and/or Y. Unassigned or unavailable axes remain on the selected Touch controller.",
+          style = MaterialTheme.typography.bodySmall,
+          color = Color(0xFFB9C5D4),
+      )
+      PolarMetricCatalog.metrics.forEach { metric ->
+        val value = state.metrics[metric.id]
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+          Column(modifier = Modifier.weight(1f)) {
+            Text(metric.shortLabel)
+            Text(
+                value?.let { "%.3f ${metric.unit}".format(it) } ?: "warming up · ${metric.unit}",
+                style = MaterialTheme.typography.bodySmall,
+                color = Color(0xFFAAB4C2),
+            )
+          }
+          Button(
+              onClick = { toggleMetric(PolarAffectAxis.X, metric.id) },
+              enabled = !starting,
+          ) { Text(if (state.mappings.x.metricId == metric.id) "✓ X" else "X") }
+          Button(
+              onClick = { toggleMetric(PolarAffectAxis.Y, metric.id) },
+              enabled = !starting,
+          ) { Text(if (state.mappings.y.metricId == metric.id) "✓ Y" else "Y") }
+        }
+      }
+      PolarAxisMappingEditor(PolarAffectAxis.X, state.mappings.x, starting, updateMapping)
+      PolarAxisMappingEditor(PolarAffectAxis.Y, state.mappings.y, starting, updateMapping)
+      if (state.mappings.anyAssigned) {
+        Text(
+            if (state.readiness.ready) {
+              "Mapped run ready. Polar targets will begin after the countdown."
+            } else {
+              "Start is blocked while a mapped axis is assigned: ${state.readiness.reason.replace('-', ' ')}."
+            },
+            color = if (state.readiness.ready) Color(0xFF9DE5B3) else Color(0xFFFFC46B),
+            style = MaterialTheme.typography.bodySmall,
+        )
+      }
+    }
+  }
+}
+
+@Composable
+private fun PolarWaveform(samples: List<Int>) {
+  Canvas(
+      modifier = Modifier.fillMaxWidth().height(96.dp).background(Color(0xFF08100F)),
+  ) {
+    if (samples.size < 2) return@Canvas
+    val minimum = samples.minOrNull()?.toFloat() ?: return@Canvas
+    val maximum = samples.maxOrNull()?.toFloat() ?: return@Canvas
+    val range = (maximum - minimum).coerceAtLeast(1f)
+    for (index in 1 until samples.size) {
+      val x0 = (index - 1).toFloat() / (samples.size - 1) * size.width
+      val x1 = index.toFloat() / (samples.size - 1) * size.width
+      val y0 = size.height - (samples[index - 1] - minimum) / range * size.height
+      val y1 = size.height - (samples[index] - minimum) / range * size.height
+      drawLine(Color(0xFF78D7FF), start = androidx.compose.ui.geometry.Offset(x0, y0),
+          end = androidx.compose.ui.geometry.Offset(x1, y1), strokeWidth = 2f)
+    }
+  }
+}
+
+@Composable
+private fun PolarAxisMappingEditor(
+    axis: PolarAffectAxis,
+    mapping: PolarAxisMapping,
+    starting: Boolean,
+    updateMapping: (PolarAffectAxis, Double, Double, Boolean) -> Boolean,
+) {
+  if (!mapping.assigned) return
+  var minimumText by remember(mapping.metricId, mapping.minimum) { mutableStateOf(mapping.minimum.toString()) }
+  var maximumText by remember(mapping.metricId, mapping.maximum) { mutableStateOf(mapping.maximum.toString()) }
+  val label = axis.token.uppercase()
+  Text("$label mapping · ${PolarMetricCatalog.definition(mapping.metricId)?.shortLabel ?: mapping.metricId}")
+  Row(
+      modifier = Modifier.fillMaxWidth(),
+      horizontalArrangement = Arrangement.spacedBy(8.dp),
+      verticalAlignment = Alignment.CenterVertically,
+  ) {
+    OutlinedTextField(
+        value = minimumText,
+        onValueChange = { minimumText = it },
+        label = { Text("Low") },
+        enabled = !starting,
+        singleLine = true,
+        modifier = Modifier.weight(1f),
+    )
+    OutlinedTextField(
+        value = maximumText,
+        onValueChange = { maximumText = it },
+        label = { Text("High") },
+        enabled = !starting,
+        singleLine = true,
+        modifier = Modifier.weight(1f),
+    )
+    Button(
+        onClick = {
+          val minimum = minimumText.toDoubleOrNull() ?: return@Button
+          val maximum = maximumText.toDoubleOrNull() ?: return@Button
+          updateMapping(axis, minimum, maximum, mapping.invert)
+        },
+        enabled = !starting,
+    ) { Text("Apply") }
+    Switch(
+        checked = mapping.invert,
+        onCheckedChange = { invert ->
+          val minimum = minimumText.toDoubleOrNull() ?: return@Switch
+          val maximum = maximumText.toDoubleOrNull() ?: return@Switch
+          updateMapping(axis, minimum, maximum, invert)
+        },
+        enabled = !starting,
+    )
+  }
+  Text("Reverse $label", style = MaterialTheme.typography.bodySmall, color = Color(0xFFAAB4C2))
 }

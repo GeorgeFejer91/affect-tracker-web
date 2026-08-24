@@ -33,6 +33,37 @@ class AffectEngineTest {
     assertEquals(0.2f, engine.snapshot().targetX, 0.0001f)
   }
 
+  @Test fun externalTargetsOwnOnlyAssignedAxesAndControllerTakesOverOnFallback() {
+    val engine = AffectEngine(settings())
+    engine.setExternalTargets(0.75f, null)
+    engine.setStick(0f, -1f)
+    repeat(60) { engine.tick(1f / 60f) }
+    val driven = engine.snapshot()
+    assertEquals(0.75f, driven.targetX, 0.0001f)
+    assertTrue(driven.targetY > 0.7f)
+
+    engine.setExternalTargets(null, null)
+    engine.setStick(-1f, 0f)
+    repeat(60) { engine.tick(1f / 60f) }
+    assertTrue(engine.snapshot().targetX < 0.1f)
+  }
+
+  @Test fun pauseHoldsExternalTargetAndResetChangesOnlyManualAxes() {
+    val engine = AffectEngine(settings())
+    engine.setExternalTargets(0.6f, null)
+    engine.setStick(0f, -1f)
+    engine.tick(0.05f)
+    engine.togglePause()
+    engine.setExternalTargets(-0.8f, null)
+    engine.reset()
+    val paused = engine.tick(0.05f)
+    assertEquals(0.6f, paused.targetX, 0.0001f)
+    assertEquals(0f, paused.targetY, 0.0001f)
+
+    engine.togglePause()
+    assertEquals(-0.8f, engine.tick(0.05f).targetX, 0.0001f)
+  }
+
   @Test fun thirtyMinuteWorstCaseSimulationStaysFiniteAndBounded() {
     val engine = AffectEngine(settings())
     val geometry = FlubberGeometry("soak-session")
