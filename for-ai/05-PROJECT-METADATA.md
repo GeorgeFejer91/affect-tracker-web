@@ -8,7 +8,7 @@
 - Primary branch: `main`
 - License: BSD-3-Clause
 - Origin attribution: [`afourcade/AffectTracker`](https://github.com/afourcade/AffectTracker)
-- Windows working clone at the time this file was written: `C:\Users\gyorg\Documents\Codex\2026-08-21\ca\outputs\affect-tracker-web`
+- Canonical Windows working clone: `C:\Users\gyorg\Documents\GitHub\affect-tracker-web`
 
 The Git repository root is the central project folder. Do not create a second independent "master" copy. On another machine or after a workspace move, discover the canonical local root with `git rev-parse --show-toplevel`; the absolute Windows path above is informational, not a portable configuration value.
 
