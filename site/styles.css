@@ -352,7 +352,7 @@ body.is-experiment-running .touch-trace-panel { z-index: 40; }
 .polar-connect-logo { width: 2rem; height: 2rem; }
 .polar-connect-copy { min-width: 0; }
 .polar-connect-copy h3 { margin: 0; font-size: 0.8rem; }
-.polar-connect-copy output { display: block; overflow: hidden; color: #a9e9ca; font-size: 0.66rem; text-overflow: ellipsis; white-space: nowrap; }
+.polar-connect-copy output { display: block; color: #a9e9ca; font-size: 0.66rem; line-height: 1.35; overflow-wrap: anywhere; }
 .polar-connect-copy output::before { content: ""; display: inline-block; width: 0.42rem; height: 0.42rem; margin-right: 0.35rem; border-radius: 50%; background: #7d8990; }
 .polar-stream-panel.is-connected .polar-connect-copy output::before { background: #63dfa1; box-shadow: 0 0 0.5rem rgb(99 223 161 / 55%); }
 .polar-connect-copy output.is-error { color: #ffb2a8; }
@@ -360,17 +360,28 @@ body.is-experiment-running .touch-trace-panel { z-index: 40; }
 .polar-connect-module button { min-height: 2.1rem; padding: 0.35rem 0.6rem; font-size: 0.7rem; font-weight: 700; }
 
 .polar-support-details,
-.polar-mapping-details,
-.polar-ecg-details { margin-top: 0.5rem; }
+.polar-mapping-details { margin-top: 0.5rem; }
 .polar-support-details summary,
-.polar-mapping-details summary,
-.polar-ecg-details summary { min-height: 2rem; color: #b9c8cf; font-size: 0.68rem; cursor: pointer; }
+.polar-mapping-details summary { min-height: 2rem; color: #b9c8cf; font-size: 0.68rem; cursor: pointer; }
 .polar-support-details .polar-support-note { margin: 0.25rem 0 0.55rem; }
+
+.polar-ecg-port {
+  margin-top: 0.35rem;
+  padding: 0.4rem;
+  border: 1px solid rgb(116 215 194 / 30%);
+  border-radius: 0.55rem;
+  background: rgb(4 12 14 / 90%);
+  box-shadow: inset 0 0 1.2rem rgb(51 190 150 / 6%);
+}
+.polar-ecg-port[hidden] { display: none; }
+.polar-ecg-port-head { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; margin-bottom: 0.25rem; color: #a9e9ca; font: 700 0.62rem ui-monospace, SFMono-Regular, Consolas, monospace; }
+.polar-ecg-port-head strong { display: inline-flex; align-items: center; gap: 0.32rem; color: #dffff1; font: inherit; }
+.polar-live-dot { width: 0.42rem; height: 0.42rem; border-radius: 50%; background: #63dfa1; box-shadow: 0 0 0.55rem rgb(99 223 161 / 75%); }
 
 .polar-ecg-canvas {
   display: block;
   width: 100%;
-  height: 8rem;
+  height: 4rem;
   border: 1px solid rgb(116 215 194 / 24%);
   border-radius: 0.55rem;
   background: #05090b;
@@ -417,9 +428,6 @@ body.is-experiment-running .touch-trace-panel { z-index: 40; }
 .polar-mapping-grid .polar-reverse { display: flex; align-items: center; gap: 0.4rem; }
 .polar-mapping-grid .polar-reverse input { width: auto; }
 .polar-mapping-grid output { display: block; padding: 0.35rem; border-radius: 0.35rem; color: #a9e9ca; background: rgb(77 147 112 / 13%); font: 0.68rem ui-monospace, SFMono-Regular, Consolas, monospace; text-align: center; }
-
-.polar-ecg-details summary output { color: #a9e9ca; font: 700 0.66rem ui-monospace, SFMono-Regular, Consolas, monospace; }
-.polar-ecg-details .polar-ecg-canvas { margin-top: 0.35rem; }
 
 .panel-label-mobile {
   display: none;

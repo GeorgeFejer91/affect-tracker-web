@@ -19,6 +19,8 @@ test("the fourth Polar Stream widget is explicit, branded, and opt-in", async ()
   assert.match(html, /polar-stream-logo\.svg/);
   assert.match(html, /aria-label="Polar Stream — Experimental"/);
   assert.match(html, /id="polar-connect-button"[^>]*>Connect</);
+  assert.match(html, /id="polar-connect-module"|class="polar-connect-module"[\s\S]{0,900}id="polar-ecg-port"[\s\S]{0,200}hidden/);
+  assert.ok(html.indexOf('id="polar-ecg-port"') < html.indexOf("Browser connection details"));
   assert.match(html, /id="polar-stream-panel"[\s\S]*Signal modules/);
   assert.match(html, /data-polar-axis="valence"/);
   assert.match(html, /data-polar-axis="arousal"/);
@@ -36,6 +38,7 @@ test("Polar assignments stay browser-local and defer to touch tracking", async (
   assert.match(app, /touchTrackingActive\(\)[\s\S]{0,80}Paused by Touch\/Trackpad/);
   assert.match(app, /polarSession\.connect\(handlePolarEvent\)/);
   assert.match(app, /polarEcgWindow\.length > 650/);
+  assert.match(app, /polarEcgPort\.hidden = false/);
   assert.match(app, /data\.polarQuickAxis|dataset\.polarQuickAxis/);
   assert.match(app, /X · Valence/);
   assert.match(app, /Y · Arousal/);

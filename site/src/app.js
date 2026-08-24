@@ -97,6 +97,7 @@ const elements = {
   polarConnectButton: document.querySelector("#polar-connect-button"),
   polarDisconnectButton: document.querySelector("#polar-disconnect-button"),
   polarConnectionStatus: document.querySelector("#polar-connection-status"),
+  polarEcgPort: document.querySelector("#polar-ecg-port"),
   polarEcgCanvas: document.querySelector("#polar-ecg-canvas"),
   polarEcgRate: document.querySelector("#polar-ecg-rate"),
   polarBattery: document.querySelector("#polar-battery"),
@@ -394,6 +395,7 @@ const touchTrace = new TouchTraceAnalyzer({
 const polarSession = createPolarH10BrowserSession();
 let polarEcgWindow = [];
 let polarBatteryPercent;
+let polarObservedSampleRate = 130;
 const profiles = createProfiles();
 let offsets = createProjectionOffsets(logger.sessionId, profiles.waveCount);
 let previousTimestamp;
@@ -793,9 +795,7 @@ function renderPolarMetrics() {
     const metricId = card.dataset.polarMetric;
     card.querySelector(".polar-metric-value").value = formatPolarMetric(metricId, state.polarMetrics[metricId]);
   }
-  elements.polarEcgRate.value = Number.isFinite(state.polarMetrics.heart_rate)
-    ? `${Math.round(state.polarMetrics.heart_rate)} bpm`
-    : "130 Hz raw";
+  elements.polarEcgRate.value = `${Math.round(polarObservedSampleRate)} Hz`;
 }
 
 function handlePolarEvent(event) {
@@ -810,8 +810,10 @@ function handlePolarEvent(event) {
     if (!event.connected) {
       polarBatteryPercent = undefined;
       polarEcgWindow = [];
+      polarObservedSampleRate = 130;
       state.polarMetrics = {};
       elements.polarSampleCount.value = "0";
+      elements.polarEcgPort.hidden = true;
       renderPolarMetrics();
       drawPolarEcg();
     }
@@ -824,7 +826,12 @@ function handlePolarEvent(event) {
   if (event.kind === "ecg") {
     polarEcgWindow.push(...event.microvolts);
     if (polarEcgWindow.length > 650) polarEcgWindow.splice(0, polarEcgWindow.length - 650);
+    polarObservedSampleRate = Number.isFinite(event.streamHealth?.observedSampleRateHz)
+      ? event.streamHealth.observedSampleRateHz
+      : 130;
     elements.polarSampleCount.value = event.snapshot.totalEcgSamples.toLocaleString();
+    elements.polarEcgPort.hidden = false;
+    renderPolarMetrics();
     drawPolarEcg();
     return;
   }

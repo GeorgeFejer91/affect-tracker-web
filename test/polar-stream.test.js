@@ -120,6 +120,115 @@ test("Web Bluetooth support requires a secure compatible desktop browser", () =>
   assert.match(quest.reason, /Meta Quest Browser/);
 });
 
+test("browser session reports the exact failing GATT stage and a competing-session recovery hint", async () => {
+  class Characteristic extends EventTarget {
+    async startNotifications() {
+      if (this.failStart) throw new DOMException("GATT operation failed for unknown reason.", "NetworkError");
+      return this;
+    }
+    async stopNotifications() { return this; }
+  }
+  const control = new Characteristic();
+  const pmdData = new Characteristic();
+  pmdData.failStart = true;
+  const server = {
+    connected: true,
+    async getPrimaryService() {
+      return { getCharacteristic: async (uuid) => uuid === POLAR_UUIDS.pmdControl ? control : pmdData };
+    },
+    disconnect() { this.connected = false; },
+  };
+  class Device extends EventTarget {}
+  const device = new Device();
+  device.gatt = { connect: async () => server };
+  const session = new PolarH10BrowserSession({
+    navigatorObject: { userAgent: "Chromium test", bluetooth: { requestDevice: async () => device } },
+    secureContext: true,
+  });
+
+  await assert.rejects(
+    session.connect(() => {}),
+    (error) => error.code === "BLUETOOTH_PMD_DATA_NOTIFY_FAILED"
+      && /ECG data notifications failed/.test(error.message)
+      && /another browser tab/.test(error.message),
+  );
+  assert.equal(server.connected, false);
+});
+
+test("browser session fails closed on rejected or missing ECG start acknowledgements", async () => {
+  async function attempt(controlResponse) {
+    class Characteristic extends EventTarget {
+      async startNotifications() { return this; }
+      async stopNotifications() { return this; }
+      async writeValueWithResponse(value) {
+        if (value[0] === POLAR_COMMANDS.startEcg[0] && controlResponse) {
+          queueMicrotask(() => {
+            this.value = new DataView(controlResponse.buffer, controlResponse.byteOffset, controlResponse.byteLength);
+            this.dispatchEvent(new Event("characteristicvaluechanged"));
+          });
+        }
+      }
+    }
+    const control = new Characteristic();
+    const pmdData = new Characteristic();
+    const server = {
+      connected: true,
+      async getPrimaryService(uuid) {
+        if (uuid !== POLAR_UUIDS.pmdService) throw new DOMException("Service unavailable", "NotFoundError");
+        return { getCharacteristic: async (characteristicUuid) => characteristicUuid === POLAR_UUIDS.pmdControl ? control : pmdData };
+      },
+      disconnect() { this.connected = false; },
+    };
+    class Device extends EventTarget {}
+    const device = new Device();
+    device.gatt = { connect: async () => server };
+    const session = new PolarH10BrowserSession({
+      navigatorObject: { userAgent: "Chromium test", bluetooth: { requestDevice: async () => device } },
+      secureContext: true,
+      controlResponseTimeoutMs: 5,
+      firstEcgTimeoutMs: 50,
+    });
+    return session.connect(() => {});
+  }
+
+  await assert.rejects(
+    attempt(Uint8Array.from([0xf0, 0x02, 0x00, 0x05, 0x00])),
+    (error) => error.code === "PMD_COMMAND_REJECTED" && /another Polar app or tab/.test(error.message),
+  );
+  await assert.rejects(
+    attempt(null),
+    (error) => error.code === "PMD_CONTROL_TIMEOUT" && /did not acknowledge/.test(error.message),
+  );
+  await assert.rejects(
+    attempt(Uint8Array.from([0xf0, 0x02, 0x00, 0x00, 0x00])),
+    (error) => error.code === "PMD_FIRST_ECG_TIMEOUT" && /no live ECG packet/.test(error.message),
+  );
+});
+
+test("two simulated minutes of 130 Hz ECG remain bounded and report healthy stream timing", () => {
+  let nowMs = 0;
+  const events = [];
+  const session = new PolarH10BrowserSession({ now: () => nowMs });
+  session.onEvent = (event) => events.push(event);
+  const frame = new Uint8Array(10 + 13 * 3);
+  frame[0] = 0x00;
+  frame[9] = 0x00;
+  for (let index = 0; index < 13; index += 1) frame[10 + index * 3] = index + 1;
+
+  for (let notification = 0; notification < 1_200; notification += 1) {
+    nowMs += 100;
+    session.handlePmd({ target: { value: frame } });
+  }
+
+  const health = events.at(-2).streamHealth;
+  assert.equal(health.sampleCount, 15_600);
+  assert.equal(health.frameCount, 1_200);
+  assert.ok(health.observedSampleRateHz > 129 && health.observedSampleRateHz < 131);
+  assert.equal(health.maximumGapMs, 100);
+  assert.equal(session.processor.ecg.length, 650);
+  assert.ok(Object.values(session.processor.snapshot().values).every(Number.isFinite));
+});
+
 test("browser session requests an H10, starts ECG notifications, emits metrics, and stops cleanly", async () => {
   class FakeCharacteristic extends EventTarget {
     constructor(value = new Uint8Array()) {
@@ -132,7 +241,10 @@ test("browser session requests an H10, starts ECG notifications, emits metrics, 
 
     async startNotifications() { this.started += 1; return this; }
     async stopNotifications() { this.stopped += 1; return this; }
-    async writeValueWithResponse(value) { this.writes.push([...value]); }
+    async writeValueWithResponse(value) {
+      this.writes.push([...value]);
+      this.onWrite?.(value);
+    }
     async readValue() { return this.value; }
     notify(value) {
       this.value = new DataView(value.buffer, value.byteOffset, value.byteLength);
@@ -144,6 +256,14 @@ test("browser session requests an H10, starts ECG notifications, emits metrics, 
   const pmdData = new FakeCharacteristic();
   const heartRate = new FakeCharacteristic();
   const battery = new FakeCharacteristic(Uint8Array.from([87]));
+  const pmdFrame = Uint8Array.from([0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 100, 0, 0, 200, 0, 0]);
+  control.onWrite = (value) => {
+    if (value[0] !== POLAR_COMMANDS.startEcg[0]) return;
+    queueMicrotask(() => {
+      control.notify(Uint8Array.from([0xf0, 0x02, 0x00, 0x00, 0x00]));
+      pmdData.notify(pmdFrame);
+    });
+  };
   const services = new Map([
     [POLAR_UUIDS.pmdService, { getCharacteristic: async (uuid) => uuid === POLAR_UUIDS.pmdControl ? control : pmdData }],
     [POLAR_UUIDS.heartRateService, { getCharacteristic: async () => heartRate }],
@@ -175,9 +295,9 @@ test("browser session requests an H10, starts ECG notifications, emits metrics, 
   assert.equal(control.started, 1);
   assert.equal(heartRate.started, 1);
   assert.ok(events.some((event) => event.kind === "connection" && event.connected && event.batteryPercent === 87));
+  assert.ok(events.some((event) => event.kind === "ecg" && event.streamHealth.sampleCount === 2));
 
   heartRate.notify(Uint8Array.from([0x10, 60, 0x00, 0x04]));
-  const pmdFrame = Uint8Array.from([0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 100, 0, 0, 200, 0, 0]);
   pmdData.notify(pmdFrame);
   assert.ok(events.some((event) => event.kind === "metrics" && event.snapshot.values.heart_rate === 60));
   assert.ok(events.some((event) => event.kind === "ecg" && event.microvolts.length === 2));

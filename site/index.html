@@ -432,6 +432,14 @@
               <button id="polar-disconnect-button" type="button" hidden>Disconnect</button>
             </div>
 
+            <section id="polar-ecg-port" class="polar-ecg-port" aria-label="Live Polar H10 ECG display" hidden>
+              <div class="polar-ecg-port-head">
+                <strong><span class="polar-live-dot" aria-hidden="true"></span>Live ECG</strong>
+                <span><output id="polar-ecg-rate">130 Hz</output> · <output id="polar-sample-count">0</output> samples</span>
+              </div>
+              <canvas id="polar-ecg-canvas" class="polar-ecg-canvas" width="640" height="96" aria-label="Recent live Polar H10 ECG waveform"></canvas>
+            </section>
+
             <details class="polar-support-details">
               <summary>Browser connection details</summary>
               <p id="polar-support-note" class="polar-support-note" role="status">Checking Web Bluetooth support…</p>
@@ -464,10 +472,6 @@
               </div>
             </details>
 
-            <details class="polar-ecg-details">
-              <summary>Live ECG preview <output id="polar-ecg-rate">—</output> · <output id="polar-sample-count">0</output> samples</summary>
-              <canvas id="polar-ecg-canvas" class="polar-ecg-canvas" width="640" height="160" aria-label="Recent Polar H10 ECG waveform"></canvas>
-            </details>
             <p class="experiment-privacy"><strong>Local and experimental:</strong> ECG and RR data stay in this tab. The waveform keeps only the latest five seconds in memory; CSV samples contain mapped state and current metric context, not the 130 Hz raw ECG. These signals are not a diagnosis or a direct measure of emotion.</p>
           </section>
         </div>

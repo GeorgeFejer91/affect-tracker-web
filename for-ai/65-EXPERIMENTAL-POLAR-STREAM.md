@@ -12,8 +12,11 @@ The accordion is the fourth top-level control surface. Its connector is a
 compact logo/status/battery/action module rather than a second settings panel.
 Derived signals appear as independent metric modules with direct **X ·
 Valence** and **Y · Arousal** buttons. Detailed source/range/reversal controls
-and the bounded waveform remain disclosure sections so the common connect and
-assign path is short.
+remain in a disclosure section so the common connect and assign path is short.
+After the first valid ECG packet, a compact always-visible live waveform port
+appears immediately below the connector. It is hidden before real samples and
+after disconnect, so an empty decorative chart cannot be mistaken for a live
+sensor.
 
 The supported path is a secure context (`https:` or localhost) in a desktop
 Chrome, Edge, or Chromium build that exposes a working Web Bluetooth chooser.
@@ -43,6 +46,25 @@ intervals. Disconnect or refresh drops the waveform. No raw 130 Hz ECG frame or
 RR series is written to local storage or CSV. Browser-local axis assignments are
 stored in the existing preferences record and intentionally remain outside
 portable settings version 1, Tauri, LSL, the native Quest APK, and WebXR.
+
+## Connection readiness and failure diagnosis
+
+Browser connection is a staged protocol, not a successful `gatt.connect()`
+call. The adapter must discover PMD control/data, enable data notifications and
+control indications, send the canonical 130 Hz/14-bit ECG start command, match
+its exact successful PMD response, and decode the first valid ECG packet before
+setting `polarConnected` or showing the live port. Missing, rejected, or
+out-of-order responses and a missing first frame fail closed under bounded
+timeouts. Optional heart-rate and battery failures do not prevent raw ECG.
+
+Required GATT failures retain the failing stage and the browser's safe error
+text in the visible connector status. `NetworkError`, `AbortError`, and
+`InvalidStateError` also explain that Polar Stream, Polar Beat/Flow, or another
+browser tab may still own the H10 lease. This is especially important because
+both public projects share the `georgefejer91.github.io` origin while each tab
+still owns an independent GATT/notification lifecycle. Teardown removes every
+listener, stops notifications best-effort, disconnects GATT, rejects pending
+readiness waits, and clears the bounded signal state.
 
 ## Exposed metrics
 
@@ -165,8 +187,11 @@ the five-second amplitude features, either composite, or any metric-to-affect
 mapping.
 
 Release qualification requires unit fixtures for byte decoding, bounds,
-mapping/clamping/reversal, and capability detection; a real desktop Chromium
-UI smoke test; and physical H10 acceptance for chooser, start/stop,
-disconnect/reconnect, waveform, heart-rate/RR availability, mapping ownership,
-and CSV context. Until physical-H10 acceptance is recorded, this remains an
-experimental implementation rather than a validated acquisition tool.
+mapping/clamping/reversal, capability detection, exact PMD acknowledgement,
+first-frame readiness, stage-specific failure reporting, and sustained bounded
+130 Hz processing; a real desktop Chromium UI smoke test; and physical H10
+acceptance for chooser, start/stop, at least a two-minute live sample-count/rate
+run, disconnect/reconnect, waveform, heart-rate/RR availability, mapping
+ownership, and CSV context. Until physical-H10 acceptance is recorded, this
+remains an experimental implementation rather than a validated acquisition
+tool.
