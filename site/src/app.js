@@ -52,8 +52,8 @@ import {
   polarMetricDefinition,
   polarWebBluetoothSupport,
 } from "./polar-stream.js";
-import { createPolarH10ReplaySession, polarReplayEnabled } from "./polar-replay.js?v=remote-6";
-import { createFlubberBroadcaster } from "./flubber-remote.js?v=remote-6";
+import { createPolarH10ReplaySession, polarReplayEnabled } from "./polar-replay.js?v=remote-7";
+import { createFlubberBroadcaster } from "./flubber-remote.js?v=remote-7";
 import {
   actionForBinding,
   ADVANCED_BINDING_LABELS,
@@ -108,6 +108,7 @@ const elements = {
   polarMetricCards: document.querySelector("#polar-metric-cards"),
   polarAxisFields: [...document.querySelectorAll("[data-polar-axis]")],
   remoteBroadcastButton: document.querySelector("#flubber-remote-broadcast-button"),
+  remoteBroadcastForegroundButton: document.querySelector("#flubber-remote-foreground-button"),
   remoteBroadcastStatus: document.querySelector("#flubber-remote-broadcast-status"),
   remoteBroadcastDetails: document.querySelector("#flubber-remote-broadcast-details"),
   remoteBroadcastSource: document.querySelector("#flubber-remote-source"),
@@ -793,10 +794,18 @@ function renderPolarDiagnostics(snapshot = polarSession.diagnosticSnapshot()) {
 function updateRemoteBroadcastUi(detail = flubberBroadcaster.snapshot()) {
   const broadcasting = detail.phase === "broadcasting";
   const connecting = detail.phase === "connecting";
+  const pictureInPictureAvailable = pictureInPictureSupported(window);
+  const foregroundWindowActive = Boolean(pictureInPictureWindow && !pictureInPictureWindow.closed);
+  const wakeLockAvailable = Boolean(navigator.wakeLock?.request);
+  const wakeLockActive = Boolean(broadcastWakeLock && !broadcastWakeLock.released);
+  const foregroundModeDegraded = broadcasting && (!foregroundWindowActive || (wakeLockAvailable && !wakeLockActive));
   elements.remoteBroadcastButton.disabled = connecting;
   elements.remoteBroadcastButton.textContent = broadcasting
     ? "Stop broadcast"
     : connecting ? "Starting broadcast…" : "Broadcast this to VR / remote interface";
+  elements.remoteBroadcastForegroundButton.hidden = !foregroundModeDegraded
+    || (!pictureInPictureAvailable && (!wakeLockAvailable || wakeLockActive));
+  elements.remoteBroadcastForegroundButton.disabled = connecting;
   elements.remoteBroadcastDetails.hidden = !detail.streamId;
   elements.remoteBroadcastSource.value = detail.sourceLabel || "—";
   elements.remoteBroadcastListeners.value = String(detail.listenerCount ?? 0);
@@ -807,14 +816,22 @@ function updateRemoteBroadcastUi(detail = flubberBroadcaster.snapshot()) {
   if (Number.isFinite(detail.rttMs)) routeParts.push(`${detail.rttMs} ms RTT`);
   if (detail.sequence) routeParts.push(`sequence ${detail.sequence}`);
   if (detail.droppedBackpressure) routeParts.push(`${detail.droppedBackpressure} backpressure drops`);
-  if (pictureInPictureWindow && !pictureInPictureWindow.closed) routeParts.push("foreground Flubber window");
-  if (broadcastWakeLock && !broadcastWakeLock.released) routeParts.push("wake lock");
+  if (foregroundWindowActive) routeParts.push("foreground Flubber window");
+  if (wakeLockActive) routeParts.push("wake lock");
   elements.remoteBroadcastRoute.value = routeParts.join(" · ") || (broadcasting ? "Waiting for listeners" : "Waiting");
-  elements.remoteBroadcastStatus.value = detail.message
+  const foregroundMessage = broadcasting && !foregroundWindowActive
+    ? pictureInPictureAvailable
+      ? "LOW-LATENCY FOREGROUND MODE CLOSED — keep this Chrome tab visible or restore it."
+      : "Broadcast live — keep this Chrome tab visible; this browser has no floating foreground helper."
+    : broadcasting && wakeLockAvailable && !wakeLockActive
+      ? "SCREEN WAKE LOCK INACTIVE — restore low-latency foreground mode before a soak."
+      : "";
+  elements.remoteBroadcastStatus.value = foregroundMessage || detail.message
     || (broadcasting
       ? `${detail.sourceLabel} is public and ready.`
       : connecting ? "Connecting to VDO.Ninja signaling…" : "Broadcast off");
   elements.remoteBroadcastStatus.classList.toggle("is-error", Boolean(detail.error || detail.phase === "error"));
+  elements.remoteBroadcastStatus.classList.toggle("is-warning", Boolean(foregroundMessage));
 }
 
 function drawPolarEcg() {
@@ -1513,7 +1530,14 @@ function finishPictureInPicture(childWindow) {
   clearHeldButtonStyles();
   constrainAndRenderWidget();
   recordEvent("picture-in-picture", "close", "flubber", false);
-  announce("Floating Flubber closed and restored to the page.");
+  const broadcasting = flubberBroadcaster.snapshot().phase === "broadcasting";
+  if (broadcasting) {
+    recordEvent("remote-flubber", "remote-foreground-lost", "floating-flubber", 0);
+    updateRemoteBroadcastUi();
+    announce("Low-latency foreground mode closed. Keep this Chrome tab visible or restore foreground mode.");
+  } else {
+    announce("Floating Flubber closed and restored to the page.");
+  }
 }
 
 function scheduleAnimationFrame() {
@@ -2647,6 +2671,25 @@ function initializeEvents() {
       if (flubberBroadcaster.snapshot().phase !== "broadcasting") await releaseBroadcastLatencyMode();
       announce(`Remote broadcast could not start: ${error?.message ?? String(error)}`);
     }
+  });
+  elements.remoteBroadcastForegroundButton.addEventListener("click", async () => {
+    if (flubberBroadcaster.snapshot().phase !== "broadcasting") return;
+    elements.remoteBroadcastForegroundButton.disabled = true;
+    await acquireBroadcastLatencyMode();
+    const pictureInPictureAvailable = pictureInPictureSupported(window);
+    const foregroundWindowActive = Boolean(pictureInPictureWindow && !pictureInPictureWindow.closed);
+    const wakeLockAvailable = Boolean(navigator.wakeLock?.request);
+    const wakeLockActive = Boolean(broadcastWakeLock && !broadcastWakeLock.released);
+    if (foregroundWindowActive && (!wakeLockAvailable || wakeLockActive)) {
+      recordEvent("remote-flubber", "remote-foreground-restored", "floating-flubber", 1);
+      announce("Low-latency foreground mode restored.");
+    } else if (!pictureInPictureAvailable && wakeLockActive) {
+      recordEvent("remote-flubber", "remote-wake-lock-restored", "screen-wake-lock", 1);
+      announce("Screen wake lock restored. Keep this Chrome tab visible for reliable low latency.");
+    } else {
+      announce("Foreground mode could not be restored. Keep this Chrome tab visible and try again.");
+    }
+    updateRemoteBroadcastUi();
   });
   for (const fieldset of elements.polarAxisFields) {
     const axis = fieldset.dataset.polarAxis;

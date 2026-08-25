@@ -382,6 +382,11 @@ body.is-experiment-running .touch-trace-panel { z-index: 40; }
   overflow-wrap: anywhere;
 }
 .flubber-remote-broadcast-head output.is-error { color: #ffb2a8; }
+.flubber-remote-broadcast-head output.is-warning { color: #ffd37d; }
+.flubber-remote-broadcast-actions {
+  display: grid;
+  gap: 0.4rem;
+}
 .flubber-remote-broadcast-head button {
   min-height: 2.5rem;
   padding: 0.45rem 0.7rem;

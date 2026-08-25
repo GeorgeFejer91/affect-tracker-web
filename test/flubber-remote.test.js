@@ -511,11 +511,12 @@ test("remote pages load only the local SDK and feature code makes no microphone 
     assert.doesNotMatch(page, /<script[^>]+https?:\/\//);
   }
   assert.match(index, />Broadcast this to VR \/ remote interface</);
+  assert.match(index, /id="flubber-remote-foreground-button"[^>]*hidden>Restore low-latency foreground mode</);
   assert.match(webxr, />Use incoming signal</);
-  assert.match(index, /src="\.\/src\/app\.js\?v=remote-6"/);
-  assert.match(webxr, /src="\.\/src\/webxr-study\.js\?v=remote-6"/);
-  assert.match(app, /from "\.\/flubber-remote\.js\?v=remote-6"/);
-  assert.match(receiver, /from "\.\/flubber-remote\.js\?v=remote-6"/);
+  assert.match(index, /src="\.\/src\/app\.js\?v=remote-7"/);
+  assert.match(webxr, /src="\.\/src\/webxr-study\.js\?v=remote-7"/);
+  assert.match(app, /from "\.\/flubber-remote\.js\?v=remote-7"/);
+  assert.match(receiver, /from "\.\/flubber-remote\.js\?v=remote-7"/);
   assert.match(transport, /FLUBBER_REMOTE_FORCE_TURN_PARAM = "remote-force-turn"/);
   assert.match(transport, /forceTURN: Boolean\(forceTurn\)/);
   assert.match(app, /flubberBroadcaster\.offer\(state\.currentX, state\.currentY\);/);
@@ -530,6 +531,8 @@ test("remote pages load only the local SDK and feature code makes no microphone 
   assert.match(receiver, /navigator\.wakeLock\.request\("screen"\)/);
   assert.match(app, /broadcastOwnsPictureInPicture/);
   assert.match(app, /acquireBroadcastLatencyMode/);
+  assert.match(app, /remote-foreground-lost/);
+  assert.match(app, /remote-foreground-restored/);
   assert.match(app, /navigator\.wakeLock\.request\("screen"\)/);
   assert.match(receiver, /visible-blurred/);
 });
