@@ -2,11 +2,11 @@
 
 ## Decision
 
-Commit `05ac5b7` is the current qualification candidate. It passes 168 automated tests and fresh attended desktop Chrome direct-path replay, more than two minutes of stability, explicit-close grace, held-coordinate stale, explicit source reselection, and final disconnected-source cleanup checks. It retains the no-buffer coordinate path from `ec5972b` and adds one bounded same-device recovery for a post-readiness silent ECG stream. Commit `dd43646` supplies the preceding direct-path, forced-TURN, high-change backpressure, teardown, and browser-H10 startup-recovery evidence; commit `5b60e3e` supplies the earlier two-minute direct and forced-TURN scheduler soaks; commits `ac10c62` and `b66aa1d` supply earlier foreground and transport-engine evidence. Historical results are not relabelled as exact-commit receipts.
+Commit `3c8df81` is the current qualification candidate. Its transport/runtime is commit `05ac5b7`, which passes 168 automated tests and fresh attended desktop Chrome direct-path replay, more than two minutes of stability, explicit-close grace, held-coordinate stale, explicit source reselection, and final disconnected-source cleanup checks. The follow-up changes only visible, assistive-technology-associated pre-chooser guidance and its tests; it does not change BLE acquisition or the data path. Commit `05ac5b7` retains the no-buffer coordinate path from `ec5972b` and adds one bounded same-device recovery for a post-readiness silent ECG stream. Commit `dd43646` supplies the preceding direct-path, forced-TURN, high-change backpressure, teardown, and browser-H10 startup-recovery evidence; commit `5b60e3e` supplies the earlier two-minute direct and forced-TURN scheduler soaks; commits `ac10c62` and `b66aa1d` supply earlier foreground and transport-engine evidence. Historical results are not relabelled as exact-commit receipts.
 
-The data-only transport is suitable for continued headset testing, but `05ac5b7` is **not yet fully physically qualified for research use**. One Quest was detected during this follow-up but ADB remained unauthorized, so no current-build immersive direct or forced-TURN run could be executed. The H10 had been removed, so the new browser recovery path was verified with deterministic/mock hardware contracts and synthetic ECG, not a worn sensor.
+The data-only transport is suitable for continued headset testing, but `3c8df81` is **not yet fully physically qualified for research use**. One Quest was detected during this follow-up but ADB remained unauthorized, so no current-build immersive direct or forced-TURN run could be executed. The H10 had been removed, so the new browser recovery path was verified with deterministic/mock hardware contracts and synthetic ECG, not a worn sensor.
 
-An earlier physical direct-path receipt on commit `8d8c813` remains useful evidence because the subsequent runtime changes added explicit forced-TURN qualification, foreground lifecycle/recovery, ideal-deadline sender scheduling, teardown and channel-close hardening, browser-ECG liveness recovery, and cache revisioning without changing the wire codec. It is not treated as a receipt for `05ac5b7` or for a Quest relay route.
+An earlier physical direct-path receipt on commit `8d8c813` remains useful evidence because the subsequent runtime changes added explicit forced-TURN qualification, foreground lifecycle/recovery, ideal-deadline sender scheduling, teardown and channel-close hardening, browser-ECG liveness recovery, and cache revisioning without changing the wire codec. It is not treated as a receipt for `3c8df81` or for a Quest relay route.
 
 ## Test subjects
 
@@ -135,6 +135,14 @@ The two-minute transport interval preceded only the selection-list cleanup descr
 
 Both exact-runtime workflows completed successfully: desktop companion run `32817876132` and GitHub Pages run `32817876146`. At 2026-08-25T06:49:19Z, uncached public requests returned `./src/app.js?v=remote-13` and `./src/webxr-study.js?v=remote-13`, both exact opt-in labels, and only the locally vendored VDO SDK references. Static inspection confirmed that publisher and receiver startup remain bound to their respective click handlers and that the incoming function has no page-load call site.
 
+## Polar pre-chooser reliability guidance follow-up
+
+The desktop H10 connector now presents the known-good physical startup conditions before Chrome opens its browser-owned chooser: wear and moisten the strap electrodes, keep the H10 close to the PC, and release it from Polar Beat/Flow, watches, gym equipment, and other browser tabs. The checklist is visibly adjacent to Connect and associated with that control through `aria-describedby`. It is deliberately operator guidance rather than a readiness claim; the application still declares the source live only after a valid 130 Hz ECG frame arrives.
+
+This follow-up changes no BLE acquisition, recovery bound, coordinate codec, sender cadence, smoothing, staleness grace, or WebRTC route. The complete Node suite remains 168 of 168. Consequently the `remote-13` transport measurements above remain attributed to commit `05ac5b7` instead of being relabelled as physical evidence for the guidance-only follow-up. During the final device re-audit the attached Quest still reported USB unauthorized and the H10 remained removed, so no additional headset or worn-sensor claim was made.
+
+Both exact-candidate workflows completed successfully: GitHub Pages run `32823534387` and desktop companion run `32823534393`. At 2026-08-25T07:54:25Z, uncached public requests exposed the visible checklist and its `aria-describedby` association, retained cache revision `remote-13`, retained both exact opt-in labels, and loaded the VDO SDK only from `./vendor/vdoninja/1.5.5/vdoninja-sdk.min.js`. No browser transport session was opened for this static deployment check.
+
 ## Earlier physical Quest direct receipt
 
 The attended direct-path run on `8d8c813` used the same 130 Hz replay-to-final-coordinate path and produced:
@@ -153,7 +161,7 @@ The wire deliberately carries no timestamp, so one-way motion-to-photon latency 
 
 ## Remaining physical gate
 
-Repeat on deployed `05ac5b7` after the Quest reconnects and USB debugging is authorized:
+Repeat on deployed `3c8df81` after the Quest reconnects and USB debugging is authorized:
 
 1. Start deterministic replay and one desktop publisher.
 2. Connect Meta Quest Browser, enter immersive WebXR, and retain at least two minutes of direct-path streaming.
