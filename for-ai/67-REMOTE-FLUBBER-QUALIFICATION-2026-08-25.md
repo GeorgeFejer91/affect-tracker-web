@@ -2,9 +2,9 @@
 
 ## Decision
 
-Commit `b66aa1d` is deployed and passes the complete automated suite plus attended desktop direct/relay, discovery, loss/recovery, foreground-scheduling, and backpressure preflights. The data-only transport is suitable for continued headset testing, but the current commit is **not yet fully physically qualified for research use**: the Quest USB/ADB transport went offline before a fresh immersive direct run and a forced-TURN run could be repeated on the headset.
+Commit `ac10c62` is deployed and passes the complete automated suite plus an attended desktop direct-path foreground-loss/recovery run. Commit `b66aa1d` supplies the preceding exact transport-engine direct/relay, discovery, loss/recovery, foreground-scheduling, and backpressure preflights; those results remain useful architectural evidence but are not relabelled as exact-commit receipts for `ac10c62`. The data-only transport is suitable for continued headset testing, but the current commit is **not yet fully physically qualified for research use**: Quest USB transport authorization was unavailable before a fresh immersive direct run and a forced-TURN run could be repeated on the headset.
 
-An earlier physical direct-path receipt on commit `8d8c813` remains useful evidence because the subsequent runtime change only added explicit forced-TURN qualification plumbing and cache revisioning. It is not treated as a receipt for `b66aa1d` or for a Quest relay route.
+An earlier physical direct-path receipt on commit `8d8c813` remains useful evidence because the subsequent runtime changes added explicit forced-TURN qualification, foreground lifecycle/recovery, and cache revisioning without changing the wire codec. It is not treated as a receipt for `ac10c62` or for a Quest relay route.
 
 ## Test subjects
 
@@ -15,9 +15,9 @@ An earlier physical direct-path receipt on commit `8d8c813` remains useful evide
 
 ## Automated gate
 
-`node --test` passed 162 of 162 tests on `b66aa1d`. Coverage includes the codec, finite/clamp validation, unsigned sequence wraparound, 60 Hz cap, 100 ms heartbeat, newest-state backpressure, discovery, switching, teardown, two-second staleness grace, three-frame recovery, WebXR ownership, 130 Hz replay fixture, local SDK loading, and the forced-TURN option. The vendored SDK/source/license hashes also passed.
+`node --test` passed 162 of 162 tests on `ac10c62`. Coverage includes the codec, finite/clamp validation, unsigned sequence wraparound, 60 Hz cap, 100 ms heartbeat, newest-state backpressure, discovery, switching, teardown, two-second staleness grace, three-frame recovery, WebXR ownership, 130 Hz replay fixture, local SDK loading, foreground-helper warning/recovery surfaces, and the forced-TURN option. The vendored SDK/source/license hashes also passed.
 
-## Current deployed desktop preflight
+## Preceding deployed desktop transport preflight (`b66aa1d`)
 
 These runs used separate visible sender and receiver windows in one isolated desktop Chrome profile. They verify the deployed application and network route but do not replace headset evidence.
 
@@ -38,6 +38,19 @@ The direct same-host RTT is not representative of a headset path. The relay RTT 
 - Opening a second publisher displaced the first publisher's single browser-owned Picture-in-Picture window. That backgrounded source fell to roughly one update per second, observed as approximately 1,056 ms p95 receiver gaps. The two-second grace kept it live rather than flipping between live and lost.
 - Therefore the supported lowest-latency workflow remains one active publisher with its floating Flubber window left open, plus an immersive WebXR receiver. A normal Quest browser panel can still be deprioritized by Meta OS; the web application cannot override OS focus ownership.
 
+## Foreground recovery follow-up
+
+Commit `ac10c62` adds a user-gesture-owned recovery path for the measured Chrome failure mode where the broadcast-created floating Flubber is closed or displaced. The original **Broadcast this to VR / remote interface** action remains one-click; a separate **Restore low-latency foreground mode** action appears only while a live broadcast has lost its foreground helper or wake lock.
+
+An attended Chrome 151 run used the deterministic 130 Hz replay, one publisher, and one same-PC direct receiver through the normal VDO data channel:
+
+- Before helper loss: 1,304 received frames, 34 ms rolling p95 gap, 47 ms maximum gap, 1 ms RTT, and zero loss warnings.
+- Closing the helper immediately produced `LOW-LATENCY FOREGROUND MODE CLOSED`, exposed the restore action, retained the same public source, and kept the receiver live. During the degraded interval the rolling p95 rose to 112 ms and the maximum to 117 ms, with zero stale/loss warnings.
+- Restoring foreground mode did not restart or rename the source. The receiver advanced to 1,905 frames, returned to a 36 ms rolling p95 gap, reported a 141 ms retained maximum gap and 0–1 ms RTT, and still had zero loss warnings. Sender readback again showed the foreground Flubber window and wake lock.
+- The public Pages build was then verified in Chrome with cache revision `remote-7`, the new restore control present, and `Broadcast off` on a fresh load.
+
+These are same-PC transport and lifecycle receipts, not physical Quest latency evidence.
+
 ## Earlier physical Quest direct receipt
 
 The attended direct-path run on `8d8c813` used the same 130 Hz replay-to-final-coordinate path and produced:
@@ -56,7 +69,7 @@ The wire deliberately carries no timestamp, so one-way motion-to-photon latency 
 
 ## Remaining physical gate
 
-Repeat on deployed `b66aa1d` after the Quest reconnects:
+Repeat on deployed `ac10c62` after the Quest reconnects and USB debugging is authorized:
 
 1. Start deterministic replay and one desktop publisher.
 2. Connect Meta Quest Browser, enter immersive WebXR, and retain at least two minutes of direct-path streaming.
@@ -66,4 +79,4 @@ Repeat on deployed `b66aa1d` after the Quest reconnects:
 
 ## Cleanup
 
-All public receiver and broadcaster sessions used for the current preflight were stopped. The isolated run-owned Chrome process was terminated after an injected lifecycle state left one sender UI unresponsive; its debug port closed, and the user's normal Chrome process remained running. No device was present in `adb devices`, no ADB forward remained visible, raw screenshots were not committed, and the repository was clean before this report was added.
+All public receiver and broadcaster sessions used for the current preflight and foreground-recovery follow-up were stopped, and the deterministic replay was disconnected. The isolated run-owned Chrome process from the earlier preflight was terminated after an injected lifecycle state left one sender UI unresponsive; its debug port closed, and the user's normal Chrome process remained running. The headset later appeared only as unauthorized, so no headset command was sent and no ADB forward was created. Raw screenshots were not committed.
