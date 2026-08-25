@@ -6,7 +6,7 @@
     <meta name="color-scheme" content="dark">
     <meta name="description" content="A draggable, browser-only 2D affect tracker inspired by AffectTracker.">
     <title>2D Affect Tracker</title>
-    <link rel="stylesheet" href="./styles.css?v=screen-calibration-v2">
+    <link rel="stylesheet" href="./styles.css?v=screen-calibration-v3">
   </head>
   <body>
     <main id="stage" aria-label="Interactive affect tracker">
@@ -562,19 +562,24 @@
             <output id="screen-calibration-step" class="screen-calibration-step">Step 1 of 3</output>
           </header>
           <section id="screen-calibration-choose-view" class="screen-calibration-view" aria-label="Choose country and coin">
-            <p>Pick a coin you have with you. Selection circles show relative coin sizes only; they are not physically scaled.</p>
-            <div>
-              <h3>BIS 2025 five most-traded currencies</h3>
-              <div id="screen-calibration-shortcuts" class="screen-calibration-shortcuts"></div>
+            <div id="screen-calibration-directory" class="screen-calibration-directory">
+              <p>Pick a coin you have with you. Coin diagrams show relative outer sizes only; they are not physically scaled. For a non-round coin, use its furthest outer edges.</p>
+              <div>
+                <h3>BIS 2025 ten most-traded currencies</h3>
+                <div id="screen-calibration-shortcuts" class="screen-calibration-shortcuts"></div>
+              </div>
+              <label class="screen-calibration-search">Search countries and currencies
+                <input id="screen-calibration-country-search" type="search" autocomplete="off" placeholder="Type a country, currency name, or code">
+              </label>
+              <div id="screen-calibration-country-grid" class="screen-calibration-country-grid" role="group" aria-label="Countries and currencies"></div>
             </div>
-            <label class="screen-calibration-search">Search countries
-              <input id="screen-calibration-country-search" type="search" autocomplete="off" placeholder="Type a country name or currency">
-            </label>
-            <div id="screen-calibration-country-grid" class="screen-calibration-country-grid" role="group" aria-label="Countries"></div>
             <section id="screen-calibration-coin-picker" class="screen-calibration-coin-picker" hidden aria-labelledby="screen-calibration-currency-title">
-              <button id="screen-calibration-country-back" type="button" class="text-button">← All countries</button>
+              <button id="screen-calibration-country-back" type="button" class="text-button">← Countries and currencies</button>
               <h3 id="screen-calibration-currency-title"></h3>
               <p id="screen-calibration-currency-description"></p>
+              <label id="screen-calibration-country-select-field" class="screen-calibration-country-select" hidden>Country
+                <select id="screen-calibration-country-select"></select>
+              </label>
               <div id="screen-calibration-coin-grid" class="screen-calibration-coin-grid"></div>
             </section>
           </section>
@@ -626,6 +631,6 @@
     </main>
 
     <script src="./vendor/vdoninja/1.5.5/vdoninja-sdk.min.js"></script>
-    <script type="module" src="./src/app.js?v=screen-calibration-v2"></script>
+    <script type="module" src="./src/app.js?v=screen-calibration-v3"></script>
   </body>
 </html>

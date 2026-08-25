@@ -248,6 +248,7 @@ const elements = {
   screenCalibrationStep: document.querySelector("#screen-calibration-step"),
   screenCalibrationChooseView: document.querySelector("#screen-calibration-choose-view"),
   screenCalibrationDrawView: document.querySelector("#screen-calibration-draw-view"),
+  screenCalibrationDirectory: document.querySelector("#screen-calibration-directory"),
   screenCalibrationShortcuts: document.querySelector("#screen-calibration-shortcuts"),
   screenCalibrationCountrySearch: document.querySelector("#screen-calibration-country-search"),
   screenCalibrationCountryGrid: document.querySelector("#screen-calibration-country-grid"),
@@ -255,6 +256,8 @@ const elements = {
   screenCalibrationCountryBack: document.querySelector("#screen-calibration-country-back"),
   screenCalibrationCurrencyTitle: document.querySelector("#screen-calibration-currency-title"),
   screenCalibrationCurrencyDescription: document.querySelector("#screen-calibration-currency-description"),
+  screenCalibrationCountrySelectField: document.querySelector("#screen-calibration-country-select-field"),
+  screenCalibrationCountrySelect: document.querySelector("#screen-calibration-country-select"),
   screenCalibrationCoinGrid: document.querySelector("#screen-calibration-coin-grid"),
   screenCalibrationCanvas: document.querySelector("#screen-calibration-canvas"),
   screenCalibrationDrawSurface: document.querySelector("#screen-calibration-draw-surface"),
@@ -430,6 +433,7 @@ const screenCalibrationRun = {
   active: false,
   ownsFullscreen: false,
   step: "choose",
+  currencyCode: "",
   countryCode: "",
   coinId: "",
   square: undefined,
@@ -2324,6 +2328,89 @@ function flagEmoji(code) {
   return [...code].map((letter) => String.fromCodePoint(127397 + letter.charCodeAt(0))).join("");
 }
 
+const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
+
+function calibrationSvgIcon(className) {
+  const svg = document.createElementNS(SVG_NAMESPACE, "svg");
+  svg.setAttribute("viewBox", "0 0 48 36");
+  svg.setAttribute("aria-hidden", "true");
+  svg.setAttribute("focusable", "false");
+  svg.classList.add(className);
+  return svg;
+}
+
+function createCountryFlagSvg(countryCode) {
+  const svg = calibrationSvgIcon("screen-calibration-flag-svg");
+  const hue = currencyIconHue(countryCode);
+  svg.style.setProperty("--country-hue", String(hue));
+  for (let index = 0; index < 3; index += 1) {
+    const band = document.createElementNS(SVG_NAMESPACE, "rect");
+    band.setAttribute("x", "1");
+    band.setAttribute("y", String(1 + index * 11.33));
+    band.setAttribute("width", "46");
+    band.setAttribute("height", "11.5");
+    band.setAttribute("class", `screen-calibration-country-band band-${index + 1}`);
+    svg.append(band);
+  }
+  const border = document.createElementNS(SVG_NAMESPACE, "rect");
+  border.setAttribute("x", "1");
+  border.setAttribute("y", "1");
+  border.setAttribute("width", "46");
+  border.setAttribute("height", "34");
+  border.setAttribute("rx", "5");
+  border.setAttribute("class", "screen-calibration-country-border");
+  const glyph = document.createElementNS(SVG_NAMESPACE, "text");
+  glyph.setAttribute("x", "24");
+  glyph.setAttribute("y", "22");
+  glyph.setAttribute("text-anchor", "middle");
+  glyph.setAttribute("class", "screen-calibration-flag-glyph");
+  glyph.textContent = countryCode;
+  svg.append(border, glyph);
+  return svg;
+}
+
+function currencyIconHue(currencyCode) {
+  return [...currencyCode].reduce((value, character) => value * 31 + character.charCodeAt(0), 17) % 360;
+}
+
+function coinShapeLabel(shape) {
+  return ({
+    round: "round",
+    "spanish-flower": "Spanish-flower edge",
+    scalloped: "scalloped edge",
+    heptagonal: "seven-sided",
+    hendecagonal: "eleven-sided",
+    dodecagonal: "twelve-sided",
+    tridecagonal: "thirteen-sided",
+  })[shape] ?? shape;
+}
+
+function createCurrencySvg(currency) {
+  const svg = calibrationSvgIcon("screen-calibration-currency-svg");
+  const hue = currencyIconHue(currency.code);
+  svg.style.setProperty("--currency-hue", String(hue));
+  const background = document.createElementNS(SVG_NAMESPACE, "rect");
+  background.setAttribute("x", "1");
+  background.setAttribute("y", "1");
+  background.setAttribute("width", "46");
+  background.setAttribute("height", "34");
+  background.setAttribute("rx", "7");
+  background.setAttribute("class", "screen-calibration-currency-background");
+  const ring = document.createElementNS(SVG_NAMESPACE, "circle");
+  ring.setAttribute("cx", "24");
+  ring.setAttribute("cy", "18");
+  ring.setAttribute("r", "12");
+  ring.setAttribute("class", "screen-calibration-currency-ring");
+  const symbol = document.createElementNS(SVG_NAMESPACE, "text");
+  symbol.setAttribute("x", "24");
+  symbol.setAttribute("y", "22");
+  symbol.setAttribute("text-anchor", "middle");
+  symbol.setAttribute("class", "screen-calibration-currency-symbol");
+  symbol.textContent = currency.symbol.length <= 3 ? currency.symbol : currency.code;
+  svg.append(background, ring, symbol);
+  return svg;
+}
+
 function screenCalibrationCanvasBounds() {
   const rect = elements.screenCalibrationCanvas.getBoundingClientRect();
   return { width: rect.width, height: rect.height };
@@ -2382,13 +2469,11 @@ function renderCountryGrid(query = "") {
     button.type = "button";
     button.className = "screen-calibration-country";
     button.dataset.countryCode = country.code;
-    const flag = document.createElement("span");
-    flag.className = "screen-calibration-flag";
-    flag.setAttribute("aria-hidden", "true");
-    flag.textContent = flagEmoji(country.code);
+    const flag = createCountryFlagSvg(country.code);
+    const currencyIcon = createCurrencySvg(currencyByCode(country.currencyCode));
     const label = document.createElement("span");
     label.textContent = `${country.name} · ${country.currencyCode}`;
-    button.append(flag, label);
+    button.append(flag, currencyIcon, label);
     elements.screenCalibrationCountryGrid.append(button);
   }
   if (!matches.length) elements.screenCalibrationCountryGrid.textContent = "No matching countries.";
@@ -2396,13 +2481,33 @@ function renderCountryGrid(query = "") {
 
 function showCalibrationCurrency(currencyCode, countryCode = "") {
   const currency = currencyByCode(currencyCode);
-  const country = countryByCode(countryCode) ?? currency?.countries[0];
-  if (!currency || !country) return;
-  screenCalibrationRun.countryCode = country.code;
-  elements.screenCalibrationCountryGrid.hidden = true;
+  const country = countryByCode(countryCode);
+  if (!currency || (country && country.currencyCode !== currency.code)) return;
+  const selectedCountry = country ?? (currency.countries.length === 1 ? currency.countries[0] : undefined);
+  screenCalibrationRun.currencyCode = currency.code;
+  screenCalibrationRun.countryCode = selectedCountry?.code ?? "";
+  elements.screenCalibrationDirectory.hidden = true;
   elements.screenCalibrationCoinPicker.hidden = false;
-  elements.screenCalibrationCurrencyTitle.textContent = `${flagEmoji(country.code)} ${country.name} · ${currency.symbol} ${currency.name}`;
-  elements.screenCalibrationCurrencyDescription.textContent = "Choose the undamaged standard circulating coin you will place on the screen.";
+  elements.screenCalibrationCurrencyTitle.replaceChildren(createCurrencySvg(currency), document.createTextNode(`${currency.code} · ${currency.name}`));
+  elements.screenCalibrationCountrySelect.replaceChildren();
+  if (currency.countries.length > 1) {
+    const placeholder = document.createElement("option");
+    placeholder.value = "";
+    placeholder.textContent = "Choose the country where the participant is located";
+    elements.screenCalibrationCountrySelect.append(placeholder);
+  }
+  for (const candidate of currency.countries) {
+    const option = document.createElement("option");
+    option.value = candidate.code;
+    option.textContent = `${flagEmoji(candidate.code)} ${candidate.name}`;
+    option.selected = candidate.code === screenCalibrationRun.countryCode;
+    elements.screenCalibrationCountrySelect.append(option);
+  }
+  elements.screenCalibrationCountrySelectField.hidden = currency.countries.length === 1;
+  elements.screenCalibrationCountrySelect.value = screenCalibrationRun.countryCode;
+  elements.screenCalibrationCurrencyDescription.textContent = selectedCountry
+    ? `${selectedCountry.name} selected. Choose the undamaged standard circulating coin you will place on the screen. For a non-round coin, fit its furthest outer edges.`
+    : "Choose the participant country from the compact list, then choose an undamaged standard circulating coin. Non-round sizes use the official maximum outer span.";
   elements.screenCalibrationCoinGrid.replaceChildren();
   const diameters = currency.coins.map(({ diameterMm }) => diameterMm);
   const minimum = Math.min(...diameters);
@@ -2412,13 +2517,16 @@ function showCalibrationCurrency(currencyCode, countryCode = "") {
     button.type = "button";
     button.className = "screen-calibration-coin";
     button.dataset.coinId = coin.id;
+    button.dataset.coinShape = coin.shape;
+    button.disabled = !screenCalibrationRun.countryCode;
+    button.style.setProperty("--currency-hue", String(currencyIconHue(currency.code)));
     const relative = maximum === minimum ? 4.5 : 3.6 + ((coin.diameterMm - minimum) / (maximum - minimum)) * 1.8;
     button.style.setProperty("--coin-button-size", `${relative}rem`);
-    button.title = `${coin.denomination}, ${coin.diameterMm} mm`;
+    button.title = `${coin.denomination}, ${coin.diameterMm} mm ${coin.shape === "round" ? "diameter" : "maximum outer span"}, ${coinShapeLabel(coin.shape)}`;
     const label = document.createElement("strong");
     label.textContent = coin.label;
     const size = document.createElement("small");
-    size.textContent = `${coin.diameterMm} mm`;
+    size.textContent = `${coin.diameterMm} mm${coin.shape === "round" ? "" : " outer"}`;
     button.append(label, size);
     elements.screenCalibrationCoinGrid.append(button);
   }
@@ -2426,10 +2534,11 @@ function showCalibrationCurrency(currencyCode, countryCode = "") {
 
 function chooseCalibrationCoin(coinId) {
   const coin = coinReferenceById(coinId);
-  if (!coin) return;
+  if (!coin || !screenCalibrationRun.countryCode || coin.currency !== screenCalibrationRun.currencyCode) return;
   screenCalibrationRun.coinId = coin.id;
   screenCalibrationRun.square = undefined;
-  elements.screenCalibrationSelectedCoin.replaceChildren(document.createTextNode(`${coin.label} · ${coin.diameterMm} mm · ${coin.authority} · `));
+  const measuredAs = coin.shape === "round" ? "diameter" : `maximum outer span · ${coinShapeLabel(coin.shape)}`;
+  elements.screenCalibrationSelectedCoin.replaceChildren(document.createTextNode(`${coin.label} · ${coin.diameterMm} mm ${measuredAs} · ${coin.authority} · `));
   const source = document.createElement("a");
   source.href = coin.sourceUrl;
   source.target = "_blank";
@@ -2467,6 +2576,7 @@ async function beginScreenCalibration() {
     return;
   }
   screenCalibrationRun.active = true;
+  screenCalibrationRun.currencyCode = "";
   screenCalibrationRun.countryCode = "";
   screenCalibrationRun.coinId = "";
   screenCalibrationRun.square = undefined;
@@ -2474,6 +2584,7 @@ async function beginScreenCalibration() {
   elements.screenCalibrationLayer.hidden = false;
   document.body.classList.add("is-screen-calibrating");
   elements.screenCalibrationCountrySearch.value = "";
+  elements.screenCalibrationDirectory.hidden = false;
   elements.screenCalibrationCountryGrid.hidden = false;
   elements.screenCalibrationCoinPicker.hidden = true;
   elements.screenCalibrationError.hidden = true;
@@ -2520,10 +2631,10 @@ function initializeScreenCalibrationUi() {
     button.className = "screen-calibration-shortcut";
     button.dataset.currencyCode = currency.code;
     const code = document.createElement("strong");
-    code.textContent = `${currency.symbol} ${currency.code}`;
+    code.textContent = currency.symbol === currency.code ? currency.code : `${currency.symbol} ${currency.code}`;
     const name = document.createElement("span");
     name.textContent = currency.name;
-    button.append(code, name);
+    button.append(createCurrencySvg(currency), code, name);
     elements.screenCalibrationShortcuts.append(button);
   }
   renderCountryGrid();
@@ -2591,6 +2702,9 @@ function redrawCalibrationSquare() {
 function chooseAnotherCalibrationCoin() {
   screenCalibrationRun.square = undefined;
   screenCalibrationRun.coinId = "";
+  screenCalibrationRun.currencyCode = "";
+  screenCalibrationRun.countryCode = "";
+  elements.screenCalibrationDirectory.hidden = false;
   elements.screenCalibrationCountryGrid.hidden = false;
   elements.screenCalibrationCoinPicker.hidden = true;
   setScreenCalibrationStep("choose");
@@ -3307,15 +3421,7 @@ function initializeEvents() {
     const button = event.target.closest("[data-currency-code]");
     const currency = button && currencyByCode(button.dataset.currencyCode);
     if (!currency) return;
-    if (currency.countries.length === 1) showCalibrationCurrency(currency.code, currency.countries[0].code);
-    else {
-      elements.screenCalibrationCountrySearch.value = currency.code;
-      elements.screenCalibrationCoinPicker.hidden = true;
-      elements.screenCalibrationCountryGrid.hidden = false;
-      renderCountryGrid(currency.code);
-      elements.screenCalibrationCountrySearch.focus();
-      announce(`Choose a country that uses ${currency.name}.`);
-    }
+    showCalibrationCurrency(currency.code, currency.countries.length === 1 ? currency.countries[0].code : "");
   });
   elements.screenCalibrationCountrySearch.addEventListener("input", () => renderCountryGrid(elements.screenCalibrationCountrySearch.value));
   elements.screenCalibrationCountryGrid.addEventListener("click", (event) => {
@@ -3325,8 +3431,16 @@ function initializeEvents() {
   });
   elements.screenCalibrationCountryBack.addEventListener("click", () => {
     elements.screenCalibrationCoinPicker.hidden = true;
+    elements.screenCalibrationDirectory.hidden = false;
     elements.screenCalibrationCountryGrid.hidden = false;
     elements.screenCalibrationCountrySearch.focus();
+  });
+  elements.screenCalibrationCountrySelect.addEventListener("change", () => {
+    const country = countryByCode(elements.screenCalibrationCountrySelect.value);
+    const currency = currencyByCode(screenCalibrationRun.currencyCode);
+    if (!country || !currency || country.currencyCode !== currency.code) return;
+    showCalibrationCurrency(currency.code, country.code);
+    elements.screenCalibrationCountrySelect.focus();
   });
   elements.screenCalibrationCoinGrid.addEventListener("click", (event) => {
     const button = event.target.closest("[data-coin-id]");

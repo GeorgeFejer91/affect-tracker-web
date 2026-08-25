@@ -28,16 +28,21 @@ import {
 const display = createDisplaySignature({ screenWidth: 1920, screenHeight: 1080, devicePixelRatio: 1.25, orientation: "landscape-primary" });
 const bounds = { width: 800, height: 600 };
 
-test("country-aware round coin catalog is sourced, shared, and exposes the exact BIS shortcuts", () => {
+test("country-aware circulating coin catalog is sourced, shared, and exposes the exact BIS top ten", () => {
   assert.equal(COIN_CATALOG_VERIFIED_ON, "2026-08-26");
   assert.equal(validateCoinReferenceCatalog(), true);
-  assert.deepEqual(BIS_2025_MOST_TRADED_CURRENCY_CODES, ["USD", "EUR", "JPY", "GBP", "CNY"]);
-  assert.ok(CURRENCY_CATALOG.length >= 31);
-  assert.ok(COUNTRY_CATALOG.length >= 50);
-  assert.ok(COIN_REFERENCE_CATALOG.length >= 150);
+  assert.deepEqual(BIS_2025_MOST_TRADED_CURRENCY_CODES, ["USD", "EUR", "JPY", "GBP", "CNY", "CHF", "AUD", "CAD", "HKD", "SGD"]);
+  assert.ok(CURRENCY_CATALOG.length >= 37);
+  assert.ok(COUNTRY_CATALOG.length >= 61);
+  assert.ok(COIN_REFERENCE_CATALOG.length >= 217);
   assert.equal(coinReferenceById("eur-1").diameterMm, 23.25);
   assert.equal(coinReferenceById("cny-1").diameterMm, 22.25);
-  assert.ok(COIN_REFERENCE_CATALOG.every(({ shape, sourceUrl, verifiedOn }) => shape === "round" && sourceUrl.startsWith("https://") && verifiedOn === COIN_CATALOG_VERIFIED_ON));
+  assert.ok(COIN_REFERENCE_CATALOG.every(({ shape, sourceUrl, verifiedOn }) => shape && sourceUrl.startsWith("https://") && verifiedOn === COIN_CATALOG_VERIFIED_ON));
+  assert.equal(coinReferenceById("eur-20c").shape, "spanish-flower");
+  assert.equal(coinReferenceById("gbp-1").diameterMm, 23.43);
+  assert.equal(coinReferenceById("cad-1").shape, "hendecagonal");
+  assert.equal(coinReferenceById("hkd-2").diameterMm, 28);
+  assert.equal(coinReferenceById("aud-50c").shape, "dodecagonal");
   const germany = COUNTRY_CATALOG.find(({ code }) => code === "DE");
   const france = COUNTRY_CATALOG.find(({ code }) => code === "FR");
   assert.equal(germany.currencyCode, "EUR");
@@ -132,7 +137,9 @@ test("experiment runner contains the compact fullscreen three-step pointer wizar
   assert.doesNotMatch(html, /id="screen-calibration-coin"/);
   assert.doesNotMatch(html, /type="range"[^>]*screen-calibration/);
   assert.match(html, />Calibrate screen</);
-  assert.match(html, /BIS 2025 five most-traded currencies/);
+  assert.match(html, /BIS 2025 ten most-traded currencies/);
+  assert.match(html, /id="screen-calibration-directory"/);
+  assert.match(html, /id="screen-calibration-country-select"/);
   assert.match(html, /id="screen-calibration-layer"[^>]*aria-labelledby=/);
   assert.match(html, /id="screen-calibration-canvas"/);
   assert.match(html, /data-edge="top"/);
@@ -142,7 +149,12 @@ test("experiment runner contains the compact fullscreen three-step pointer wizar
   assert.match(html, />Choose another coin</);
   assert.match(app, /screenCalibrationLayer\.requestFullscreen\(\)/);
   assert.match(app, /setPointerCapture\(event\.pointerId\)/);
+  assert.match(app, /createCountryFlagSvg/);
+  assert.match(app, /createCurrencySvg/);
+  assert.match(app, /screenCalibrationDirectory\.hidden = true/);
+  assert.match(app, /maximum outer span/);
   assert.match(app, /pointercancel/);
   assert.match(css, /touch-action: none/);
+  assert.match(css, /\.screen-calibration-layer \[hidden\] \{ display: none !important; \}/);
   for (const field of ["screen_calibration_protocol", "screen_calibration_version", "screen_calibration_country_code", "screen_calibration_country_name", "screen_calibration_repeatability_percent"]) assert.match(logger, new RegExp(`"${field}"`));
 });

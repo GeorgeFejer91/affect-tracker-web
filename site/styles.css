@@ -174,6 +174,7 @@ button.is-held {
   color: #f7fbff;
   background: #05080b;
 }
+.screen-calibration-layer [hidden] { display: none !important; }
 
 .screen-calibration-overlay {
   display: grid;
@@ -190,18 +191,40 @@ button.is-held {
 .screen-calibration-kicker { color: #8ddfff; font-size: 0.72rem; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; }
 .screen-calibration-step { flex: 0 0 auto; padding: 0.35rem 0.55rem; border: 1px solid #3d829d; border-radius: 999px; color: #a8e8ff; font-size: 0.76rem; font-weight: 700; }
 .screen-calibration-view { display: grid; align-content: start; gap: 1rem; width: min(68rem, 100%); margin: 0 auto; }
+.screen-calibration-directory { display: grid; align-content: start; gap: 1rem; }
 .screen-calibration-shortcuts { display: grid; grid-template-columns: repeat(5, minmax(7rem, 1fr)); gap: 0.65rem; }
-.screen-calibration-shortcut { display: grid; min-height: 4.5rem; place-items: center; gap: 0.15rem; }
+.screen-calibration-shortcut { display: grid; grid-template-columns: 2.75rem minmax(0, 1fr); min-height: 4.9rem; align-items: center; gap: 0.15rem 0.55rem; padding: 0.55rem; text-align: left; }
+.screen-calibration-shortcut .screen-calibration-currency-svg { grid-row: 1 / span 2; }
 .screen-calibration-shortcut strong { font-size: 1.15rem; }
 .screen-calibration-shortcut span { color: #bdd0d9; font-size: 0.7rem; }
 .screen-calibration-search { display: grid; gap: 0.35rem; max-width: 34rem; font-size: 0.8rem; }
 .screen-calibration-search input { width: 100%; }
 .screen-calibration-country-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr)); gap: 0.5rem; max-height: min(46dvh, 30rem); overflow: auto; padding: 0.15rem; }
 .screen-calibration-country { display: flex; min-height: 3.2rem; align-items: center; justify-content: start; gap: 0.55rem; text-align: left; }
-.screen-calibration-flag { font-size: 1.35rem; }
+.screen-calibration-country .screen-calibration-currency-svg { width: 2rem; height: 1.55rem; }
+.screen-calibration-flag-svg,
+.screen-calibration-currency-svg { display: block; flex: 0 0 auto; width: 2.75rem; height: 2.1rem; overflow: visible; }
+.screen-calibration-country-band.band-1 { fill: hsl(var(--country-hue) 68% 38%); }
+.screen-calibration-country-band.band-2 { fill: hsl(calc(var(--country-hue) + 72) 68% 52%); }
+.screen-calibration-country-band.band-3 { fill: hsl(calc(var(--country-hue) + 144) 72% 30%); }
+.screen-calibration-country-border { fill: none; stroke: rgb(255 255 255 / 70%); }
+.screen-calibration-flag-glyph { fill: #fff; paint-order: stroke; stroke: rgb(0 0 0 / 65%); stroke-width: 2px; font-family: ui-sans-serif, system-ui, sans-serif; font-size: 12px; font-weight: 900; letter-spacing: 1px; }
+.screen-calibration-currency-background { fill: hsl(var(--currency-hue) 58% 28%); stroke: hsl(var(--currency-hue) 75% 67%); }
+.screen-calibration-currency-ring { fill: hsl(var(--currency-hue) 58% 18%); stroke: hsl(var(--currency-hue) 82% 78%); stroke-width: 1.5; }
+.screen-calibration-currency-symbol { fill: #fff; font-family: ui-sans-serif, system-ui, sans-serif; font-size: 10px; font-weight: 800; }
 .screen-calibration-coin-picker { display: grid; gap: 0.75rem; }
+.screen-calibration-coin-picker h3 { display: flex; align-items: center; gap: 0.65rem; }
+.screen-calibration-country-select { display: grid; max-width: 30rem; gap: 0.35rem; font-size: 0.8rem; }
+.screen-calibration-country-select select { width: 100%; }
 .screen-calibration-coin-grid { display: flex; flex-wrap: wrap; align-items: end; gap: 1rem; }
-.screen-calibration-coin { display: grid; width: var(--coin-button-size); height: var(--coin-button-size); min-width: 3.5rem; min-height: 3.5rem; place-items: center; padding: 0.35rem; border-radius: 50%; line-height: 1; }
+.screen-calibration-coin { display: grid; width: var(--coin-button-size); height: var(--coin-button-size); min-width: 3.5rem; min-height: 3.5rem; place-items: center; padding: 0.35rem; border-color: hsl(var(--currency-hue) 65% 68%); border-radius: 50%; background: radial-gradient(circle at 35% 30%, hsl(var(--currency-hue) 45% 42%), hsl(var(--currency-hue) 48% 20%)); line-height: 1; }
+.screen-calibration-coin:disabled { filter: grayscale(0.7); opacity: 0.45; }
+.screen-calibration-coin[data-coin-shape="heptagonal"] { clip-path: polygon(50% 0, 89% 19%, 100% 61%, 72% 95%, 28% 95%, 0 61%, 11% 19%); }
+.screen-calibration-coin[data-coin-shape="hendecagonal"] { clip-path: polygon(50% 0, 77% 8%, 96% 29%, 99% 57%, 85% 83%, 64% 98%, 36% 98%, 15% 83%, 1% 57%, 4% 29%, 23% 8%); }
+.screen-calibration-coin[data-coin-shape="dodecagonal"] { clip-path: polygon(37% 0, 63% 0, 87% 13%, 100% 37%, 100% 63%, 87% 87%, 63% 100%, 37% 100%, 13% 87%, 0 63%, 0 37%, 13% 13%); }
+.screen-calibration-coin[data-coin-shape="tridecagonal"] { clip-path: polygon(50% 0, 73% 6%, 91% 21%, 100% 44%, 97% 68%, 82% 88%, 62% 99%, 38% 99%, 18% 88%, 3% 68%, 0 44%, 9% 21%, 27% 6%); }
+.screen-calibration-coin[data-coin-shape="scalloped"],
+.screen-calibration-coin[data-coin-shape="spanish-flower"] { border-radius: 36%; }
 .screen-calibration-coin small { font-size: 0.58rem; }
 .screen-calibration-draw-view { grid-template-rows: auto auto minmax(16rem, 1fr) auto auto auto; width: 100%; min-height: 0; text-align: center; }
 .screen-calibration-selected-coin { color: #b9e9fa; }
