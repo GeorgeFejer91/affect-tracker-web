@@ -2,9 +2,11 @@
 
 ## Decision
 
-Commit `5b60e3e` is deployed and passes the complete automated suite plus attended desktop direct-path and forced-TURN scheduler soaks. Commit `ac10c62` supplies the preceding foreground-loss/recovery run, and commit `b66aa1d` supplies the preceding transport-engine discovery, loss/recovery, foreground-scheduling, and backpressure preflights; those results remain useful architectural evidence but are not relabelled as exact-commit receipts for `5b60e3e`. The data-only transport is suitable for continued headset testing, but the current commit is **not yet fully physically qualified for research use**: Quest USB transport authorization was unavailable before a fresh immersive direct run and a forced-TURN run could be repeated on the headset.
+Commit `dd43646` is the current qualification candidate. It passes the complete automated suite and fresh attended desktop Chrome direct-path, forced-TURN, high-change backpressure, explicit source-reselection, foreground-loss, and 130 Hz synthetic-ECG checks. It also adds one bounded, same-gesture full Polar stream reset when the H10 acknowledges startup but sends no ECG packet, and makes Stop synchronously quiesce the publisher before signaling teardown completes. Commit `5b60e3e` supplies the preceding two-minute direct and forced-TURN scheduler soaks; commits `ac10c62` and `b66aa1d` supply earlier foreground and transport-engine evidence. Historical results are not relabelled as exact-commit receipts.
 
-An earlier physical direct-path receipt on commit `8d8c813` remains useful evidence because the subsequent runtime changes added explicit forced-TURN qualification, foreground lifecycle/recovery, ideal-deadline sender scheduling, and cache revisioning without changing the wire codec. It is not treated as a receipt for `5b60e3e` or for a Quest relay route.
+The data-only transport is suitable for continued headset testing, but `dd43646` is **not yet fully physically qualified for research use**. One Quest was detected during this follow-up but ADB remained unauthorized, so no current-build immersive direct or forced-TURN run could be executed. The H10 had been removed, so the new browser recovery path was verified with deterministic/mock hardware contracts and synthetic ECG, not a worn sensor.
+
+An earlier physical direct-path receipt on commit `8d8c813` remains useful evidence because the subsequent runtime changes added explicit forced-TURN qualification, foreground lifecycle/recovery, ideal-deadline sender scheduling, teardown hardening, and cache revisioning without changing the wire codec. It is not treated as a receipt for `dd43646` or for a Quest relay route.
 
 ## Test subjects
 
@@ -15,7 +17,7 @@ An earlier physical direct-path receipt on commit `8d8c813` remains useful evide
 
 ## Automated gate
 
-`node --test` passed 164 of 164 tests on `5b60e3e`. Coverage includes the codec, finite/clamp validation, unsigned sequence wraparound, ideal-deadline scheduling under slightly early animation frames, the long-run 60 Hz cap, 100 ms heartbeat, newest-state backpressure, discovery, switching, teardown, two-second staleness grace, three-frame recovery, WebXR ownership, 130 Hz replay fixture, local SDK loading, foreground-helper warning/recovery surfaces, and the forced-TURN option. The vendored SDK/source/license hashes also passed. Both the Pages test/deploy workflow and the complete web/desktop plus three-platform Rust matrix finished successfully for the exact commit.
+`node --test` passed 166 of 166 tests on `dd43646`. Coverage includes the codec, finite/clamp validation, unsigned sequence wraparound, ideal-deadline scheduling under slightly early animation frames, the long-run 60 Hz cap, 100 ms heartbeat, newest-state backpressure, discovery, switching, delayed-signaling teardown quiescence, two-second staleness grace, three-frame recovery, WebXR ownership, 130 Hz replay fixture, the one-chooser/two-setup Polar recovery path, local SDK loading, foreground-helper warning/recovery surfaces, and the forced-TURN option. The vendored SDK/source/license hashes also passed. CI and deployment status are recorded after publishing rather than inferred from local success.
 
 ## Preceding deployed desktop transport preflight (`b66aa1d`)
 
@@ -66,6 +68,35 @@ The direct run's retained maximum-gap field included an earlier deliberate foreg
 
 The GitHub Pages workflow deployed the exact commit successfully. A fresh public Chrome load returned cache revision `remote-8`, loaded the VDO SDK and app script locally, exposed the broadcast control, remained at `Broadcast off`, and made no connection on page load.
 
+## Current-build reliability follow-up (`dd43646`)
+
+This follow-up exercised the exact `remote-11` browser modules in attended Chrome 151 before publication. The deterministic 130 Hz ECG replay stayed on the normal metric/mapping/smoothing path; for the highest-change forced-TURN interval, visible 2D-grid movement deliberately kept both final coordinates changing so the measurement represented the 60 Hz wire ceiling rather than the intentional 100 ms unchanged-state heartbeat.
+
+| Case | Stable interval/result | Route and RTT | Receiver timing and stability |
+| --- | --- | --- | --- |
+| Direct changing-state check | 45.082 s; 2,694 new frames | Independently reported Direct P2P; ending RTT 1 ms | 59.76 frames/s; rolling p95 18 ms; retained maximum 65 ms; 0 loss warnings |
+| Forced TURN changing-state stress | 20.026 s; 1,175 new frames | Independently reported TURN relay; interval RTT 34 ms | 58.67 frames/s; rolling p95 19 ms; 0 loss warnings |
+| Forced TURN second checkpoint | 1,810 cumulative frames | TURN relay; RTT 36 ms | Rolling p95 20 ms; retained maximum 324 ms; 0 loss warnings |
+| Forced TURN steady mapped input | Final coordinates eventually unchanged | TURN relay; RTT 36–39 ms | Cadence intentionally fell toward the 100 ms heartbeat and rolling p95 approached 125 ms; this is protocol behavior, not measured relay latency |
+| Latest-state backpressure | Sender reported 206 discarded offers while values continued changing | TURN relay readback retained | Receiver stayed live with no loss warning; no obsolete queue was replayed |
+
+The ordinary-background receiver diagnostic found an important limit. When the receiving tab was background-controlled and the source stopped, visible stale/closed presentation was delayed by approximately 9.8–11.2 seconds, and already dispatched data-channel tasks continued appearing at about 10 frames/s. A screen wake lock does not exempt an ordinary hidden tab from browser scheduling. Because the 12-byte protocol intentionally has no timestamp, the receiver cannot distinguish an old browser-queued packet from a newly delivered packet. Adding a coordinate delay buffer would increase latency without fixing that scheduler ownership problem.
+
+The supported foreground check left the receiver visible. After Stop, `REMOTE • SIGNAL LOST — HOLDING` was visible by the 3.127-second observation checkpoint; that duration includes a fixed 2.5-second wait, approximately 0.2 seconds of tab switching, and screen-capture overhead, so it is a bound on the observed checkpoint rather than an exact stale-transition measurement. The final coordinates remained held and did not fall through to controller or Polar input. The new teardown regression independently proves that Stop enters `stopping`, cancels heartbeat/change scheduling, closes the coordinate channel, clears public state, and emits no further packet while a deliberately delayed SDK disconnect remains pending.
+
+Restarting the broadcaster deliberately produced a new anonymous source ID. The stale receiver did not auto-switch; it exposed the new large tap target, and an explicit selection returned it to live TURN relay at 33 ms RTT without typing. This validates the no-surprise source-ownership rule, but it is not the same as same-source channel recovery; that path remains covered by unit/injected tests and still requires a current physical immersive receipt.
+
+The browser-side H10 recovery change was also checked without claiming physical ECG. A synthetic session displayed live 130 Hz ECG and advancing samples without console errors. Mocked Web Bluetooth then proved one chooser invocation, two GATT/PMD setups, complete teardown between attempts, and successful live state when the first acknowledged setup produced no packet. Automatic page-load or range-loss reconnection remains prohibited. A worn-H10 repeat is still mandatory.
+
+Captured receipts:
+
+- [Synthetic 130 Hz ECG replay](./evidence/remote-flubber-2026-08-25/synthetic-replay-live.png)
+- [Direct P2P route and 18 ms rolling p95](./evidence/remote-flubber-2026-08-25/direct-route.png)
+- [Forced-TURN changing-state stress](./evidence/remote-flubber-2026-08-25/turn-live-stress.png)
+- [Sender TURN route and latest-state backpressure](./evidence/remote-flubber-2026-08-25/sender-backpressure-route.png)
+- [Foreground loss holding the final coordinates](./evidence/remote-flubber-2026-08-25/foreground-loss-hold.png)
+- [Explicit source reselection and recovery](./evidence/remote-flubber-2026-08-25/explicit-source-reselection.png)
+
 ## Earlier physical Quest direct receipt
 
 The attended direct-path run on `8d8c813` used the same 130 Hz replay-to-final-coordinate path and produced:
@@ -84,14 +115,15 @@ The wire deliberately carries no timestamp, so one-way motion-to-photon latency 
 
 ## Remaining physical gate
 
-Repeat on deployed `5b60e3e` after the Quest reconnects and USB debugging is authorized:
+Repeat on deployed `dd43646` after the Quest reconnects and USB debugging is authorized:
 
 1. Start deterministic replay and one desktop publisher.
 2. Connect Meta Quest Browser, enter immersive WebXR, and retain at least two minutes of direct-path streaming.
 3. Record route, RTT, frame/gap diagnostics, stale transitions, backpressure drops, and XR visibility.
 4. Repeat with `?remote-force-turn=1` on both endpoints and require independent `TURN relay` readback.
-5. Repeat source loss/recovery while immersed and confirm the in-world hold warning and automatic recovery.
+5. Repeat same-source loss/recovery while immersed and confirm the in-world hold warning, held coordinates, and automatic three-frame recovery without flapping.
+6. With a worn H10 and no competing Polar application or tab, repeat connect, the acknowledged-but-silent setup recovery case where reproducible, at least two minutes of live ECG, explicit disconnect, and reconnect.
 
 ## Cleanup
 
-All public receiver and broadcaster sessions used for the current preflight, foreground-recovery follow-up, and scheduler soaks were stopped, and the deterministic replay was disconnected. The isolated run-owned Chrome process from the earlier preflight was terminated after an injected lifecycle state left one sender UI unresponsive; its debug port closed, the temporary local server was stopped, and the user's normal Chrome process remained running. The headset appeared only as unauthorized, so no headset command was sent and no ADB forward was created. Raw screenshots were not committed.
+All public receivers and broadcasters used for the direct, TURN, foreground-loss, and reselection checks were explicitly stopped; synthetic replay was disconnected; controlled test tabs were closed; and the user's normal Chrome process remained running. The exact local Python server process was verified before stopping, and port 4173 was verified closed. The temporary Python GUI-control dependency directory was removed. The headset appeared only as unauthorized, so no headset command or browser launch was sent and no ADB forward was created. Six privacy-safe diagnostic screenshots were committed under `for-ai/evidence/remote-flubber-2026-08-25/`; no physiology or Bluetooth identifier appears in them.
