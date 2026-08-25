@@ -233,6 +233,12 @@ test("experimental page is local-first and wires the selectable WebXR study libr
   assert.match(runtime, /method: "POST"/);
 });
 
+test("WebXR Flubber canvas preserves the canonical SVG vertical orientation", () => {
+  assert.match(runtime, /context\.scale\(165, 165\)/);
+  assert.doesNotMatch(runtime, /context\.scale\(165, -165\)/);
+  assert.match(runtime, /UNPACK_FLIP_Y_WEBGL, true\)[\s\S]*flubberCanvas/);
+});
+
 test("web and APK launchers expose the hosted experimental WebXR page", () => {
   assert.match(index, /href="\.\/webxr\.html"/);
   assert.match(launcher, /WEBXR_STUDY_URL = "https:\/\/GeorgeFejer91\.github\.io\/affect-tracker-web\/webxr\.html"/);

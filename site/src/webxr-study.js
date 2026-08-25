@@ -1035,7 +1035,7 @@ function createRenderer(canvas, video) {
     }
     context.save();
     context.translate(FLUBBER_CANVAS_WIDTH / 2, 238);
-    context.scale(165, -165);
+    context.scale(165, 165);
     const path = new Path2D(rendered.path);
     context.fillStyle = rendered.color;
     context.shadowColor = rendered.color;
