@@ -2,9 +2,9 @@
 
 ## Decision
 
-Commit `ac10c62` is deployed and passes the complete automated suite plus an attended desktop direct-path foreground-loss/recovery run. Commit `b66aa1d` supplies the preceding exact transport-engine direct/relay, discovery, loss/recovery, foreground-scheduling, and backpressure preflights; those results remain useful architectural evidence but are not relabelled as exact-commit receipts for `ac10c62`. The data-only transport is suitable for continued headset testing, but the current commit is **not yet fully physically qualified for research use**: Quest USB transport authorization was unavailable before a fresh immersive direct run and a forced-TURN run could be repeated on the headset.
+Commit `5b60e3e` is deployed and passes the complete automated suite plus attended desktop direct-path and forced-TURN scheduler soaks. Commit `ac10c62` supplies the preceding foreground-loss/recovery run, and commit `b66aa1d` supplies the preceding transport-engine discovery, loss/recovery, foreground-scheduling, and backpressure preflights; those results remain useful architectural evidence but are not relabelled as exact-commit receipts for `5b60e3e`. The data-only transport is suitable for continued headset testing, but the current commit is **not yet fully physically qualified for research use**: Quest USB transport authorization was unavailable before a fresh immersive direct run and a forced-TURN run could be repeated on the headset.
 
-An earlier physical direct-path receipt on commit `8d8c813` remains useful evidence because the subsequent runtime changes added explicit forced-TURN qualification, foreground lifecycle/recovery, and cache revisioning without changing the wire codec. It is not treated as a receipt for `ac10c62` or for a Quest relay route.
+An earlier physical direct-path receipt on commit `8d8c813` remains useful evidence because the subsequent runtime changes added explicit forced-TURN qualification, foreground lifecycle/recovery, ideal-deadline sender scheduling, and cache revisioning without changing the wire codec. It is not treated as a receipt for `5b60e3e` or for a Quest relay route.
 
 ## Test subjects
 
@@ -15,7 +15,7 @@ An earlier physical direct-path receipt on commit `8d8c813` remains useful evide
 
 ## Automated gate
 
-`node --test` passed 162 of 162 tests on `ac10c62`. Coverage includes the codec, finite/clamp validation, unsigned sequence wraparound, 60 Hz cap, 100 ms heartbeat, newest-state backpressure, discovery, switching, teardown, two-second staleness grace, three-frame recovery, WebXR ownership, 130 Hz replay fixture, local SDK loading, foreground-helper warning/recovery surfaces, and the forced-TURN option. The vendored SDK/source/license hashes also passed.
+`node --test` passed 164 of 164 tests on `5b60e3e`. Coverage includes the codec, finite/clamp validation, unsigned sequence wraparound, ideal-deadline scheduling under slightly early animation frames, the long-run 60 Hz cap, 100 ms heartbeat, newest-state backpressure, discovery, switching, teardown, two-second staleness grace, three-frame recovery, WebXR ownership, 130 Hz replay fixture, local SDK loading, foreground-helper warning/recovery surfaces, and the forced-TURN option. The vendored SDK/source/license hashes also passed. Both the Pages test/deploy workflow and the complete web/desktop plus three-platform Rust matrix finished successfully for the exact commit.
 
 ## Preceding deployed desktop transport preflight (`b66aa1d`)
 
@@ -51,6 +51,21 @@ An attended Chrome 151 run used the deterministic 130 Hz replay, one publisher, 
 
 These are same-PC transport and lifecycle receipts, not physical Quest latency evidence.
 
+## Sender scheduler latency follow-up (`5b60e3e`)
+
+The prior changed-value limiter measured every animation frame only against the previous send. A browser presenting frames slightly earlier than the nominal 16.67 ms interval could therefore reject one frame and wait until the next, reducing a nominal 60 Hz source toward 30 Hz. Commit `5b60e3e` instead advances an ideal 60 Hz deadline, permits at most 5 ms of bounded early tolerance, enforces at least 11.67 ms between changed-value sends, and preserves the long-run 60 Hz cap. Heartbeats and latest-state backpressure semantics are unchanged.
+
+Fresh attended Chrome 151 runs used the deterministic 130 Hz ECG replay with both axes actively changing through `heart_rate` and `ecg_local_power`, normal final smoothing, and independent VDO diagnostics at both endpoints:
+
+| Case | Stable interval | Effective receive cadence | Route and RTT | Receiver gaps and loss |
+| --- | --- | --- | --- | --- |
+| Direct | 136.160 s; 8,131 received frames | 59.72 frames/s | Direct P2P; 0–1 ms same-host RTT | 18 ms rolling p95; 0 loss warnings |
+| Forced TURN | 137.268 s; 8,027 received frames | 58.48 frames/s | Both endpoints independently reported TURN relay; 35–38 ms RTT, ending at 37 ms | 20 ms rolling p95; 69 ms maximum; 0 loss warnings |
+
+The direct run's retained maximum-gap field included an earlier deliberate foreground experiment, so it is intentionally omitted instead of being presented as soak-local evidence. Both endpoint consoles were clean. These are same-PC route, cadence, and stability measurements; they demonstrate that the sender no longer halves slightly-early 60 Hz animation frames, but they are not a physical Quest latency receipt.
+
+The GitHub Pages workflow deployed the exact commit successfully. A fresh public Chrome load returned cache revision `remote-8`, loaded the VDO SDK and app script locally, exposed the broadcast control, remained at `Broadcast off`, and made no connection on page load.
+
 ## Earlier physical Quest direct receipt
 
 The attended direct-path run on `8d8c813` used the same 130 Hz replay-to-final-coordinate path and produced:
@@ -69,7 +84,7 @@ The wire deliberately carries no timestamp, so one-way motion-to-photon latency 
 
 ## Remaining physical gate
 
-Repeat on deployed `ac10c62` after the Quest reconnects and USB debugging is authorized:
+Repeat on deployed `5b60e3e` after the Quest reconnects and USB debugging is authorized:
 
 1. Start deterministic replay and one desktop publisher.
 2. Connect Meta Quest Browser, enter immersive WebXR, and retain at least two minutes of direct-path streaming.
@@ -79,4 +94,4 @@ Repeat on deployed `ac10c62` after the Quest reconnects and USB debugging is aut
 
 ## Cleanup
 
-All public receiver and broadcaster sessions used for the current preflight and foreground-recovery follow-up were stopped, and the deterministic replay was disconnected. The isolated run-owned Chrome process from the earlier preflight was terminated after an injected lifecycle state left one sender UI unresponsive; its debug port closed, and the user's normal Chrome process remained running. The headset later appeared only as unauthorized, so no headset command was sent and no ADB forward was created. Raw screenshots were not committed.
+All public receiver and broadcaster sessions used for the current preflight, foreground-recovery follow-up, and scheduler soaks were stopped, and the deterministic replay was disconnected. The isolated run-owned Chrome process from the earlier preflight was terminated after an injected lifecycle state left one sender UI unresponsive; its debug port closed, the temporary local server was stopped, and the user's normal Chrome process remained running. The headset appeared only as unauthorized, so no headset command was sent and no ADB forward was created. Raw screenshots were not committed.
