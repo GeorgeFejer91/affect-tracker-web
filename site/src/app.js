@@ -25,14 +25,25 @@ import {
   experimentFilename,
   normalizeExperimentConfig,
 } from "./experiment.js";
-import { COIN_REFERENCE_CATALOG, coinReferenceById } from "./coin-reference-catalog.js";
+import {
+  BIS_2025_MOST_TRADED_CURRENCY_CODES,
+  COUNTRY_CATALOG,
+  coinReferenceById,
+  countryByCode,
+  currencyByCode,
+} from "./coin-reference-catalog.js";
 import {
   calibrationRecordContext,
+  calibrationSquareAfterPointerCancellation,
+  createCalibrationSquareFromDrag,
   createScreenCalibration,
   currentDisplaySignature,
   parseScreenCalibration,
+  resizeCalibrationSquareFromCorner,
   SCREEN_CALIBRATION_STORAGE_KEY,
   screenCalibrationStatus,
+  translateCalibrationSquare,
+  translateCalibrationSquareFromEdge,
 } from "./screen-calibration.js";
 import {
   fitTracePoints,
@@ -229,21 +240,36 @@ const elements = {
   experimentPlayerShell: document.querySelector("#experiment-player-shell"),
   experimentVideo: document.querySelector("#experiment-video"),
   youtubePlayer: document.querySelector("#youtube-player"),
-  screenCalibrationCoin: document.querySelector("#screen-calibration-coin"),
-  screenCalibrationCoinDetails: document.querySelector("#screen-calibration-coin-details"),
   screenCalibrationStart: document.querySelector("#screen-calibration-start"),
   screenCalibrationStatus: document.querySelector("#screen-calibration-status"),
   screenCalibrationResult: document.querySelector("#screen-calibration-result"),
   screenCalibrationLayer: document.querySelector("#screen-calibration-layer"),
+  screenCalibrationTitle: document.querySelector("#screen-calibration-overlay-title"),
+  screenCalibrationStep: document.querySelector("#screen-calibration-step"),
+  screenCalibrationChooseView: document.querySelector("#screen-calibration-choose-view"),
+  screenCalibrationDrawView: document.querySelector("#screen-calibration-draw-view"),
+  screenCalibrationShortcuts: document.querySelector("#screen-calibration-shortcuts"),
+  screenCalibrationCountrySearch: document.querySelector("#screen-calibration-country-search"),
+  screenCalibrationCountryGrid: document.querySelector("#screen-calibration-country-grid"),
+  screenCalibrationCoinPicker: document.querySelector("#screen-calibration-coin-picker"),
+  screenCalibrationCountryBack: document.querySelector("#screen-calibration-country-back"),
+  screenCalibrationCurrencyTitle: document.querySelector("#screen-calibration-currency-title"),
+  screenCalibrationCurrencyDescription: document.querySelector("#screen-calibration-currency-description"),
+  screenCalibrationCoinGrid: document.querySelector("#screen-calibration-coin-grid"),
+  screenCalibrationCanvas: document.querySelector("#screen-calibration-canvas"),
+  screenCalibrationDrawSurface: document.querySelector("#screen-calibration-draw-surface"),
   screenCalibrationSquare: document.querySelector("#screen-calibration-square"),
+  screenCalibrationSquareRect: document.querySelector("#screen-calibration-square-rect"),
+  screenCalibrationHandles: document.querySelector("#screen-calibration-handles"),
   screenCalibrationInstructions: document.querySelector("#screen-calibration-instructions"),
-  screenCalibrationSize: document.querySelector("#screen-calibration-size"),
   screenCalibrationSizeOutput: document.querySelector("#screen-calibration-size-output"),
-  screenCalibrationTrialOutput: document.querySelector("#screen-calibration-trial-output"),
-  screenCalibrationDecrease: document.querySelector("#screen-calibration-decrease"),
-  screenCalibrationIncrease: document.querySelector("#screen-calibration-increase"),
+  screenCalibrationSelectedCoin: document.querySelector("#screen-calibration-selected-coin"),
+  screenCalibrationActions: document.querySelector("#screen-calibration-actions"),
   screenCalibrationConfirm: document.querySelector("#screen-calibration-confirm"),
+  screenCalibrationRedraw: document.querySelector("#screen-calibration-redraw"),
+  screenCalibrationChooseAnother: document.querySelector("#screen-calibration-choose-another"),
   screenCalibrationCancel: document.querySelector("#screen-calibration-cancel"),
+  screenCalibrationCancelChoose: document.querySelector("#screen-calibration-cancel-choose"),
   screenCalibrationError: document.querySelector("#screen-calibration-error"),
 };
 
@@ -403,8 +429,11 @@ let savedScreenCalibration = loadSavedScreenCalibration();
 const screenCalibrationRun = {
   active: false,
   ownsFullscreen: false,
-  squareSizeCssPx: 88,
-  measurementsCssPx: [],
+  step: "choose",
+  countryCode: "",
+  coinId: "",
+  square: undefined,
+  pointer: undefined,
 };
 
 function currentScreenCalibrationStatus() {
@@ -2275,25 +2304,15 @@ function readExperimentConfig() {
   });
 }
 
-function renderScreenCalibrationCoin() {
-  const coin = coinReferenceById(elements.screenCalibrationCoin.value) ?? COIN_REFERENCE_CATALOG[0];
-  elements.screenCalibrationCoinDetails.replaceChildren();
-  const description = document.createTextNode(`${coin.denomination} · ${coin.diameterMm.toFixed(2).replace(/\.00$/, "")} mm · ${coin.authority} · `);
-  const source = document.createElement("a");
-  source.href = coin.sourceUrl;
-  source.target = "_blank";
-  source.rel = "noreferrer";
-  source.textContent = "official specification";
-  elements.screenCalibrationCoinDetails.append(description, source);
-}
-
 function renderScreenCalibrationStatus() {
   const status = currentScreenCalibrationStatus();
   elements.screenCalibrationStatus.dataset.state = status.state;
   elements.screenCalibrationStatus.value = status.message;
   if (status.state === "valid") {
     const calibration = status.calibration;
-    elements.screenCalibrationResult.textContent = `${calibration.coin.denomination}: ${calibration.meanCssPx.toFixed(1)} CSS px; fullscreen viewport approximately ${calibration.fullscreenViewport.widthMm.toFixed(0)} × ${calibration.fullscreenViewport.heightMm.toFixed(0)} mm; repeatability ${calibration.repeatabilityPercent.toFixed(1)}%.`;
+    const side = calibration.version === 2 ? calibration.squareSideCssPx : calibration.meanCssPx;
+    const place = calibration.version === 2 ? `${calibration.country.name} · ` : "";
+    elements.screenCalibrationResult.textContent = `${place}${calibration.coin.denomination}: ${side.toFixed(1)} CSS px; fullscreen viewport approximately ${calibration.fullscreenViewport.widthMm.toFixed(0)} × ${calibration.fullscreenViewport.heightMm.toFixed(0)} mm.`;
   } else if (status.state === "stale") {
     elements.screenCalibrationResult.textContent = "The saved result belongs to a different display size, scale, or orientation. Recalibrate before relying on physical-size estimates.";
   } else {
@@ -2301,22 +2320,129 @@ function renderScreenCalibrationStatus() {
   }
 }
 
-function setScreenCalibrationSquareSize(value) {
-  const minimum = Number(elements.screenCalibrationSize.min) || 40;
-  const maximum = Number(elements.screenCalibrationSize.max) || 400;
-  screenCalibrationRun.squareSizeCssPx = Math.round(clamp(Number(value) || minimum, minimum, maximum));
-  elements.screenCalibrationSize.value = String(screenCalibrationRun.squareSizeCssPx);
-  elements.screenCalibrationSquare.style.setProperty("--calibration-square-size", `${screenCalibrationRun.squareSizeCssPx}px`);
-  elements.screenCalibrationSizeOutput.value = `${screenCalibrationRun.squareSizeCssPx} CSS px`;
+function flagEmoji(code) {
+  return [...code].map((letter) => String.fromCodePoint(127397 + letter.charCodeAt(0))).join("");
 }
 
-function updateScreenCalibrationTrial() {
-  const trial = screenCalibrationRun.measurementsCssPx.length + 1;
-  elements.screenCalibrationTrialOutput.value = `Match ${Math.min(trial, 2)} of 2`;
-  elements.screenCalibrationError.hidden = true;
-  elements.screenCalibrationInstructions.textContent = trial === 1
-    ? "Place the selected coin flat over the square. Resize until the coin touches the midpoint of all four sides while the four square corners remain visible."
-    : "Lift and replace the coin, then make a second independent match. This checks the reliability of the physical-size estimate.";
+function screenCalibrationCanvasBounds() {
+  const rect = elements.screenCalibrationCanvas.getBoundingClientRect();
+  return { width: rect.width, height: rect.height };
+}
+
+function calibrationPointerPoint(event) {
+  const rect = elements.screenCalibrationCanvas.getBoundingClientRect();
+  return { x: event.clientX - rect.left, y: event.clientY - rect.top };
+}
+
+function setScreenCalibrationStep(step) {
+  screenCalibrationRun.step = step;
+  const choosing = step === "choose";
+  elements.screenCalibrationChooseView.hidden = !choosing;
+  elements.screenCalibrationDrawView.hidden = choosing;
+  elements.screenCalibrationCancelChoose.hidden = !choosing;
+  elements.screenCalibrationStep.value = choosing ? "Step 1 of 3" : (step === "draw" ? "Step 2 of 3" : "Step 3 of 3");
+  elements.screenCalibrationTitle.textContent = choosing ? "Choose a reference coin" : (step === "draw" ? "Draw a square around the coin" : "Adjust and confirm");
+  elements.screenCalibrationActions.hidden = step !== "adjust";
+  elements.screenCalibrationHandles.hidden = step !== "adjust";
+  elements.screenCalibrationInstructions.textContent = step === "draw"
+    ? "Place the selected coin flat anywhere on the screen with space around it, then drag diagonally around its outer edge."
+    : "Fine-tune the square so its four sides meet the coin's outer edge and its corners remain visible.";
+}
+
+function renderCalibrationSquare() {
+  const square = screenCalibrationRun.square;
+  elements.screenCalibrationSquare.hidden = !square;
+  if (!square) {
+    elements.screenCalibrationSizeOutput.value = "Draw a square";
+    return;
+  }
+  const { x, y, side } = square;
+  for (const [name, value] of Object.entries({ x, y, width: side, height: side })) elements.screenCalibrationSquareRect.setAttribute(name, value);
+  const hit = Math.min(28, Math.max(18, side * 0.2));
+  const edges = { top: [x, y - hit / 2, side, hit], right: [x + side - hit / 2, y, hit, side], bottom: [x, y + side - hit / 2, side, hit], left: [x - hit / 2, y, hit, side] };
+  for (const handle of elements.screenCalibrationHandles.querySelectorAll("[data-edge]")) {
+    const [hx, hy, width, height] = edges[handle.dataset.edge];
+    for (const [name, value] of Object.entries({ x: hx, y: hy, width, height })) handle.setAttribute(name, value);
+  }
+  const corners = { nw: [x, y], ne: [x + side, y], se: [x + side, y + side], sw: [x, y + side] };
+  for (const handle of elements.screenCalibrationHandles.querySelectorAll("[data-corner]")) {
+    const [cx, cy] = corners[handle.dataset.corner];
+    handle.setAttribute("cx", cx);
+    handle.setAttribute("cy", cy);
+  }
+  elements.screenCalibrationSizeOutput.value = `${side.toFixed(1)} CSS px × ${side.toFixed(1)} CSS px`;
+}
+
+function renderCountryGrid(query = "") {
+  const needle = query.trim().toLocaleLowerCase();
+  elements.screenCalibrationCountryGrid.replaceChildren();
+  const matches = COUNTRY_CATALOG.filter((country) => !needle || `${country.name} ${country.currencyCode} ${country.currencyName}`.toLocaleLowerCase().includes(needle));
+  for (const country of matches) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "screen-calibration-country";
+    button.dataset.countryCode = country.code;
+    const flag = document.createElement("span");
+    flag.className = "screen-calibration-flag";
+    flag.setAttribute("aria-hidden", "true");
+    flag.textContent = flagEmoji(country.code);
+    const label = document.createElement("span");
+    label.textContent = `${country.name} · ${country.currencyCode}`;
+    button.append(flag, label);
+    elements.screenCalibrationCountryGrid.append(button);
+  }
+  if (!matches.length) elements.screenCalibrationCountryGrid.textContent = "No matching countries.";
+}
+
+function showCalibrationCurrency(currencyCode, countryCode = "") {
+  const currency = currencyByCode(currencyCode);
+  const country = countryByCode(countryCode) ?? currency?.countries[0];
+  if (!currency || !country) return;
+  screenCalibrationRun.countryCode = country.code;
+  elements.screenCalibrationCountryGrid.hidden = true;
+  elements.screenCalibrationCoinPicker.hidden = false;
+  elements.screenCalibrationCurrencyTitle.textContent = `${flagEmoji(country.code)} ${country.name} · ${currency.symbol} ${currency.name}`;
+  elements.screenCalibrationCurrencyDescription.textContent = "Choose the undamaged standard circulating coin you will place on the screen.";
+  elements.screenCalibrationCoinGrid.replaceChildren();
+  const diameters = currency.coins.map(({ diameterMm }) => diameterMm);
+  const minimum = Math.min(...diameters);
+  const maximum = Math.max(...diameters);
+  for (const coin of currency.coins) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "screen-calibration-coin";
+    button.dataset.coinId = coin.id;
+    const relative = maximum === minimum ? 4.5 : 3.6 + ((coin.diameterMm - minimum) / (maximum - minimum)) * 1.8;
+    button.style.setProperty("--coin-button-size", `${relative}rem`);
+    button.title = `${coin.denomination}, ${coin.diameterMm} mm`;
+    const label = document.createElement("strong");
+    label.textContent = coin.label;
+    const size = document.createElement("small");
+    size.textContent = `${coin.diameterMm} mm`;
+    button.append(label, size);
+    elements.screenCalibrationCoinGrid.append(button);
+  }
+}
+
+function chooseCalibrationCoin(coinId) {
+  const coin = coinReferenceById(coinId);
+  if (!coin) return;
+  screenCalibrationRun.coinId = coin.id;
+  screenCalibrationRun.square = undefined;
+  elements.screenCalibrationSelectedCoin.replaceChildren(document.createTextNode(`${coin.label} · ${coin.diameterMm} mm · ${coin.authority} · `));
+  const source = document.createElement("a");
+  source.href = coin.sourceUrl;
+  source.target = "_blank";
+  source.rel = "noreferrer";
+  source.textContent = "official specification";
+  elements.screenCalibrationSelectedCoin.append(source);
+  setScreenCalibrationStep("draw");
+  renderCalibrationSquare();
+  requestAnimationFrame(() => {
+    const bounds = screenCalibrationCanvasBounds();
+    elements.screenCalibrationCanvas.setAttribute("viewBox", `0 0 ${bounds.width} ${bounds.height}`);
+    elements.screenCalibrationCanvas.focus();
+  });
 }
 
 function endScreenCalibration({ exitFullscreen = true } = {}) {
@@ -2325,7 +2451,8 @@ function endScreenCalibration({ exitFullscreen = true } = {}) {
     && document.fullscreenElement === elements.screenCalibrationLayer;
   screenCalibrationRun.active = false;
   screenCalibrationRun.ownsFullscreen = false;
-  screenCalibrationRun.measurementsCssPx = [];
+  screenCalibrationRun.pointer = undefined;
+  screenCalibrationRun.square = undefined;
   elements.screenCalibrationLayer.hidden = true;
   document.body.classList.remove("is-screen-calibrating");
   if (shouldExit) document.exitFullscreen?.().catch(() => {});
@@ -2339,73 +2466,135 @@ async function beginScreenCalibration() {
     announce("This browser does not permit the fullscreen calibration protocol.");
     return;
   }
-  const coin = coinReferenceById(elements.screenCalibrationCoin.value);
-  if (!coin) return;
   screenCalibrationRun.active = true;
-  screenCalibrationRun.measurementsCssPx = [];
+  screenCalibrationRun.countryCode = "";
+  screenCalibrationRun.coinId = "";
+  screenCalibrationRun.square = undefined;
+  screenCalibrationRun.pointer = undefined;
   elements.screenCalibrationLayer.hidden = false;
   document.body.classList.add("is-screen-calibrating");
-  const maximum = Math.max(80, Math.floor(Math.min(window.innerWidth, window.innerHeight) * 0.65));
-  elements.screenCalibrationSize.max = String(maximum);
-  const previous = savedScreenCalibration?.coin.id === coin.id ? savedScreenCalibration.meanCssPx : undefined;
-  setScreenCalibrationSquareSize(previous ?? coin.diameterMm * 96 / 25.4);
-  updateScreenCalibrationTrial();
+  elements.screenCalibrationCountrySearch.value = "";
+  elements.screenCalibrationCountryGrid.hidden = false;
+  elements.screenCalibrationCoinPicker.hidden = true;
+  elements.screenCalibrationError.hidden = true;
+  renderCountryGrid();
+  setScreenCalibrationStep("choose");
   updateExperimentSourceControls();
   try {
     await elements.screenCalibrationLayer.requestFullscreen();
     screenCalibrationRun.ownsFullscreen = document.fullscreenElement === elements.screenCalibrationLayer;
     if (!screenCalibrationRun.ownsFullscreen) throw new Error("Fullscreen did not start.");
-    const fullscreenMaximum = Math.max(80, Math.floor(Math.min(window.innerWidth, window.innerHeight) * 0.65));
-    elements.screenCalibrationSize.max = String(fullscreenMaximum);
-    setScreenCalibrationSquareSize(screenCalibrationRun.squareSizeCssPx);
-    elements.screenCalibrationSize.focus();
-    announce(`Fullscreen calibration started with ${coin.denomination}.`);
+    elements.screenCalibrationCountrySearch.focus();
+    announce("Fullscreen screen calibration started.");
   } catch {
     endScreenCalibration({ exitFullscreen: false });
     announce("Fullscreen permission is required for screen calibration.");
   }
 }
 
-function confirmScreenCalibrationMatch() {
-  if (!screenCalibrationRun.active || document.fullscreenElement !== elements.screenCalibrationLayer) return;
-  screenCalibrationRun.measurementsCssPx.push(screenCalibrationRun.squareSizeCssPx);
-  if (screenCalibrationRun.measurementsCssPx.length === 1) {
-    setScreenCalibrationSquareSize(screenCalibrationRun.squareSizeCssPx * 0.94);
-    updateScreenCalibrationTrial();
-    announce("First match saved. Lift and replace the coin for the second match.");
-    return;
-  }
+function confirmScreenCalibrationMeasurement() {
+  if (!screenCalibrationRun.active || document.fullscreenElement !== elements.screenCalibrationLayer || !screenCalibrationRun.square) return;
   try {
     savedScreenCalibration = createScreenCalibration({
-      coinId: elements.screenCalibrationCoin.value,
-      measurementsCssPx: screenCalibrationRun.measurementsCssPx,
+      coinId: screenCalibrationRun.coinId,
+      countryCode: screenCalibrationRun.countryCode,
+      squareSideCssPx: screenCalibrationRun.square.side,
       viewportWidthCssPx: window.innerWidth,
       viewportHeightCssPx: window.innerHeight,
       displaySignature: currentDisplaySignature(window),
     });
     localStorage.setItem(SCREEN_CALIBRATION_STORAGE_KEY, JSON.stringify(savedScreenCalibration));
-    const repeatability = savedScreenCalibration.repeatabilityPercent;
     endScreenCalibration();
-    announce(`Screen calibrated. The two matches differ by ${repeatability.toFixed(1)} percent.`);
+    announce("Screen calibration saved in this browser.");
   } catch (error) {
-    screenCalibrationRun.measurementsCssPx = [];
     elements.screenCalibrationError.textContent = error?.message ?? String(error);
     elements.screenCalibrationError.hidden = false;
-    elements.screenCalibrationTrialOutput.value = "Repeat both matches";
-    elements.screenCalibrationInstructions.textContent = "The matches were too different. Lift the coin and repeat both matches carefully.";
   }
 }
 
 function initializeScreenCalibrationUi() {
-  for (const coin of COIN_REFERENCE_CATALOG) {
-    const option = document.createElement("option");
-    option.value = coin.id;
-    option.textContent = `${coin.region} — ${coin.denomination} (${coin.currency}) · ${coin.diameterMm.toFixed(2).replace(/\.00$/, "")} mm`;
-    elements.screenCalibrationCoin.append(option);
+  for (const currencyCode of BIS_2025_MOST_TRADED_CURRENCY_CODES) {
+    const currency = currencyByCode(currencyCode);
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "screen-calibration-shortcut";
+    button.dataset.currencyCode = currency.code;
+    const code = document.createElement("strong");
+    code.textContent = `${currency.symbol} ${currency.code}`;
+    const name = document.createElement("span");
+    name.textContent = currency.name;
+    button.append(code, name);
+    elements.screenCalibrationShortcuts.append(button);
   }
-  elements.screenCalibrationCoin.value = savedScreenCalibration?.coin.id ?? "eur-1";
-  renderScreenCalibrationCoin();
+  renderCountryGrid();
   renderScreenCalibrationStatus();
+}
+
+function beginCalibrationPointer(event) {
+  if (!screenCalibrationRun.active || !event.isPrimary || (event.pointerType === "mouse" && event.button !== 0)) return;
+  const point = calibrationPointerPoint(event);
+  let kind;
+  let edge;
+  let corner;
+  if (screenCalibrationRun.step === "draw" && event.target === elements.screenCalibrationDrawSurface) kind = "draw";
+  if (screenCalibrationRun.step === "adjust") {
+    edge = event.target.dataset?.edge;
+    corner = event.target.dataset?.corner;
+    if (edge) kind = "edge";
+    else if (corner) kind = "corner";
+    else if (event.target === elements.screenCalibrationSquareRect) kind = "move";
+  }
+  if (!kind) return;
+  event.preventDefault();
+  elements.screenCalibrationCanvas.setPointerCapture(event.pointerId);
+  screenCalibrationRun.pointer = { id: event.pointerId, kind, edge, corner, start: point, original: screenCalibrationRun.square };
+  if (kind === "draw") {
+    screenCalibrationRun.square = createCalibrationSquareFromDrag(point, point, screenCalibrationCanvasBounds());
+    renderCalibrationSquare();
+  }
+}
+
+function moveCalibrationPointer(event) {
+  const operation = screenCalibrationRun.pointer;
+  if (!operation || operation.id !== event.pointerId) return;
+  event.preventDefault();
+  const point = calibrationPointerPoint(event);
+  const bounds = screenCalibrationCanvasBounds();
+  if (operation.kind === "draw") screenCalibrationRun.square = createCalibrationSquareFromDrag(operation.start, point, bounds);
+  if (operation.kind === "move") screenCalibrationRun.square = translateCalibrationSquare(operation.original, point.x - operation.start.x, point.y - operation.start.y, bounds);
+  if (operation.kind === "edge") {
+    const delta = operation.edge === "top" || operation.edge === "bottom" ? point.y - operation.start.y : point.x - operation.start.x;
+    screenCalibrationRun.square = translateCalibrationSquareFromEdge(operation.original, operation.edge, delta, bounds);
+  }
+  if (operation.kind === "corner") screenCalibrationRun.square = resizeCalibrationSquareFromCorner(operation.original, operation.corner, point, bounds);
+  renderCalibrationSquare();
+}
+
+function finishCalibrationPointer(event, cancelled = false) {
+  const operation = screenCalibrationRun.pointer;
+  if (!operation || operation.id !== event.pointerId) return;
+  if (cancelled) screenCalibrationRun.square = calibrationSquareAfterPointerCancellation(operation.kind, operation.original);
+  screenCalibrationRun.pointer = undefined;
+  if (elements.screenCalibrationCanvas.hasPointerCapture(event.pointerId)) elements.screenCalibrationCanvas.releasePointerCapture(event.pointerId);
+  if (!cancelled && operation.kind === "draw" && screenCalibrationRun.square) setScreenCalibrationStep("adjust");
+  renderCalibrationSquare();
+}
+
+function redrawCalibrationSquare() {
+  screenCalibrationRun.square = undefined;
+  screenCalibrationRun.pointer = undefined;
+  setScreenCalibrationStep("draw");
+  renderCalibrationSquare();
+  elements.screenCalibrationCanvas.focus();
+}
+
+function chooseAnotherCalibrationCoin() {
+  screenCalibrationRun.square = undefined;
+  screenCalibrationRun.coinId = "";
+  elements.screenCalibrationCountryGrid.hidden = false;
+  elements.screenCalibrationCoinPicker.hidden = true;
+  setScreenCalibrationStep("choose");
+  elements.screenCalibrationCountrySearch.focus();
 }
 
 function updateExperimentSourceControls() {
@@ -2414,7 +2603,6 @@ function updateExperimentSourceControls() {
     element.disabled = !youtube || experiment.phase !== "idle";
   }
   elements.experimentSource.disabled = experiment.phase !== "idle";
-  elements.screenCalibrationCoin.disabled = experiment.phase !== "idle" || screenCalibrationRun.active;
   elements.screenCalibrationStart.disabled = experiment.phase !== "idle" || screenCalibrationRun.active;
   elements.experimentSourceNote.textContent = youtube
     ? "YouTube playback sends the requested video and normal embed metadata to YouTube. Recording remains local. Videos whose owners disable embedding cannot run here."
@@ -2803,7 +2991,14 @@ function initializeEvents() {
     activeTracePointerId = undefined;
     recordPhysicalInput("window", "resize", "viewport", `${window.innerWidth}x${window.innerHeight}`);
     constrainAndRenderWidget();
-    if (!screenCalibrationRun.active) renderScreenCalibrationStatus();
+    if (screenCalibrationRun.active && screenCalibrationRun.step !== "choose") {
+      requestAnimationFrame(() => {
+        const bounds = screenCalibrationCanvasBounds();
+        elements.screenCalibrationCanvas.setAttribute("viewBox", `0 0 ${bounds.width} ${bounds.height}`);
+        if (screenCalibrationRun.square) screenCalibrationRun.square = translateCalibrationSquare(screenCalibrationRun.square, 0, 0, bounds);
+        renderCalibrationSquare();
+      });
+    } else renderScreenCalibrationStatus();
     savePreferences();
   });
   window.addEventListener("blur", () => {
@@ -3107,16 +3302,49 @@ function initializeEvents() {
   elements.exportButton.addEventListener("click", exportLog);
   elements.clearButton.addEventListener("click", clearLog);
   elements.experimentStartButton.addEventListener("click", startExperiment);
-  elements.screenCalibrationCoin.addEventListener("change", renderScreenCalibrationCoin);
   elements.screenCalibrationStart.addEventListener("click", beginScreenCalibration);
-  elements.screenCalibrationSize.addEventListener("input", () => setScreenCalibrationSquareSize(elements.screenCalibrationSize.value));
-  elements.screenCalibrationDecrease.addEventListener("click", () => setScreenCalibrationSquareSize(screenCalibrationRun.squareSizeCssPx - 1));
-  elements.screenCalibrationIncrease.addEventListener("click", () => setScreenCalibrationSquareSize(screenCalibrationRun.squareSizeCssPx + 1));
-  elements.screenCalibrationConfirm.addEventListener("click", confirmScreenCalibrationMatch);
-  elements.screenCalibrationCancel.addEventListener("click", () => {
+  elements.screenCalibrationShortcuts.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-currency-code]");
+    const currency = button && currencyByCode(button.dataset.currencyCode);
+    if (!currency) return;
+    if (currency.countries.length === 1) showCalibrationCurrency(currency.code, currency.countries[0].code);
+    else {
+      elements.screenCalibrationCountrySearch.value = currency.code;
+      elements.screenCalibrationCoinPicker.hidden = true;
+      elements.screenCalibrationCountryGrid.hidden = false;
+      renderCountryGrid(currency.code);
+      elements.screenCalibrationCountrySearch.focus();
+      announce(`Choose a country that uses ${currency.name}.`);
+    }
+  });
+  elements.screenCalibrationCountrySearch.addEventListener("input", () => renderCountryGrid(elements.screenCalibrationCountrySearch.value));
+  elements.screenCalibrationCountryGrid.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-country-code]");
+    const country = button && countryByCode(button.dataset.countryCode);
+    if (country) showCalibrationCurrency(country.currencyCode, country.code);
+  });
+  elements.screenCalibrationCountryBack.addEventListener("click", () => {
+    elements.screenCalibrationCoinPicker.hidden = true;
+    elements.screenCalibrationCountryGrid.hidden = false;
+    elements.screenCalibrationCountrySearch.focus();
+  });
+  elements.screenCalibrationCoinGrid.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-coin-id]");
+    if (button) chooseCalibrationCoin(button.dataset.coinId);
+  });
+  elements.screenCalibrationCanvas.addEventListener("pointerdown", beginCalibrationPointer);
+  elements.screenCalibrationCanvas.addEventListener("pointermove", moveCalibrationPointer);
+  elements.screenCalibrationCanvas.addEventListener("pointerup", (event) => finishCalibrationPointer(event));
+  elements.screenCalibrationCanvas.addEventListener("pointercancel", (event) => finishCalibrationPointer(event, true));
+  elements.screenCalibrationConfirm.addEventListener("click", confirmScreenCalibrationMeasurement);
+  elements.screenCalibrationRedraw.addEventListener("click", redrawCalibrationSquare);
+  elements.screenCalibrationChooseAnother.addEventListener("click", chooseAnotherCalibrationCoin);
+  const cancelScreenCalibration = () => {
     endScreenCalibration();
     announce("Screen calibration cancelled.");
-  });
+  };
+  elements.screenCalibrationCancel.addEventListener("click", cancelScreenCalibration);
+  elements.screenCalibrationCancelChoose.addEventListener("click", cancelScreenCalibration);
   elements.screenCalibrationLayer.addEventListener("keydown", (event) => {
     if (!screenCalibrationRun.active) return;
     if (event.key === "Escape") {
@@ -3126,11 +3354,20 @@ function initializeEvents() {
       announce("Screen calibration cancelled.");
       return;
     }
-    const delta = { ArrowLeft: -1, ArrowDown: -1, ArrowRight: 1, ArrowUp: 1 }[event.key];
-    if (!delta) return;
+    if (screenCalibrationRun.step !== "adjust" || !screenCalibrationRun.square) return;
+    const movement = event.shiftKey ? 10 : 1;
+    const delta = { ArrowLeft: [-movement, 0], ArrowRight: [movement, 0], ArrowUp: [0, -movement], ArrowDown: [0, movement] }[event.key];
+    const resize = event.key === "+" || event.key === "=" ? movement : (event.key === "-" || event.key === "_" ? -movement : 0);
+    if (!delta && !resize) return;
     event.preventDefault();
     event.stopImmediatePropagation();
-    setScreenCalibrationSquareSize(screenCalibrationRun.squareSizeCssPx + delta);
+    const bounds = screenCalibrationCanvasBounds();
+    if (delta) screenCalibrationRun.square = translateCalibrationSquare(screenCalibrationRun.square, delta[0], delta[1], bounds);
+    if (resize) {
+      const target = { x: screenCalibrationRun.square.x + screenCalibrationRun.square.side + resize, y: screenCalibrationRun.square.y + screenCalibrationRun.square.side + resize };
+      screenCalibrationRun.square = resizeCalibrationSquareFromCorner(screenCalibrationRun.square, "se", target, bounds);
+    }
+    renderCalibrationSquare();
   });
   elements.experimentRetryExportButton.addEventListener("click", () => {
     if (!experiment.lastExport) return;
