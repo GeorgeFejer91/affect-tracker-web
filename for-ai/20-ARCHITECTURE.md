@@ -73,6 +73,8 @@ Rust owns authoritative affect state and durable settings. The `monio` raw-input
 
 Do not make the SVG animation loop the source of LSL timestamps. Rendering can stall independently of research sampling.
 
+A transient data-channel close or selected-source departure edge is recorded immediately but does not bypass the receiver's packet-age grace or flash the HUD stale. A repaired channel that supplies a valid frame inside the grace resumes immediate coordinates and rearms the deadline without introducing a coordinate buffer.
+
 ## Tauri boundary
 
 Allowed product-level commands include reading/saving settings, obtaining a snapshot/status, applying a directional action or exact coordinate, reset/pause, and toggling overlay editing/visibility. There is no LSL start/stop command. Validate ranges, lengths, enum values, colors, and input-binding conflicts in Rust.

@@ -760,10 +760,13 @@ export class FlubberReceiver extends FlubberRemoteBase {
     return true;
   }
 
-  checkStale(now = this.now()) {
+  checkStale(
+    now = this.now(),
+    message = `No coordinate update arrived for ${FLUBBER_REMOTE_STALE_MS / 1_000} seconds; holding the last position.`,
+  ) {
     if (this.phase !== "live" || !this.latest) return false;
     if (now - this.latest.receivedAt < FLUBBER_REMOTE_STALE_MS) return false;
-    this.markStale(`No coordinate update arrived for ${FLUBBER_REMOTE_STALE_MS / 1_000} seconds; holding the last position.`);
+    this.markStale(message);
     return true;
   }
 
@@ -782,9 +785,23 @@ export class FlubberReceiver extends FlubberRemoteBase {
     if (!this.selectedStreamId || this.tearingDown) return;
     if (!this.disconnectNotified) {
       this.disconnectNotified = true;
-      this.emitState({ transition: "disconnected", message });
+      // A data channel can close briefly while WebRTC repairs its route. Keep
+      // the same two-second receiver-local grace used for silent packet gaps
+      // instead of flashing the HUD stale immediately. The timer armed by the
+      // latest accepted frame remains authoritative and a returning frame
+      // cancels/re-arms it without adding a coordinate buffer.
+      this.emitState({ transition: "disconnected" });
     }
-    this.markStale(message);
+    if (this.phase === "live" && this.latest && this.staleTimer === undefined) {
+      const ageMs = Math.max(0, this.now() - this.latest.receivedAt);
+      const remainingMs = Math.max(0, FLUBBER_REMOTE_STALE_MS - ageMs);
+      this.staleTimer = this.timeout(() => {
+        this.staleTimer = undefined;
+        this.checkStale(this.now(), message);
+      }, remainingMs);
+    } else if (this.phase !== "live" || !this.latest) {
+      this.markStale(message);
+    }
   }
 
   async refreshQuality() {

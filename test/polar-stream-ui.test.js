@@ -37,8 +37,8 @@ test("Polar assignments stay browser-local and defer to touch tracking", async (
   const webxr = await readSiteFile("src/webxr-study.js");
   const portable = await readSiteFile("src/portable-settings.js");
 
-  assert.match(app, /from "\.\/polar-stream\.js\?v=remote-11"/);
-  assert.match(webxr, /from "\.\/polar-stream\.js\?v=remote-11"/);
+  assert.match(app, /from "\.\/polar-stream\.js\?v=remote-12"/);
+  assert.match(webxr, /from "\.\/polar-stream\.js\?v=remote-12"/);
   assert.match(app, /polarMappings: normalizePolarMappings\(parsed\.polarMappings\)/);
   assert.match(app, /polarMappings: state\.polarMappings/);
   assert.match(app, /function polarAxisDriven[\s\S]{0,180}!touchTrackingActive\(\)[\s\S]{0,80}state\.polarConnected/);

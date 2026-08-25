@@ -97,6 +97,24 @@ Captured receipts:
 - [Foreground loss holding the final coordinates](./evidence/remote-flubber-2026-08-25/foreground-loss-hold.png)
 - [Explicit source reselection and recovery](./evidence/remote-flubber-2026-08-25/explicit-source-reselection.png)
 
+## Channel-close stabilization follow-up (`remote-12`)
+
+A fresh attended desktop Chrome forced-TURN run used the deterministic 130 Hz replay and the normal mapped/smoothed X/Y path. The selected replacement source accumulated 7,759 accepted frames at the final grace capture, with a 20 ms rolling p95 gap, 220 ms retained maximum gap, independently reported TURN relay at 36 ms RTT in the preceding live capture, and zero loss warnings before the deliberate stop. This was approximately a two-minute foreground receiver interval; it remains same-PC transport evidence, not a Quest receipt.
+
+The deliberate Stop exposed a contract mismatch in `remote-11`: the receiver's silent-packet path had a two-second grace, but an explicit data-channel close called stale immediately and the loss state was already visible at the 1.591-second operator capture. That edge could produce the reported live/lost flash during a brief WebRTC channel repair.
+
+Revision `remote-12` records the disconnected edge but leaves visible state governed by the same last-valid-packet deadline. The real-Chrome repeat remained live with held coordinates and zero loss warnings at the 1.580-second capture, then showed exactly one loss warning at the 3.426-second capture. These checkpoints include tab switching and screenshot overhead, so they bound the observed presentation rather than estimating an exact transition instant. Accepted coordinates remain immediate; no coordinate queue or latency buffer was added. A new unit test additionally repairs the same selected source with a replacement channel one millisecond before the two-second deadline and proves no stale transition or HUD flash. The complete Node suite passes 167 of 167 tests.
+
+Restarting the publisher generated a new anonymous source as required. The stale receiver exposed the large new source button, retained the old selected source, and moved only after the explicit tap. It then reported the new source live through TURN at 36–37 ms RTT with zero warnings.
+
+Privacy-safe captures:
+
+- [`remote-12` explicit replacement-source recovery](./evidence/remote-flubber-2026-08-25/remote12-explicit-recovery.png)
+- [`remote-12` explicit-close grace capture](./evidence/remote-flubber-2026-08-25/remote12-channel-close-grace.png)
+- [`remote-12` one stable held-coordinate warning](./evidence/remote-flubber-2026-08-25/remote12-channel-close-stale.png)
+
+The preferred typed Quest File Manager provider is installed and hash-pinned, but its public routes cover exact-device status, files, APKs, and kiosk control rather than arbitrary Meta Quest Browser URL navigation. Its sanitized device listing currently reports the attached headset as USB `unauthorized`. No serial-scoped ADB, browser launch, capture, performance setting, or other headset mutation was attempted. Current-build immersive direct/TURN receipts and the worn-H10 matrix therefore remain open.
+
 ## Earlier physical Quest direct receipt
 
 The attended direct-path run on `8d8c813` used the same 130 Hz replay-to-final-coordinate path and produced:

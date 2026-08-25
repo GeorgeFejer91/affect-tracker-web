@@ -475,6 +475,48 @@ test("receiver tolerates scheduler gaps, holds stale coordinates at two seconds,
   assert.equal(transitions.at(-1), "disconnected");
 });
 
+test("receiver gives transient channel closure the full stale grace without HUD flapping", async () => {
+  const clock = new FakeClock();
+  const sdk = new MockSdk();
+  const receiver = new FlubberReceiver(clock.options(() => sdk));
+  const transitions = [];
+  receiver.addEventListener("statechange", (event) => {
+    if (event.detail.transition) transitions.push(event.detail.transition);
+  });
+  await receiver.startDiscovery();
+  sdk.emit("listing", { streamID: "aft_flubber_0badcafe", UUID: "repairing-peer" });
+  clock.advance(300);
+  await settle();
+  const originalChannel = new MockChannel();
+  sdk.emit("channelOpen", {
+    label: `x-${FLUBBER_REMOTE_CHANNEL}`,
+    streamID: "aft_flubber_0badcafe",
+    uuid: "repairing-peer",
+    channel: originalChannel,
+  });
+  originalChannel.message(encodeFlubberFrame(1, 0.1, -0.2));
+  originalChannel.close();
+  assert.equal(receiver.snapshot().phase, "live");
+  assert.equal(receiver.snapshot().diagnostics.staleTransitions, 0);
+  assert.deepEqual(transitions.filter((value) => ["live", "disconnected", "stale"].includes(value)), ["live", "disconnected"]);
+
+  clock.advance(FLUBBER_REMOTE_STALE_MS - 1);
+  assert.equal(receiver.snapshot().phase, "live");
+  const repairedChannel = new MockChannel();
+  sdk.emit("channelOpen", {
+    label: `x-${FLUBBER_REMOTE_CHANNEL}`,
+    streamID: "aft_flubber_0badcafe",
+    uuid: "repairing-peer",
+    channel: repairedChannel,
+  });
+  repairedChannel.message(encodeFlubberFrame(2, 0.2, -0.1));
+  assert.equal(receiver.snapshot().phase, "live");
+  clock.advance(FLUBBER_REMOTE_STALE_MS - 1);
+  assert.equal(receiver.snapshot().phase, "live");
+  assert.equal(receiver.snapshot().diagnostics.staleTransitions, 0);
+  await receiver.stop();
+});
+
 test("receiver holds a departed selected source and can retry discovery after a signaling failure", async () => {
   const clock = new FakeClock();
   const sdk = new MockSdk();
@@ -496,8 +538,13 @@ test("receiver holds a departed selected source and can retry discovery after a 
   });
   channel.message(encodeFlubberFrame(1, 0.1, 0.2));
   sdk.emit("userLeft", { UUID: "departing-peer" });
-  assert.equal(receiver.snapshot().phase, "stale");
+  assert.equal(receiver.snapshot().phase, "live");
   assert.equal(receiver.snapshot().sources.length, 0);
+  assert.equal(departureTransitions.at(-1), "disconnected");
+  clock.advance(FLUBBER_REMOTE_STALE_MS - 1);
+  assert.equal(receiver.snapshot().phase, "live");
+  clock.advance(1);
+  assert.equal(receiver.snapshot().phase, "stale");
   assert.deepEqual(departureTransitions.slice(-2), ["disconnected", "stale"]);
   assert.equal(sdk.calls.filter((call) => call[0] === "view").length, 1, "departure must not auto-switch");
   await receiver.stop();
@@ -585,10 +632,10 @@ test("remote pages load only the local SDK and feature code makes no microphone 
   assert.match(index, />Broadcast this to VR \/ remote interface</);
   assert.match(index, /id="flubber-remote-foreground-button"[^>]*hidden>Restore low-latency foreground mode</);
   assert.match(webxr, />Use incoming signal</);
-  assert.match(index, /src="\.\/src\/app\.js\?v=remote-11"/);
-  assert.match(webxr, /src="\.\/src\/webxr-study\.js\?v=remote-11"/);
-  assert.match(app, /from "\.\/flubber-remote\.js\?v=remote-11"/);
-  assert.match(receiver, /from "\.\/flubber-remote\.js\?v=remote-11"/);
+  assert.match(index, /src="\.\/src\/app\.js\?v=remote-12"/);
+  assert.match(webxr, /src="\.\/src\/webxr-study\.js\?v=remote-12"/);
+  assert.match(app, /from "\.\/flubber-remote\.js\?v=remote-12"/);
+  assert.match(receiver, /from "\.\/flubber-remote\.js\?v=remote-12"/);
   assert.match(transport, /FLUBBER_REMOTE_FORCE_TURN_PARAM = "remote-force-turn"/);
   assert.match(transport, /forceTURN: Boolean\(forceTurn\)/);
   assert.match(app, /flubberBroadcaster\.offer\(state\.currentX, state\.currentY\);/);
