@@ -52,8 +52,8 @@ import {
   polarMetricDefinition,
   polarWebBluetoothSupport,
 } from "./polar-stream.js";
-import { createPolarH10ReplaySession, polarReplayEnabled } from "./polar-replay.js?v=remote-4";
-import { createFlubberBroadcaster } from "./flubber-remote.js?v=remote-4";
+import { createPolarH10ReplaySession, polarReplayEnabled } from "./polar-replay.js?v=remote-5";
+import { createFlubberBroadcaster } from "./flubber-remote.js?v=remote-5";
 import {
   actionForBinding,
   ADVANCED_BINDING_LABELS,
@@ -2922,7 +2922,9 @@ function animationFrame(timestamp) {
     state.currentY = smoothToward(state.currentY, state.targetY, state.response, deltaSeconds);
   }
 
-  flubberBroadcaster.offer(state.currentX, state.currentY, timestamp);
+  // The floating foreground window has its own animation-frame clock. Keep
+  // all transport rate limiting on the broadcaster's single monotonic clock.
+  flubberBroadcaster.offer(state.currentX, state.currentY);
 
   const currentParameters = affectParameters(state.currentX, state.currentY);
   if (state.animationActive) {
