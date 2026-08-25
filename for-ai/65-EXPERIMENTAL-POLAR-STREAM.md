@@ -118,6 +118,18 @@ still owns an independent GATT/notification lifecycle. Teardown removes every
 listener, stops notifications best-effort, disconnects GATT, rejects pending
 readiness waits, and clears the bounded signal state.
 
+The raw GATT retry does not cover a rarer state in which the link and PMD start
+command succeed but Chromium delivers no control acknowledgement or first ECG
+packet. For only those two retryable readiness timeouts, one Connect gesture
+performs exactly two complete stream setups against the same browser-selected
+device. Between them it sends Stop best-effort, removes every characteristic
+listener, stops notifications, disconnects GATT, clears metric/readiness state,
+waits 750 ms for the Windows lease, then rebuilds service discovery,
+notifications, PMD startup, and first-frame proof. An explicit PMD rejection is
+not retried. A second timeout fails closed. No device object or identifier is
+persisted, no page-load/range-loss reconnect is added, and live processing is
+unchanged after readiness.
+
 Native readiness follows the Study 6 gate rather than treating BLE connection
 or stream subscription as success. The official SDK requests maximum ECG
 settings; the APK requires exact 130 Hz configuration, at least one real ECG

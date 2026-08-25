@@ -51,9 +51,9 @@ import {
   POLAR_METRICS,
   polarMetricDefinition,
   polarWebBluetoothSupport,
-} from "./polar-stream.js";
-import { createPolarH10ReplaySession, polarReplayEnabled } from "./polar-replay.js?v=remote-8";
-import { createFlubberBroadcaster } from "./flubber-remote.js?v=remote-8";
+} from "./polar-stream.js?v=remote-11";
+import { createPolarH10ReplaySession, polarReplayEnabled } from "./polar-replay.js?v=remote-11";
+import { createFlubberBroadcaster } from "./flubber-remote.js?v=remote-11";
 import {
   actionForBinding,
   ADVANCED_BINDING_LABELS,
@@ -763,6 +763,10 @@ function renderPolarDiagnostics(snapshot = polarSession.diagnosticSnapshot()) {
   const pmd = snapshot.firstEcgFrame
     ? `${snapshot.pmdResponse} · ECG frame received`
     : `${snapshot.pmdResponse} · no ECG frame`;
+  const stageLabel = stageLabels[snapshot.stage] ?? snapshot.stage ?? "Idle";
+  const stage = snapshot.streamSetupAttempt > 0
+    ? `${stageLabel} · setup ${snapshot.streamSetupAttempt}/${snapshot.streamSetupAttemptsTotal ?? 2}`
+    : stageLabel;
   const values = snapshot.mock ? {
     api: "Synthetic replay · no Bluetooth",
     adapter: "Not used",
@@ -779,7 +783,7 @@ function renderPolarDiagnostics(snapshot = polarSession.diagnosticSnapshot()) {
       : snapshot.adapterAvailability === "unavailable" ? "Unavailable / blocked" : "Not checked",
     activation,
     chooser: snapshot.chooser || "Idle",
-    stage: stageLabels[snapshot.stage] ?? snapshot.stage ?? "Idle",
+    stage,
     gatt: `${snapshot.gattAttempt ?? 0} / ${snapshot.gattAttemptsTotal ?? 4}`,
     pmd,
     error: snapshot.lastErrorCode
@@ -794,18 +798,20 @@ function renderPolarDiagnostics(snapshot = polarSession.diagnosticSnapshot()) {
 function updateRemoteBroadcastUi(detail = flubberBroadcaster.snapshot()) {
   const broadcasting = detail.phase === "broadcasting";
   const connecting = detail.phase === "connecting";
+  const stopping = detail.phase === "stopping";
   const pictureInPictureAvailable = pictureInPictureSupported(window);
   const foregroundWindowActive = Boolean(pictureInPictureWindow && !pictureInPictureWindow.closed);
   const wakeLockAvailable = Boolean(navigator.wakeLock?.request);
   const wakeLockActive = Boolean(broadcastWakeLock && !broadcastWakeLock.released);
   const foregroundModeDegraded = broadcasting && (!foregroundWindowActive || (wakeLockAvailable && !wakeLockActive));
-  elements.remoteBroadcastButton.disabled = connecting;
+  elements.remoteBroadcastButton.disabled = connecting || stopping;
   elements.remoteBroadcastButton.textContent = broadcasting
     ? "Stop broadcast"
-    : connecting ? "Starting broadcast…" : "Broadcast this to VR / remote interface";
+    : connecting ? "Starting broadcast…"
+      : stopping ? "Stopping broadcast…" : "Broadcast this to VR / remote interface";
   elements.remoteBroadcastForegroundButton.hidden = !foregroundModeDegraded
     || (!pictureInPictureAvailable && (!wakeLockAvailable || wakeLockActive));
-  elements.remoteBroadcastForegroundButton.disabled = connecting;
+  elements.remoteBroadcastForegroundButton.disabled = connecting || stopping;
   elements.remoteBroadcastDetails.hidden = !detail.streamId;
   elements.remoteBroadcastSource.value = detail.sourceLabel || "—";
   elements.remoteBroadcastListeners.value = String(detail.listenerCount ?? 0);
@@ -829,7 +835,8 @@ function updateRemoteBroadcastUi(detail = flubberBroadcaster.snapshot()) {
   elements.remoteBroadcastStatus.value = foregroundMessage || detail.message
     || (broadcasting
       ? `${detail.sourceLabel} is public and ready.`
-      : connecting ? "Connecting to VDO.Ninja signaling…" : "Broadcast off");
+      : connecting ? "Connecting to VDO.Ninja signaling…"
+        : stopping ? "Stopping remote broadcast…" : "Broadcast off");
   elements.remoteBroadcastStatus.classList.toggle("is-error", Boolean(detail.error || detail.phase === "error"));
   elements.remoteBroadcastStatus.classList.toggle("is-warning", Boolean(foregroundMessage));
 }

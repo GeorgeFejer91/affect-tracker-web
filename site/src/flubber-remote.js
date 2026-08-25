@@ -442,8 +442,18 @@ export class FlubberBroadcaster extends FlubberRemoteBase {
   }
 
   async stop() {
-    await this.disconnectSdk();
-    this.phase = "idle";
+    const disconnectPending = Boolean(this.sdk);
+    this.phase = disconnectPending ? "stopping" : "idle";
+    this.clearTimers();
+    this.heartbeatTimer = undefined;
+    for (const channel of Array.from(this.channels.values())) {
+      try {
+        channel.close?.();
+      } catch {
+        // Signaling teardown below remains the final best-effort cleanup path.
+      }
+    }
+    const disconnecting = this.disconnectSdk();
     this.streamId = "";
     this.channels.clear();
     this.openingPeers.clear();
@@ -456,8 +466,12 @@ export class FlubberBroadcaster extends FlubberRemoteBase {
     this.nextChangedSendAt = -Infinity;
     this.sequence = 0;
     this.droppedBackpressure = 0;
-    this.heartbeatTimer = undefined;
-    this.emitState();
+    this.emitState(disconnectPending ? { message: "Stopping remote broadcast…" } : {});
+    await disconnecting;
+    if (this.phase === "stopping") {
+      this.phase = "idle";
+      this.emitState();
+    }
   }
 }
 

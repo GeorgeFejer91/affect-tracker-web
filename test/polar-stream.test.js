@@ -301,6 +301,89 @@ test("browser session fails closed on rejected or missing ECG start acknowledgem
   );
 });
 
+test("one Connect gesture fully resets and retries an acknowledged ECG startup with no first packet", async () => {
+  class Characteristic extends EventTarget {
+    async startNotifications() { return this; }
+    async stopNotifications() { return this; }
+    async writeValueWithResponse(value) { this.onWrite?.(value); }
+    notify(value) {
+      this.value = new DataView(value.buffer, value.byteOffset, value.byteLength);
+      this.dispatchEvent(new Event("characteristicvaluechanged"));
+    }
+  }
+
+  const control = new Characteristic();
+  const pmdData = new Characteristic();
+  let startWrites = 0;
+  control.onWrite = (value) => {
+    if (value[0] !== POLAR_COMMANDS.startEcg[0]) return;
+    startWrites += 1;
+    queueMicrotask(() => {
+      control.notify(Uint8Array.from([0xf0, 0x02, 0x00, 0x00, 0x00]));
+      if (startWrites === 2) {
+        pmdData.notify(Uint8Array.from([0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0]));
+      }
+    });
+  };
+
+  const server = {
+    connected: false,
+    async getPrimaryService(uuid) {
+      if (uuid !== POLAR_UUIDS.pmdService) throw new DOMException("Optional service unavailable.", "NotFoundError");
+      return { getCharacteristic: async (characteristicUuid) => characteristicUuid === POLAR_UUIDS.pmdControl ? control : pmdData };
+    },
+    disconnect() { this.connected = false; },
+  };
+  class Device extends EventTarget {}
+  const device = new Device();
+  let gattConnects = 0;
+  device.gatt = {
+    async connect() {
+      gattConnects += 1;
+      server.connected = true;
+      return server;
+    },
+  };
+  let chooserCalls = 0;
+  const events = [];
+  const session = new PolarH10BrowserSession({
+    navigatorObject: {
+      userAgent: "Chromium test",
+      userActivation: { isActive: true },
+      bluetooth: {
+        async requestDevice() { chooserCalls += 1; return device; },
+      },
+    },
+    timer: {
+      setTimeout(callback, delayMs) {
+        if (delayMs === 750) {
+          queueMicrotask(callback);
+          return 0;
+        }
+        return setTimeout(callback, delayMs);
+      },
+      clearTimeout(timerId) { clearTimeout(timerId); },
+    },
+    secureContext: true,
+    controlResponseTimeoutMs: 50,
+    firstEcgTimeoutMs: 5,
+  });
+
+  await session.connect((event) => events.push(event));
+
+  assert.equal(chooserCalls, 1);
+  assert.equal(gattConnects, 2);
+  assert.equal(startWrites, 2);
+  assert.equal(session.connected, true);
+  assert.ok(events.some((event) => event.kind === "status" && /fully resetting.*retrying setup 2\/2/i.test(event.message)));
+  const diagnostic = events.filter((event) => event.kind === "diagnostic").at(-1).snapshot;
+  assert.equal(diagnostic.stage, "live");
+  assert.equal(diagnostic.streamSetupAttempt, 2);
+  assert.equal(diagnostic.streamSetupAttemptsTotal, 2);
+
+  await session.disconnect();
+});
+
 test("a valid live ECG frame confirms startup when Chromium omits the PMD indication", async () => {
   class Characteristic extends EventTarget {
     async startNotifications() { return this; }

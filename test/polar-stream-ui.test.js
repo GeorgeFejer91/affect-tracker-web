@@ -34,14 +34,18 @@ test("the fourth Polar Stream widget is explicit, branded, and opt-in", async ()
 
 test("Polar assignments stay browser-local and defer to touch tracking", async () => {
   const app = await readSiteFile("src/app.js");
+  const webxr = await readSiteFile("src/webxr-study.js");
   const portable = await readSiteFile("src/portable-settings.js");
 
+  assert.match(app, /from "\.\/polar-stream\.js\?v=remote-11"/);
+  assert.match(webxr, /from "\.\/polar-stream\.js\?v=remote-11"/);
   assert.match(app, /polarMappings: normalizePolarMappings\(parsed\.polarMappings\)/);
   assert.match(app, /polarMappings: state\.polarMappings/);
   assert.match(app, /function polarAxisDriven[\s\S]{0,180}!touchTrackingActive\(\)[\s\S]{0,80}state\.polarConnected/);
   assert.match(app, /touchTrackingActive\(\)[\s\S]{0,80}Paused by Touch\/Trackpad/);
   assert.match(app, /polarSession\.connect\(handlePolarEvent\)/);
   assert.match(app, /event\.kind === "diagnostic"[\s\S]{0,100}renderPolarDiagnostics/);
+  assert.match(app, /setup \$\{snapshot\.streamSetupAttempt\}\/\$\{snapshot\.streamSetupAttemptsTotal/);
   assert.match(app, /function clearPolarLiveReadout[\s\S]{0,300}state\.polarMetrics = \{\}/);
   assert.match(app, /polarConnectButton[\s\S]{0,300}clearPolarLiveReadout\(\)/);
   assert.match(app, /polarEcgWindow\.length > 650/);

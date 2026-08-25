@@ -93,6 +93,12 @@ class MockChannel extends EventTarget {
     this.sent.push(value.slice(0));
   }
 
+  close() {
+    if (this.readyState === "closed") return;
+    this.readyState = "closed";
+    this.dispatchEvent(new Event("close"));
+  }
+
   message(value) {
     this.dispatchEvent(eventWith("message", { data: value }));
   }
@@ -314,6 +320,34 @@ test("broadcaster scheduling tolerance retains the long-run 60 Hz cap", async ()
   assert.ok(channel.sent.length <= 602, `60 Hz cap exceeded with ${channel.sent.length} packets in 10 seconds`);
 
   await broadcaster.stop();
+});
+
+test("broadcaster stop quiesces heartbeats before a delayed SDK disconnect completes", async () => {
+  const clock = new FakeClock();
+  const sdk = new MockSdk();
+  let releaseDisconnect;
+  sdk.disconnect = async () => {
+    sdk.calls.push(["disconnect"]);
+    await new Promise((resolve) => { releaseDisconnect = resolve; });
+  };
+  const broadcaster = new FlubberBroadcaster({ ...clock.options(() => sdk), randomBytes: () => new Uint8Array(4) });
+  await broadcaster.start();
+  sdk.emit("dataChannelOpen", { uuid: "listener" });
+  await settle();
+  const channel = sdk.channels.get("listener");
+  broadcaster.offer(0.2, -0.2);
+  const sentBeforeStop = channel.sent.length;
+
+  const stopping = broadcaster.stop();
+  assert.equal(broadcaster.snapshot().phase, "stopping");
+  assert.equal(broadcaster.snapshot().streamId, "");
+  assert.equal(channel.readyState, "closed", "the data channel must close before signaling teardown completes");
+  clock.advance(FLUBBER_REMOTE_HEARTBEAT_MS * 5);
+  assert.equal(channel.sent.length, sentBeforeStop, "no heartbeat may escape while signaling teardown is pending");
+
+  releaseDisconnect();
+  await stopping;
+  assert.equal(broadcaster.snapshot().phase, "idle");
 });
 
 test("heartbeat scheduling does not add duplicate packets while changed frames are active", async () => {
@@ -551,10 +585,10 @@ test("remote pages load only the local SDK and feature code makes no microphone 
   assert.match(index, />Broadcast this to VR \/ remote interface</);
   assert.match(index, /id="flubber-remote-foreground-button"[^>]*hidden>Restore low-latency foreground mode</);
   assert.match(webxr, />Use incoming signal</);
-  assert.match(index, /src="\.\/src\/app\.js\?v=remote-8"/);
-  assert.match(webxr, /src="\.\/src\/webxr-study\.js\?v=remote-8"/);
-  assert.match(app, /from "\.\/flubber-remote\.js\?v=remote-8"/);
-  assert.match(receiver, /from "\.\/flubber-remote\.js\?v=remote-8"/);
+  assert.match(index, /src="\.\/src\/app\.js\?v=remote-11"/);
+  assert.match(webxr, /src="\.\/src\/webxr-study\.js\?v=remote-11"/);
+  assert.match(app, /from "\.\/flubber-remote\.js\?v=remote-11"/);
+  assert.match(receiver, /from "\.\/flubber-remote\.js\?v=remote-11"/);
   assert.match(transport, /FLUBBER_REMOTE_FORCE_TURN_PARAM = "remote-force-turn"/);
   assert.match(transport, /forceTURN: Boolean\(forceTurn\)/);
   assert.match(app, /flubberBroadcaster\.offer\(state\.currentX, state\.currentY\);/);

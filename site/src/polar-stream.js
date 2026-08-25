@@ -65,6 +65,9 @@ const GATT_CONNECT_RETRY_DELAYS_MS = Object.freeze([750, 1_500, 3_000]);
 const CONTROL_RESPONSE_TIMEOUT_MS = 7_500;
 const FIRST_ECG_TIMEOUT_MS = 10_000;
 const PMD_RESPONSE_GRACE_AFTER_FRAME_MS = 250;
+const STREAM_SETUP_ATTEMPTS = 2;
+const STREAM_SETUP_RETRY_DELAY_MS = 750;
+const STREAM_SETUP_RETRY_CODES = new Set(["PMD_CONTROL_TIMEOUT", "PMD_FIRST_ECG_TIMEOUT"]);
 
 export class PolarStreamError extends Error {
   constructor(code, message, retryable = false) {
@@ -460,6 +463,8 @@ export class PolarH10BrowserSession {
       stage: "idle",
       gattAttempt: 0,
       gattAttemptsTotal: GATT_CONNECT_RETRY_DELAYS_MS.length + 1,
+      streamSetupAttempt: 0,
+      streamSetupAttemptsTotal: STREAM_SETUP_ATTEMPTS,
       pmdResponse: "not started",
       firstEcgFrame: false,
       lastErrorCode: "",
@@ -531,47 +536,7 @@ export class PolarH10BrowserSession {
         chooser: "selected",
       });
       this.device.addEventListener("gattserverdisconnected", this.boundDisconnected);
-      this.emit({ kind: "status", message: "Connecting to the H10 Bluetooth link…" });
-      this.server = await this.runStage("GATT_CONNECT", "Bluetooth link", () => this.connectGatt());
-      this.emit({ kind: "status", message: "Discovering Polar PMD ECG…" });
-      const pmdService = await this.runStage(
-        "PMD_SERVICE",
-        "Polar PMD service discovery",
-        () => this.server.getPrimaryService(POLAR_UUIDS.pmdService),
-      );
-      this.control = await this.runStage(
-        "PMD_CONTROL",
-        "Polar PMD control discovery",
-        () => pmdService.getCharacteristic(POLAR_UUIDS.pmdControl),
-      );
-      this.pmdData = await this.runStage(
-        "PMD_DATA",
-        "Polar PMD data discovery",
-        () => pmdService.getCharacteristic(POLAR_UUIDS.pmdData),
-      );
-      this.control.addEventListener("characteristicvaluechanged", this.boundControl);
-      this.pmdData.addEventListener("characteristicvaluechanged", this.boundPmd);
-      this.emit({ kind: "status", message: "Opening the live ECG data channel…" });
-      await this.runStage("PMD_DATA_NOTIFY", "Polar ECG data notifications", () => this.pmdData.startNotifications());
-      await this.runStage("PMD_CONTROL_NOTIFY", "Polar PMD control indications", () => this.control.startNotifications());
-      try {
-        const heartRateService = await this.server.getPrimaryService(POLAR_UUIDS.heartRateService);
-        this.heartRate = await heartRateService.getCharacteristic(POLAR_UUIDS.heartRateMeasurement);
-        this.heartRate.addEventListener("characteristicvaluechanged", this.boundHeartRate);
-        await this.heartRate.startNotifications();
-      } catch {
-        this.heartRate = null;
-      }
-      this.emit({ kind: "status", message: "Starting 130 Hz ECG and waiting for the first live packet…" });
-      await this.runStage("ECG_START", "Polar ECG startup", () => this.startEcgAndWaitForData());
-      let batteryPercent;
-      try {
-        const batteryService = await this.server.getPrimaryService(POLAR_UUIDS.batteryService);
-        const battery = await batteryService.getCharacteristic(POLAR_UUIDS.batteryLevel);
-        batteryPercent = bytesFrom(await battery.readValue())[0];
-      } catch {
-        batteryPercent = undefined;
-      }
+      const batteryPercent = await this.connectSelectedDeviceWithRecovery();
       this.connected = true;
       this.updateDiagnostics({ stage: "live" });
       this.emit({
@@ -592,6 +557,76 @@ export class PolarH10BrowserSession {
       this.onEvent = null;
       throw normalized;
     }
+  }
+
+  async connectSelectedDeviceWithRecovery() {
+    let lastError;
+    for (let attempt = 1; attempt <= STREAM_SETUP_ATTEMPTS; attempt += 1) {
+      this.updateDiagnostics({ streamSetupAttempt: attempt });
+      try {
+        return await this.connectSelectedDevice();
+      } catch (error) {
+        lastError = error;
+        if (attempt === STREAM_SETUP_ATTEMPTS || !STREAM_SETUP_RETRY_CODES.has(error?.code)) throw error;
+
+        const selectedDevice = this.device;
+        await this.disconnect({ emit: false });
+        this.processor.reset();
+        this.device = selectedDevice;
+        this.device.addEventListener("gattserverdisconnected", this.boundDisconnected);
+        this.emit({
+          kind: "status",
+          message: `No live ECG packet arrived; fully resetting the H10 stream and retrying setup ${attempt + 1}/${STREAM_SETUP_ATTEMPTS}…`,
+        });
+        await new Promise((resolve) => this.timer.setTimeout(resolve, STREAM_SETUP_RETRY_DELAY_MS));
+      }
+    }
+    throw lastError;
+  }
+
+  async connectSelectedDevice() {
+    this.emit({ kind: "status", message: "Connecting to the H10 Bluetooth link…" });
+    this.server = await this.runStage("GATT_CONNECT", "Bluetooth link", () => this.connectGatt());
+    this.emit({ kind: "status", message: "Discovering Polar PMD ECG…" });
+    const pmdService = await this.runStage(
+      "PMD_SERVICE",
+      "Polar PMD service discovery",
+      () => this.server.getPrimaryService(POLAR_UUIDS.pmdService),
+    );
+    this.control = await this.runStage(
+      "PMD_CONTROL",
+      "Polar PMD control discovery",
+      () => pmdService.getCharacteristic(POLAR_UUIDS.pmdControl),
+    );
+    this.pmdData = await this.runStage(
+      "PMD_DATA",
+      "Polar PMD data discovery",
+      () => pmdService.getCharacteristic(POLAR_UUIDS.pmdData),
+    );
+    this.control.addEventListener("characteristicvaluechanged", this.boundControl);
+    this.pmdData.addEventListener("characteristicvaluechanged", this.boundPmd);
+    this.emit({ kind: "status", message: "Opening the live ECG data channel…" });
+    await this.runStage("PMD_DATA_NOTIFY", "Polar ECG data notifications", () => this.pmdData.startNotifications());
+    await this.runStage("PMD_CONTROL_NOTIFY", "Polar PMD control indications", () => this.control.startNotifications());
+    try {
+      const heartRateService = await this.server.getPrimaryService(POLAR_UUIDS.heartRateService);
+      this.heartRate = await heartRateService.getCharacteristic(POLAR_UUIDS.heartRateMeasurement);
+      this.heartRate.addEventListener("characteristicvaluechanged", this.boundHeartRate);
+      await this.heartRate.startNotifications();
+    } catch {
+      this.heartRate = null;
+    }
+    this.emit({ kind: "status", message: "Starting 130 Hz ECG and waiting for the first live packet…" });
+    await this.runStage("ECG_START", "Polar ECG startup", () => this.startEcgAndWaitForData());
+    let batteryPercent;
+    try {
+      const batteryService = await this.server.getPrimaryService(POLAR_UUIDS.batteryService);
+      const battery = await batteryService.getCharacteristic(POLAR_UUIDS.batteryLevel);
+      batteryPercent = bytesFrom(await battery.readValue())[0];
+    } catch {
+      batteryPercent = undefined;
+    }
+    return batteryPercent;
   }
 
   async connectGatt() {
