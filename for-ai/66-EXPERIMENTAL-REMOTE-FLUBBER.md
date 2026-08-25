@@ -2,6 +2,8 @@
 
 This is the normative contract for the explicit browser-to-browser Flubber transport. It is a narrow network exception to the browser's local-first default, not a physiology transport, remote-recording service, native Quest feature, or general integration API.
 
+The latest attended evidence and open physical gate are recorded in [`67-REMOTE-FLUBBER-QUALIFICATION-2026-08-25.md`](./67-REMOTE-FLUBBER-QUALIFICATION-2026-08-25.md).
+
 ## Product and privacy boundary
 
 - The desktop browser exposes **Broadcast this to VR / remote interface** and the Meta Quest WebXR page exposes **Use incoming signal**. Loading either page constructs no VDO.Ninja client and makes no connection; every page load requires a fresh button press.
