@@ -18,8 +18,13 @@ test("the fourth Polar Stream widget is explicit, branded, and opt-in", async ()
   assert.ok(polarIndex > touchIndex);
   assert.match(html, /polar-stream-logo\.svg/);
   assert.match(html, /aria-label="Polar Stream — Experimental"/);
-  assert.match(html, /id="polar-connect-button"[^>]*>Connect</);
-  assert.match(html, /id="polar-connect-module"|class="polar-connect-module"[\s\S]{0,900}id="polar-ecg-port"[\s\S]{0,200}hidden/);
+  assert.match(html, /id="polar-connect-button"[^>]*aria-describedby="polar-connect-prerequisites"[^>]*>Connect</);
+  assert.match(html, /id="polar-connect-prerequisites"[\s\S]{0,400}wear and moisten the strap electrodes[\s\S]{0,250}Polar Beat\/Flow[\s\S]{0,250}other browser tabs/i);
+  assert.match(css, /\.polar-connect-prerequisites/);
+  const connectorIndex = html.indexOf('class="polar-connect-module"');
+  const ecgPortIndex = html.indexOf('id="polar-ecg-port"');
+  assert.ok(connectorIndex >= 0 && ecgPortIndex > connectorIndex && ecgPortIndex - connectorIndex < 1_600);
+  assert.match(html.slice(ecgPortIndex, ecgPortIndex + 240), /hidden/);
   assert.ok(html.indexOf('id="polar-ecg-port"') < html.indexOf("Browser connection details"));
   assert.match(html, /id="polar-connection-diagnostics"/);
   for (const field of ["api", "adapter", "activation", "chooser", "stage", "gatt", "pmd", "error"]) {

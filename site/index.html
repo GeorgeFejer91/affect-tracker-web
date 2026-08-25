@@ -428,9 +428,10 @@
                 <output id="polar-connection-status" aria-live="polite">Not connected</output>
               </div>
               <output id="polar-battery" class="polar-connect-battery" aria-label="Polar H10 battery">—</output>
-              <button id="polar-connect-button" type="button">Connect</button>
+              <button id="polar-connect-button" type="button" aria-describedby="polar-connect-prerequisites">Connect</button>
               <button id="polar-disconnect-button" type="button" hidden>Disconnect</button>
             </div>
+            <p id="polar-connect-prerequisites" class="polar-connect-prerequisites"><strong>Before Connect:</strong> wear and moisten the strap electrodes, keep the H10 close to this PC, and disconnect it from Polar Beat/Flow, watches, gym equipment, and other browser tabs.</p>
 
             <section id="polar-ecg-port" class="polar-ecg-port" aria-label="Live Polar H10 ECG display" hidden>
               <div class="polar-ecg-port-head">

@@ -358,6 +358,13 @@ body.is-experiment-running .touch-trace-panel { z-index: 40; }
 .polar-connect-copy output.is-error { color: #ffb2a8; }
 .polar-connect-battery { color: #d9e4e9; font: 700 0.68rem ui-monospace, SFMono-Regular, Consolas, monospace; }
 .polar-connect-module button { min-height: 2.1rem; padding: 0.35rem 0.6rem; font-size: 0.7rem; font-weight: 700; }
+.polar-connect-prerequisites {
+  margin: 0.35rem 0 0;
+  color: #a9bac2;
+  font-size: 0.64rem;
+  line-height: 1.4;
+}
+.polar-connect-prerequisites strong { color: #e0f5ee; }
 
 .flubber-remote-broadcast {
   margin-top: 0.8rem;

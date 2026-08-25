@@ -33,6 +33,13 @@ selection; the application must not auto-connect or scan silently. Firefox,
 Safari, insecure HTTP, and browsers without `navigator.bluetooth.requestDevice`
 show a disabled Connect control with an actionable explanation.
 
+The compact connection module must expose its readiness checklist before the
+chooser opens and associate it with the Connect control for assistive
+technology. The known-good physical start is a worn H10 with moistened
+electrodes, close to the PC, and released by Polar Beat/Flow, watches, gym
+equipment, and other browser tabs. This is operator guidance, not a readiness
+claim: only a valid 130 Hz ECG frame makes the browser session live.
+
 The main page identifies the Quest user agent and fails closed because its
 fourth accordion is a desktop-browser support path. The separate experimental
 `webxr.html` flow has a deliberately narrower diagnostic override: its Polar
