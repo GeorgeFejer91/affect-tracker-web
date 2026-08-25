@@ -209,7 +209,7 @@ test("experimental page is local-first and wires the selectable WebXR study libr
   assert.match(page, /id="webxr-remote-sources"[^>]*role="group"/);
   assert.match(page, /src="\.\/vendor\/vdoninja\/1\.5\.5\/vdoninja-sdk\.min\.js"/);
   assert.match(styles, /\.polar-xr-connector button\[hidden\][\s\S]*display: none/);
-  assert.match(page, /src="\.\/src\/webxr-study\.js\?v=shape-1"/);
+  assert.match(page, /src="\.\/src\/webxr-study\.js\?v=shape-2"/);
   assert.doesNotMatch(page, /https:\/\/(?!example\.org)/);
   assert.match(runtime, /navigator\.xr\.requestSession\(sessionMode/);
   assert.match(runtime, /"immersive-ar"/);
