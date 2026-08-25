@@ -2,11 +2,11 @@
 
 ## Decision
 
-Commit `ec5972b` is the current qualification candidate. It passes 167 automated tests and fresh attended desktop Chrome forced-TURN replay, approximately two-minute stability, explicit-close grace, held-coordinate stale, and explicit source-reselection checks. It makes transient channel-close/departure edges share the two-second packet-age grace without buffering coordinates. Commit `dd43646` supplies the preceding current-runtime direct-path, forced-TURN, high-change backpressure, teardown, and browser-H10 recovery evidence; commit `5b60e3e` supplies the earlier two-minute direct and forced-TURN scheduler soaks; commits `ac10c62` and `b66aa1d` supply earlier foreground and transport-engine evidence. Historical results are not relabelled as exact-commit receipts.
+Commit `05ac5b7` is the current qualification candidate. It passes 168 automated tests and fresh attended desktop Chrome direct-path replay, more than two minutes of stability, explicit-close grace, held-coordinate stale, explicit source reselection, and final disconnected-source cleanup checks. It retains the no-buffer coordinate path from `ec5972b` and adds one bounded same-device recovery for a post-readiness silent ECG stream. Commit `dd43646` supplies the preceding direct-path, forced-TURN, high-change backpressure, teardown, and browser-H10 startup-recovery evidence; commit `5b60e3e` supplies the earlier two-minute direct and forced-TURN scheduler soaks; commits `ac10c62` and `b66aa1d` supply earlier foreground and transport-engine evidence. Historical results are not relabelled as exact-commit receipts.
 
-The data-only transport is suitable for continued headset testing, but `ec5972b` is **not yet fully physically qualified for research use**. One Quest was detected during this follow-up but ADB remained unauthorized, so no current-build immersive direct or forced-TURN run could be executed. The H10 had been removed, so the new browser recovery path was verified with deterministic/mock hardware contracts and synthetic ECG, not a worn sensor.
+The data-only transport is suitable for continued headset testing, but `05ac5b7` is **not yet fully physically qualified for research use**. One Quest was detected during this follow-up but ADB remained unauthorized, so no current-build immersive direct or forced-TURN run could be executed. The H10 had been removed, so the new browser recovery path was verified with deterministic/mock hardware contracts and synthetic ECG, not a worn sensor.
 
-An earlier physical direct-path receipt on commit `8d8c813` remains useful evidence because the subsequent runtime changes added explicit forced-TURN qualification, foreground lifecycle/recovery, ideal-deadline sender scheduling, teardown and channel-close hardening, and cache revisioning without changing the wire codec. It is not treated as a receipt for `ec5972b` or for a Quest relay route.
+An earlier physical direct-path receipt on commit `8d8c813` remains useful evidence because the subsequent runtime changes added explicit forced-TURN qualification, foreground lifecycle/recovery, ideal-deadline sender scheduling, teardown and channel-close hardening, browser-ECG liveness recovery, and cache revisioning without changing the wire codec. It is not treated as a receipt for `05ac5b7` or for a Quest relay route.
 
 ## Test subjects
 
@@ -17,7 +17,9 @@ An earlier physical direct-path receipt on commit `8d8c813` remains useful evide
 
 ## Automated gate
 
-`node --test` passed 166 of 166 tests on `dd43646`. Coverage includes the codec, finite/clamp validation, unsigned sequence wraparound, ideal-deadline scheduling under slightly early animation frames, the long-run 60 Hz cap, 100 ms heartbeat, newest-state backpressure, discovery, switching, delayed-signaling teardown quiescence, two-second staleness grace, three-frame recovery, WebXR ownership, 130 Hz replay fixture, the one-chooser/two-setup Polar recovery path, local SDK loading, foreground-helper warning/recovery surfaces, and the forced-TURN option. The vendored SDK/source/license hashes also passed. After the qualification record was published as `ad0fbad`, both the GitHub Pages deployment and complete desktop companion workflow succeeded. A fresh public Chrome load returned `./src/app.js?v=remote-11`, showed `Broadcast off` with the exact opt-in action, stayed disconnected on page load, and produced no console warning or error.
+`node --test` passed 168 of 168 tests on `05ac5b7`. Coverage includes the codec, finite/clamp validation, unsigned sequence wraparound, ideal-deadline scheduling under slightly early animation frames, the long-run 60 Hz cap, 100 ms heartbeat, newest-state backpressure, discovery, disconnected-source cleanup after explicit switching, delayed-signaling teardown quiescence, two-second staleness grace, three-frame recovery, WebXR ownership, 130 Hz replay fixture, both bounded Polar startup recovery and post-readiness silent-stream recovery, local SDK loading, foreground-helper warning/recovery surfaces, and the forced-TURN option. The new live-ECG test proves one chooser, exactly one same-device restart after five seconds without a valid packet, fresh first-frame proof, watchdog rearming, and fail-closed behavior after the second silent interval. The vendored SDK/source/license hashes also passed.
+
+The earlier 166-test `dd43646` gate, its successful Pages/desktop workflows, and the public `remote-11` activation receipt remain historical evidence for that exact build. Deployment evidence for `05ac5b7` and cache revision `remote-13` is recorded below after publication.
 
 ## Preceding deployed desktop transport preflight (`b66aa1d`)
 
@@ -117,6 +119,22 @@ Privacy-safe captures:
 
 The preferred typed Quest File Manager provider is installed and hash-pinned, but its public routes cover exact-device status, files, APKs, and kiosk control rather than arbitrary Meta Quest Browser URL navigation. Its sanitized device listing currently reports the attached headset as USB `unauthorized`. No serial-scoped ADB, browser launch, capture, performance setting, or other headset mutation was attempted. Current-build immersive direct/TURN receipts and the worn-H10 matrix therefore remain open.
 
+## Current `remote-13` reliability follow-up (`05ac5b7`)
+
+The attended Chrome 151 run used the deterministic 130 Hz replay with Heart rate assigned to X and Local ECG power assigned to Y, normal desktop smoothing, one foreground publisher, and one visible same-PC WebXR receiver. No coordinate buffer or additional receiver smoothing was introduced.
+
+- During the more-than-two-minute Direct P2P interval, the receiver reached 7,631 accepted frames at the recorded soak checkpoint, with an 18 ms rolling p95 gap, 27 ms maximum gap, 0–1 ms RTT, and zero loss warnings. Before the later deliberate stop it reached 18,700 cumulative frames, retained the 18 ms p95, reported a 34 ms maximum, and still had no unintended loss warning.
+- Approximately 1.35 seconds after the deliberate publisher stop, the receiver still displayed the final coordinates as live/held within the two-second grace. The later observation showed exactly one stable held-coordinate loss warning rather than repeated live/lost presentation. Operator switching and capture overhead prevent treating these screenshots as an exact transition-time measurement.
+- Restarting created a new anonymous source, as required. The receiver did not switch automatically; after the explicit large-button selection, the new source accumulated 2,302 frames with an 18 ms p95, 100 ms retained maximum, 0–1 ms RTT, and zero warnings in its new-source diagnostics.
+
+That longer run exposed a discovery-only issue: VDO signaling could leave the disconnected old source label visible after the user had explicitly moved to the restarted publisher. The final `05ac5b7` receiver now preserves the old source throughout its full same-source repair grace, then removes that known-dead label only after an explicit different-source selection. A hard reload of the exact final worktree repeated stop, held-state grace, replacement discovery, and explicit selection. The old label disappeared, while the selected replacement reached 277 frames at the capture with an 18 ms p95 gap, 30 ms maximum, 1 ms Direct P2P RTT, and zero loss warnings. Unit coverage also proves that healthy prior sources are not removed during an ordinary switch and that late events from the old source cannot affect the new one.
+
+The browser H10 adapter now covers the separate failure mode in which GATT remains nominal after readiness but valid ECG notifications stop. Every valid packet rearms a five-second watchdog. One silent interval releases Polar axis ownership, clears bounded metric/window state, tears down listeners, notifications, GATT, and PMD, and restarts the same browser-selected device once without reopening the chooser. Recovered ownership requires a new valid first frame. A second silent interval in the same explicit connection session fails closed with `PMD_LIVE_ECG_STALLED`; actual range loss still never reconnects automatically. This adds no packet, coordinate, or smoothing delay. The behavior is automated-contract and synthetic-replay evidence only until repeated with a worn H10.
+
+The two-minute transport interval preceded only the selection-list cleanup described above; the final-code hard-reload check and unit tests cover that narrow change. These results are same-PC Chrome route, cadence, lifecycle, and stability evidence—not an immersive Quest or physical-H10 receipt.
+
+Both exact-runtime workflows completed successfully: desktop companion run `32817876132` and GitHub Pages run `32817876146`. At 2026-08-25T06:49:19Z, uncached public requests returned `./src/app.js?v=remote-13` and `./src/webxr-study.js?v=remote-13`, both exact opt-in labels, and only the locally vendored VDO SDK references. Static inspection confirmed that publisher and receiver startup remain bound to their respective click handlers and that the incoming function has no page-load call site.
+
 ## Earlier physical Quest direct receipt
 
 The attended direct-path run on `8d8c813` used the same 130 Hz replay-to-final-coordinate path and produced:
@@ -135,7 +153,7 @@ The wire deliberately carries no timestamp, so one-way motion-to-photon latency 
 
 ## Remaining physical gate
 
-Repeat on deployed `ec5972b` after the Quest reconnects and USB debugging is authorized:
+Repeat on deployed `05ac5b7` after the Quest reconnects and USB debugging is authorized:
 
 1. Start deterministic replay and one desktop publisher.
 2. Connect Meta Quest Browser, enter immersive WebXR, and retain at least two minutes of direct-path streaming.
@@ -146,4 +164,4 @@ Repeat on deployed `ec5972b` after the Quest reconnects and USB debugging is aut
 
 ## Cleanup
 
-All public receivers and broadcasters used for the direct, TURN, foreground-loss, and reselection checks were explicitly stopped; synthetic replay was disconnected; controlled test tabs were closed; and the user's normal Chrome process remained running. The exact local Python server process was verified before stopping, and ports 8000 and 4173 were verified closed. The temporary Python GUI-control dependency directory was removed. The headset appeared only as unauthorized, so no headset command or browser launch was sent and no ADB forward was created. Nine privacy-safe diagnostic screenshots were committed under `for-ai/evidence/remote-flubber-2026-08-25/`; no physiology, Bluetooth identifier, or Quest serial appears in them.
+All public receivers and broadcasters used for the direct, TURN, foreground-loss, and reselection checks were explicitly stopped; the final synthetic replay page was reloaded after broadcast teardown to release the mock source; and the user's normal Chrome process remained running. The exact local Python server was stopped, ports 8000, 4173, and 9222 were verified closed, and the temporary attended-control screenshots were removed. The headset still appeared only as unauthorized, so no headset command or browser launch was sent and zero ADB forwards existed at cleanup. Nine privacy-safe diagnostic screenshots remain committed under `for-ai/evidence/remote-flubber-2026-08-25/`; no physiology, Bluetooth identifier, or Quest serial appears in them.
