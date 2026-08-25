@@ -166,7 +166,7 @@ const elements = {
   animationSpeed: document.querySelector("#web-animation-speed"),
   amplitudeScale: document.querySelector("#web-amplitude-scale"),
   disorderScale: document.querySelector("#web-disorder-scale"),
-  baseShape: document.querySelector("#web-base-shape"),
+  baseShapeButtons: [...document.querySelectorAll("[data-base-shape]")],
   widgetSize: document.querySelector("#web-widget-size"),
   transparency: document.querySelector("#web-transparency"),
   transparencyOutput: document.querySelector("#web-transparency-output"),
@@ -1227,7 +1227,9 @@ function updateCustomizationControls() {
   elements.animationSpeed.value = state.visual.animationSpeed;
   elements.amplitudeScale.value = state.visual.amplitudeScale;
   elements.disorderScale.value = state.visual.disorderScale;
-  elements.baseShape.value = state.visual.baseShape;
+  for (const button of elements.baseShapeButtons) {
+    button.setAttribute("aria-pressed", String(button.dataset.baseShape === state.visual.baseShape));
+  }
   elements.widgetSize.value = state.widgetSize;
   elements.transparency.value = opacityToTransparencyPercent(state.widgetOpacity);
   elements.transparencyOutput.value = `${elements.transparency.value}%`;
@@ -2769,12 +2771,17 @@ function initializeEvents() {
       savePreferences();
     });
   }
-  elements.baseShape.addEventListener("change", () => {
-    state.visual.baseShape = elements.baseShape.value;
-    savePreferences();
-    recordEvent("panel", "visual-change", "baseShape", elements.baseShape.value);
-    announce(`Flubber shape changed to ${elements.baseShape.selectedOptions[0].textContent}.`);
-  });
+  for (const button of elements.baseShapeButtons) {
+    button.addEventListener("click", () => {
+      state.visual.baseShape = button.dataset.baseShape;
+      for (const shapeButton of elements.baseShapeButtons) {
+        shapeButton.setAttribute("aria-pressed", String(shapeButton === button));
+      }
+      savePreferences();
+      recordEvent("panel", "visual-change", "baseShape", state.visual.baseShape);
+      announce(`Flubber shape changed to ${button.textContent.trim()}.`);
+    });
+  }
   for (const [element, key] of [
     [elements.animationSpeed, "animationSpeed"],
     [elements.amplitudeScale, "amplitudeScale"],

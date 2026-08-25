@@ -1178,6 +1178,32 @@ html:has(.pip-body),
 .feature-preview-values { display: grid; grid-template-columns: 1fr 1fr; gap: 0.45rem; margin: 0.45rem 0 0.7rem; }
 .feature-preview-values span { color: rgb(255 255 255 / 60%); font-size: 0.64rem; text-align: center; }
 .feature-preview-values output { display: block; margin-top: 0.08rem; color: #fff; font: 0.7rem ui-monospace, SFMono-Regular, Consolas, monospace; }
+.web-shape-picker { margin-top: 0.65rem; }
+.web-shape-picker-label { color: rgb(255 255 255 / 72%); font-size: 0.68rem; }
+.web-shape-buttons { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.4rem; margin-top: 0.35rem; }
+.web-shape-button {
+  display: grid;
+  place-items: center;
+  gap: 0.3rem;
+  min-width: 0;
+  min-height: 3.2rem;
+  padding: 0.45rem 0.2rem;
+  border: 1px solid rgb(255 255 255 / 18%);
+  border-radius: 0.5rem;
+  background: #15181b;
+  color: rgb(255 255 255 / 68%);
+  cursor: pointer;
+}
+.web-shape-button:hover { border-color: rgb(255 255 255 / 34%); color: #fff; }
+.web-shape-button:focus-visible { outline: 2px solid #ffd166; outline-offset: 2px; }
+.web-shape-button[aria-pressed="true"] {
+  border-color: #ffd166;
+  background: rgb(255 209 102 / 14%);
+  color: #ffd166;
+  box-shadow: inset 0 0 0 1px rgb(255 209 102 / 22%);
+}
+.web-shape-button svg { width: 1.35rem; height: 1.35rem; fill: currentColor; }
+.web-shape-button span { overflow: hidden; max-width: 100%; font-size: 0.58rem; text-overflow: ellipsis; }
 .web-palette-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.4rem 0.65rem; }
 .web-palette-grid label { display: flex; align-items: center; justify-content: space-between; color: rgb(255 255 255 / 64%); font-size: 0.65rem; }
 .web-palette-grid input[type="color"] { width: 2.3rem; height: 1.65rem; padding: 0.12rem; cursor: pointer; }

@@ -18,7 +18,25 @@ test("web settings are split into compact task-focused sections", async () => {
   }
   assert.match(html, /Data &amp; settings files[\s\S]*id="settings-import-button"[\s\S]*id="settings-export-button"/);
   assert.match(html, /Appearance &amp; cursor[\s\S]*id="settings-hide-cursor-toggle"[^>]*data-touch-hide-cursor/);
-  assert.match(html, /id="web-base-shape"[\s\S]*value="heart"[\s\S]*value="triangle"[\s\S]*value="square"/);
+  const gridSection = html.slice(
+    html.indexOf("<summary>2D grid &amp; colors</summary>"),
+    html.indexOf("<summary>Data &amp; settings files</summary>"),
+  );
+  assert.match(gridSection, /class="web-shape-buttons"[\s\S]*data-base-shape="circle"[\s\S]*data-base-shape="heart"[\s\S]*data-base-shape="triangle"[\s\S]*data-base-shape="square"/);
+  assert.match(gridSection, /id="web-feature-space"[\s\S]*data-palette="up"/);
+});
+
+test("the shape picker uses persistent accessible buttons instead of a dropdown", async () => {
+  const html = await readSiteFile("index.html");
+  const app = await readSiteFile("src/app.js");
+
+  assert.doesNotMatch(html, /id="web-base-shape"/);
+  assert.equal((html.match(/data-base-shape=/g) ?? []).length, 4);
+  assert.equal((html.match(/aria-pressed="false"/g) ?? []).length, 4);
+  assert.match(app, /baseShapeButtons: \[\.\.\.document\.querySelectorAll\("\[data-base-shape\]"\)\]/);
+  assert.match(app, /button\.dataset\.baseShape === state\.visual\.baseShape/);
+  assert.match(app, /state\.visual\.baseShape = button\.dataset\.baseShape/);
+  assert.match(app, /recordEvent\("panel", "visual-change", "baseShape", state\.visual\.baseShape\)/);
 });
 
 test("the visible direction pad launches input capture instead of moving affect", async () => {
