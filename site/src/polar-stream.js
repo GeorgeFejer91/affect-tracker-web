@@ -68,6 +68,8 @@ const PMD_RESPONSE_GRACE_AFTER_FRAME_MS = 250;
 const STREAM_SETUP_ATTEMPTS = 2;
 const STREAM_SETUP_RETRY_DELAY_MS = 750;
 const STREAM_SETUP_RETRY_CODES = new Set(["PMD_CONTROL_TIMEOUT", "PMD_FIRST_ECG_TIMEOUT"]);
+export const POLAR_LIVE_ECG_TIMEOUT_MS = 5_000;
+export const POLAR_LIVE_ECG_RECOVERY_ATTEMPTS = 1;
 
 export class PolarStreamError extends Error {
   constructor(code, message, retryable = false) {
@@ -415,6 +417,7 @@ export class PolarH10BrowserSession {
     now = () => Date.now(),
     controlResponseTimeoutMs = CONTROL_RESPONSE_TIMEOUT_MS,
     firstEcgTimeoutMs = FIRST_ECG_TIMEOUT_MS,
+    liveEcgTimeoutMs = POLAR_LIVE_ECG_TIMEOUT_MS,
     allowQuestExperiment = false,
   } = {}) {
     this.navigatorObject = navigatorObject;
@@ -423,8 +426,13 @@ export class PolarH10BrowserSession {
     this.now = now;
     this.controlResponseTimeoutMs = controlResponseTimeoutMs;
     this.firstEcgTimeoutMs = firstEcgTimeoutMs;
+    this.liveEcgTimeoutMs = Math.max(1, Number(liveEcgTimeoutMs) || POLAR_LIVE_ECG_TIMEOUT_MS);
     this.allowQuestExperiment = allowQuestExperiment;
     this.processor = new PolarMetricProcessor();
+    this.ecgWatchdogTimer = undefined;
+    this.liveRecoveryPromise = null;
+    this.liveRecoveryAttempts = 0;
+    this.stopRequested = false;
     this.diagnosticState = this.createDiagnosticState();
     this.resetConnectionState();
     this.boundPmd = (event) => this.handlePmd(event);
@@ -434,6 +442,7 @@ export class PolarH10BrowserSession {
   }
 
   resetConnectionState() {
+    this.clearLiveEcgWatchdog();
     this.rejectWaiter(this.pendingControlResponse, new PolarStreamError("PMD_SESSION_ENDED", "The Polar PMD session ended."));
     this.rejectWaiter(this.firstEcgFrame, new PolarStreamError("PMD_SESSION_ENDED", "The Polar PMD session ended."));
     this.device = null;
@@ -443,6 +452,7 @@ export class PolarH10BrowserSession {
     this.heartRate = null;
     this.connected = false;
     this.disconnecting = false;
+    this.recoveringLiveEcg = false;
     this.pendingControlResponse = null;
     this.firstEcgFrame = null;
     this.currentStage = "idle";
@@ -465,6 +475,8 @@ export class PolarH10BrowserSession {
       gattAttemptsTotal: GATT_CONNECT_RETRY_DELAYS_MS.length + 1,
       streamSetupAttempt: 0,
       streamSetupAttemptsTotal: STREAM_SETUP_ATTEMPTS,
+      liveRecoveryAttempt: 0,
+      liveRecoveryAttemptsTotal: POLAR_LIVE_ECG_RECOVERY_ATTEMPTS,
       pmdResponse: "not started",
       firstEcgFrame: false,
       lastErrorCode: "",
@@ -503,6 +515,8 @@ export class PolarH10BrowserSession {
     if (!support.supported) throw new PolarStreamError("WEB_BLUETOOTH_UNAVAILABLE", support.reason);
     if (this.device || this.connected) throw new PolarStreamError("BROWSER_BLE_BUSY", "Disconnect the current H10 before choosing another.", true);
     this.onEvent = onEvent;
+    this.stopRequested = false;
+    this.liveRecoveryAttempts = 0;
     this.processor.reset();
     this.diagnosticState = this.createDiagnosticState();
     this.updateDiagnostics({ stage: "chooser", chooser: "opening" });
@@ -538,7 +552,7 @@ export class PolarH10BrowserSession {
       this.device.addEventListener("gattserverdisconnected", this.boundDisconnected);
       const batteryPercent = await this.connectSelectedDeviceWithRecovery();
       this.connected = true;
-      this.updateDiagnostics({ stage: "live" });
+      this.updateDiagnostics({ stage: "live", liveRecoveryAttempt: 0 });
       this.emit({
         kind: "connection",
         connected: true,
@@ -546,6 +560,7 @@ export class PolarH10BrowserSession {
         streamHealth: this.streamHealth(),
         message: "Polar H10 ECG is live at 130 Hz",
       });
+      this.armLiveEcgWatchdog();
     } catch (error) {
       const normalized = normalizeBluetoothError(error, support.questBrowser);
       await this.disconnect({ emit: false });
@@ -663,6 +678,123 @@ export class PolarH10BrowserSession {
         lastErrorMessage: staged.message,
       });
       throw staged;
+    }
+  }
+
+  clearLiveEcgWatchdog() {
+    if (this.ecgWatchdogTimer !== undefined) this.timer.clearTimeout?.(this.ecgWatchdogTimer);
+    this.ecgWatchdogTimer = undefined;
+  }
+
+  armLiveEcgWatchdog(delayMs = this.liveEcgTimeoutMs) {
+    this.clearLiveEcgWatchdog();
+    if (!this.connected || this.recoveringLiveEcg || this.stopRequested || !Number.isFinite(this.lastEcgFrameAtMs)) return;
+    this.ecgWatchdogTimer = this.timer.setTimeout(() => {
+      this.ecgWatchdogTimer = undefined;
+      void this.handleLiveEcgWatchdog();
+    }, Math.max(1, delayMs));
+  }
+
+  async handleLiveEcgWatchdog() {
+    if (!this.connected || this.recoveringLiveEcg || this.stopRequested || !Number.isFinite(this.lastEcgFrameAtMs)) return;
+    const packetAgeMs = Math.max(0, this.now() - this.lastEcgFrameAtMs);
+    if (packetAgeMs < this.liveEcgTimeoutMs) {
+      this.armLiveEcgWatchdog(this.liveEcgTimeoutMs - packetAgeMs);
+      return;
+    }
+    if (this.liveRecoveryPromise) return;
+    this.liveRecoveryPromise = this.recoverLiveEcgStream(packetAgeMs)
+      .finally(() => { this.liveRecoveryPromise = null; });
+    await this.liveRecoveryPromise;
+  }
+
+  async failLiveEcgSession(error) {
+    this.stopRequested = true;
+    this.connected = false;
+    this.recoveringLiveEcg = false;
+    this.updateDiagnostics({
+      stage: "failed",
+      firstEcgFrame: false,
+      lastErrorCode: error.code,
+      lastErrorMessage: error.message,
+    });
+    this.emit({ kind: "connection", connected: false, error: true, message: error.message });
+    await this.disconnect({ emit: false });
+    this.onEvent = null;
+  }
+
+  async recoverLiveEcgStream(packetAgeMs) {
+    if (this.liveRecoveryAttempts >= POLAR_LIVE_ECG_RECOVERY_ATTEMPTS) {
+      await this.failLiveEcgSession(new PolarStreamError(
+        "PMD_LIVE_ECG_STALLED",
+        `Live ECG stopped for ${Math.round(packetAgeMs / 1_000)} seconds after the bounded automatic restart. Press Connect to choose the worn H10 again.`,
+        true,
+      ));
+      return;
+    }
+
+    this.liveRecoveryAttempts += 1;
+    const recoveryAttempt = this.liveRecoveryAttempts;
+    const selectedDevice = this.device;
+    this.recoveringLiveEcg = true;
+    this.connected = false;
+    this.updateDiagnostics({
+      stage: "recovering",
+      firstEcgFrame: false,
+      liveRecoveryAttempt: recoveryAttempt,
+      lastErrorCode: "PMD_LIVE_ECG_STALLED",
+      lastErrorMessage: `No valid ECG packet for ${Math.round(packetAgeMs / 1_000)} seconds.`,
+    });
+    this.emit({
+      kind: "connection",
+      connected: false,
+      recovering: true,
+      message: "Live ECG paused; restarting the same browser-selected H10 without another chooser…",
+    });
+
+    await this.disconnect({ emit: false });
+    if (this.stopRequested || !selectedDevice) return;
+    this.processor.reset();
+    this.device = selectedDevice;
+    this.device.addEventListener("gattserverdisconnected", this.boundDisconnected);
+    this.recoveringLiveEcg = true;
+    this.updateDiagnostics({
+      stage: "recovering",
+      streamSetupAttempt: 0,
+      liveRecoveryAttempt: recoveryAttempt,
+    });
+
+    try {
+      const batteryPercent = await this.connectSelectedDeviceWithRecovery();
+      if (this.stopRequested) {
+        await this.disconnect({ emit: false });
+        return;
+      }
+      this.connected = true;
+      this.recoveringLiveEcg = false;
+      this.updateDiagnostics({
+        stage: "live",
+        firstEcgFrame: true,
+        liveRecoveryAttempt: recoveryAttempt,
+        lastErrorCode: "",
+        lastErrorMessage: "",
+      });
+      this.emit({
+        kind: "connection",
+        connected: true,
+        recovered: true,
+        batteryPercent,
+        streamHealth: this.streamHealth(),
+        message: "Polar H10 live ECG recovered without reopening the Bluetooth chooser",
+      });
+      this.armLiveEcgWatchdog();
+    } catch (error) {
+      const support = polarWebBluetoothSupport({
+        secureContext: this.secureContext,
+        navigatorObject: this.navigatorObject,
+        allowQuestExperiment: this.allowQuestExperiment,
+      });
+      await this.failLiveEcgSession(normalizeBluetoothError(error, support.questBrowser));
     }
   }
 
@@ -818,6 +950,7 @@ export class PolarH10BrowserSession {
       this.firstEcgFrame?.resolve(streamHealth);
       this.emit({ kind: "ecg", ...frame, snapshot, streamHealth });
       this.emit({ kind: "metrics", snapshot });
+      if (this.connected && !this.recoveringLiveEcg) this.armLiveEcgWatchdog();
     } catch (error) {
       this.emit({ kind: "error", message: `Skipped malformed Polar ECG frame: ${error.message}` });
     }
@@ -867,6 +1000,7 @@ export class PolarH10BrowserSession {
   }
 
   async disconnect({ emit = true } = {}) {
+    if (emit) this.stopRequested = true;
     if (this.disconnecting) return;
     this.disconnecting = true;
     if (emit) this.updateDiagnostics({ stage: "disconnecting" });
@@ -903,6 +1037,7 @@ export class PolarH10BrowserSession {
 
   handleDisconnected() {
     if (this.disconnecting) return;
+    this.stopRequested = true;
     this.resetConnectionState();
     this.updateDiagnostics({
       stage: "disconnected",

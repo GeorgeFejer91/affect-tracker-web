@@ -51,9 +51,9 @@ import {
   POLAR_METRICS,
   polarMetricDefinition,
   polarWebBluetoothSupport,
-} from "./polar-stream.js?v=remote-12";
-import { createPolarH10ReplaySession, polarReplayEnabled } from "./polar-replay.js?v=remote-12";
-import { createFlubberBroadcaster } from "./flubber-remote.js?v=remote-12";
+} from "./polar-stream.js?v=remote-13";
+import { createPolarH10ReplaySession, polarReplayEnabled } from "./polar-replay.js?v=remote-13";
+import { createFlubberBroadcaster } from "./flubber-remote.js?v=remote-13";
 import {
   actionForBinding,
   ADVANCED_BINDING_LABELS,
@@ -749,6 +749,7 @@ function renderPolarDiagnostics(snapshot = polarSession.diagnosticSnapshot()) {
     PMD_DATA_NOTIFY: "ECG notifications",
     PMD_CONTROL_NOTIFY: "PMD indications",
     ECG_START: "ECG startup",
+    recovering: "ECG recovery",
     live: "Live ECG",
     disconnecting: "Disconnecting",
     disconnected: "Link lost",
@@ -936,15 +937,16 @@ function handlePolarEvent(event) {
     return;
   }
   if (event.kind === "connection") {
-    state.polarConnecting = false;
+    state.polarConnecting = Boolean(event.recovering);
     state.polarConnected = event.connected;
     if (Number.isFinite(event.batteryPercent)) polarBatteryPercent = event.batteryPercent;
     if (!event.connected) {
       clearPolarLiveReadout();
     }
     applyPolarMappings();
-    updatePolarConnectionUi(event.message);
-    recordEvent("polar-stream", event.connected ? "connect" : "disconnect", "polar-h10", event.batteryPercent ?? "");
+    updatePolarConnectionUi(event.message, Boolean(event.error));
+    const action = event.recovering ? "recovering" : event.recovered ? "recovered" : event.connected ? "connect" : "disconnect";
+    recordEvent("polar-stream", action, "polar-h10", event.batteryPercent ?? "");
     announce(event.message);
     return;
   }

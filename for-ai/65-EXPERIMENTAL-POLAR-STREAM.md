@@ -102,8 +102,9 @@ browser API, uses both the exact H10 name prefix and advertised heart-rate
 service as alternative chooser filters, and grants PMD/heart-rate/battery as
 optional services. The in-page browser details retain only privacy-safe attempt
 state: secure/API availability, adapter availability, user activation, chooser
-outcome, current GATT stage/attempt, PMD/first-frame proof, and the last typed
-error. No device identifier, name suffix, raw sample, RR series, or physiology
+outcome, current GATT/full-setup/live-recovery stage and attempt,
+PMD/first-frame proof, and the last typed error. No device identifier, name
+suffix, raw sample, RR series, or physiology
 enters that diagnostic state.
 
 Required GATT failures retain the failing stage and the browser's safe error
@@ -127,8 +128,20 @@ listener, stops notifications, disconnects GATT, clears metric/readiness state,
 waits 750 ms for the Windows lease, then rebuilds service discovery,
 notifications, PMD startup, and first-frame proof. An explicit PMD rejection is
 not retried. A second timeout fails closed. No device object or identifier is
-persisted, no page-load/range-loss reconnect is added, and live processing is
-unchanged after readiness.
+persisted, and no page-load/range-loss reconnect is added.
+
+After readiness, the browser adapter resets a five-second watchdog on every
+valid decoded ECG packet. If the GATT link remains nominal but ECG
+notifications become silent for that entire interval, Polar axis ownership is
+released immediately, the old bounded metric/window state is cleared, and the
+same browser-selected device receives one complete listener/notification/GATT/
+PMD teardown and restart without another chooser. Valid recovered samples must
+again pass first-frame readiness before Polar owns an axis. A later silent
+interval in the same explicit connection session fails closed and requires a
+fresh Connect gesture, preventing an unbounded restart loop. A real
+`gattserverdisconnected` range-loss event still never auto-reconnects. The
+watchdog changes only acquisition health; it adds no smoothing, coordinate
+queue, or VDO transport delay.
 
 Native readiness follows the Study 6 gate rather than treating BLE connection
 or stream subscription as success. The official SDK requests maximum ECG

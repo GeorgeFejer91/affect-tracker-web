@@ -29,8 +29,8 @@ import {
   normalizePolarMetric,
   POLAR_METRICS,
   polarWebBluetoothSupport,
-} from "./polar-stream.js?v=remote-12";
-import { createFlubberReceiver } from "./flubber-remote.js?v=remote-12";
+} from "./polar-stream.js?v=remote-13";
+import { createFlubberReceiver } from "./flubber-remote.js?v=remote-13";
 
 const VIDEO_MODEL = modelMatrix(0, 1.55, -2.8, 2.4, 1.35);
 const SPHERE_MODEL = modelMatrix(0, 0, 0, 1, 1);
@@ -361,7 +361,7 @@ function handlePolarEvent(event) {
     return;
   }
   if (event.kind === "connection") {
-    state.polarConnecting = false;
+    state.polarConnecting = Boolean(event.recovering);
     state.polarConnected = event.connected;
     state.polarBatteryPercent = Number.isFinite(event.batteryPercent) ? event.batteryPercent : undefined;
     if (!event.connected) {
@@ -371,8 +371,11 @@ function handlePolarEvent(event) {
       elements.polarEcgPort.hidden = true;
       drawPolarEcg();
     }
-    updatePolarConnectionUi(event.message);
-    if (state.session) record("event", event.connected ? "polar-connect" : "polar-disconnect", "web-bluetooth");
+    updatePolarConnectionUi(event.message, Boolean(event.error));
+    if (state.session) {
+      const action = event.recovering ? "polar-recovering" : event.recovered ? "polar-recovered" : event.connected ? "polar-connect" : "polar-disconnect";
+      record("event", action, "web-bluetooth");
+    }
     return;
   }
   if (event.kind === "ecg") {

@@ -384,6 +384,128 @@ test("one Connect gesture fully resets and retries an acknowledged ECG startup w
   await session.disconnect();
 });
 
+test("a live ECG silence gets one bounded same-device recovery without another chooser", async () => {
+  class ManualTimer {
+    constructor() {
+      this.nowMs = 0;
+      this.nextId = 1;
+      this.tasks = new Map();
+    }
+
+    setTimeout(callback, delayMs) {
+      const id = this.nextId;
+      this.nextId += 1;
+      this.tasks.set(id, { at: this.nowMs + delayMs, callback });
+      return id;
+    }
+
+    clearTimeout(id) {
+      this.tasks.delete(id);
+    }
+
+    async advance(delayMs) {
+      const target = this.nowMs + delayMs;
+      while (true) {
+        const next = [...this.tasks.entries()]
+          .filter(([, task]) => task.at <= target)
+          .sort((left, right) => left[1].at - right[1].at || left[0] - right[0])[0];
+        if (!next) break;
+        const [id, task] = next;
+        this.tasks.delete(id);
+        this.nowMs = task.at;
+        task.callback();
+        for (let index = 0; index < 20; index += 1) await Promise.resolve();
+      }
+      this.nowMs = target;
+      for (let index = 0; index < 20; index += 1) await Promise.resolve();
+    }
+  }
+
+  class Characteristic extends EventTarget {
+    async startNotifications() { return this; }
+    async stopNotifications() { return this; }
+    async writeValueWithResponse(value) { this.onWrite?.(value); }
+    notify(value) {
+      this.value = new DataView(value.buffer, value.byteOffset, value.byteLength);
+      this.dispatchEvent(new Event("characteristicvaluechanged"));
+    }
+  }
+
+  const timer = new ManualTimer();
+  const control = new Characteristic();
+  const pmdData = new Characteristic();
+  const frame = Uint8Array.from([0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0]);
+  let startWrites = 0;
+  control.onWrite = (value) => {
+    if (value[0] !== POLAR_COMMANDS.startEcg[0]) return;
+    startWrites += 1;
+    queueMicrotask(() => {
+      control.notify(Uint8Array.from([0xf0, 0x02, 0x00, 0x00, 0x00]));
+      pmdData.notify(frame);
+    });
+  };
+
+  const server = {
+    connected: false,
+    async getPrimaryService(uuid) {
+      if (uuid !== POLAR_UUIDS.pmdService) throw new DOMException("Optional service unavailable.", "NotFoundError");
+      return { getCharacteristic: async (characteristicUuid) => characteristicUuid === POLAR_UUIDS.pmdControl ? control : pmdData };
+    },
+    disconnect() { this.connected = false; },
+  };
+  class Device extends EventTarget {}
+  const device = new Device();
+  let gattConnects = 0;
+  device.gatt = {
+    async connect() {
+      gattConnects += 1;
+      server.connected = true;
+      return server;
+    },
+  };
+  let chooserCalls = 0;
+  const events = [];
+  const session = new PolarH10BrowserSession({
+    navigatorObject: {
+      userAgent: "Chromium test",
+      userActivation: { isActive: true },
+      bluetooth: {
+        async requestDevice() { chooserCalls += 1; return device; },
+      },
+    },
+    timer,
+    now: () => timer.nowMs,
+    secureContext: true,
+    controlResponseTimeoutMs: 500,
+    firstEcgTimeoutMs: 500,
+    liveEcgTimeoutMs: 50,
+  });
+
+  await session.connect((event) => events.push(event));
+  await timer.advance(40);
+  pmdData.notify(frame);
+  await timer.advance(10);
+  assert.equal(gattConnects, 1, "a fresh frame rearms the watchdog without restarting GATT");
+
+  await timer.advance(40);
+  for (let index = 0; index < 100 && !events.some((event) => event.recovered); index += 1) await Promise.resolve();
+  assert.equal(chooserCalls, 1);
+  assert.equal(gattConnects, 2);
+  assert.equal(startWrites, 2);
+  assert.ok(events.some((event) => event.kind === "connection" && event.recovering && !event.connected));
+  assert.ok(events.some((event) => event.kind === "connection" && event.recovered && event.connected));
+  assert.equal(session.connected, true);
+  assert.equal(session.diagnosticSnapshot().liveRecoveryAttempt, 1);
+  assert.equal(session.diagnosticSnapshot().stage, "live");
+
+  await timer.advance(50);
+  for (let index = 0; index < 100 && session.onEvent; index += 1) await Promise.resolve();
+  assert.equal(gattConnects, 2, "a second silence fails closed instead of creating an unbounded restart loop");
+  assert.equal(session.connected, false);
+  assert.equal(session.diagnosticSnapshot().lastErrorCode, "PMD_LIVE_ECG_STALLED");
+  assert.ok(events.some((event) => event.kind === "connection" && event.error && /Press Connect/.test(event.message)));
+});
+
 test("a valid live ECG frame confirms startup when Chromium omits the PMD indication", async () => {
   class Characteristic extends EventTarget {
     async startNotifications() { return this; }

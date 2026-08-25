@@ -584,8 +584,15 @@ test("late packets and close events from a switched source cannot affect the new
     channel: oldChannel,
   });
   oldChannel.message(encodeFlubberFrame(20, -0.8, -0.8));
+  oldChannel.close();
+  assert.equal(receiver.snapshot().phase, "live", "the closed source retains its repair grace until an explicit switch");
 
   await receiver.selectSource("aft_flubber_bbbbbbbb");
+  assert.deepEqual(
+    receiver.snapshot().sources.map((source) => source.streamId),
+    ["aft_flubber_bbbbbbbb"],
+    "an explicitly abandoned disconnected source must not remain as a ghost choice",
+  );
   const newChannel = new MockChannel();
   sdk.emit("channelOpen", {
     label: `x-${FLUBBER_REMOTE_CHANNEL}`,
@@ -632,10 +639,10 @@ test("remote pages load only the local SDK and feature code makes no microphone 
   assert.match(index, />Broadcast this to VR \/ remote interface</);
   assert.match(index, /id="flubber-remote-foreground-button"[^>]*hidden>Restore low-latency foreground mode</);
   assert.match(webxr, />Use incoming signal</);
-  assert.match(index, /src="\.\/src\/app\.js\?v=remote-12"/);
-  assert.match(webxr, /src="\.\/src\/webxr-study\.js\?v=remote-12"/);
-  assert.match(app, /from "\.\/flubber-remote\.js\?v=remote-12"/);
-  assert.match(receiver, /from "\.\/flubber-remote\.js\?v=remote-12"/);
+  assert.match(index, /src="\.\/src\/app\.js\?v=remote-13"/);
+  assert.match(webxr, /src="\.\/src\/webxr-study\.js\?v=remote-13"/);
+  assert.match(app, /from "\.\/flubber-remote\.js\?v=remote-13"/);
+  assert.match(receiver, /from "\.\/flubber-remote\.js\?v=remote-13"/);
   assert.match(transport, /FLUBBER_REMOTE_FORCE_TURN_PARAM = "remote-force-turn"/);
   assert.match(transport, /forceTURN: Boolean\(forceTurn\)/);
   assert.match(app, /flubberBroadcaster\.offer\(state\.currentX, state\.currentY\);/);

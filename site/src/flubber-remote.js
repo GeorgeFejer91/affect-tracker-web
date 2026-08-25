@@ -647,6 +647,7 @@ export class FlubberReceiver extends FlubberRemoteBase {
   async selectSource(streamId) {
     if (!this.sdk || !isFlubberSource(streamId)) return this.snapshot();
     const previous = this.selectedStreamId;
+    const previousDisconnected = this.disconnectNotified;
     if (previous === streamId && (this.phase === "connecting" || this.phase === "live" || this.phase === "stale")) {
       return this.snapshot();
     }
@@ -657,6 +658,11 @@ export class FlubberReceiver extends FlubberRemoteBase {
         // The next explicit selection remains authoritative even if the old peer already left.
       }
     }
+    // VDO signaling can retain a departed announcer in the discovery listing
+    // after its data channel has already closed. Preserve repair ownership while
+    // that source remains selected, but remove the known-dead label once the
+    // user explicitly moves to another source.
+    if (previous && previous !== streamId && previousDisconnected) this.sources.delete(previous);
     const source = this.sources.get(streamId);
     this.selectedStreamId = streamId;
     this.selectedUuid = source?.uuid ?? "";
