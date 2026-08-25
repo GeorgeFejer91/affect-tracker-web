@@ -119,6 +119,7 @@ test("WebXR CSV has fixed reconstructable columns and escapes details", () => {
   for (const column of ["remote_enabled", "remote_source", "remote_signal_state", "remote_sequence", "remote_packet_age_ms"]) {
     assert.ok(WEBXR_CSV_COLUMNS.includes(column));
   }
+  assert.ok(WEBXR_CSV_COLUMNS.includes("flubber_base_shape"));
   assert.doesNotMatch(WEBXR_CSV_COLUMNS.join(","), /raw_ecg|ecg_samples|rr_series/);
 });
 
@@ -195,6 +196,7 @@ test("experimental page is local-first and wires the selectable WebXR study libr
   assert.match(page, /id="controller-follow-enabled"/);
   assert.match(page, /id="controller-follow-hand"/);
   assert.match(page, /id="flubber-size"/);
+  assert.match(page, /id="flubber-base-shape"[\s\S]*value="heart"[\s\S]*value="triangle"[\s\S]*value="square"/);
   assert.match(page, /id="presentation-mode"/);
   assert.match(page, /id="webxr-polar-panel"/);
   assert.match(page, /id="webxr-polar-connect"/);
@@ -207,7 +209,7 @@ test("experimental page is local-first and wires the selectable WebXR study libr
   assert.match(page, /id="webxr-remote-sources"[^>]*role="group"/);
   assert.match(page, /src="\.\/vendor\/vdoninja\/1\.5\.5\/vdoninja-sdk\.min\.js"/);
   assert.match(styles, /\.polar-xr-connector button\[hidden\][\s\S]*display: none/);
-  assert.match(page, /src="\.\/src\/webxr-study\.js\?v=remote-13"/);
+  assert.match(page, /src="\.\/src\/webxr-study\.js\?v=shape-1"/);
   assert.doesNotMatch(page, /https:\/\/(?!example\.org)/);
   assert.match(runtime, /navigator\.xr\.requestSession\(sessionMode/);
   assert.match(runtime, /"immersive-ar"/);

@@ -21,6 +21,7 @@ test("desktop settings JSON round-trips without visual-setting loss", () => {
   desktop.palette = { up: "#112233", down: "#445566", left: "#778899", right: "#aabbcc" };
   desktop.overlay = { x: 42, y: -7, size: 430, opacity: 0.37, visible: true };
   desktop.response = 12.5;
+  desktop.visual.baseShape = "heart";
   const roundTrip = JSON.parse(portableSettingsJson(desktop));
   assert.deepEqual(roundTrip, normalizePortableSettings(desktop));
 });
@@ -58,7 +59,7 @@ test("direction capture pairs opposite wheel directions without pairing keys or 
 test("advanced feature bindings are optional, portable, and share conflict validation", () => {
   const settings = cloneDefaultSettings();
   settings.advancedBindings.increaseTransparency = "mouse:Button4";
-  settings.visual = { animationSpeed: 1.7, amplitudeScale: 0.8, disorderScale: 1.4 };
+  settings.visual = { animationSpeed: 1.7, amplitudeScale: 0.8, disorderScale: 1.4, baseShape: "triangle" };
   const normalized = normalizePortableSettings(settings);
   assert.equal(actionForBinding(normalized.bindings, "MOUSE:BUTTON4", normalized.advancedBindings), "increaseTransparency");
   normalized.advancedBindings.increaseSize = normalized.bindings.reset;
@@ -69,6 +70,21 @@ test("advanced feature bindings are optional, portable, and share conflict valid
   delete legacy.visual;
   assert.deepEqual(normalizePortableSettings(legacy).advancedBindings, {});
   assert.deepEqual(normalizePortableSettings(legacy).visual, cloneDefaultSettings().visual);
+
+  const legacyVisual = cloneDefaultSettings();
+  delete legacyVisual.visual.baseShape;
+  assert.equal(normalizePortableSettings(legacyVisual).visual.baseShape, "circle");
+});
+
+test("portable settings accept only the four supported Flubber base shapes", () => {
+  for (const baseShape of ["circle", "heart", "triangle", "square"]) {
+    const settings = cloneDefaultSettings();
+    settings.visual.baseShape = baseShape;
+    assert.equal(normalizePortableSettings(settings).visual.baseShape, baseShape);
+  }
+  const settings = cloneDefaultSettings();
+  settings.visual.baseShape = "star";
+  assert.throws(() => normalizePortableSettings(settings), /base shape/);
 });
 
 test("portable settings require an explicit overlay visibility boolean", () => {

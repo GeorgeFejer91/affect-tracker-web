@@ -18,7 +18,8 @@
   "visual": {
     "animationSpeed": 1.0,
     "amplitudeScale": 1.0,
-    "disorderScale": 1.0
+    "disorderScale": 1.0,
+    "baseShape": "circle"
   },
   "palette": {
     "up": "#ffd166",

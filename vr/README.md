@@ -19,6 +19,8 @@ Controller input remains in the immersive `VrActivity`. The activity explicitly 
 
 `showControllerModels` controls Spatial SDK's app-owned Touch render model. It preserves tracked controller pose and pointer presentation, but it is not Meta Home's shell-owned button-articulation model and its visible buttons may not animate consistently with Meta Home. Button/stick receipt is therefore verified through app-owned evidence. Set `vr.flubber.showAffectValues` to `true`, check the web exporter toggle, or use the headset Ready-screen switch to draw one locale-stable `X`/`Y` pair at the bottom of the transparent Flubber. These are the current smoothed valence/arousal coordinates that drive the visible geometry and LSL, each clamped to `[-1,1]`; target, response-rate, and raw-stick diagnostics are intentionally omitted. Text refreshes at 10 Hz; Flubber animation and input polling remain frame-driven.
 
+`affectSettings.visual.baseShape` selects `circle`, `heart`, `triangle`, or `square`; older manifests that omit it remain Circle. The native renderer mirrors the canonical web profiles. Shape changes only the base envelope, so the Heart keeps the same valence deformation and arousal-driven pulse for Touch, direct Polar H10, and every other existing coordinate route.
+
 ## Mixed reality and controller-follow
 
 `vr.environment` is `dark` by default. Selecting the exporter checkbox writes `passthrough`, which asks the Quest compositor to show the wearer's normal see-through view behind flat video and spatial panels. The app does not request or record camera frames. An immersive 180°/360° carrier can still cover the passthrough background where the video surface renders.

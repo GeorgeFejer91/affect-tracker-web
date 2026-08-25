@@ -122,11 +122,13 @@ function renderSnapshot(snapshot) {
     settings.visual.animationSpeed = snapshot.animationSpeed;
     settings.visual.amplitudeScale = snapshot.amplitudeScale;
     settings.visual.disorderScale = snapshot.disorderScale;
+    settings.visual.baseShape = snapshot.baseShape;
     settings.overlay.opacity = snapshot.overlayOpacity;
     settings.overlay.size = snapshot.overlaySize;
     document.querySelector("#animation-speed").value = snapshot.animationSpeed;
     document.querySelector("#amplitude-scale").value = snapshot.amplitudeScale;
     document.querySelector("#disorder-scale").value = snapshot.disorderScale;
+    document.querySelector("#base-shape").value = snapshot.baseShape;
     document.querySelector("#overlay-size").value = snapshot.overlaySize;
     elements.transparency.value = opacityToTransparencyPercent(snapshot.overlayOpacity);
     elements.transparencyOutput.value = `${elements.transparency.value}%`;
@@ -136,6 +138,7 @@ function renderSnapshot(snapshot) {
   const visualPreview = settings ? {
     amplitudeScale: Number(document.querySelector("#amplitude-scale").value),
     disorderScale: Number(document.querySelector("#disorder-scale").value),
+    baseShape: document.querySelector("#base-shape").value,
   } : {};
   renderFlubber({ ...snapshot, ...visualPreview, palette, overlayOpacity }, reducedMotion.matches);
   updateFeatureSpace(snapshot, palette);
@@ -207,6 +210,7 @@ function fillForm(value) {
   document.querySelector("#animation-speed").value = value.visual.animationSpeed;
   document.querySelector("#amplitude-scale").value = value.visual.amplitudeScale;
   document.querySelector("#disorder-scale").value = value.visual.disorderScale;
+  document.querySelector("#base-shape").value = value.visual.baseShape;
   document.querySelector("#overlay-size").value = value.overlay.size;
   elements.transparency.value = opacityToTransparencyPercent(value.overlay.opacity);
   elements.transparencyOutput.value = `${elements.transparency.value}%`;
@@ -242,6 +246,7 @@ function readForm(currentSettings = settings) {
       animationSpeed: Number(document.querySelector("#animation-speed").value),
       amplitudeScale: Number(document.querySelector("#amplitude-scale").value),
       disorderScale: Number(document.querySelector("#disorder-scale").value),
+      baseShape: document.querySelector("#base-shape").value,
     },
     palette: readPalette(),
     overlay: {
@@ -320,6 +325,9 @@ async function initialize() {
       if (latestSnapshot && input.checkValidity()) renderSnapshot(latestSnapshot);
     });
   }
+  document.querySelector("#base-shape").addEventListener("change", () => {
+    if (latestSnapshot) renderSnapshot(latestSnapshot);
+  });
   elements.form.addEventListener("submit", async (event) => {
     event.preventDefault();
     const saved = await invokeWithFeedback(saveForm, "Settings saved and applied.");

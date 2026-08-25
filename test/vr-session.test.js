@@ -31,8 +31,11 @@ function example(overrides = {}) {
 }
 
 test("Quest session preserves portable settings without extending version 1", () => {
-  const normalized = normalizeVrSession(example());
+  const session = example();
+  session.affectSettings.visual.baseShape = "heart";
+  const normalized = normalizeVrSession(session);
   assert.equal(normalized.affectSettings.version, 1);
+  assert.equal(normalized.affectSettings.visual.baseShape, "heart");
   assert.equal(normalized.affectSettings.lsl.streamName, "AffectTracker");
   assert.equal(JSON.parse(vrSessionJson(normalized)).video.file, "stimulus.mp4");
   assert.equal(normalized.vr.controls.showControllerModels, true);

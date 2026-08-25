@@ -4,7 +4,7 @@ import {
   clamp,
   createProfiles,
   createProjectionOffsets,
-} from "./math.js";
+} from "./math.js?v=shape-1";
 import {
   advanceWebXrAffectWithPolar,
   applyWebXrRemoteCoordinates,
@@ -56,6 +56,7 @@ const elements = {
   controllerFollowHand: document.querySelector("#controller-follow-hand"),
   flubberSize: document.querySelector("#flubber-size"),
   flubberSizeOutput: document.querySelector("#flubber-size-output"),
+  flubberBaseShape: document.querySelector("#flubber-base-shape"),
   polarStatus: document.querySelector("#webxr-polar-status"),
   polarSupport: document.querySelector("#webxr-polar-support"),
   polarBattery: document.querySelector("#webxr-polar-battery"),
@@ -107,6 +108,7 @@ const state = {
   controllerFollowEnabled: false,
   controllerFollowHand: "right",
   flubberSize: 1,
+  flubberBaseShape: "circle",
   presentationMode: "virtual",
   controllerTracking: false,
   controllerRigModel: undefined,
@@ -538,6 +540,7 @@ function record(recordType, event = "", detail = "") {
     flubber_controller_follow: state.controllerFollowEnabled,
     flubber_follow_hand: state.controllerFollowEnabled ? state.controllerFollowHand : "",
     flubber_size_scale: rounded(state.flubberSize, 2),
+    flubber_base_shape: state.flubberBaseShape,
     flubber_tracking: state.controllerFollowEnabled ? state.controllerTracking : "",
     polar_connected: state.polarConnected,
     polar_valence_metric: polarValence.mapping.metric,
@@ -776,6 +779,7 @@ async function startStudy() {
   elements.controllerFollow.disabled = true;
   elements.controllerFollowHand.disabled = true;
   elements.flubberSize.disabled = true;
+  elements.flubberBaseShape.disabled = true;
   elements.polarConnect.disabled = true;
   elements.polarDisconnect.disabled = true;
   elements.polarX.disabled = true;
@@ -833,6 +837,7 @@ async function startStudy() {
     state.controllerFollowEnabled = elements.controllerFollow.checked;
     state.controllerFollowHand = elements.controllerFollowHand.value;
     state.flubberSize = Number(elements.flubberSize.value);
+    state.flubberBaseShape = elements.flubberBaseShape.value;
     state.presentationMode = presentationMode;
     state.controllerTracking = false;
     state.controllerRigModel = undefined;
@@ -874,6 +879,7 @@ async function startStudy() {
         elements.controllerFollow.disabled = false;
         elements.controllerFollowHand.disabled = !elements.controllerFollow.checked;
         elements.flubberSize.disabled = false;
+        elements.flubberBaseShape.disabled = false;
         updatePolarConnectionUi(state.polarStatusMessage ?? (state.polarConnected ? "Polar H10 ECG is live at 130 Hz" : "Not connected"));
         updateRemoteUi();
         if (!state.finalizing) elements.start.disabled = false;
@@ -903,6 +909,7 @@ async function startStudy() {
     elements.controllerFollow.disabled = false;
     elements.controllerFollowHand.disabled = !elements.controllerFollow.checked;
     elements.flubberSize.disabled = false;
+    elements.flubberBaseShape.disabled = false;
     updatePolarConnectionUi(state.polarStatusMessage ?? (state.polarConnected ? "Polar H10 ECG is live at 130 Hz" : "Not connected"));
     updateRemoteUi();
     setStatus(
@@ -1012,6 +1019,7 @@ function createRenderer(canvas, video) {
       x: study.currentX,
       y: study.currentY,
       phase: study.phaseRadians,
+      baseShape: study.flubberBaseShape,
     });
     context.clearRect(0, 0, flubberCanvas.width, flubberCanvas.height);
     if (study.remote.enabled) {
@@ -1187,6 +1195,7 @@ function restoreControls() {
   elements.controllerFollow.disabled = false;
   elements.controllerFollowHand.disabled = !elements.controllerFollow.checked;
   elements.flubberSize.disabled = false;
+  elements.flubberBaseShape.disabled = false;
   updatePolarConnectionUi(state.polarStatusMessage ?? (state.polarConnected ? "Polar H10 ECG is live at 130 Hz" : "Not connected"));
   updateRemoteUi();
 }

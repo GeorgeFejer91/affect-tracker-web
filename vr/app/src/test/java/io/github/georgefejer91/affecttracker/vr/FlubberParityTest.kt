@@ -15,7 +15,12 @@ class FlubberParityTest {
     for (caseIndex in 0 until cases.length()) {
       val entry = cases.getJSONObject(caseIndex)
       val geometry = FlubberGeometry(entry.getString("seed"))
-      val visual = VisualSettings(1.0, entry.getDouble("amplitudeScale"), entry.getDouble("disorderScale"))
+      val visual = VisualSettings(
+          1.0,
+          entry.getDouble("amplitudeScale"),
+          entry.getDouble("disorderScale"),
+          FlubberBaseShape.entries.first { it.token == entry.optString("baseShape", "circle") },
+      )
       val x = entry.getDouble("x").toFloat()
       val y = entry.getDouble("y").toFloat()
       geometry.update(

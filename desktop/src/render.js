@@ -21,6 +21,7 @@ export function createFlubberRenderer(root) {
       palette: snapshot.palette,
       amplitudeScale: snapshot.amplitudeScale,
       disorderScale: snapshot.disorderScale,
+      baseShape: snapshot.baseShape,
       reducedMotion,
     });
     for (const path of paths) path.setAttribute("d", rendered.path);

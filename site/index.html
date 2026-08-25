@@ -115,11 +115,20 @@
               <summary>Appearance &amp; cursor</summary>
               <div class="settings-section-content">
                 <div class="web-settings-grid">
+                  <label>Flubber shape
+                    <select id="web-base-shape">
+                      <option value="circle">Circle</option>
+                      <option value="heart">Heart</option>
+                      <option value="triangle">Triangle</option>
+                      <option value="square">Square</option>
+                    </select>
+                  </label>
                   <label>Flubber size (px)<input id="web-widget-size" type="number" min="120" max="640" step="10"></label>
                   <label class="wide-field">Flubber transparency
                     <span class="web-range-field"><input id="web-transparency" type="range" min="0" max="100" step="1"><output id="web-transparency-output">5%</output></span>
                   </label>
                 </div>
+                <p>Heart keeps the same arousal-driven pulse, so an assigned Polar metric can make it beat more slowly or more excitedly.</p>
                 <div class="settings-button-row">
                   <button id="widget-visible-button" type="button">Hide flubber</button>
                   <button id="drag-toggle-button" type="button">Disable dragging</button>
@@ -534,6 +543,6 @@
     </main>
 
     <script src="./vendor/vdoninja/1.5.5/vdoninja-sdk.min.js"></script>
-    <script type="module" src="./src/app.js?v=remote-13"></script>
+    <script type="module" src="./src/app.js?v=shape-1"></script>
   </body>
 </html>

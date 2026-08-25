@@ -68,6 +68,9 @@ class AffectEngineTest {
     val engine = AffectEngine(settings())
     val geometry = FlubberGeometry("soak-session")
     val visual = settings().visual
+    val shapeVisuals = FlubberBaseShape.entries.map {
+      visual.copy(amplitudeScale = 2.0, disorderScale = 2.0, baseShape = it)
+    }
     var phase = 0.0
     repeat(30 * 60 * 90) { frame ->
       val x = if ((frame / 450) % 2 == 0) 1f else -1f
@@ -75,9 +78,12 @@ class AffectEngineTest {
       engine.setStick(x, y)
       val snapshot = engine.tick(1f / 90f)
       phase += (1.0 / 90.0) * visual.animationSpeed
-      geometry.update(snapshot, phase, visual)
+      geometry.update(snapshot, phase, shapeVisuals[frame % shapeVisuals.size])
       assertTrue(snapshot.currentX.isFinite() && snapshot.currentY.isFinite())
       assertTrue(snapshot.currentX in -1f..1f && snapshot.currentY in -1f..1f)
+      if (frame % 90 == 0) {
+        assertTrue(geometry.x.all { it.isFinite() } && geometry.y.all { it.isFinite() })
+      }
     }
     assertEquals(192, geometry.x.size)
     assertEquals(192, geometry.y.size)

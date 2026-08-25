@@ -24,6 +24,8 @@ jobs:
           node-version: 22
       - name: Run unit tests
         run: npm test
+      - name: Stress all Flubber base shapes
+        run: npm run stress:flubber-shapes
 
   deploy:
     needs: test

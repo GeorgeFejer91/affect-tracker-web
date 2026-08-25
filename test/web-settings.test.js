@@ -18,6 +18,7 @@ test("web settings are split into compact task-focused sections", async () => {
   }
   assert.match(html, /Data &amp; settings files[\s\S]*id="settings-import-button"[\s\S]*id="settings-export-button"/);
   assert.match(html, /Appearance &amp; cursor[\s\S]*id="settings-hide-cursor-toggle"[^>]*data-touch-hide-cursor/);
+  assert.match(html, /id="web-base-shape"[\s\S]*value="heart"[\s\S]*value="triangle"[\s\S]*value="square"/);
 });
 
 test("the visible direction pad launches input capture instead of moving affect", async () => {

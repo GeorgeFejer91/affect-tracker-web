@@ -17,6 +17,17 @@ class SessionContractTest {
     assertEquals(StickHand.LEFT, session.flubber.controllerFollow.hand)
     assertEquals(0.18f, session.flubber.controllerFollow.distanceMeters, 0.0001f)
     assertEquals(VrEnvironment.DARK, session.environment)
+    assertEquals(FlubberBaseShape.CIRCLE, session.affect.visual.baseShape)
+  }
+
+  @Test fun portableBaseShapeIsAcceptedWithACompatibleCircleDefault() {
+    assertEquals(
+        FlubberBaseShape.HEART,
+        SessionContract.parse(manifest(JSONObject(), baseShape = "heart")).affect.visual.baseShape,
+    )
+    assertThrows(IllegalStateException::class.java) {
+      SessionContract.parse(manifest(JSONObject(), baseShape = "star"))
+    }
   }
 
   @Test fun traversalAndUnknownControllerFieldsAreRejected() {
@@ -119,6 +130,7 @@ class SessionContractTest {
       rawShowAffectValues: Any? = null,
       environment: String = "dark",
       controllerFollow: JSONObject? = null,
+      baseShape: String? = null,
   ): String {
     val flubber = JSONObject()
         .put("widthMeters", 0.3).put("distanceMeters", 1.25)
@@ -126,6 +138,8 @@ class SessionContractTest {
     if (showAffectValues != null) flubber.put("showAffectValues", showAffectValues)
     if (rawShowAffectValues != null) flubber.put("showAffectValues", rawShowAffectValues)
     if (controllerFollow != null) flubber.put("controllerFollow", controllerFollow)
+    val affectSettings = JSONObject(AFFECT_SETTINGS)
+    if (baseShape != null) affectSettings.getJSONObject("visual").put("baseShape", baseShape)
     return JSONObject()
       .put("schema", "affect-tracker-vr-session")
       .put("version", 1)
@@ -133,7 +147,7 @@ class SessionContractTest {
       .put("video", JSONObject()
           .put("file", filename).put("byteLength", 42).put("sha256", "a".repeat(64))
           .put("projection", "flat").put("stereo", "mono").put("loop", false))
-      .put("affectSettings", JSONObject(AFFECT_SETTINGS))
+      .put("affectSettings", affectSettings)
       .put("vr", JSONObject()
           .put("environment", environment)
           .put("flubber", flubber)

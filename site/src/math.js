@@ -1,5 +1,7 @@
 export const DEFAULT_VERTEX_COUNT = 192;
 export const DEFAULT_WAVE_COUNT = 16;
+export const DEFAULT_FLUBBER_BASE_SHAPE = "circle";
+export const FLUBBER_BASE_SHAPES = Object.freeze(["circle", "heart", "triangle", "square"]);
 
 export function clamp(value, minimum = -1, maximum = 1) {
   return Math.min(maximum, Math.max(minimum, value));
@@ -36,6 +38,67 @@ function normalize(values) {
   return Float64Array.from(values, (value) => (value - minimum) / range);
 }
 
+function centeredModulo(value, period) {
+  return ((value + period / 2) % period + period) % period - period / 2;
+}
+
+function createRegularPolygonProfile(vertexCount, sideCount, vertexRotation) {
+  const x = new Float64Array(vertexCount);
+  const y = new Float64Array(vertexCount);
+  const sector = (Math.PI * 2) / sideCount;
+  const apothem = Math.cos(Math.PI / sideCount);
+  const edgeNormal = vertexRotation + Math.PI / sideCount;
+  for (let index = 0; index < vertexCount; index += 1) {
+    const theta = (index * Math.PI * 2) / vertexCount;
+    const offset = centeredModulo(theta - edgeNormal, sector);
+    const radius = apothem / Math.cos(offset);
+    x[index] = radius * Math.cos(theta);
+    y[index] = radius * Math.sin(theta);
+  }
+  return { x, y };
+}
+
+function createHeartProfile(vertexCount) {
+  const x = new Float64Array(vertexCount);
+  const y = new Float64Array(vertexCount);
+  let minimumY = Infinity;
+  let maximumY = -Infinity;
+  for (let index = 0; index < vertexCount; index += 1) {
+    const theta = (index * Math.PI * 2) / vertexCount;
+    const sine = Math.sin(theta);
+    x[index] = 16 * sine * sine * sine;
+    y[index] = -(13 * Math.cos(theta) - 5 * Math.cos(2 * theta) - 2 * Math.cos(3 * theta) - Math.cos(4 * theta));
+    minimumY = Math.min(minimumY, y[index]);
+    maximumY = Math.max(maximumY, y[index]);
+  }
+  const centerY = (minimumY + maximumY) / 2;
+  let maximumRadius = 0;
+  for (let index = 0; index < vertexCount; index += 1) {
+    y[index] -= centerY;
+    maximumRadius = Math.max(maximumRadius, Math.hypot(x[index], y[index]));
+  }
+  for (let index = 0; index < vertexCount; index += 1) {
+    x[index] /= maximumRadius;
+    y[index] /= maximumRadius;
+  }
+  return { x, y };
+}
+
+function createBaseShapeProfiles(vertexCount) {
+  const circle = { x: new Float64Array(vertexCount), y: new Float64Array(vertexCount) };
+  for (let index = 0; index < vertexCount; index += 1) {
+    const theta = (index * Math.PI * 2) / vertexCount;
+    circle.x[index] = Math.cos(theta);
+    circle.y[index] = Math.sin(theta);
+  }
+  return Object.freeze({
+    circle,
+    heart: createHeartProfile(vertexCount),
+    triangle: createRegularPolygonProfile(vertexCount, 3, -Math.PI / 2),
+    square: createRegularPolygonProfile(vertexCount, 4, -Math.PI / 4),
+  });
+}
+
 export function createProfiles(
   vertexCount = DEFAULT_VERTEX_COUNT,
   waveCount = DEFAULT_WAVE_COUNT,
@@ -68,6 +131,7 @@ export function createProfiles(
   return {
     pointy: normalize(pointy),
     rounded: normalize(rounded),
+    baseShapes: createBaseShapeProfiles(vertexCount),
     vertexCount,
     waveCount,
   };
@@ -197,12 +261,17 @@ export function buildFlubberPath({
   palette,
   amplitudeScale = 1,
   disorderScale = 1,
+  baseShape = DEFAULT_FLUBBER_BASE_SHAPE,
   reducedMotion = false,
 }) {
   const parameters = affectParameters(x, y);
   const adjustedAmplitude = parameters.amplitude * clamp(amplitudeScale, 0, 2);
   const adjustedDisorder = parameters.disorder * clamp(disorderScale, 0, 2);
-  const { vertexCount, waveCount, pointy, rounded } = profiles;
+  const { vertexCount, waveCount, pointy, rounded, baseShapes } = profiles;
+  const baseProfile = baseShapes?.[baseShape];
+  if (!baseProfile || !FLUBBER_BASE_SHAPES.includes(baseShape)) {
+    throw new RangeError(`Unsupported Flubber base shape: ${baseShape}`);
+  }
   const verticesPerWave = vertexCount / waveCount;
   const scale = reducedMotion ? 1 : 0.9 + 0.1 * (Math.sin(phase) * 0.5 + 0.5);
   const oscillationDepth = reducedMotion ? 0.14 : 0.5;
@@ -210,13 +279,12 @@ export function buildFlubberPath({
 
   for (let index = 0; index < vertexCount; index += 1) {
     const waveIndex = Math.floor((index + verticesPerWave / 2) / verticesPerWave) % waveCount;
-    const theta = (index * Math.PI * 2) / vertexCount;
     const shape = pointy[index] * (1 - parameters.shapeMix) + rounded[index] * parameters.shapeMix;
     const wave = 0.5 + oscillationDepth * Math.sin(phase + adjustedDisorder * offsets.phases[waveIndex]);
     const asymmetry = 1 + adjustedDisorder * offsets.amplitudes[waveIndex];
-    const radius = (1 + shape * adjustedAmplitude * wave * asymmetry) * scale;
-    const px = radius * Math.cos(theta);
-    const py = radius * Math.sin(theta);
+    const deformation = (1 + shape * adjustedAmplitude * wave * asymmetry) * scale;
+    const px = deformation * baseProfile.x[index];
+    const py = deformation * baseProfile.y[index];
     pathParts[index] = `${index === 0 ? "M" : "L"}${px.toFixed(4)},${py.toFixed(4)}`;
   }
   pathParts[vertexCount] = "Z";

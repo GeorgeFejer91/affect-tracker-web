@@ -22,6 +22,9 @@ const CASES = Object.freeze([
   { name: "diagonal", seed: "golden-v1", x: 0.5, y: -0.5, phase: 5 },
   { name: "scaled", seed: "advanced-geometry", x: -0.5, y: 0.5, phase: 1, amplitudeScale: 1.8, disorderScale: 0.2 },
   { name: "reduced-motion", seed: "alternate-seed", x: -0.25, y: 0.8, phase: 11.5, reducedMotion: true },
+  { name: "heart-excited", seed: "heart-beat", x: 0.35, y: 1, phase: 1.25, baseShape: "heart" },
+  { name: "triangle", seed: "polygon", x: -0.7, y: 0.2, phase: 3.5, baseShape: "triangle" },
+  { name: "square", seed: "polygon", x: 0.7, y: -0.2, phase: 4.5, baseShape: "square" },
 ]);
 
 function coordinates(path) {
@@ -45,12 +48,14 @@ export function createGoldenFixture() {
       palette,
       amplitudeScale: entry.amplitudeScale ?? 1,
       disorderScale: entry.disorderScale ?? 1,
+      baseShape: entry.baseShape ?? "circle",
       reducedMotion: entry.reducedMotion ?? false,
     });
     return {
       ...entry,
       amplitudeScale: entry.amplitudeScale ?? 1,
       disorderScale: entry.disorderScale ?? 1,
+      baseShape: entry.baseShape ?? "circle",
       reducedMotion: entry.reducedMotion ?? false,
       palette,
       color: affectPaletteColor(entry.x, entry.y, palette),

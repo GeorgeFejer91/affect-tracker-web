@@ -80,7 +80,8 @@
           "properties": {
             "animationSpeed": { "type": "number", "minimum": 0.25, "maximum": 4 },
             "amplitudeScale": { "type": "number", "minimum": 0, "maximum": 2 },
-            "disorderScale": { "type": "number", "minimum": 0, "maximum": 2 }
+            "disorderScale": { "type": "number", "minimum": 0, "maximum": 2 },
+            "baseShape": { "enum": ["circle", "heart", "triangle", "square"], "default": "circle" }
           }
         },
         "palette": {

@@ -1,4 +1,4 @@
-use crate::domain::{Action, AffectPalette, FeatureAction, InputMode};
+use crate::domain::{Action, AffectPalette, FeatureAction, FlubberBaseShape, InputMode};
 use crate::error::CommandError;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
@@ -39,6 +39,7 @@ pub struct VisualSettings {
     pub animation_speed: f32,
     pub amplitude_scale: f32,
     pub disorder_scale: f32,
+    pub base_shape: FlubberBaseShape,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -84,6 +85,7 @@ impl Default for VisualSettings {
             animation_speed: 1.0,
             amplitude_scale: 1.0,
             disorder_scale: 1.0,
+            base_shape: FlubberBaseShape::Circle,
         }
     }
 }
@@ -424,8 +426,26 @@ mod tests {
         value.validate().unwrap();
         assert_eq!(value.overlay.size, 240);
         assert_eq!(value.visual.animation_speed, 1.0);
+        assert_eq!(value.visual.base_shape, FlubberBaseShape::Circle);
         assert!(value.advanced_bindings.is_empty());
         assert_eq!(value.bindings[&Action::IncreaseValence], "key:ArrowRight");
         assert_eq!(value.lsl.stream_name, "AffectTracker");
+    }
+
+    #[test]
+    fn base_shape_is_backward_compatible_and_rejects_unknown_tokens() {
+        let mut legacy: serde_json::Value =
+            serde_json::from_str(include_str!("../../site/settings.json")).unwrap();
+        legacy["visual"]
+            .as_object_mut()
+            .unwrap()
+            .remove("baseShape");
+        let value: Settings = serde_json::from_value(legacy).unwrap();
+        assert_eq!(value.visual.base_shape, FlubberBaseShape::Circle);
+
+        let mut invalid: serde_json::Value =
+            serde_json::from_str(include_str!("../../site/settings.json")).unwrap();
+        invalid["visual"]["baseShape"] = serde_json::json!("star");
+        assert!(serde_json::from_value::<Settings>(invalid).is_err());
     }
 }

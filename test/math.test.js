@@ -6,6 +6,7 @@ import {
   buildFlubberPath,
   createProfiles,
   createProjectionOffsets,
+  FLUBBER_BASE_SHAPES,
   smoothToward,
 } from "../site/src/math.js";
 
@@ -46,6 +47,13 @@ test("profiles are finite, normalized, and use requested dimensions", () => {
     assert.equal(Math.max(...profile), 1);
     assert.ok(profile.every(Number.isFinite));
   }
+  for (const name of FLUBBER_BASE_SHAPES) {
+    const base = profiles.baseShapes[name];
+    assert.equal(base.x.length, 192);
+    assert.equal(base.y.length, 192);
+    assert.ok([...base.x, ...base.y].every(Number.isFinite));
+    assert.ok(base.x.every((value, index) => Math.hypot(value, base.y[index]) <= 1.0000000001));
+  }
 });
 
 test("projection offsets are deterministic for a session seed", () => {
@@ -66,6 +74,41 @@ test("generated SVG path is closed and contains only finite coordinates", () => 
   assert.equal((output.path.match(/L/g) ?? []).length, 191);
   assert.doesNotMatch(output.path, /NaN|Infinity/);
   assert.match(output.color, /^rgb\(\d+ \d+ \d+\)$/);
+});
+
+test("circle, heart, triangle, and square envelopes stay distinct, finite, and closed", () => {
+  const profiles = createProfiles();
+  const offsets = createProjectionOffsets("base-shapes");
+  const paths = FLUBBER_BASE_SHAPES.map((baseShape) => buildFlubberPath({
+    profiles,
+    offsets,
+    x: 0,
+    y: 1,
+    phase: 2,
+    baseShape,
+  }).path);
+  assert.equal(new Set(paths).size, FLUBBER_BASE_SHAPES.length);
+  for (const path of paths) {
+    assert.match(path, /^M/);
+    assert.match(path, /Z$/);
+    assert.equal((path.match(/L/g) ?? []).length, 191);
+    assert.doesNotMatch(path, /NaN|Infinity/);
+  }
+  assert.throws(
+    () => buildFlubberPath({ profiles, offsets, x: 0, y: 0, phase: 0, baseShape: "star" }),
+    /Unsupported Flubber base shape/,
+  );
+});
+
+test("heart envelope retains two upper lobes, a notch, and a downward point", () => {
+  const { heart } = createProfiles().baseShapes;
+  const topNotch = heart.y[0];
+  const upperLobe = Math.min(...heart.y);
+  const lowerPoint = heart.y[heart.y.length / 2];
+  assert.ok(upperLobe < topNotch - 0.2);
+  assert.ok(topNotch < 0);
+  assert.ok(lowerPoint > 0.75);
+  assert.ok(Math.abs(heart.x[heart.x.length / 2]) < 1e-12);
 });
 
 test("advanced amplitude and disorder scales alter geometry without invalid coordinates", () => {

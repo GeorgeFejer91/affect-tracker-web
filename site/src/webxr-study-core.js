@@ -130,6 +130,7 @@ export const WEBXR_CSV_COLUMNS = Object.freeze([
   "flubber_controller_follow",
   "flubber_follow_hand",
   "flubber_size_scale",
+  "flubber_base_shape",
   "flubber_tracking",
   "polar_connected",
   "polar_valence_metric",

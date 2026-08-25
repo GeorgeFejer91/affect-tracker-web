@@ -1,4 +1,9 @@
-import { clamp, DEFAULT_AFFECT_PALETTE } from "./math.js";
+import {
+  clamp,
+  DEFAULT_AFFECT_PALETTE,
+  DEFAULT_FLUBBER_BASE_SHAPE,
+  FLUBBER_BASE_SHAPES,
+} from "./math.js?v=shape-1";
 
 export const SETTINGS_VERSION = 1;
 
@@ -64,7 +69,12 @@ export const DEFAULT_PORTABLE_SETTINGS = Object.freeze({
     toggleOverlayEditing: "key:F9",
   }),
   advancedBindings: Object.freeze({}),
-  visual: Object.freeze({ animationSpeed: 1, amplitudeScale: 1, disorderScale: 1 }),
+  visual: Object.freeze({
+    animationSpeed: 1,
+    amplitudeScale: 1,
+    disorderScale: 1,
+    baseShape: DEFAULT_FLUBBER_BASE_SHAPE,
+  }),
   palette: DEFAULT_AFFECT_PALETTE,
   overlay: Object.freeze({ x: 120, y: 120, size: 240, opacity: 0.95, visible: true }),
   lsl: Object.freeze({
@@ -143,6 +153,13 @@ function normalizedPalette(value) {
   return palette;
 }
 
+function normalizedBaseShape(value) {
+  if (!FLUBBER_BASE_SHAPES.includes(value)) {
+    throw new Error(`Flubber base shape must be one of: ${FLUBBER_BASE_SHAPES.join(", ")}.`);
+  }
+  return value;
+}
+
 export function cloneDefaultSettings() {
   return structuredClone(DEFAULT_PORTABLE_SETTINGS);
 }
@@ -168,6 +185,7 @@ export function normalizePortableSettings(value) {
       animationSpeed: assertNumber(visual.animationSpeed, "Animation speed", 0.25, 4),
       amplitudeScale: assertNumber(visual.amplitudeScale, "Pulse amplitude", 0, 2),
       disorderScale: assertNumber(visual.disorderScale, "Shape disorder", 0, 2),
+      baseShape: normalizedBaseShape(visual.baseShape ?? DEFAULT_FLUBBER_BASE_SHAPE),
     },
     palette: normalizedPalette(value.palette),
     overlay: {

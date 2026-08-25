@@ -7,6 +7,7 @@ enum class StereoLayout(val token: String) { MONO("mono"), SIDE_BY_SIDE("side-by
 enum class StickHand(val token: String) { LEFT("left"), RIGHT("right") }
 enum class VrEnvironment(val token: String) { DARK("dark"), PASSTHROUGH("passthrough") }
 enum class VrPresentationMode(val token: String) { VIDEO("video"), FLUBBER_ONLY("flubber-only") }
+enum class FlubberBaseShape(val token: String) { CIRCLE("circle"), HEART("heart"), TRIANGLE("triangle"), SQUARE("square") }
 
 data class VideoSpec(
     val file: String,
@@ -17,7 +18,12 @@ data class VideoSpec(
     val loop: Boolean,
 )
 
-data class VisualSettings(val animationSpeed: Double, val amplitudeScale: Double, val disorderScale: Double)
+data class VisualSettings(
+    val animationSpeed: Double,
+    val amplitudeScale: Double,
+    val disorderScale: Double,
+    val baseShape: FlubberBaseShape = FlubberBaseShape.CIRCLE,
+)
 data class PaletteSettings(val up: String, val down: String, val left: String, val right: String)
 data class OverlaySettings(val opacity: Double, val visible: Boolean)
 data class LslSettings(
@@ -173,7 +179,9 @@ object SessionContract {
     val lsl = value.getJSONObject("lsl")
     val bindings = value.getJSONObject("bindings")
     val advancedBindings = value.getJSONObject("advancedBindings")
-    visual.requireExact("animationSpeed", "amplitudeScale", "disorderScale")
+    val requiredVisual = setOf("animationSpeed", "amplitudeScale", "disorderScale")
+    visual.requireKnown(*requiredVisual.toTypedArray(), "baseShape")
+    require(requiredVisual.all(visual::has)) { "unknown_or_missing_fields" }
     palette.requireExact("up", "down", "left", "right")
     overlay.requireExact("x", "y", "size", "opacity", "visible")
     lsl.requireExact("streamName", "streamType", "markerName", "sampleRate", "sourceId")
@@ -190,7 +198,12 @@ object SessionContract {
         value.number("stepSize", 0.01, 1.0),
         value.number("continuousSpeed", 0.05, 4.0),
         value.number("response", 0.1, 30.0),
-        VisualSettings(visual.number("animationSpeed", 0.25, 4.0), visual.number("amplitudeScale", 0.0, 2.0), visual.number("disorderScale", 0.0, 2.0)),
+        VisualSettings(
+            visual.number("animationSpeed", 0.25, 4.0),
+            visual.number("amplitudeScale", 0.0, 2.0),
+            visual.number("disorderScale", 0.0, 2.0),
+            enumValue(visual.optString("baseShape", "circle"), FlubberBaseShape.entries) { it.token },
+        ),
         PaletteSettings(palette.color("up"), palette.color("down"), palette.color("left"), palette.color("right")),
         OverlaySettings(overlay.number("opacity", 0.0, 1.0), overlay.getBoolean("visible")),
         LslSettings(lsl.text("streamName", 80), lsl.text("streamType", 80), lsl.text("markerName", 80), lsl.number("sampleRate", 1.0, 240.0).toInt(), lsl.text("sourceId", 120)),

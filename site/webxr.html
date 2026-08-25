@@ -143,6 +143,15 @@
               <span><output id="flubber-size-output">1.00</output>×</span>
               <input id="flubber-size" type="range" min="0.50" max="2.00" step="0.05" value="1.00">
             </label>
+            <label for="flubber-base-shape">
+              Flubber shape
+              <select id="flubber-base-shape">
+                <option value="circle">Circle</option>
+                <option value="heart">Heart</option>
+                <option value="triangle">Triangle</option>
+                <option value="square">Square</option>
+              </select>
+            </label>
           </div>
           <p class="privacy-note">
             When enabled, Flubber stays just above the selected controller and faces the headset. If grip
@@ -191,6 +200,6 @@
     </main>
 
     <script src="./vendor/vdoninja/1.5.5/vdoninja-sdk.min.js"></script>
-    <script type="module" src="./src/webxr-study.js?v=remote-13"></script>
+    <script type="module" src="./src/webxr-study.js?v=shape-1"></script>
   </body>
 </html>

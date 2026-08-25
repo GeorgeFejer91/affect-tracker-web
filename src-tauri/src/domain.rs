@@ -103,6 +103,16 @@ pub enum InputMode {
     Step,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub enum FlubberBaseShape {
+    #[default]
+    Circle,
+    Heart,
+    Triangle,
+    Square,
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AffectSnapshot {
@@ -124,6 +134,7 @@ pub struct AffectSnapshot {
     pub animation_speed: f32,
     pub amplitude_scale: f32,
     pub disorder_scale: f32,
+    pub base_shape: FlubberBaseShape,
     pub palette: AffectPalette,
     pub lsl_state: String,
     pub lsl_message: String,
@@ -137,6 +148,7 @@ pub(crate) struct SnapshotContext<'a> {
     pub animation_speed: f32,
     pub amplitude_scale: f32,
     pub disorder_scale: f32,
+    pub base_shape: FlubberBaseShape,
     pub palette: AffectPalette,
     pub lsl_state: &'a str,
     pub lsl_message: &'a str,
@@ -310,6 +322,7 @@ impl AffectEngine {
             animation_speed: context.animation_speed,
             amplitude_scale: context.amplitude_scale,
             disorder_scale: context.disorder_scale,
+            base_shape: context.base_shape,
             palette: context.palette,
             lsl_state: context.lsl_state.to_owned(),
             lsl_message: context.lsl_message.to_owned(),

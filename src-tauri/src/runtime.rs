@@ -217,6 +217,7 @@ impl Runtime {
                 animation_speed: settings.visual.animation_speed,
                 amplitude_scale: settings.visual.amplitude_scale,
                 disorder_scale: settings.visual.disorder_scale,
+                base_shape: settings.visual.base_shape,
                 palette: settings.palette,
                 lsl_state: status.state,
                 lsl_message: &status.message,

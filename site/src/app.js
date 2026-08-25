@@ -6,7 +6,7 @@ import {
   createProfiles,
   createProjectionOffsets,
   smoothToward,
-} from "./math.js";
+} from "./math.js?v=shape-1";
 import {
   applyStep,
   constrainWidgetPosition,
@@ -42,7 +42,7 @@ import {
   toggleAccordionProtocol,
   touchProtocolActive,
 } from "./accordion-protocols.js";
-import { createVrSession, hashVideoFile, vrSessionJson } from "./vr-session.js";
+import { createVrSession, hashVideoFile, vrSessionJson } from "./vr-session.js?v=shape-1";
 import {
   createPolarH10BrowserSession,
   defaultPolarMappings,
@@ -68,7 +68,7 @@ import {
   portableSettingsJson,
   transparencyPercentToOpacity,
   wheelDirection,
-} from "./portable-settings.js";
+} from "./portable-settings.js?v=shape-1";
 
 const STORAGE_KEY = "affect-tracker-web/preferences-v1";
 const SAMPLE_INTERVAL_SECONDS = 1 / 20;
@@ -166,6 +166,7 @@ const elements = {
   animationSpeed: document.querySelector("#web-animation-speed"),
   amplitudeScale: document.querySelector("#web-amplitude-scale"),
   disorderScale: document.querySelector("#web-disorder-scale"),
+  baseShape: document.querySelector("#web-base-shape"),
   widgetSize: document.querySelector("#web-widget-size"),
   transparency: document.querySelector("#web-transparency"),
   transparencyOutput: document.querySelector("#web-transparency-output"),
@@ -1226,6 +1227,7 @@ function updateCustomizationControls() {
   elements.animationSpeed.value = state.visual.animationSpeed;
   elements.amplitudeScale.value = state.visual.amplitudeScale;
   elements.disorderScale.value = state.visual.disorderScale;
+  elements.baseShape.value = state.visual.baseShape;
   elements.widgetSize.value = state.widgetSize;
   elements.transparency.value = opacityToTransparencyPercent(state.widgetOpacity);
   elements.transparencyOutput.value = `${elements.transparency.value}%`;
@@ -2767,6 +2769,12 @@ function initializeEvents() {
       savePreferences();
     });
   }
+  elements.baseShape.addEventListener("change", () => {
+    state.visual.baseShape = elements.baseShape.value;
+    savePreferences();
+    recordEvent("panel", "visual-change", "baseShape", elements.baseShape.value);
+    announce(`Flubber shape changed to ${elements.baseShape.selectedOptions[0].textContent}.`);
+  });
   for (const [element, key] of [
     [elements.animationSpeed, "animationSpeed"],
     [elements.amplitudeScale, "amplitudeScale"],
@@ -2993,6 +3001,7 @@ function animationFrame(timestamp) {
     palette: state.palette,
     amplitudeScale: state.visual.amplitudeScale,
     disorderScale: state.visual.disorderScale,
+    baseShape: state.visual.baseShape,
     reducedMotion: reducedMotionQuery.matches,
   });
   elements.basePath.setAttribute("d", rendered.path);

@@ -48,6 +48,8 @@ class FlubberGeometry(seed: String, private val vertexCount: Int = 192, private 
   val y = FloatArray(vertexCount)
   private val rounded = DoubleArray(vertexCount)
   private val pointy = DoubleArray(vertexCount)
+  private val baseX = Array(FlubberBaseShape.entries.size) { DoubleArray(vertexCount) }
+  private val baseY = Array(FlubberBaseShape.entries.size) { DoubleArray(vertexCount) }
   private val phases = DoubleArray(waveCount)
   private val amplitudes = DoubleArray(waveCount)
 
@@ -60,12 +62,23 @@ class FlubberGeometry(seed: String, private val vertexCount: Int = 192, private 
     for (index in 0 until vertexCount) {
       val theta = index * 2.0 * PI / vertexCount
       rounded[index] = cos(waveCount * theta)
+      baseX[FlubberBaseShape.CIRCLE.ordinal][index] = cos(theta)
+      baseY[FlubberBaseShape.CIRCLE.ordinal][index] = sin(theta)
+      val heartSine = sin(theta)
+      baseX[FlubberBaseShape.HEART.ordinal][index] = 16.0 * heartSine * heartSine * heartSine
+      baseY[FlubberBaseShape.HEART.ordinal][index] = -(
+          13.0 * cos(theta) - 5.0 * cos(2.0 * theta) -
+              2.0 * cos(3.0 * theta) - cos(4.0 * theta)
+          )
       val position = index % verticesPerWave
       val distance = abs(position - halfWave)
       pointy[index] = sin(alpha) / sin(PI - alpha - vertexRadians * distance)
     }
     normalize(rounded)
     normalize(pointy)
+    normalizeHeartProfile()
+    createRegularPolygonProfile(FlubberBaseShape.TRIANGLE, 3, -PI / 2.0)
+    createRegularPolygonProfile(FlubberBaseShape.SQUARE, 4, -PI / 4.0)
     val random = Mulberry32(fnv1a(seed))
     for (index in 0 until waveCount) {
       phases[index] = (random.next() * 2.0 - 1.0) * PI
@@ -81,17 +94,49 @@ class FlubberGeometry(seed: String, private val vertexCount: Int = 192, private 
     val scale = if (reducedMotion) 1.0 else 0.9 + 0.1 * (sin(phase) * 0.5 + 0.5)
     val oscillationDepth = if (reducedMotion) 0.14 else 0.5
     val verticesPerWave = vertexCount / waveCount
+    val baseShapeIndex = visual.baseShape.ordinal
     for (index in 0 until vertexCount) {
       val waveIndex = ((index + verticesPerWave / 2) / verticesPerWave) % waveCount
-      val theta = index * 2.0 * PI / vertexCount
       val shape = pointy[index] * (1.0 - shapeMix) + rounded[index] * shapeMix
       val wave = 0.5 + oscillationDepth * sin(phase + disorder * phases[waveIndex])
       val asymmetry = 1.0 + disorder * amplitudes[waveIndex]
-      val radius = (1.0 + shape * amplitude * wave * asymmetry) * scale
-      x[index] = (radius * cos(theta)).toFloat()
-      y[index] = (radius * sin(theta)).toFloat()
+      val deformation = (1.0 + shape * amplitude * wave * asymmetry) * scale
+      x[index] = (deformation * baseX[baseShapeIndex][index]).toFloat()
+      y[index] = (deformation * baseY[baseShapeIndex][index]).toFloat()
     }
   }
+
+  private fun createRegularPolygonProfile(baseShape: FlubberBaseShape, sideCount: Int, vertexRotation: Double) {
+    val shapeIndex = baseShape.ordinal
+    val sector = 2.0 * PI / sideCount
+    val apothem = cos(PI / sideCount)
+    val edgeNormal = vertexRotation + PI / sideCount
+    for (index in 0 until vertexCount) {
+      val theta = index * 2.0 * PI / vertexCount
+      val offset = centeredModulo(theta - edgeNormal, sector)
+      val radius = apothem / cos(offset)
+      baseX[shapeIndex][index] = radius * cos(theta)
+      baseY[shapeIndex][index] = radius * sin(theta)
+    }
+  }
+
+  private fun normalizeHeartProfile() {
+    val shapeIndex = FlubberBaseShape.HEART.ordinal
+    val heartY = baseY[shapeIndex]
+    val centerY = (heartY.minOrNull()!! + heartY.maxOrNull()!!) / 2.0
+    var maximumRadius = 0.0
+    for (index in 0 until vertexCount) {
+      heartY[index] -= centerY
+      maximumRadius = max(maximumRadius, kotlin.math.hypot(baseX[shapeIndex][index], heartY[index]))
+    }
+    for (index in 0 until vertexCount) {
+      baseX[shapeIndex][index] /= maximumRadius
+      heartY[index] /= maximumRadius
+    }
+  }
+
+  private fun centeredModulo(value: Double, period: Double): Double =
+      ((value + period / 2.0) % period + period) % period - period / 2.0
 
   private fun normalize(values: DoubleArray) {
     var low = Double.POSITIVE_INFINITY

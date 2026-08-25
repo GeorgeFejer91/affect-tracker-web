@@ -1,4 +1,4 @@
-import { normalizePortableSettings } from "./portable-settings.js";
+import { normalizePortableSettings } from "./portable-settings.js?v=shape-1";
 
 export const VR_SESSION_SCHEMA = "affect-tracker-vr-session";
 export const VR_SESSION_VERSION = 1;

@@ -7,6 +7,7 @@
 - Rust affect engine and typed IPC.
 - Click-to-capture global key, mouse-button, and wheel bindings with arrow-key defaults.
 - Optional advanced bindings for bounded animation speed, pulse amplitude, shape disorder, transparency, and overlay size adjustments.
+- Configurable Circle, Heart, Triangle, and Square base envelopes shared by web, desktop, WebXR, and native Quest, with Circle as the legacy default and Polar-reactive Heart presentation.
 - Four-color interactive valence-arousal feature space shared with the web app.
 - Click-through overlay with explicit edit mode.
 - Persisted settings.
