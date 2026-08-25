@@ -286,6 +286,21 @@
           <section class="experiment-launch" aria-labelledby="experiment-title">
             <h3 id="experiment-title">Remote study demonstration</h3>
             <p>Runs the selected stimulus after a 3–2–1 countdown. The preloaded example begins at the source video's original 01:30 point; YouTube studies can define their own start and finish times.</p>
+            <section class="screen-calibration-card" aria-labelledby="screen-calibration-title">
+              <div class="screen-calibration-heading">
+                <div>
+                  <h4 id="screen-calibration-title">Screen calibration</h4>
+                  <p>Estimate physical display size by matching a fullscreen square to a real coin. The result is stored only in this browser and added to experiment CSV context.</p>
+                </div>
+                <output id="screen-calibration-status" class="screen-calibration-status" data-state="missing">Not calibrated</output>
+              </div>
+              <label>Reference coin
+                <select id="screen-calibration-coin"></select>
+              </label>
+              <p id="screen-calibration-coin-details" class="screen-calibration-coin-details"></p>
+              <button id="screen-calibration-start" type="button">Calibrate in fullscreen</button>
+              <p id="screen-calibration-result" class="experiment-privacy">Calibration is approximate and applies only while this display, scaling, and orientation stay unchanged.</p>
+            </section>
             <div class="experiment-settings">
               <label>Stimulus source
                 <select id="experiment-source">
@@ -538,6 +553,31 @@
           <video id="experiment-video" preload="auto" playsinline disablepictureinpicture aria-label="Study stimulus video; participant playback controls are disabled"></video>
           <div id="youtube-player" hidden></div>
           <div class="experiment-input-shield" aria-hidden="true"></div>
+        </div>
+      </section>
+
+      <section id="screen-calibration-layer" class="screen-calibration-layer" hidden aria-labelledby="screen-calibration-overlay-title">
+        <div class="screen-calibration-overlay">
+          <p class="screen-calibration-kicker">Physical display calibration</p>
+          <h2 id="screen-calibration-overlay-title">Match the square to your coin</h2>
+          <p id="screen-calibration-instructions">Place the selected coin flat over the square. Resize until the coin touches the midpoint of all four sides while the four square corners remain visible.</p>
+          <div class="coin-square-stage">
+            <div id="screen-calibration-square" class="screen-calibration-square" role="img" aria-label="Resizable reference square"></div>
+          </div>
+          <div class="screen-calibration-adjustments">
+            <button id="screen-calibration-decrease" type="button" aria-label="Make square one pixel smaller">−</button>
+            <label>Square size
+              <input id="screen-calibration-size" type="range" min="40" max="400" step="1">
+            </label>
+            <button id="screen-calibration-increase" type="button" aria-label="Make square one pixel larger">+</button>
+          </div>
+          <p class="screen-calibration-readout"><output id="screen-calibration-size-output">0 CSS px</output> · <output id="screen-calibration-trial-output">Match 1 of 2</output></p>
+          <p id="screen-calibration-error" class="screen-calibration-error" role="alert" hidden></p>
+          <div class="screen-calibration-actions">
+            <button id="screen-calibration-confirm" type="button">Coin fits square — save match</button>
+            <button id="screen-calibration-cancel" type="button" class="secondary-button">Cancel</button>
+          </div>
+          <p class="screen-calibration-help">Fine adjustment: use the left/right or down/up arrow keys. Repeat the match after lifting and replacing the coin.</p>
         </div>
       </section>
 

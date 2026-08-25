@@ -9,7 +9,7 @@ export const ACCORDION_PROTOCOLS = Object.freeze({
     stateKey: "experimentPanelOpen",
     panelId: "experiment-panel",
     domainModule: "experiment.js",
-    responsibilities: Object.freeze(["stimulus-lifecycle", "experiment-recording", "experiment-export"]),
+    responsibilities: Object.freeze(["screen-calibration", "stimulus-lifecycle", "experiment-recording", "experiment-export"]),
   }),
   touch: Object.freeze({
     stateKey: "touchPlaygroundPanelOpen",

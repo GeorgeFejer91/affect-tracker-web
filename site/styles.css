@@ -133,6 +133,88 @@ button.is-held {
 .experiment-settings input,
 .experiment-settings select { width: 100%; min-width: 0; }
 
+.screen-calibration-card {
+  display: grid;
+  gap: 0.55rem;
+  margin: 0.75rem 0;
+  padding: 0.7rem;
+  border: 1px solid rgb(120 215 255 / 35%);
+  border-radius: 0.6rem;
+  background: rgb(120 215 255 / 5%);
+}
+
+.screen-calibration-heading {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.screen-calibration-heading h4 { margin: 0; font-size: 0.92rem; }
+.screen-calibration-heading p { margin: 0.25rem 0 0; }
+.screen-calibration-card label { display: grid; gap: 0.25rem; font-size: 0.78rem; }
+.screen-calibration-card select { width: 100%; min-width: 0; }
+.screen-calibration-status {
+  flex: 0 0 auto;
+  padding: 0.24rem 0.42rem;
+  border: 1px solid #66717b;
+  border-radius: 999px;
+  color: #d8dee4;
+  font-size: 0.66rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.screen-calibration-status[data-state="valid"] { border-color: #52c788; color: #8ef0b5; }
+.screen-calibration-status[data-state="stale"],
+.screen-calibration-status[data-state="invalid"] { border-color: #ffb84d; color: #ffd18a; }
+.screen-calibration-coin-details { color: #b9c4ce; font-size: 0.72rem; }
+
+.screen-calibration-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  overflow: auto;
+  padding: max(1rem, env(safe-area-inset-top)) max(1rem, env(safe-area-inset-right)) max(1rem, env(safe-area-inset-bottom)) max(1rem, env(safe-area-inset-left));
+  color: #f7fbff;
+  background: #05080b;
+}
+
+.screen-calibration-overlay {
+  display: grid;
+  grid-template-rows: auto auto auto minmax(12rem, 1fr) auto auto auto auto;
+  gap: 0.65rem;
+  width: min(48rem, 100%);
+  min-height: calc(100dvh - 2rem);
+  margin: 0 auto;
+  text-align: center;
+}
+.screen-calibration-overlay h2,
+.screen-calibration-overlay p { margin: 0; }
+.screen-calibration-kicker { color: #8ddfff; font-size: 0.72rem; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; }
+.coin-square-stage { display: grid; min-height: 12rem; place-items: center; }
+.screen-calibration-square {
+  width: var(--calibration-square-size, 88px);
+  height: var(--calibration-square-size, 88px);
+  border: 3px solid #79ddff;
+  background:
+    linear-gradient(#ffd166, #ffd166) 50% 0 / 8px 3px no-repeat,
+    linear-gradient(#ffd166, #ffd166) 50% 100% / 8px 3px no-repeat,
+    linear-gradient(#ffd166, #ffd166) 0 50% / 3px 8px no-repeat,
+    linear-gradient(#ffd166, #ffd166) 100% 50% / 3px 8px no-repeat,
+    rgb(255 255 255 / 2%);
+  box-shadow: 0 0 2rem rgb(121 221 255 / 20%);
+}
+.screen-calibration-adjustments { display: grid; grid-template-columns: 3rem minmax(0, 1fr) 3rem; gap: 0.65rem; align-items: end; }
+.screen-calibration-adjustments label { display: grid; gap: 0.4rem; font-size: 0.76rem; }
+.screen-calibration-adjustments input { width: 100%; }
+.screen-calibration-adjustments button { min-height: 2.8rem; font-size: 1.25rem; }
+.screen-calibration-readout { color: #d4e8f1; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 0.78rem; }
+.screen-calibration-error { color: #ffc27a; font-size: 0.82rem; }
+.screen-calibration-actions { display: grid; grid-template-columns: minmax(0, 2fr) minmax(7rem, 1fr); gap: 0.65rem; }
+.screen-calibration-actions button { min-height: 2.8rem; }
+.screen-calibration-help { color: #9eabb6; font-size: 0.72rem; }
+body.is-screen-calibrating { overflow: hidden; }
+
 .experiment-layer {
   position: fixed;
   inset: 0;
@@ -1453,6 +1535,9 @@ kbd {
   .web-settings-grid .wide-field {
     grid-column: auto;
   }
+
+  .screen-calibration-heading { display: grid; }
+  .screen-calibration-actions { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 600px) and (pointer: coarse), (max-height: 500px) and (pointer: coarse) {
