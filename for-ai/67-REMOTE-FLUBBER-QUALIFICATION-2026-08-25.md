@@ -107,6 +107,8 @@ Revision `remote-12` records the disconnected edge but leaves visible state gove
 
 Restarting the publisher generated a new anonymous source as required. The stale receiver exposed the large new source button, retained the old selected source, and moved only after the explicit tap. It then reported the new source live through TURN at 36–37 ms RTT with zero warnings.
 
+Both GitHub workflows for documentation commit `a31702b` completed successfully: Pages run `32813930270` and the complete desktop companion run `32813930257`. At 2026-08-25T05:48:05Z, uncached requests to the public project-path deployment returned `./src/app.js?v=remote-12` and `./src/webxr-study.js?v=remote-12`, both exact opt-in labels, and local vendored SDK references. The deployed receiver module binds `useIncomingSignal` only to the explicit `webxr-remote-use` click action. This is a deployment/static-activation receipt; no VDO session was opened for the check.
+
 Privacy-safe captures:
 
 - [`remote-12` explicit replacement-source recovery](./evidence/remote-flubber-2026-08-25/remote12-explicit-recovery.png)
@@ -133,7 +135,7 @@ The wire deliberately carries no timestamp, so one-way motion-to-photon latency 
 
 ## Remaining physical gate
 
-Repeat on deployed `dd43646` after the Quest reconnects and USB debugging is authorized:
+Repeat on deployed `ec5972b` after the Quest reconnects and USB debugging is authorized:
 
 1. Start deterministic replay and one desktop publisher.
 2. Connect Meta Quest Browser, enter immersive WebXR, and retain at least two minutes of direct-path streaming.
@@ -144,4 +146,4 @@ Repeat on deployed `dd43646` after the Quest reconnects and USB debugging is aut
 
 ## Cleanup
 
-All public receivers and broadcasters used for the direct, TURN, foreground-loss, and reselection checks were explicitly stopped; synthetic replay was disconnected; controlled test tabs were closed; and the user's normal Chrome process remained running. The exact local Python server process was verified before stopping, and port 4173 was verified closed. The temporary Python GUI-control dependency directory was removed. The headset appeared only as unauthorized, so no headset command or browser launch was sent and no ADB forward was created. Six privacy-safe diagnostic screenshots were committed under `for-ai/evidence/remote-flubber-2026-08-25/`; no physiology or Bluetooth identifier appears in them.
+All public receivers and broadcasters used for the direct, TURN, foreground-loss, and reselection checks were explicitly stopped; synthetic replay was disconnected; controlled test tabs were closed; and the user's normal Chrome process remained running. The exact local Python server process was verified before stopping, and ports 8000 and 4173 were verified closed. The temporary Python GUI-control dependency directory was removed. The headset appeared only as unauthorized, so no headset command or browser launch was sent and no ADB forward was created. Nine privacy-safe diagnostic screenshots were committed under `for-ai/evidence/remote-flubber-2026-08-25/`; no physiology, Bluetooth identifier, or Quest serial appears in them.
