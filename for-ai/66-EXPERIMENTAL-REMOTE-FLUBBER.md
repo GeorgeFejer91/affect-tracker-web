@@ -10,6 +10,7 @@ This is the normative contract for the explicit browser-to-browser Flubber trans
 - Sources are anonymous random session IDs with prefix `aft_flubber_`, shown as labels such as `Source AB12 CD34`. IDs, selections, coordinates, and remote state are not persisted. The shared discovery room `affect_tracker_flubber_v1` is intentionally public; any room listener may receive the arbitrary coordinate pair.
 - VDO.Ninja provides third-party signaling/STUN/TURN infrastructure. A connection requires internet signaling even when WebRTC negotiates a local peer-to-peer path. Peers may learn each other's IP addresses; TURN relay paths may increase latency; the hosted service has no project availability guarantee.
 - The official SDK v1.5.5 distribution, corresponding readable source, MPL-2.0 license, provenance, and fixed hashes are checked into `site/vendor/vdoninja/1.5.5/`. Pages load the local minified file and use no SDK CDN.
+- For attended relay qualification only, `?remote-force-turn=1` on each endpoint passes the official SDK's documented `forceTURN` option when that endpoint's explicit remote button constructs the client. The request is visible in route status, is never persisted, and creates no page-load connection. A run still requires independent peer-quality readback of `TURN relay`; the query flag alone is not route evidence.
 
 ## Transport and wire contract
 

@@ -52,8 +52,8 @@ import {
   polarMetricDefinition,
   polarWebBluetoothSupport,
 } from "./polar-stream.js";
-import { createPolarH10ReplaySession, polarReplayEnabled } from "./polar-replay.js?v=remote-5";
-import { createFlubberBroadcaster } from "./flubber-remote.js?v=remote-5";
+import { createPolarH10ReplaySession, polarReplayEnabled } from "./polar-replay.js?v=remote-6";
+import { createFlubberBroadcaster } from "./flubber-remote.js?v=remote-6";
 import {
   actionForBinding,
   ADVANCED_BINDING_LABELS,
@@ -801,6 +801,7 @@ function updateRemoteBroadcastUi(detail = flubberBroadcaster.snapshot()) {
   elements.remoteBroadcastSource.value = detail.sourceLabel || "—";
   elements.remoteBroadcastListeners.value = String(detail.listenerCount ?? 0);
   const routeParts = [];
+  if (detail.forceTurnRequested) routeParts.push("TURN relay-only test requested");
   if (detail.directListeners) routeParts.push(`${detail.directListeners} direct`);
   if (detail.relayedListeners) routeParts.push(`${detail.relayedListeners} relayed`);
   if (Number.isFinite(detail.rttMs)) routeParts.push(`${detail.rttMs} ms RTT`);

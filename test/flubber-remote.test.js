@@ -14,6 +14,8 @@ import {
   decodeFlubberFrame,
   encodeFlubberFrame,
   formatFlubberSourceLabel,
+  flubberRemoteForceTurnEnabled,
+  flubberRemoteSdkOptions,
   isNewerFlubberSequence,
 } from "../site/src/flubber-remote.js";
 
@@ -175,6 +177,19 @@ test("Flubber sequence ordering rejects duplicates and older values across uint3
   assert.equal(isNewerFlubberSequence(0, 0xffffffff), true);
   assert.equal(isNewerFlubberSequence(0xffffffff, 0), false);
   assert.equal(isNewerFlubberSequence(0x80000000, 0), false);
+});
+
+test("forced TURN qualification is explicit, page-load-only, and passed to the official SDK", () => {
+  assert.equal(flubberRemoteForceTurnEnabled({ href: "https://example.test/?remote-force-turn=1" }), true);
+  assert.equal(flubberRemoteForceTurnEnabled({ href: "https://example.test/?remote-force-turn=0" }), false);
+  assert.equal(flubberRemoteForceTurnEnabled({ href: "not a url" }), false);
+  assert.deepEqual(flubberRemoteSdkOptions({ forceTurn: true }), {
+    password: false,
+    salt: "affect-tracker-web-v1",
+    forceTURN: true,
+  });
+  assert.equal(new FlubberBroadcaster({ forceTurn: true, sdkFactory: () => new MockSdk() }).snapshot().forceTurnRequested, true);
+  assert.equal(new FlubberReceiver({ forceTurn: true, sdkFactory: () => new MockSdk() }).snapshot().forceTurnRequested, true);
 });
 
 test("broadcaster is explicit, data-only, partial-reliability fan-out with immediate first state", async () => {
@@ -497,10 +512,12 @@ test("remote pages load only the local SDK and feature code makes no microphone 
   }
   assert.match(index, />Broadcast this to VR \/ remote interface</);
   assert.match(webxr, />Use incoming signal</);
-  assert.match(index, /src="\.\/src\/app\.js\?v=remote-5"/);
-  assert.match(webxr, /src="\.\/src\/webxr-study\.js\?v=remote-5"/);
-  assert.match(app, /from "\.\/flubber-remote\.js\?v=remote-5"/);
-  assert.match(receiver, /from "\.\/flubber-remote\.js\?v=remote-5"/);
+  assert.match(index, /src="\.\/src\/app\.js\?v=remote-6"/);
+  assert.match(webxr, /src="\.\/src\/webxr-study\.js\?v=remote-6"/);
+  assert.match(app, /from "\.\/flubber-remote\.js\?v=remote-6"/);
+  assert.match(receiver, /from "\.\/flubber-remote\.js\?v=remote-6"/);
+  assert.match(transport, /FLUBBER_REMOTE_FORCE_TURN_PARAM = "remote-force-turn"/);
+  assert.match(transport, /forceTURN: Boolean\(forceTurn\)/);
   assert.match(app, /flubberBroadcaster\.offer\(state\.currentX, state\.currentY\);/);
   assert.doesNotMatch(app, /flubberBroadcaster\.offer\(state\.currentX, state\.currentY, timestamp\)/);
   assert.match(webxr, /id="webxr-remote-quality"/);

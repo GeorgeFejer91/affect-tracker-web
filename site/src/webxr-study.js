@@ -30,7 +30,7 @@ import {
   POLAR_METRICS,
   polarWebBluetoothSupport,
 } from "./polar-stream.js";
-import { createFlubberReceiver } from "./flubber-remote.js?v=remote-5";
+import { createFlubberReceiver } from "./flubber-remote.js?v=remote-6";
 
 const VIDEO_MODEL = modelMatrix(0, 1.55, -2.8, 2.4, 1.35);
 const SPHERE_MODEL = modelMatrix(0, 0, 0, 1, 1);
@@ -240,6 +240,7 @@ function formatRemoteValues(snapshot) {
 
 function remoteRouteText(snapshot) {
   const parts = [];
+  if (snapshot.forceTurnRequested) parts.push("TURN relay-only test requested");
   if (snapshot.route === "direct") parts.push("Direct P2P");
   else if (snapshot.route === "relay") parts.push("TURN relay");
   if (Number.isFinite(snapshot.rttMs)) parts.push(`${snapshot.rttMs} ms RTT`);

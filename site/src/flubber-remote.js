@@ -9,6 +9,7 @@ export const FLUBBER_REMOTE_HEARTBEAT_MS = 100;
 export const FLUBBER_REMOTE_STALE_MS = 2_000;
 export const FLUBBER_REMOTE_RECOVERY_FRAMES = 3;
 export const FLUBBER_REMOTE_DISCOVERY_SETTLE_MS = 300;
+export const FLUBBER_REMOTE_FORCE_TURN_PARAM = "remote-force-turn";
 
 const MIN_SEND_INTERVAL_MS = 1_000 / FLUBBER_REMOTE_MAX_HZ;
 const DIAGNOSTIC_GAP_WINDOW = 128;
@@ -28,11 +29,27 @@ function normalizeError(error) {
   return error?.message ?? String(error ?? "Unknown remote transport error");
 }
 
-function defaultSdkFactory() {
+export function flubberRemoteForceTurnEnabled(locationObject = globalThis.location) {
+  try {
+    return new URL(locationObject?.href ?? "https://invalid.local/")
+      .searchParams.get(FLUBBER_REMOTE_FORCE_TURN_PARAM) === "1";
+  } catch {
+    return false;
+  }
+}
+
+export function flubberRemoteSdkOptions({ forceTurn = flubberRemoteForceTurnEnabled() } = {}) {
+  return {
+    ...SDK_OPTIONS,
+    forceTURN: Boolean(forceTurn),
+  };
+}
+
+function defaultSdkFactory(forceTurn) {
   if (typeof globalThis.VDONinjaSDK !== "function") {
     throw new Error("The bundled VDO.Ninja transport could not be loaded.");
   }
-  return new globalThis.VDONinjaSDK(SDK_OPTIONS);
+  return new globalThis.VDONinjaSDK(flubberRemoteSdkOptions({ forceTurn }));
 }
 
 function defaultRandomBytes(length) {
@@ -130,16 +147,19 @@ function roundedPercentile(values, proportion) {
 }
 
 class FlubberRemoteBase extends EventTarget {
-  constructor({
-    sdkFactory = defaultSdkFactory,
-    now = () => globalThis.performance.now(),
-    setIntervalFn = (callback, milliseconds) => globalThis.setInterval(callback, milliseconds),
-    clearIntervalFn = (id) => globalThis.clearInterval(id),
-    setTimeoutFn = (callback, milliseconds) => globalThis.setTimeout(callback, milliseconds),
-    clearTimeoutFn = (id) => globalThis.clearTimeout(id),
-  } = {}) {
+  constructor(options = {}) {
     super();
-    this.sdkFactory = sdkFactory;
+    const {
+      sdkFactory,
+      forceTurn = flubberRemoteForceTurnEnabled(),
+      now = () => globalThis.performance.now(),
+      setIntervalFn = (callback, milliseconds) => globalThis.setInterval(callback, milliseconds),
+      clearIntervalFn = (id) => globalThis.clearInterval(id),
+      setTimeoutFn = (callback, milliseconds) => globalThis.setTimeout(callback, milliseconds),
+      clearTimeoutFn = (id) => globalThis.clearTimeout(id),
+    } = options;
+    this.forceTurn = Boolean(forceTurn);
+    this.sdkFactory = sdkFactory ?? (() => defaultSdkFactory(this.forceTurn));
     this.now = now;
     this.setIntervalFn = setIntervalFn;
     this.clearIntervalFn = clearIntervalFn;
@@ -238,6 +258,7 @@ export class FlubberBroadcaster extends FlubberRemoteBase {
       droppedBackpressure: this.droppedBackpressure,
       sequence: this.sequence,
       lastSendAgeMs: Number.isFinite(this.lastSentAt) ? Math.max(0, this.now() - this.lastSentAt) : undefined,
+      forceTurnRequested: this.forceTurn,
     };
   }
 
@@ -479,6 +500,7 @@ export class FlubberReceiver extends FlubberRemoteBase {
         staleTransitions: this.staleTransitions,
         recoveryTransitions: this.recoveryTransitions,
       },
+      forceTurnRequested: this.forceTurn,
     };
   }
 
