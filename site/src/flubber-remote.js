@@ -12,6 +12,13 @@ export const FLUBBER_REMOTE_DISCOVERY_SETTLE_MS = 300;
 export const FLUBBER_REMOTE_FORCE_TURN_PARAM = "remote-force-turn";
 
 const MIN_SEND_INTERVAL_MS = 1_000 / FLUBBER_REMOTE_MAX_HZ;
+// Chrome animation frames can arrive a fraction before the ideal 60 Hz
+// deadline. A strict previous-send comparison then rejects that frame and
+// waits for the following one, collapsing a healthy sender toward 30 Hz. Keep
+// a small bounded scheduling debt while advancing the ideal deadline at 60 Hz;
+// long-run throughput remains capped and rapid callers cannot burst freely.
+const CHANGE_SEND_EARLY_TOLERANCE_MS = 5;
+const MIN_CHANGED_SEND_SEPARATION_MS = MIN_SEND_INTERVAL_MS - CHANGE_SEND_EARLY_TOLERANCE_MS;
 const DIAGNOSTIC_GAP_WINDOW = 128;
 const DIAGNOSTIC_LATE_GAP_MS = 500;
 const SDK_OPTIONS = Object.freeze({
@@ -236,6 +243,8 @@ export class FlubberBroadcaster extends FlubberRemoteBase {
     this.latest = undefined;
     this.lastSent = undefined;
     this.lastSentAt = -Infinity;
+    this.lastChangedSentAt = -Infinity;
+    this.nextChangedSendAt = -Infinity;
     this.sequence = 0;
     this.droppedBackpressure = 0;
     this.quality = new Map();
@@ -314,8 +323,24 @@ export class FlubberBroadcaster extends FlubberRemoteBase {
     const changed = !this.lastSent
       || this.latest.currentX !== this.lastSent.currentX
       || this.latest.currentY !== this.lastSent.currentY;
-    if (changed && offeredAt - this.lastSentAt >= MIN_SEND_INTERVAL_MS) return this.flush(false, offeredAt);
+    if (changed && this.changedSendReady(offeredAt)) return this.flush(false, offeredAt);
     return false;
+  }
+
+  changedSendReady(offeredAt) {
+    if (offeredAt - this.lastChangedSentAt < MIN_CHANGED_SEND_SEPARATION_MS) return false;
+    return !Number.isFinite(this.nextChangedSendAt)
+      || offeredAt + CHANGE_SEND_EARLY_TOLERANCE_MS >= this.nextChangedSendAt;
+  }
+
+  recordChangedSend(sentAt) {
+    this.lastChangedSentAt = sentAt;
+    if (!Number.isFinite(this.nextChangedSendAt)
+      || sentAt > this.nextChangedSendAt + MIN_SEND_INTERVAL_MS) {
+      this.nextChangedSendAt = sentAt + MIN_SEND_INTERVAL_MS;
+      return;
+    }
+    this.nextChangedSendAt += MIN_SEND_INTERVAL_MS;
   }
 
   flush(force = false, sentAt = this.now(), onlyUuid) {
@@ -323,7 +348,7 @@ export class FlubberBroadcaster extends FlubberRemoteBase {
     const changed = !this.lastSent
       || this.latest.currentX !== this.lastSent.currentX
       || this.latest.currentY !== this.lastSent.currentY;
-    if (!force && (!changed || sentAt - this.lastSentAt < MIN_SEND_INTERVAL_MS)) return false;
+    if (!force && (!changed || !this.changedSendReady(sentAt))) return false;
     const nextSequence = (this.sequence + 1) >>> 0;
     const frame = encodeFlubberFrame(nextSequence, this.latest.currentX, this.latest.currentY);
     let sent = false;
@@ -350,6 +375,7 @@ export class FlubberBroadcaster extends FlubberRemoteBase {
       this.sequence = nextSequence;
       this.lastSent = { ...this.latest };
       this.lastSentAt = sentAt;
+      if (changed) this.recordChangedSend(sentAt);
       this.scheduleHeartbeat();
     }
     return sent;
@@ -426,6 +452,8 @@ export class FlubberBroadcaster extends FlubberRemoteBase {
     this.latest = undefined;
     this.lastSent = undefined;
     this.lastSentAt = -Infinity;
+    this.lastChangedSentAt = -Infinity;
+    this.nextChangedSendAt = -Infinity;
     this.sequence = 0;
     this.droppedBackpressure = 0;
     this.heartbeatTimer = undefined;

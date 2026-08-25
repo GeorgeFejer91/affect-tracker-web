@@ -278,6 +278,44 @@ test("broadcaster caps changed sends at 60 Hz, heartbeats at 100 ms, and keeps o
   await broadcaster.stop();
 });
 
+test("broadcaster keeps near-60 Hz animation frames without accumulating an extra-frame delay", async () => {
+  const clock = new FakeClock();
+  const sdk = new MockSdk();
+  const broadcaster = new FlubberBroadcaster({ ...clock.options(() => sdk), randomBytes: () => new Uint8Array(4) });
+  await broadcaster.start();
+  sdk.emit("dataChannelOpen", { uuid: "listener" });
+  await settle();
+  const channel = sdk.channels.get("listener");
+
+  broadcaster.offer(0, 0);
+  for (let frame = 1; frame <= 120; frame += 1) {
+    clock.advance(16.5);
+    broadcaster.offer(frame / 120, -frame / 120);
+  }
+  assert.ok(channel.sent.length >= 118, `expected near-frame cadence, received ${channel.sent.length} packets`);
+
+  await broadcaster.stop();
+});
+
+test("broadcaster scheduling tolerance retains the long-run 60 Hz cap", async () => {
+  const clock = new FakeClock();
+  const sdk = new MockSdk();
+  const broadcaster = new FlubberBroadcaster({ ...clock.options(() => sdk), randomBytes: () => new Uint8Array(4) });
+  await broadcaster.start();
+  sdk.emit("dataChannelOpen", { uuid: "listener" });
+  await settle();
+  const channel = sdk.channels.get("listener");
+
+  broadcaster.offer(0, 0);
+  for (let step = 1; step <= 2_500; step += 1) {
+    clock.advance(4);
+    broadcaster.offer((step % 200) / 100 - 1, -((step % 200) / 100 - 1));
+  }
+  assert.ok(channel.sent.length <= 602, `60 Hz cap exceeded with ${channel.sent.length} packets in 10 seconds`);
+
+  await broadcaster.stop();
+});
+
 test("heartbeat scheduling does not add duplicate packets while changed frames are active", async () => {
   const clock = new FakeClock();
   const sdk = new MockSdk();
@@ -513,10 +551,10 @@ test("remote pages load only the local SDK and feature code makes no microphone 
   assert.match(index, />Broadcast this to VR \/ remote interface</);
   assert.match(index, /id="flubber-remote-foreground-button"[^>]*hidden>Restore low-latency foreground mode</);
   assert.match(webxr, />Use incoming signal</);
-  assert.match(index, /src="\.\/src\/app\.js\?v=remote-7"/);
-  assert.match(webxr, /src="\.\/src\/webxr-study\.js\?v=remote-7"/);
-  assert.match(app, /from "\.\/flubber-remote\.js\?v=remote-7"/);
-  assert.match(receiver, /from "\.\/flubber-remote\.js\?v=remote-7"/);
+  assert.match(index, /src="\.\/src\/app\.js\?v=remote-8"/);
+  assert.match(webxr, /src="\.\/src\/webxr-study\.js\?v=remote-8"/);
+  assert.match(app, /from "\.\/flubber-remote\.js\?v=remote-8"/);
+  assert.match(receiver, /from "\.\/flubber-remote\.js\?v=remote-8"/);
   assert.match(transport, /FLUBBER_REMOTE_FORCE_TURN_PARAM = "remote-force-turn"/);
   assert.match(transport, /forceTURN: Boolean\(forceTurn\)/);
   assert.match(app, /flubberBroadcaster\.offer\(state\.currentX, state\.currentY\);/);

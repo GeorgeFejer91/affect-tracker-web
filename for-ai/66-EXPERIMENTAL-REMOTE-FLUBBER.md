@@ -20,7 +20,7 @@ The latest attended evidence and open physical gate are recorded in [`67-REMOTE-
 - Use VDO.Ninja data-only publisher/viewer connections. Do not request a microphone, audio track, camera, media permission, popup, clipboard, keyboard, code entry, QR scanner, custom bridge server, or WebSocket data fallback.
 - Join public room `affect_tracker_flubber_v1`. Each listener gets custom channel `flubberxyv1` with `ordered: false` and `maxRetransmits: 0`.
 - Every frame is exactly 12 bytes, little-endian: `uint32 sequence`, `float32 currentX`, then `float32 currentY`. Coordinates must be finite and are clamped to `[-1,1]`. Receivers reject any other length, non-finite value, duplicate sequence, or value that is not newer under unsigned half-range ordering, including across wraparound.
-- Changed values send at no more than 60 Hz. Unchanged state sends a heartbeat every 100 ms. A new listener receives the latest available pair immediately. If a channel has any queued bytes, that update is discarded for the channel; only the newest pair is eligible once its queue clears.
+- Changed values use an ideal 60 Hz deadline with a five-millisecond bounded early tolerance and at least 11.67 ms between changed sends. Advancing the ideal deadline instead of resetting it from each slightly-early Chrome frame prevents ordinary animation jitter from halving delivery cadence; the bounded debt is repaid so sustained high-rate callers remain limited to 60 Hz over time. Unchanged state sends a heartbeat every 100 ms. A new listener receives the latest available pair immediately. If a channel has any queued bytes, that update is discarded for the channel; only the newest pair is eligible once its queue clears.
 
 ## Receiver ownership
 
