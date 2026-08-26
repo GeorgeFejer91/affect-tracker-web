@@ -14,10 +14,11 @@ import {
   parseScreenCalibration,
   resizeCalibrationSquareFromCorner,
   SCREEN_CALIBRATION_STORAGE_KEY,
+  screenCalibrationPhysicalSummary,
   screenCalibrationStatus,
   translateCalibrationSquare,
   translateCalibrationSquareFromEdge,
-} from "./screen-calibration.js";
+} from "./screen-calibration.js?v=screen-calibration-2";
 
 const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
 
@@ -191,9 +192,9 @@ export function createScreenCalibrationController({
     elements.status.value = status.message;
     if (status.state === "valid") {
       const calibration = status.calibration;
-      const side = calibration.version === 2 ? calibration.squareSideCssPx : calibration.meanCssPx;
-      const place = calibration.version === 2 ? `${calibration.country.name} · ` : "";
-      elements.result.textContent = `${place}${calibration.coin.denomination}: ${side.toFixed(1)} CSS px; fullscreen viewport approximately ${calibration.fullscreenViewport.widthMm.toFixed(0)} × ${calibration.fullscreenViewport.heightMm.toFixed(0)} mm.`;
+      const physical = screenCalibrationPhysicalSummary(calibration);
+      const coinLabel = calibration.coin.label ?? calibration.coin.denomination;
+      elements.result.textContent = `Congratulations! We now know approximately how big your laptop screen is. Estimated fullscreen size: ${physical.widthCm.toFixed(1)} × ${physical.heightCm.toFixed(1)} cm (${physical.diagonalCm.toFixed(1)} cm diagonal), or ${physical.widthInches.toFixed(2)} × ${physical.heightInches.toFixed(2)} inches (${physical.diagonalInches.toFixed(2)}-inch diagonal). That is about ${physical.widthInCoins.toFixed(2)} ${coinLabel} coins wide and ${physical.heightInCoins.toFixed(2)} coins high.`;
     } else if (status.state === "stale") {
       elements.result.textContent = "The saved result belongs to a different display size, scale, or orientation. Recalibrate before relying on physical-size estimates.";
     } else {

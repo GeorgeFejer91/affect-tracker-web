@@ -20,6 +20,7 @@ import {
   displaySignaturesMatch,
   parseScreenCalibration,
   resizeCalibrationSquareFromCorner,
+  screenCalibrationPhysicalSummary,
   screenCalibrationStatus,
   translateCalibrationSquare,
   translateCalibrationSquareFromEdge,
@@ -93,6 +94,20 @@ test("v2 calibration persists only confirmed geometry and rejects tampering", ()
   assert.throws(() => parseScreenCalibration(alteredSource), /does not match/i);
 });
 
+test("a valid calibration derives metric, US customary, and selected-coin screen dimensions", () => {
+  const calibration = createScreenCalibration({ coinId: "eur-1", countryCode: "DE", squareSideCssPx: 93, viewportWidthCssPx: 1920, viewportHeightCssPx: 1080, displaySignature: display });
+  assert.deepEqual(screenCalibrationPhysicalSummary(calibration), {
+    widthCm: 48,
+    heightCm: 27,
+    diagonalCm: 55.07,
+    widthInches: 18.9,
+    heightInches: 10.63,
+    diagonalInches: 21.68,
+    widthInCoins: 20.65,
+    heightInCoins: 11.61,
+  });
+});
+
 test("v1 two-match records remain readable and v2 replaces repeatability with country context", () => {
   const legacy = createScreenCalibrationV1({ coinId: "usd-quarter", measurementsCssPx: [96, 97], viewportWidthCssPx: 1920, viewportHeightCssPx: 1080, displaySignature: display, calibratedAt: "2026-08-25T12:00:00.000Z" });
   const parsed = parseScreenCalibration(JSON.stringify(legacy));
@@ -163,12 +178,15 @@ test("the sixth Screen Calibration module owns the complete coin protocol and Ex
   assert.match(controller, /elements\.directory\.hidden = true/);
   assert.match(controller, /elements\.layer\.dataset\.calibrationStep = step/);
   assert.match(controller, /left, right, or bottom screen rim/);
+  assert.match(controller, /Congratulations! We now know approximately how big your laptop screen is/);
+  assert.match(controller, /coins wide/);
   assert.match(controller, /maximum outer span/);
   assert.match(controller, /pointercancel/);
   assert.match(css, /touch-action: none/);
   assert.match(css, /\.screen-calibration-layer \[hidden\] \{ display: none !important; \}/);
   assert.match(css, /grid-template-rows: minmax\(0, 1fr\) 50dvh/);
-  assert.match(css, /\.screen-calibration-canvas \{[\s\S]{0,180}height: 50dvh;[\s\S]{0,120}border-radius: 0/);
+  assert.match(css, /\.screen-calibration-canvas \{[\s\S]{0,180}height: 50dvh;[\s\S]{0,160}border-top: 2px solid/);
+  assert.match(css, /\.screen-calibration-square-rect \{ fill: transparent; stroke: #fff/);
   assert.match(icon, /<svg[^>]*viewBox="0 0 64 64"/);
   for (const field of ["screen_calibration_protocol", "screen_calibration_version", "screen_calibration_country_code", "screen_calibration_country_name", "screen_calibration_repeatability_percent"]) assert.match(logger, new RegExp(`"${field}"`));
 });

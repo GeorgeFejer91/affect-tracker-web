@@ -124,6 +124,23 @@ function fullscreenViewport(width, height, mmPerCssPixel) {
   return Object.freeze({ widthCssPx: rounded(viewportWidth, 2), heightCssPx: rounded(viewportHeight, 2), widthMm: rounded(viewportWidth * mmPerCssPixel, 2), heightMm: rounded(viewportHeight * mmPerCssPixel, 2) });
 }
 
+export function screenCalibrationPhysicalSummary(calibration) {
+  const widthMm = finitePositive(calibration?.fullscreenViewport?.widthMm, "Calibrated viewport width");
+  const heightMm = finitePositive(calibration?.fullscreenViewport?.heightMm, "Calibrated viewport height");
+  const coinSpanMm = finitePositive(calibration?.coin?.diameterMm, "Reference coin size");
+  const diagonalMm = Math.hypot(widthMm, heightMm);
+  return Object.freeze({
+    widthCm: rounded(widthMm / 10, 2),
+    heightCm: rounded(heightMm / 10, 2),
+    diagonalCm: rounded(diagonalMm / 10, 2),
+    widthInches: rounded(widthMm / 25.4, 2),
+    heightInches: rounded(heightMm / 25.4, 2),
+    diagonalInches: rounded(diagonalMm / 25.4, 2),
+    widthInCoins: rounded(widthMm / coinSpanMm, 2),
+    heightInCoins: rounded(heightMm / coinSpanMm, 2),
+  });
+}
+
 function canonicalCoin(coin) {
   return Object.freeze({ id: coin.id, currencyCode: coin.currency, currencyName: coin.currencyName, currencySymbol: coin.currencySymbol, denomination: coin.denomination, label: coin.label, diameterMm: coin.diameterMm, authority: coin.authority, sourceUrl: coin.sourceUrl, verifiedOn: coin.verifiedOn });
 }
