@@ -132,12 +132,131 @@ function contourSegmentsToPath(segments) {
   }
   return {
     contourCount: contours.length,
+    contours,
     path: contours.map((points) => [
       `M ${points[0].x.toFixed(2)} ${points[0].y.toFixed(2)}`,
       ...points.slice(1).map((point) => `L ${point.x.toFixed(2)} ${point.y.toFixed(2)}`),
       "Z",
     ].join(" ")).join(" "),
   };
+}
+
+function parseClosedSvgPath(path) {
+  const values = String(path ?? "").match(/-?(?:\d+\.?\d*|\.\d+)(?:e[-+]?\d+)?/gi)?.map(Number) ?? [];
+  const points = [];
+  for (let index = 0; index + 1 < values.length; index += 2) {
+    if (Number.isFinite(values[index]) && Number.isFinite(values[index + 1])) {
+      points.push({ x: values[index], y: values[index + 1] });
+    }
+  }
+  return points;
+}
+
+function resampleClosedContour(points, count) {
+  if (!Array.isArray(points) || points.length < 2 || count < 2) return [];
+  const lengths = new Array(points.length + 1);
+  lengths[0] = 0;
+  for (let index = 0; index < points.length; index += 1) {
+    const next = points[(index + 1) % points.length];
+    lengths[index + 1] = lengths[index] + Math.hypot(next.x - points[index].x, next.y - points[index].y);
+  }
+  const perimeter = lengths.at(-1);
+  if (!(perimeter > 0)) return Array.from({ length: count }, () => ({ ...points[0] }));
+  const sampled = [];
+  let segment = 0;
+  for (let index = 0; index < count; index += 1) {
+    const distance = perimeter * index / count;
+    while (segment + 1 < lengths.length && lengths[segment + 1] < distance) segment += 1;
+    const start = points[segment % points.length];
+    const end = points[(segment + 1) % points.length];
+    const span = lengths[segment + 1] - lengths[segment];
+    const amount = span > 0 ? (distance - lengths[segment]) / span : 0;
+    sampled.push({ x: start.x + (end.x - start.x) * amount, y: start.y + (end.y - start.y) * amount });
+  }
+  return sampled;
+}
+
+function contourCentroid(points) {
+  if (!points.length) return { x: 0, y: 0 };
+  return points.reduce((sum, point) => ({ x: sum.x + point.x / points.length, y: sum.y + point.y / points.length }), { x: 0, y: 0 });
+}
+
+function alignClosedContour(source, target) {
+  const count = target.length;
+  if (source.length !== count || count === 0) return source;
+  let bestScore = Infinity;
+  let bestShift = 0;
+  let bestReverse = false;
+  const stride = Math.max(1, Math.floor(count / 32));
+  for (const reverse of [false, true]) {
+    for (let shift = 0; shift < count; shift += 1) {
+      let score = 0;
+      for (let index = 0; index < count; index += stride) {
+        const sourceIndex = reverse
+          ? (shift - index + count * 2) % count
+          : (shift + index) % count;
+        const dx = source[sourceIndex].x - target[index].x;
+        const dy = source[sourceIndex].y - target[index].y;
+        score += dx * dx + dy * dy;
+      }
+      if (score < bestScore) {
+        bestScore = score;
+        bestShift = shift;
+        bestReverse = reverse;
+      }
+    }
+  }
+  return target.map((_, index) => source[bestReverse
+    ? (bestShift - index + count * 2) % count
+    : (bestShift + index) % count]);
+}
+
+function transformedCanonicalPoints(path, center, size, viewBoxSpan) {
+  const scale = Math.max(1, Number(size) || 1) / Math.max(0.001, Number(viewBoxSpan) || 3.24);
+  return parseClosedSvgPath(path).map((point) => ({
+    x: center.x + point.x * scale,
+    y: center.y + point.y * scale,
+  }));
+}
+
+function pointsToClosedPath(points) {
+  if (!points.length) return "";
+  return [`M ${points[0].x.toFixed(2)} ${points[0].y.toFixed(2)}`,
+    ...points.slice(1).map((point) => `L ${point.x.toFixed(2)} ${point.y.toFixed(2)}`), "Z"].join(" ");
+}
+
+export function morphPartyBirthContours({
+  contours,
+  mainPath,
+  guestPath,
+  mainCenter,
+  guestCenter,
+  mainSize,
+  guestSize,
+  progress = 0,
+  viewBoxSpan = 3.24,
+} = {}) {
+  if (!Array.isArray(contours) || contours.length < 2) return { path: "", contours: [] };
+  const targets = [
+    transformedCanonicalPoints(mainPath, mainCenter, mainSize, viewBoxSpan),
+    transformedCanonicalPoints(guestPath, guestCenter, guestSize, viewBoxSpan),
+  ];
+  if (targets.some((points) => points.length < 3)) return { path: "", contours: [] };
+  const available = contours.map((points) => ({ points, center: contourCentroid(points) }));
+  const mainIndex = available.reduce((best, item, index) => {
+    const distance = Math.hypot(item.center.x - mainCenter.x, item.center.y - mainCenter.y);
+    return distance < best.distance ? { index, distance } : best;
+  }, { index: 0, distance: Infinity }).index;
+  const orderedSources = [available[mainIndex].points, available[mainIndex === 0 ? 1 : 0].points];
+  const t = smoothstep(0, 1, clamp(Number(progress) || 0, 0, 1));
+  const morphed = targets.map((target, targetIndex) => {
+    const source = alignClosedContour(resampleClosedContour(orderedSources[targetIndex], target.length), target);
+    return target.map((point, index) => ({
+      x: source[index].x + (point.x - source[index].x) * t,
+      y: source[index].y + (point.y - source[index].y) * t,
+    }));
+  });
+  return { contours: morphed, path: morphed.map(pointsToClosedPath).join(" ") };
 }
 
 function cellularFieldValue(point, cells, phase) {
@@ -257,6 +376,7 @@ export function partyBudVectorGeometry({
     progress: p,
     attached: contour.contourCount === 1 && guestWeight > 0.01,
     contourCount: contour.contourCount,
+    contours: contour.contours,
     surfacePath: contour.path,
     main: { ...mainCenter, radius: currentMainRadius },
     guest: { ...guestCenter, radius: currentGuestRadius, opacity: smoothstep(0.24, 0.40, p) },

@@ -194,6 +194,8 @@ test("Ground Control exposes the requested hierarchy, animated SVG states, and p
   assert.match(app, /showReceivedSettings\(detail\)[\s\S]*shouldDismissGroundRadar\(\{ mode: groundRadarMode, phase: "ready" \}\)/);
   assert.match(app, /pendingGuest[\s\S]*shouldDismissGroundRadar\(\{ mode: "party", phase: pendingGuest\.phase \}\)[\s\S]*startPartyBirthAnimation\(pendingGuest, detail\)[\s\S]*dismissGroundRadarAfterSuccess/);
   assert.match(app, /function renderPartyBirthVector\(mainRendered\)[\s\S]*partyBudVectorGeometry[\s\S]*geometry\.surfacePath/);
+  assert.match(app, /PARTY_BIRTH_MORPH_START[\s\S]*morphPartyBirthContours[\s\S]*mainPath: mainRendered\.path[\s\S]*guestPath: guestRendered\.path/);
+  assert.doesNotMatch(app, /setTimeout\(clearPartyBirthAnimation/);
   assert.match(app, /function beginPartyGuestDrag\(event, view\)[\s\S]*setPointerCapture\(event\.pointerId\)/);
   assert.match(app, /function movePartyGuestDrag\(event, view\)[\s\S]*movePartyGuest\(view,/);
   assert.match(app, /function movePartyGuestWithKeyboard\(event, view\)[\s\S]*ArrowLeft[\s\S]*ArrowDown/);

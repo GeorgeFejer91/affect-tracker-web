@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   combineUniverseCoordinates,
   FlubberParty,
+  morphPartyBirthContours,
   oneWayGroundRole,
   partyBudVectorGeometry,
   partyFlubberPlacement,
@@ -162,6 +163,47 @@ test("party birth is a sinusoidal cellular SVG field that pinches from one conto
   assert.equal((separated.surfacePath.match(/\bM /g) ?? []).length, 2);
   assert.ok(growth.guest.radius > parent.guest.radius);
   assert.ok(separated.guest.x > growth.guest.x);
+});
+
+test("separated cellular contours continuously morph onto both canonical Flubber paths", () => {
+  const geometry = partyBudVectorGeometry({
+    progress: 0.87,
+    originX: 240,
+    originY: 280,
+    centerX: 500,
+    centerY: 400,
+    finalX: 670,
+    finalY: 400,
+    mainRadius: 90,
+    guestRadius: 50,
+  });
+  const canonical = "M1,0L0,1L-1,0L0,-1Z";
+  const start = morphPartyBirthContours({
+    contours: geometry.contours,
+    mainPath: canonical,
+    guestPath: canonical,
+    mainCenter: { x: 500, y: 400 },
+    guestCenter: { x: 670, y: 400 },
+    mainSize: 180,
+    guestSize: 100,
+    progress: 0,
+  });
+  const finish = morphPartyBirthContours({
+    contours: geometry.contours,
+    mainPath: canonical,
+    guestPath: canonical,
+    mainCenter: { x: 500, y: 400 },
+    guestCenter: { x: 670, y: 400 },
+    mainSize: 180,
+    guestSize: 100,
+    progress: 1,
+  });
+  assert.equal(start.contours.length, 2);
+  assert.equal(finish.contours.length, 2);
+  assert.doesNotMatch(start.path + finish.path, /NaN|Infinity/);
+  assert.match(finish.path, /^M 555\.56 400\.00/);
+  assert.match(finish.path, /M 700\.86 400\.00/);
+  assert.notEqual(start.path, finish.path);
 });
 
 test("a FLUBBER party invites explicit sources and enforces its browser bound", async () => {

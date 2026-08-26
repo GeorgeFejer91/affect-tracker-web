@@ -71,10 +71,11 @@ import {
   combineUniverseCoordinates,
   createFlubberParty,
   createUniverseLink,
+  morphPartyBirthContours,
   oneWayGroundRole,
   partyBudVectorGeometry,
   partyFlubberPlacement,
-} from "./flubber-collaboration.js?v=collaboration-5";
+} from "./flubber-collaboration.js?v=collaboration-6";
 import { createRetroSoundboard, retroCueForMessage, RETRO_THEME_ID } from "./retro-theme.js?v=retro-1";
 import {
   actionForBinding,
@@ -97,7 +98,9 @@ const SAMPLE_INTERVAL_SECONDS = 1 / 20;
 const MAX_DELTA_SECONDS = 0.05;
 const FEATURE_FLUBBER_INSET_PERCENT = 7.5;
 const FEATURE_DOT_INSET_PERCENT = 3;
-const PARTY_BIRTH_DURATION_MS = 3200;
+const PARTY_BIRTH_DURATION_MS = 4000;
+const PARTY_BIRTH_MORPH_START = 0.72;
+const PARTY_BIRTH_TOPOLOGY_END = 0.87;
 
 const elements = {
   stage: document.querySelector("#stage"),
@@ -531,7 +534,6 @@ let pendingSettingsSnapshot;
 let universeLocalCurrent = { currentX: state.currentX, currentY: state.currentY };
 const partyGuestViews = new Map();
 let partyBirthGuestId = "";
-let partyBirthTimer;
 let partyBirthAnimation;
 let partyBirthVectorView;
 let polarEcgWindow = [];
@@ -1329,8 +1331,12 @@ function renderPartyBirthVector(mainRendered) {
     return;
   }
   const progress = clamp((performance.now() - partyBirthAnimation.startedAt) / PARTY_BIRTH_DURATION_MS, 0, 1);
+  const topologyProgress = Math.min(
+    PARTY_BIRTH_TOPOLOGY_END,
+    progress / PARTY_BIRTH_MORPH_START * PARTY_BIRTH_TOPOLOGY_END,
+  );
   const geometry = partyBudVectorGeometry({
-    progress,
+    progress: topologyProgress,
     originX: partyBirthAnimation.originX,
     originY: partyBirthAnimation.originY,
     centerX: partyBirthAnimation.centerX,
@@ -1349,14 +1355,43 @@ function renderPartyBirthVector(mainRendered) {
   vectorView.gradient.setAttribute("y2", String(geometry.guest.y));
   vectorView.mainStop.setAttribute("stop-color", mainRendered.color);
   vectorView.guestStop.setAttribute("stop-color", affectPaletteColor(guest.latest.currentX, guest.latest.currentY, state.palette));
-  for (const path of vectorView.paths) path.setAttribute("d", geometry.surfacePath);
+  let surfacePath = geometry.surfacePath;
+  let morphProgress = 0;
+  if (progress >= PARTY_BIRTH_MORPH_START && geometry.contours.length >= 2) {
+    morphProgress = clamp((progress - PARTY_BIRTH_MORPH_START) / (1 - PARTY_BIRTH_MORPH_START), 0, 1);
+    const liveGuests = flubberParty.snapshot().guests.filter((item) => item.latest
+      && (item.phase === "live" || item.phase === "stale"));
+    const guestIndex = Math.max(0, liveGuests.findIndex((item) => item.streamId === guest.streamId));
+    const guestRendered = buildFlubberPath({
+      profiles,
+      offsets: partyGuestViews.get(guest.streamId)?.offsets ?? createProjectionOffsets(guest.streamId, profiles.waveCount),
+      x: guest.latest.currentX,
+      y: guest.latest.currentY,
+      phase: state.phase + guestIndex * 0.47,
+      palette: state.palette,
+      amplitudeScale: state.visual.amplitudeScale,
+      disorderScale: state.visual.disorderScale,
+      baseShape: state.visual.baseShape,
+      reducedMotion: reducedMotionQuery.matches,
+    });
+    surfacePath = morphPartyBirthContours({
+      contours: geometry.contours,
+      mainPath: mainRendered.path,
+      guestPath: guestRendered.path,
+      mainCenter: { x: partyBirthAnimation.centerX, y: partyBirthAnimation.centerY },
+      guestCenter: { x: partyBirthAnimation.finalX, y: partyBirthAnimation.finalY },
+      mainSize: partyBirthAnimation.mainRadius * 2,
+      guestSize: partyBirthAnimation.guestRadius * 2,
+      progress: morphProgress,
+    }).path || geometry.surfacePath;
+  }
+  for (const path of vectorView.paths) path.setAttribute("d", surfacePath);
   vectorView.svg.dataset.contours = String(geometry.contourCount);
+  vectorView.svg.dataset.morph = morphProgress.toFixed(3);
   if (progress >= 1) clearPartyBirthAnimation();
 }
 
 function clearPartyBirthAnimation() {
-  if (partyBirthTimer !== undefined) window.clearTimeout(partyBirthTimer);
-  partyBirthTimer = undefined;
   partyBirthAnimation = undefined;
   if (partyBirthVectorView) partyBirthVectorView.svg.setAttribute("hidden", "");
   elements.widget.classList.remove("is-party-budding");
@@ -1401,7 +1436,6 @@ function startPartyBirthAnimation(guest, detail) {
   };
   elements.widget.classList.add("is-party-budding");
   view.root.classList.add("is-party-budding");
-  partyBirthTimer = window.setTimeout(clearPartyBirthAnimation, PARTY_BIRTH_DURATION_MS);
 }
 
 function updatePartyUi(detail = flubberParty.snapshot()) {
