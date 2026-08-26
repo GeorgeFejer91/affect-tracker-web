@@ -31,6 +31,8 @@ test("the phone layout uses safe areas and a split Flubber/direct-coordinate con
   assert.match(html, /viewport-fit=cover/);
   assert.match(html, /id="mobile-direct-controller"/);
   assert.match(html, /id="mobile-direct-flubber"/);
+  assert.match(html, /id="mobile-direct-flubber"[\s\S]*role="img"[\s\S]*tabindex="0"/);
+  assert.match(html, /Drag Flubber to move it on connected screens/);
   assert.match(html, /id="mobile-coordinate-space"[^>]*role="slider"/);
   assert.match(html, /Drag the existing point to a new position\. Touching elsewhere does not move it\./);
   assert.match(css, /@media \(max-width: 600px\), \(max-height: 500px\) and \(pointer: coarse\)/);
@@ -39,8 +41,21 @@ test("the phone layout uses safe areas and a split Flubber/direct-coordinate con
   assert.match(css, /grid-template-rows: repeat\(2, minmax\(0, 1fr\)\)/);
   assert.match(css, /grid-template-columns: repeat\(6, minmax\(0, 1fr\)\)/);
   assert.match(css, /\.mobile-coordinate-space \{[\s\S]*touch-action: none/);
+  assert.match(css, /\.mobile-direct-flubber \{[\s\S]*position: absolute[\s\S]*touch-action: none/);
   assert.match(css, /touch-action: none/);
   assert.match(css, /overscroll-behavior: contain/);
+});
+
+test("the upper phone Flubber is an independently grabbed normalized viewport control", async () => {
+  const app = await readSiteFile("src/app.js");
+
+  assert.match(app, /mobileDirectFlubber\.addEventListener\("pointerdown"/);
+  assert.match(app, /mobileDirectFlubber\.setPointerCapture\(event\.pointerId\)/);
+  assert.match(app, /event\.pointerId !== mobileFlubberPointerId/);
+  assert.match(app, /normalizeFlubberViewportPosition\(\{/);
+  assert.match(app, /setWidgetFromNormalizedPosition\(normalized\)/);
+  assert.match(app, /mobileDirectFlubber\.addEventListener\("keydown"/);
+  assert.match(app, /offerViewportPosition\(viewportPosition\.viewportX, viewportPosition\.viewportY\)/);
 });
 
 test("a first smartphone visit opens the direct Affect controller without enabling tracking", async () => {

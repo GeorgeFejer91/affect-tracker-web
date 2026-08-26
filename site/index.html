@@ -7,7 +7,7 @@
     <meta name="description" content="A draggable, browser-only 2D affect tracker inspired by AffectTracker.">
     <title>2D Affect Tracker</title>
     <script src="./src/theme-bootstrap.js?v=retro-1"></script>
-    <link rel="stylesheet" href="./styles.css?v=screen-calibration-rim-2-mobile-direct-4-collaboration-6-retro-1">
+    <link rel="stylesheet" href="./styles.css?v=screen-calibration-rim-2-mobile-direct-5-collaboration-7-retro-1">
   </head>
   <body>
     <main id="stage" aria-label="Interactive affect tracker">
@@ -74,12 +74,23 @@
                 </div>
                 <button id="mobile-open-settings" type="button" aria-label="Open Affect Tracker settings">Settings</button>
               </header>
-              <svg id="mobile-direct-flubber" class="mobile-direct-flubber" viewBox="-1.62 -1.62 3.24 3.24" aria-hidden="true" focusable="false">
-                <path id="mobile-direct-halo-path" class="shape-halo"></path>
-                <path id="mobile-direct-base-path" class="shape-base"></path>
-                <path id="mobile-direct-outline-path" class="shape-outline"></path>
-                <circle class="center-dot" cx="0" cy="0" r="0.025"></circle>
-              </svg>
+              <div id="mobile-flubber-drag-area" class="mobile-flubber-drag-area">
+                <svg
+                  id="mobile-direct-flubber"
+                  class="mobile-direct-flubber"
+                  viewBox="-1.62 -1.62 3.24 3.24"
+                  role="img"
+                  tabindex="0"
+                  aria-label="Draggable Flubber screen position. Drag to move it on connected screens."
+                  aria-keyshortcuts="ArrowUp ArrowDown ArrowLeft ArrowRight"
+                >
+                  <path id="mobile-direct-halo-path" class="shape-halo"></path>
+                  <path id="mobile-direct-base-path" class="shape-base"></path>
+                  <path id="mobile-direct-outline-path" class="shape-outline"></path>
+                  <circle class="center-dot" cx="0" cy="0" r="0.025"></circle>
+                </svg>
+                <span class="mobile-flubber-drag-hint" aria-hidden="true">Drag Flubber to move it on connected screens</span>
+              </div>
               <div class="mobile-direct-values" aria-live="off">
                 <span>Valence <output id="mobile-direct-valence-output">+0.000</output></span>
                 <span>Arousal <output id="mobile-direct-arousal-output">+0.000</output></span>
@@ -305,7 +316,7 @@
             <summary>Controls and privacy</summary>
             <p>The arrow keys control valence and arousal by default. Open Input &amp; shortcuts, then press a direction button to reassign it.</p>
             <p>Unassigned wheel gestures retain the browser fallback: wheel changes arousal and <kbd>Shift</kbd> + wheel changes valence.</p>
-            <p>Settings, recordings, and imported files stay participant-local by default. Only Ground Control's explicit Broadcast actions transmit a captured portable settings snapshot or continuous final FLUBBER X/Y; recordings and imported files are never included.</p>
+            <p>Settings, recordings, and imported files stay participant-local by default. Only Ground Control's explicit Broadcast actions transmit a captured portable settings snapshot or continuous final FLUBBER X/Y plus normalized screen placement; recordings and imported files are never included.</p>
           </details>
 
           <p class="attribution">
@@ -646,7 +657,7 @@
               </div>
             </details>
 
-            <p class="experiment-privacy"><strong>Local physiology:</strong> ECG and RR data stay in this tab. The waveform keeps only the latest five seconds in memory; CSV samples contain mapped state and current metric context, not the 130 Hz raw ECG. Ground Control can separately broadcast only final X/Y coordinates. These signals are not a diagnosis or a direct measure of emotion.</p>
+            <p class="experiment-privacy"><strong>Local physiology:</strong> ECG and RR data stay in this tab. The waveform keeps only the latest five seconds in memory; CSV samples contain mapped state and current metric context, not the 130 Hz raw ECG. Ground Control can separately broadcast only final X/Y coordinates and normalized Flubber screen placement. These signals are not a diagnosis or a direct measure of emotion.</p>
           </section>
         </div>
       </section>
@@ -747,7 +758,7 @@
             </section>
 
             <p class="ground-control-distinction"><strong>Snapshot vs stream:</strong> JSON is one frozen settings snapshot; Live FLUBBER is a connection that stays open for changing X/Y coordinates. Ordinary broadcast and scan are sender-or-receiver only. <strong>Synch with Universe</strong> is an explicit reciprocal exception where both people's full-scale X/Y inputs steer one shared Flubber; matching directions add up to the coordinate limits instead of being averaged. <strong>Invite a FLUBBER</strong> keeps your controls local and adds selected remote Flubbers alongside yours.</p>
-            <p class="experiment-privacy"><strong>Public experimental connection:</strong> pressing a Broadcast or Scan action connects to a public VDO.Ninja discovery room. Your chosen signal name is visible to room listeners; peers may learn this device's IP address; third-party signaling and STUN/TURN may be used; relay paths add latency; and the free service has no availability guarantee. Static JSON contains the complete portable settings object, including desktop LSL metadata. Live mode sends only final smoothed X/Y coordinates—never raw physiology, timestamps, CSV rows, or participant identity.</p>
+            <p class="experiment-privacy"><strong>Public experimental connection:</strong> pressing a Broadcast or Scan action connects to a public VDO.Ninja discovery room. Your chosen signal name is visible to room listeners; peers may learn this device's IP address; third-party signaling and STUN/TURN may be used; relay paths add latency; and the free service has no availability guarantee. Static JSON contains the complete portable settings object, including desktop LSL metadata. Live mode sends only final smoothed X/Y coordinates and normalized Flubber screen placement—never raw pointer trails, physiology, timestamps, CSV rows, or participant identity.</p>
           </section>
         </div>
       </section>
@@ -805,6 +816,6 @@
     </main>
 
     <script src="./vendor/vdoninja/1.5.5/vdoninja-sdk.min.js"></script>
-    <script type="module" src="./src/app.js?v=screen-calibration-module-4-mobile-direct-4-collaboration-6-retro-1"></script>
+    <script type="module" src="./src/app.js?v=screen-calibration-module-4-mobile-direct-5-collaboration-7-retro-1"></script>
   </body>
 </html>

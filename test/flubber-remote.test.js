@@ -4,6 +4,7 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import {
   FLUBBER_REMOTE_CHANNEL,
+  FLUBBER_REMOTE_POSITION_CHANNEL,
   FLUBBER_REMOTE_HEARTBEAT_MS,
   FLUBBER_REMOTE_RECOVERY_FRAMES,
   FLUBBER_REMOTE_ROOM,
@@ -12,12 +13,17 @@ import {
   FlubberBroadcaster,
   FlubberReceiver,
   decodeFlubberFrame,
+  decodeFlubberPositionFrame,
+  denormalizeFlubberViewportPosition,
   encodeFlubberFrame,
+  encodeFlubberPositionFrame,
   formatFlubberSourceLabel,
   flubberRemoteForceTurnEnabled,
   flubberRemoteSdkOptions,
   generateFlubberSourceId,
   isNewerFlubberSequence,
+  normalizeFlubberViewportPosition,
+  relativeFlubberViewportPosition,
 } from "../site/src/flubber-remote.js";
 
 function eventWith(type, properties = {}) {
@@ -139,7 +145,8 @@ class MockSdk extends EventTarget {
   async openChannel(uuid, label, options) {
     this.calls.push(["openChannel", uuid, label, options]);
     const channel = new MockChannel();
-    this.channels.set(uuid, channel);
+    if (!this.channels.has(uuid)) this.channels.set(uuid, channel);
+    this.channels.set(`${uuid}:${label}`, channel);
     return channel;
   }
 
@@ -175,6 +182,42 @@ test("Flubber wire frames are exactly 12-byte little-endian finite clamped coord
   view.setFloat32(4, Number.POSITIVE_INFINITY, true);
   view.setFloat32(8, 0, true);
   assert.equal(decodeFlubberFrame(invalid), undefined);
+});
+
+test("normalized viewport frames stay compact and map relative movement across different screens", () => {
+  const frame = encodeFlubberPositionFrame(7, 1.4, -0.2);
+  assert.equal(frame.byteLength, FLUBBER_REMOTE_WIRE_BYTES);
+  assert.deepEqual(decodeFlubberPositionFrame(frame), {
+    sequence: 7,
+    viewportX: 1,
+    viewportY: 0,
+  });
+  assert.equal(decodeFlubberPositionFrame(new ArrayBuffer(8)), undefined);
+  assert.throws(() => encodeFlubberPositionFrame(1, Number.NaN, 0.5), /finite/);
+
+  const phone = normalizeFlubberViewportPosition({
+    x: 210,
+    y: 422,
+    size: 120,
+    viewportWidth: 420,
+    viewportHeight: 844,
+  });
+  assert.deepEqual(phone, { viewportX: 0.5, viewportY: 0.5 });
+  const moved = relativeFlubberViewportPosition({
+    sender: { viewportX: 0.75, viewportY: 0.25 },
+    senderAnchor: phone,
+    localAnchor: { viewportX: 0.2, viewportY: 0.8 },
+  });
+  assert.ok(Math.abs(moved.viewportX - 0.45) < 1e-12);
+  assert.ok(Math.abs(moved.viewportY - 0.55) < 1e-12);
+  const desktop = denormalizeFlubberViewportPosition({
+    ...moved,
+    size: 200,
+    viewportWidth: 1200,
+    viewportHeight: 800,
+  });
+  assert.ok(Math.abs(desktop.x - 550) < 1e-9);
+  assert.ok(Math.abs(desktop.y - 430) < 1e-9);
 });
 
 test("Flubber sequence ordering rejects duplicates and older values across uint32 wraparound", () => {
@@ -217,6 +260,7 @@ test("broadcaster is explicit, data-only, partial-reliability fan-out with immed
   ]);
 
   broadcaster.offer(0.25, -0.5);
+  broadcaster.offerViewportPosition(0.4, 0.7);
   sdk.emit("dataChannelOpen", { uuid: "listener-1" });
   await settle();
   const channel = sdk.channels.get("listener-1");
@@ -233,6 +277,15 @@ test("broadcaster is explicit, data-only, partial-reliability fan-out with immed
     currentY: -0.5,
   });
   assert.equal(broadcaster.snapshot().listenerCount, 1);
+  const positionChannel = sdk.channels.get(`listener-1:${FLUBBER_REMOTE_POSITION_CHANNEL}`);
+  assert.equal(positionChannel.sent.length, 1, "a listener receives the latest normalized placement immediately");
+  assert.deepEqual(decodeFlubberPositionFrame(positionChannel.sent[0]), {
+    sequence: 1,
+    viewportX: decodeFlubberPositionFrame(positionChannel.sent[0]).viewportX,
+    viewportY: decodeFlubberPositionFrame(positionChannel.sent[0]).viewportY,
+  });
+  assert.ok(Math.abs(decodeFlubberPositionFrame(positionChannel.sent[0]).viewportX - 0.4) < 1e-6);
+  assert.ok(Math.abs(decodeFlubberPositionFrame(positionChannel.sent[0]).viewportY - 0.7) < 1e-6);
 
   sdk.emit("dataChannelOpen", { uuid: "listener-2" });
   await settle();
@@ -270,6 +323,8 @@ test("protocol options isolate a named room, source prefix, channel, label, and 
   assert.deepEqual(broadcasterSdk.calls.find((call) => call[0] === "openChannel"), [
     "openChannel", "peer-u", channelName, { ordered: false, maxRetransmits: 0 },
   ]);
+  assert.equal(broadcasterSdk.calls.filter((call) => call[0] === "openChannel").length, 1,
+    "custom Universe protocols do not inherit ordinary viewport placement");
   await broadcaster.stop();
 
   const receiverClock = new FakeClock();
@@ -346,6 +401,38 @@ test("broadcaster caps changed sends at 60 Hz, heartbeats at 100 ms, and keeps o
   await broadcaster.stop();
 });
 
+test("viewport placement has its own 60 Hz latest-only stream and a non-authoritative heartbeat", async () => {
+  const clock = new FakeClock();
+  const sdk = new MockSdk();
+  const broadcaster = new FlubberBroadcaster({ ...clock.options(() => sdk), randomBytes: () => new Uint8Array(4) });
+  await broadcaster.start();
+  broadcaster.offerViewportPosition(0.2, 0.8);
+  sdk.emit("dataChannelOpen", { uuid: "listener" });
+  await settle();
+  const channel = sdk.channels.get(`listener:${FLUBBER_REMOTE_POSITION_CHANNEL}`);
+  assert.equal(channel.sent.length, 1);
+
+  clock.advance(5);
+  broadcaster.offerViewportPosition(0.3, 0.7);
+  assert.equal(channel.sent.length, 1);
+  clock.advance(12);
+  broadcaster.offerViewportPosition(0.4, 0.6);
+  assert.equal(channel.sent.length, 2);
+  channel.bufferedAmount = 1;
+  clock.advance(17);
+  broadcaster.offerViewportPosition(0.9, 0.1);
+  assert.equal(channel.sent.length, 2);
+  channel.bufferedAmount = 0;
+  channel.dispatchEvent(new Event("bufferedamountlow"));
+  assert.equal(channel.sent.length, 3);
+  const latest = decodeFlubberPositionFrame(channel.sent.at(-1));
+  assert.ok(Math.abs(latest.viewportX - 0.9) < 1e-6);
+  assert.ok(Math.abs(latest.viewportY - 0.1) < 1e-6);
+  clock.advance(FLUBBER_REMOTE_HEARTBEAT_MS * 2);
+  assert.equal(channel.sent.length, 5, "the final placement is repeated on the shared 100 ms heartbeat");
+  await broadcaster.stop();
+});
+
 test("broadcaster keeps near-60 Hz animation frames without accumulating an extra-frame delay", async () => {
   const clock = new FakeClock();
   const sdk = new MockSdk();
@@ -397,13 +484,16 @@ test("broadcaster stop quiesces heartbeats before a delayed SDK disconnect compl
   sdk.emit("dataChannelOpen", { uuid: "listener" });
   await settle();
   const channel = sdk.channels.get("listener");
+  const positionChannel = sdk.channels.get(`listener:${FLUBBER_REMOTE_POSITION_CHANNEL}`);
   broadcaster.offer(0.2, -0.2);
+  broadcaster.offerViewportPosition(0.7, 0.3);
   const sentBeforeStop = channel.sent.length;
 
   const stopping = broadcaster.stop();
   assert.equal(broadcaster.snapshot().phase, "stopping");
   assert.equal(broadcaster.snapshot().streamId, "");
   assert.equal(channel.readyState, "closed", "the data channel must close before signaling teardown completes");
+  assert.equal(positionChannel.readyState, "closed", "the placement channel must close before signaling teardown completes");
   clock.advance(FLUBBER_REMOTE_HEARTBEAT_MS * 5);
   assert.equal(channel.sent.length, sentBeforeStop, "no heartbeat may escape while signaling teardown is pending");
 
@@ -535,6 +625,43 @@ test("receiver tolerates scheduler gaps, holds stale coordinates at two seconds,
   assert.deepEqual(transitions.filter((value) => ["live", "stale", "recovered"].includes(value)), ["live", "stale", "recovered"]);
   await receiver.stop();
   assert.equal(transitions.at(-1), "disconnected");
+});
+
+test("receiver merges optional normalized placement without changing coordinate liveness", async () => {
+  const clock = new FakeClock();
+  const sdk = new MockSdk();
+  const receiver = new FlubberReceiver(clock.options(() => sdk));
+  await receiver.startDiscovery();
+  sdk.emit("listing", { streamID: "aft_flubber_feedface", UUID: "peer" });
+  clock.advance(300);
+  await settle();
+  const coordinateChannel = new MockChannel();
+  const positionChannel = new MockChannel();
+  sdk.emit("channelOpen", {
+    label: `x-${FLUBBER_REMOTE_POSITION_CHANNEL}`,
+    streamID: "aft_flubber_feedface",
+    uuid: "peer",
+    channel: positionChannel,
+  });
+  positionChannel.message(encodeFlubberPositionFrame(4, 0.25, 0.8));
+  assert.equal(receiver.snapshot().phase, "connecting", "placement alone cannot establish affect liveness");
+  sdk.emit("channelOpen", {
+    label: `x-${FLUBBER_REMOTE_CHANNEL}`,
+    streamID: "aft_flubber_feedface",
+    uuid: "peer",
+    channel: coordinateChannel,
+  });
+  coordinateChannel.message(encodeFlubberFrame(9, -0.3, 0.6));
+  const live = receiver.snapshot();
+  assert.equal(live.phase, "live");
+  assert.equal(live.latest.positionSequence, 4);
+  assert.ok(Math.abs(live.latest.viewportX - 0.25) < 1e-6);
+  assert.ok(Math.abs(live.latest.viewportY - 0.8) < 1e-6);
+  positionChannel.message(encodeFlubberPositionFrame(4, 1, 1));
+  assert.ok(Math.abs(receiver.snapshot().latest.viewportX - 0.25) < 1e-6);
+  clock.advance(FLUBBER_REMOTE_STALE_MS);
+  assert.equal(receiver.snapshot().phase, "stale", "placement packets do not mask a stale affect stream");
+  await receiver.stop();
 });
 
 test("receiver gives transient channel closure the full stale grace without HUD flapping", async () => {
@@ -705,13 +832,14 @@ test("remote pages load only the local SDK and feature code makes no microphone 
   assert.match(index, />Broadcast Live FLUBBER</);
   assert.match(index, /id="flubber-remote-foreground-button"[^>]*hidden>Restore low-latency foreground mode</);
   assert.match(webxr, />Use incoming signal</);
-  assert.match(index, /src="\.\/src\/app\.js\?v=screen-calibration-module-4-mobile-direct-4-collaboration-6-retro-1"/);
-  assert.match(webxr, /src="\.\/src\/webxr-study\.js\?v=collaboration-1"/);
-  assert.match(app, /from "\.\/flubber-remote\.js\?v=collaboration-1"/);
-  assert.match(receiver, /from "\.\/flubber-remote\.js\?v=collaboration-1"/);
+  assert.match(index, /src="\.\/src\/app\.js\?v=screen-calibration-module-4-mobile-direct-5-collaboration-7-retro-1"/);
+  assert.match(webxr, /src="\.\/src\/webxr-study\.js\?v=collaboration-2"/);
+  assert.match(app, /from "\.\/flubber-remote\.js\?v=collaboration-2"/);
+  assert.match(receiver, /from "\.\/flubber-remote\.js\?v=collaboration-2"/);
   assert.match(transport, /FLUBBER_REMOTE_FORCE_TURN_PARAM = "remote-force-turn"/);
   assert.match(transport, /forceTURN: Boolean\(forceTurn\)/);
   assert.match(app, /flubberBroadcaster\.offer\(state\.currentX, state\.currentY\);/);
+  assert.match(app, /flubberBroadcaster\.offerViewportPosition\(viewportPosition\.viewportX, viewportPosition\.viewportY\);/);
   assert.doesNotMatch(app, /flubberBroadcaster\.offer\(state\.currentX, state\.currentY, timestamp\)/);
   assert.match(webxr, /id="webxr-remote-quality"/);
   assert.match(webxr, /id="webxr-remote-mode"/);

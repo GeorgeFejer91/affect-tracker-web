@@ -3,6 +3,7 @@ import { clamp } from "./math.js";
 export const FLUBBER_REMOTE_ROOM = "affect_tracker_flubber_v1";
 export const FLUBBER_REMOTE_STREAM_PREFIX = "aft_flubber_";
 export const FLUBBER_REMOTE_CHANNEL = "flubberxyv1";
+export const FLUBBER_REMOTE_POSITION_CHANNEL = "flubberpositionv1";
 export const FLUBBER_REMOTE_WIRE_BYTES = 12;
 export const FLUBBER_REMOTE_MAX_HZ = 60;
 export const FLUBBER_REMOTE_HEARTBEAT_MS = 100;
@@ -165,6 +166,65 @@ export function decodeFlubberFrame(value) {
   };
 }
 
+export function encodeFlubberPositionFrame(sequence, viewportX, viewportY) {
+  const x = Number(viewportX);
+  const y = Number(viewportY);
+  if (!Number.isFinite(x) || !Number.isFinite(y)) {
+    throw new TypeError("Flubber viewport coordinates must be finite numbers.");
+  }
+  const bytes = new ArrayBuffer(FLUBBER_REMOTE_WIRE_BYTES);
+  const view = new DataView(bytes);
+  view.setUint32(0, Number(sequence) >>> 0, true);
+  view.setFloat32(4, clamp(x, 0, 1), true);
+  view.setFloat32(8, clamp(y, 0, 1), true);
+  return bytes;
+}
+
+export function decodeFlubberPositionFrame(value) {
+  const bytes = frameBytes(value);
+  if (!bytes || bytes.byteLength !== FLUBBER_REMOTE_WIRE_BYTES) return undefined;
+  const view = new DataView(bytes);
+  const viewportX = view.getFloat32(4, true);
+  const viewportY = view.getFloat32(8, true);
+  if (!Number.isFinite(viewportX) || !Number.isFinite(viewportY)) return undefined;
+  return {
+    sequence: view.getUint32(0, true),
+    viewportX: clamp(viewportX, 0, 1),
+    viewportY: clamp(viewportY, 0, 1),
+  };
+}
+
+export function normalizeFlubberViewportPosition({ x, y, size, viewportWidth, viewportHeight } = {}) {
+  const safeSize = Math.max(0, Number(size) || 0);
+  const width = Math.max(0, Number(viewportWidth) || 0);
+  const height = Math.max(0, Number(viewportHeight) || 0);
+  const half = safeSize / 2;
+  const spanX = Math.max(0, width - safeSize);
+  const spanY = Math.max(0, height - safeSize);
+  return {
+    viewportX: spanX > 0 ? clamp((Number(x) - half) / spanX, 0, 1) : 0.5,
+    viewportY: spanY > 0 ? clamp((Number(y) - half) / spanY, 0, 1) : 0.5,
+  };
+}
+
+export function denormalizeFlubberViewportPosition({ viewportX, viewportY, size, viewportWidth, viewportHeight } = {}) {
+  const safeSize = Math.max(0, Number(size) || 0);
+  const width = Math.max(0, Number(viewportWidth) || 0);
+  const height = Math.max(0, Number(viewportHeight) || 0);
+  const half = safeSize / 2;
+  return {
+    x: width <= safeSize ? width / 2 : half + clamp(Number(viewportX), 0, 1) * (width - safeSize),
+    y: height <= safeSize ? height / 2 : half + clamp(Number(viewportY), 0, 1) * (height - safeSize),
+  };
+}
+
+export function relativeFlubberViewportPosition({ sender, senderAnchor, localAnchor } = {}) {
+  return {
+    viewportX: clamp(Number(localAnchor?.viewportX) + Number(sender?.viewportX) - Number(senderAnchor?.viewportX), 0, 1),
+    viewportY: clamp(Number(localAnchor?.viewportY) + Number(sender?.viewportY) - Number(senderAnchor?.viewportY), 0, 1),
+  };
+}
+
 export function isNewerFlubberSequence(sequence, previousSequence) {
   if (previousSequence === undefined || previousSequence === null) return true;
   const distance = ((Number(sequence) >>> 0) - (Number(previousSequence) >>> 0)) >>> 0;
@@ -288,20 +348,31 @@ export class FlubberBroadcaster extends FlubberRemoteBase {
     this.room = options.room ?? FLUBBER_REMOTE_ROOM;
     this.streamPrefix = options.streamPrefix ?? FLUBBER_REMOTE_STREAM_PREFIX;
     this.channelName = options.channelName ?? FLUBBER_REMOTE_CHANNEL;
+    this.positionChannelName = options.positionChannelName === undefined
+      ? (this.channelName === FLUBBER_REMOTE_CHANNEL ? FLUBBER_REMOTE_POSITION_CHANNEL : "")
+      : String(options.positionChannelName ?? "");
     this.labelSuffix = options.labelSuffix ?? "Live FLUBBER";
     this.randomBytes = options.randomBytes ?? defaultRandomBytes;
     this.phase = "idle";
     this.streamId = "";
     this.sourceName = "";
     this.channels = new Map();
+    this.positionChannels = new Map();
     this.openingPeers = new Set();
     this.backpressuredPeers = new Set();
     this.latest = undefined;
+    this.latestPosition = undefined;
     this.lastSent = undefined;
     this.lastSentAt = -Infinity;
     this.lastChangedSentAt = -Infinity;
     this.nextChangedSendAt = -Infinity;
     this.sequence = 0;
+    this.positionSequence = 0;
+    this.lastPositionSent = undefined;
+    this.lastPositionSentAt = -Infinity;
+    this.lastPositionChangedSentAt = -Infinity;
+    this.nextPositionChangedSendAt = -Infinity;
+    this.positionBackpressuredPeers = new Set();
     this.droppedBackpressure = 0;
     this.quality = new Map();
     this.heartbeatTimer = undefined;
@@ -391,6 +462,75 @@ export class FlubberBroadcaster extends FlubberRemoteBase {
     return false;
   }
 
+  offerViewportPosition(viewportX, viewportY, offeredAt = this.now()) {
+    if (!this.positionChannelName) return false;
+    const x = Number(viewportX);
+    const y = Number(viewportY);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return false;
+    this.latestPosition = { viewportX: clamp(x, 0, 1), viewportY: clamp(y, 0, 1) };
+    const changed = !this.lastPositionSent
+      || this.latestPosition.viewportX !== this.lastPositionSent.viewportX
+      || this.latestPosition.viewportY !== this.lastPositionSent.viewportY;
+    if (changed && this.positionChangedSendReady(offeredAt)) return this.flushViewportPosition(false, offeredAt);
+    return false;
+  }
+
+  positionChangedSendReady(offeredAt) {
+    if (offeredAt - this.lastPositionChangedSentAt < MIN_CHANGED_SEND_SEPARATION_MS) return false;
+    return !Number.isFinite(this.nextPositionChangedSendAt)
+      || offeredAt + CHANGE_SEND_EARLY_TOLERANCE_MS >= this.nextPositionChangedSendAt;
+  }
+
+  recordPositionChangedSend(sentAt) {
+    this.lastPositionChangedSentAt = sentAt;
+    if (!Number.isFinite(this.nextPositionChangedSendAt)
+      || sentAt > this.nextPositionChangedSendAt + MIN_SEND_INTERVAL_MS) {
+      this.nextPositionChangedSendAt = sentAt + MIN_SEND_INTERVAL_MS;
+      return;
+    }
+    this.nextPositionChangedSendAt += MIN_SEND_INTERVAL_MS;
+  }
+
+  flushViewportPosition(force = false, sentAt = this.now(), onlyUuid) {
+    if (this.phase !== "broadcasting" || !this.latestPosition || this.positionChannels.size === 0) return false;
+    const changed = !this.lastPositionSent
+      || this.latestPosition.viewportX !== this.lastPositionSent.viewportX
+      || this.latestPosition.viewportY !== this.lastPositionSent.viewportY;
+    if (!force && (!changed || !this.positionChangedSendReady(sentAt))) return false;
+    const nextSequence = (this.positionSequence + 1) >>> 0;
+    const frame = encodeFlubberPositionFrame(
+      nextSequence,
+      this.latestPosition.viewportX,
+      this.latestPosition.viewportY,
+    );
+    let sent = false;
+    const channels = onlyUuid
+      ? [[onlyUuid, this.positionChannels.get(onlyUuid)]]
+      : this.positionChannels.entries();
+    for (const [uuid, channel] of channels) {
+      if (!channel || channel.readyState !== "open") continue;
+      if (Number(channel.bufferedAmount) > 0) {
+        this.droppedBackpressure += 1;
+        this.positionBackpressuredPeers.add(uuid);
+        continue;
+      }
+      try {
+        channel.send(frame);
+        this.positionBackpressuredPeers.delete(uuid);
+        sent = true;
+      } catch {
+        // The latest normalized position remains ready for a repaired channel.
+      }
+    }
+    if (sent) {
+      this.positionSequence = nextSequence;
+      this.lastPositionSent = { ...this.latestPosition };
+      this.lastPositionSentAt = sentAt;
+      if (changed) this.recordPositionChangedSend(sentAt);
+    }
+    return sent;
+  }
+
   changedSendReady(offeredAt) {
     if (offeredAt - this.lastChangedSentAt < MIN_CHANGED_SEND_SEPARATION_MS) return false;
     return !Number.isFinite(this.nextChangedSendAt)
@@ -447,7 +587,10 @@ export class FlubberBroadcaster extends FlubberRemoteBase {
 
   heartbeat(sentAt = this.now()) {
     if (sentAt - this.lastSentAt < FLUBBER_REMOTE_HEARTBEAT_MS) return false;
-    return this.flush(true, sentAt);
+    const coordinatesSent = this.flush(true, sentAt);
+    const positionSent = this.flushViewportPosition(true, sentAt);
+    if (positionSent && !coordinatesSent) this.scheduleHeartbeat();
+    return coordinatesSent || positionSent;
   }
 
   scheduleHeartbeat() {
@@ -477,6 +620,26 @@ export class FlubberBroadcaster extends FlubberRemoteBase {
       });
       this.emitState({ message: "A remote listener is receiving Flubber coordinates." });
       this.flush(true);
+      if (this.positionChannelName) {
+        try {
+          const positionChannel = await this.sdk.openChannel(uuid, this.positionChannelName, {
+            ordered: false,
+            maxRetransmits: 0,
+          });
+          positionChannel.binaryType = "arraybuffer";
+          positionChannel.bufferedAmountLowThreshold = 0;
+          this.positionChannels.set(uuid, positionChannel);
+          positionChannel.addEventListener?.("close", () => {
+            if (this.positionChannels.get(uuid) === positionChannel) this.positionChannels.delete(uuid);
+          }, { once: true });
+          positionChannel.addEventListener?.("bufferedamountlow", () => {
+            if (this.positionBackpressuredPeers.delete(uuid)) this.flushViewportPosition(true, this.now(), uuid);
+          });
+          this.flushViewportPosition(true, this.now(), uuid);
+        } catch (error) {
+          this.emitState({ message: `Coordinates are live; synchronized screen movement is unavailable: ${normalizeError(error)}` });
+        }
+      }
       void this.refreshQuality();
     } catch (error) {
       this.emitState({ message: `Could not open the realtime channel: ${normalizeError(error)}`, error: true });
@@ -488,8 +651,10 @@ export class FlubberBroadcaster extends FlubberRemoteBase {
   removePeer(uuid) {
     if (!uuid) return;
     const changed = this.channels.delete(uuid) || this.quality.delete(uuid);
+    this.positionChannels.delete(uuid);
     this.openingPeers.delete(uuid);
     this.backpressuredPeers.delete(uuid);
+    this.positionBackpressuredPeers.delete(uuid);
     if (changed) this.emitState();
   }
 
@@ -510,6 +675,13 @@ export class FlubberBroadcaster extends FlubberRemoteBase {
     this.phase = disconnectPending ? "stopping" : "idle";
     this.clearTimers();
     this.heartbeatTimer = undefined;
+    for (const channel of Array.from(this.positionChannels.values())) {
+      try {
+        channel.close?.();
+      } catch {
+        // Signaling teardown below remains the final best-effort cleanup path.
+      }
+    }
     for (const channel of Array.from(this.channels.values())) {
       try {
         channel.close?.();
@@ -521,15 +693,23 @@ export class FlubberBroadcaster extends FlubberRemoteBase {
     this.streamId = "";
     this.sourceName = "";
     this.channels.clear();
+    this.positionChannels.clear();
     this.openingPeers.clear();
     this.backpressuredPeers.clear();
     this.quality.clear();
     this.latest = undefined;
+    this.latestPosition = undefined;
     this.lastSent = undefined;
     this.lastSentAt = -Infinity;
     this.lastChangedSentAt = -Infinity;
     this.nextChangedSendAt = -Infinity;
     this.sequence = 0;
+    this.positionSequence = 0;
+    this.lastPositionSent = undefined;
+    this.lastPositionSentAt = -Infinity;
+    this.lastPositionChangedSentAt = -Infinity;
+    this.nextPositionChangedSendAt = -Infinity;
+    this.positionBackpressuredPeers.clear();
     this.droppedBackpressure = 0;
     this.emitState(disconnectPending ? { message: "Stopping remote broadcast…" } : {});
     await disconnecting;
@@ -546,6 +726,9 @@ export class FlubberReceiver extends FlubberRemoteBase {
     this.room = options.room ?? FLUBBER_REMOTE_ROOM;
     this.streamPrefix = options.streamPrefix ?? FLUBBER_REMOTE_STREAM_PREFIX;
     this.channelName = options.channelName ?? FLUBBER_REMOTE_CHANNEL;
+    this.positionChannelName = options.positionChannelName === undefined
+      ? (this.channelName === FLUBBER_REMOTE_CHANNEL ? FLUBBER_REMOTE_POSITION_CHANNEL : "")
+      : String(options.positionChannelName ?? "");
     this.labelSuffix = options.labelSuffix ?? "Live FLUBBER";
     this.receiverLabel = options.receiverLabel ?? "Affect Tracker Quest receiver";
     this.autoSelect = options.autoSelect !== false;
@@ -555,8 +738,11 @@ export class FlubberReceiver extends FlubberRemoteBase {
     this.selectedStreamId = "";
     this.selectedUuid = "";
     this.channel = undefined;
+    this.positionChannel = undefined;
     this.latest = undefined;
+    this.latestPosition = undefined;
     this.lastSequence = undefined;
+    this.lastPositionSequence = undefined;
     this.quality = { route: "unknown", rttMs: undefined };
     this.discoveryTimer = undefined;
     this.staleTimer = undefined;
@@ -604,6 +790,12 @@ export class FlubberReceiver extends FlubberRemoteBase {
         currentX: this.latest.currentX,
         currentY: this.latest.currentY,
         receivedAt: this.latest.receivedAt,
+        ...(this.latestPosition ? {
+          positionSequence: this.latestPosition.sequence,
+          viewportX: this.latestPosition.viewportX,
+          viewportY: this.latestPosition.viewportY,
+          positionReceivedAt: this.latestPosition.receivedAt,
+        } : {}),
       } : undefined,
       packetAgeMs,
       route: this.quality.route,
@@ -743,8 +935,11 @@ export class FlubberReceiver extends FlubberRemoteBase {
     this.selectedStreamId = streamId;
     this.selectedUuid = source?.uuid ?? "";
     this.channel = undefined;
+    this.positionChannel = undefined;
     this.latest = undefined;
+    this.latestPosition = undefined;
     this.lastSequence = undefined;
+    this.lastPositionSequence = undefined;
     this.clearTimeout(this.staleTimer);
     this.staleTimer = undefined;
     this.disconnectNotified = false;
@@ -771,12 +966,19 @@ export class FlubberReceiver extends FlubberRemoteBase {
   }
 
   acceptChannel(detail) {
-    if (!detail || detail.label !== `x-${this.channelName}`) return;
+    if (!detail) return;
+    const isCoordinateChannel = detail.label === `x-${this.channelName}`;
+    const isPositionChannel = this.positionChannelName && detail.label === `x-${this.positionChannelName}`;
+    if (!isCoordinateChannel && !isPositionChannel) return;
     if (!this.selectedStreamId) return;
     if (detail.streamID && detail.streamID !== this.selectedStreamId) return;
     if (this.selectedUuid && detail.uuid && detail.uuid !== this.selectedUuid) return;
     const acceptedStreamId = this.selectedStreamId;
     this.selectedUuid = detail.uuid ?? this.selectedUuid;
+    if (isPositionChannel) {
+      this.acceptPositionChannel(detail, acceptedStreamId);
+      return;
+    }
     this.channel = detail.channel;
     const acceptedChannel = this.channel;
     acceptedChannel.binaryType = "arraybuffer";
@@ -792,6 +994,33 @@ export class FlubberReceiver extends FlubberRemoteBase {
     }, { once: true });
     this.emitState({ message: "Realtime channel open; waiting for coordinates…" });
     void this.refreshQuality();
+  }
+
+  acceptPositionChannel(detail, acceptedStreamId = this.selectedStreamId) {
+    this.positionChannel = detail.channel;
+    const acceptedChannel = this.positionChannel;
+    acceptedChannel.binaryType = "arraybuffer";
+    acceptedChannel.addEventListener("message", (event) => {
+      if (this.positionChannel === acceptedChannel && this.selectedStreamId === acceptedStreamId) {
+        this.acceptPositionFrame(event.data);
+      }
+    });
+    acceptedChannel.addEventListener("close", () => {
+      if (this.positionChannel === acceptedChannel && this.selectedStreamId === acceptedStreamId) {
+        this.positionChannel = undefined;
+      }
+    }, { once: true });
+  }
+
+  acceptPositionFrame(value, receivedAt = this.now()) {
+    const frame = decodeFlubberPositionFrame(value);
+    if (!frame || !isNewerFlubberSequence(frame.sequence, this.lastPositionSequence)) return false;
+    this.lastPositionSequence = frame.sequence;
+    this.latestPosition = { ...frame, receivedAt };
+    const snapshot = this.snapshot(receivedAt);
+    this.dispatchEvent(detailEvent("position", snapshot));
+    if (snapshot.latest) this.dispatchEvent(detailEvent("frame", snapshot));
+    return true;
   }
 
   acceptFrame(value, receivedAt = this.now()) {
@@ -912,8 +1141,11 @@ export class FlubberReceiver extends FlubberRemoteBase {
     this.selectedStreamId = "";
     this.selectedUuid = "";
     this.channel = undefined;
+    this.positionChannel = undefined;
     this.latest = undefined;
+    this.latestPosition = undefined;
     this.lastSequence = undefined;
+    this.lastPositionSequence = undefined;
     this.quality = { route: "unknown", rttMs: undefined };
     this.discoveryTimer = undefined;
     this.staleTimer = undefined;

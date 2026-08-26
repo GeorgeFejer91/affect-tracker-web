@@ -59,7 +59,13 @@ import {
   polarWebBluetoothSupport,
 } from "./polar-stream.js?v=remote-13";
 import { createPolarH10ReplaySession, polarReplayEnabled } from "./polar-replay.js?v=remote-13";
-import { createFlubberBroadcaster, createFlubberReceiver } from "./flubber-remote.js?v=collaboration-1";
+import {
+  createFlubberBroadcaster,
+  createFlubberReceiver,
+  denormalizeFlubberViewportPosition,
+  normalizeFlubberViewportPosition,
+  relativeFlubberViewportPosition,
+} from "./flubber-remote.js?v=collaboration-2";
 import {
   createSettingsSnapshotBroadcaster,
   createSettingsSnapshotReceiver,
@@ -75,7 +81,7 @@ import {
   oneWayGroundRole,
   partyBudVectorGeometry,
   partyFlubberPlacement,
-} from "./flubber-collaboration.js?v=collaboration-6";
+} from "./flubber-collaboration.js?v=collaboration-7";
 import { createRetroSoundboard, retroCueForMessage, RETRO_THEME_ID } from "./retro-theme.js?v=retro-1";
 import {
   actionForBinding,
@@ -114,6 +120,7 @@ const elements = {
   panelContent: document.querySelector("#panel-content"),
   toggleSymbol: document.querySelector(".toggle-symbol"),
   mobileDirectController: document.querySelector("#mobile-direct-controller"),
+  mobileFlubberDragArea: document.querySelector("#mobile-flubber-drag-area"),
   mobileDirectFlubber: document.querySelector("#mobile-direct-flubber"),
   mobileDirectBasePath: document.querySelector("#mobile-direct-base-path"),
   mobileDirectOutlinePath: document.querySelector("#mobile-direct-outline-path"),
@@ -547,6 +554,15 @@ let dragOffsetX = 0;
 let dragOffsetY = 0;
 let featurePointerId;
 let mobileCoordinatePointerId;
+let mobileFlubberPointerId;
+let mobileFlubberDragOffsetX = 0;
+let mobileFlubberDragOffsetY = 0;
+const liveRemotePositionSync = {
+  streamId: "",
+  senderAnchor: undefined,
+  localAnchor: undefined,
+  lastSequence: undefined,
+};
 let captureInput;
 let pictureInPictureWindow;
 let pictureInPictureView;
@@ -1187,6 +1203,49 @@ function movePartyGuest(view, x, y) {
   view.root.style.setProperty("--party-y", `${view.position.y}px`);
 }
 
+function normalizedPartyGuestPosition(view) {
+  return normalizeFlubberViewportPosition({
+    x: view.position?.x,
+    y: view.position?.y,
+    size: (view.size ?? 108) + 16,
+    viewportWidth: window.innerWidth,
+    viewportHeight: window.innerHeight,
+  });
+}
+
+function reanchorPartyGuestPosition(view, latest) {
+  if (!view.position || !Number.isFinite(latest?.viewportX) || !Number.isFinite(latest?.viewportY)) return;
+  view.remotePositionSync = {
+    senderAnchor: { viewportX: latest.viewportX, viewportY: latest.viewportY },
+    localAnchor: normalizedPartyGuestPosition(view),
+    lastSequence: latest.positionSequence,
+  };
+}
+
+function applyPartyGuestRemotePosition(view, latest) {
+  if (!view.position || !Number.isFinite(latest?.positionSequence)
+    || !Number.isFinite(latest?.viewportX) || !Number.isFinite(latest?.viewportY)) return;
+  if (view.root.classList.contains("is-party-budding") || view.drag) return;
+  if (!view.remotePositionSync?.senderAnchor || !view.remotePositionSync?.localAnchor) {
+    reanchorPartyGuestPosition(view, latest);
+    return;
+  }
+  if (view.remotePositionSync.lastSequence === latest.positionSequence) return;
+  const normalized = relativeFlubberViewportPosition({
+    sender: latest,
+    senderAnchor: view.remotePositionSync.senderAnchor,
+    localAnchor: view.remotePositionSync.localAnchor,
+  });
+  const position = denormalizeFlubberViewportPosition({
+    ...normalized,
+    size: (view.size ?? 108) + 16,
+    viewportWidth: window.innerWidth,
+    viewportHeight: window.innerHeight,
+  });
+  view.remotePositionSync.lastSequence = latest.positionSequence;
+  movePartyGuest(view, position.x, position.y);
+}
+
 function beginPartyGuestDrag(event, view) {
   if (event.isPrimary === false || (event.pointerType === "mouse" && event.button !== 0)) return;
   if (!view.position || view.root.classList.contains("is-party-budding")) return;
@@ -1213,6 +1272,8 @@ function finishPartyGuestDrag(event, view) {
   view.drag = undefined;
   view.root.classList.remove("is-dragging");
   if (view.root.hasPointerCapture(event.pointerId)) view.root.releasePointerCapture(event.pointerId);
+  const guest = flubberParty.snapshot().guests.find((item) => item.streamId === view.root.dataset.streamId);
+  reanchorPartyGuestPosition(view, guest?.latest);
   recordEvent("ground-control", "party-guest-position", view.root.dataset.streamId, `${view.position.x.toFixed(1)},${view.position.y.toFixed(1)}`);
 }
 
@@ -1228,6 +1289,8 @@ function movePartyGuestWithKeyboard(event, view) {
   event.preventDefault();
   event.stopPropagation();
   movePartyGuest(view, view.position.x + delta[0], view.position.y + delta[1]);
+  const guest = flubberParty.snapshot().guests.find((item) => item.streamId === view.root.dataset.streamId);
+  reanchorPartyGuestPosition(view, guest?.latest);
   recordEvent("ground-control", "party-guest-position", view.root.dataset.streamId, `${view.position.x.toFixed(1)},${view.position.y.toFixed(1)}`);
 }
 
@@ -1261,6 +1324,7 @@ function createPartyGuestView(streamId, label) {
     position: undefined,
     size: 108,
     drag: undefined,
+    remotePositionSync: undefined,
   };
   partyGuestViews.set(streamId, view);
   root.addEventListener("pointerdown", (event) => beginPartyGuestDrag(event, view));
@@ -1286,7 +1350,10 @@ function syncPartyGuestViews(detail = flubberParty.snapshot()) {
 
 function applyPartyGuestPlacement(view, placement, { resetPosition = false } = {}) {
   view.size = placement.size;
-  if (resetPosition || !view.position) view.position = { x: placement.x, y: placement.y };
+  if (resetPosition || !view.position) {
+    view.position = { x: placement.x, y: placement.y };
+    view.remotePositionSync = undefined;
+  }
   movePartyGuest(view, view.position.x, view.position.y);
   view.root.style.setProperty("--party-size", `${placement.size}px`);
   view.root.style.setProperty("--party-bud-x", `${placement.budX}px`);
@@ -2168,6 +2235,21 @@ function chooseMobileCoordinate(event) {
   updateFeatureSpace();
 }
 
+function chooseMobileFlubberPosition(event) {
+  const areaBounds = elements.mobileFlubberDragArea.getBoundingClientRect();
+  const flubberBounds = elements.mobileDirectFlubber.getBoundingClientRect();
+  const size = Math.min(flubberBounds.width, flubberBounds.height);
+  if (!areaBounds.width || !areaBounds.height || !size) return;
+  const normalized = normalizeFlubberViewportPosition({
+    x: event.clientX - areaBounds.left - mobileFlubberDragOffsetX,
+    y: event.clientY - areaBounds.top - mobileFlubberDragOffsetY,
+    size,
+    viewportWidth: areaBounds.width,
+    viewportHeight: areaBounds.height,
+  });
+  setWidgetFromNormalizedPosition(normalized);
+}
+
 function tracePanelDimensions() {
   const width = Math.min(Math.max(220, state.widgetSize * 1.35), 360, Math.max(1, window.innerWidth - 32));
   return { width, height: width / 2 + 30 };
@@ -2325,6 +2407,88 @@ function constrainAndRenderWidget() {
     pictureInPictureView.root.hidden = !state.widgetVisible;
     pictureInPictureView.root.style.opacity = String(state.widgetOpacity);
   }
+  renderMobileFlubberPosition();
+}
+
+function normalizedWidgetPosition() {
+  return normalizeFlubberViewportPosition({
+    x: state.widgetX,
+    y: state.widgetY,
+    size: state.widgetSize,
+    viewportWidth: window.innerWidth,
+    viewportHeight: window.innerHeight,
+  });
+}
+
+function setWidgetFromNormalizedPosition(position) {
+  const point = denormalizeFlubberViewportPosition({
+    ...position,
+    size: state.widgetSize,
+    viewportWidth: window.innerWidth,
+    viewportHeight: window.innerHeight,
+  });
+  state.widgetX = point.x;
+  state.widgetY = point.y;
+  constrainAndRenderWidget();
+}
+
+function renderMobileFlubberPosition() {
+  const areaBounds = elements.mobileFlubberDragArea?.getBoundingClientRect();
+  const flubberBounds = elements.mobileDirectFlubber?.getBoundingClientRect();
+  if (!areaBounds?.width || !areaBounds?.height || !flubberBounds?.width || !flubberBounds?.height) return;
+  const normalized = normalizedWidgetPosition();
+  const local = denormalizeFlubberViewportPosition({
+    ...normalized,
+    size: Math.min(flubberBounds.width, flubberBounds.height),
+    viewportWidth: areaBounds.width,
+    viewportHeight: areaBounds.height,
+  });
+  elements.mobileDirectFlubber.style.left = `${local.x}px`;
+  elements.mobileDirectFlubber.style.top = `${local.y}px`;
+}
+
+function resetLiveRemotePositionSync() {
+  liveRemotePositionSync.streamId = "";
+  liveRemotePositionSync.senderAnchor = undefined;
+  liveRemotePositionSync.localAnchor = undefined;
+  liveRemotePositionSync.lastSequence = undefined;
+}
+
+function reanchorLiveRemotePosition(snapshot = liveRemoteSnapshot()) {
+  const latest = snapshot.latest;
+  if (!latest || !Number.isFinite(latest.viewportX) || !Number.isFinite(latest.viewportY)) {
+    resetLiveRemotePositionSync();
+    return;
+  }
+  liveRemotePositionSync.streamId = snapshot.selectedStreamId;
+  liveRemotePositionSync.senderAnchor = { viewportX: latest.viewportX, viewportY: latest.viewportY };
+  liveRemotePositionSync.localAnchor = normalizedWidgetPosition();
+  liveRemotePositionSync.lastSequence = latest.positionSequence;
+}
+
+function applyLiveRemoteViewportPosition(snapshot = liveRemoteSnapshot()) {
+  const latest = snapshot.latest;
+  if (!snapshot.selectedStreamId || !latest
+    || !Number.isFinite(latest.positionSequence)
+    || !Number.isFinite(latest.viewportX)
+    || !Number.isFinite(latest.viewportY)) {
+    if (!snapshot.selectedStreamId) resetLiveRemotePositionSync();
+    return;
+  }
+  if (liveRemotePositionSync.streamId !== snapshot.selectedStreamId
+    || !liveRemotePositionSync.senderAnchor || !liveRemotePositionSync.localAnchor) {
+    reanchorLiveRemotePosition(snapshot);
+    return;
+  }
+  if (liveRemotePositionSync.lastSequence === latest.positionSequence) return;
+  if (state.dragging || mobileFlubberPointerId !== undefined || experiment.phase !== "idle") return;
+  const position = relativeFlubberViewportPosition({
+    sender: latest,
+    senderAnchor: liveRemotePositionSync.senderAnchor,
+    localAnchor: liveRemotePositionSync.localAnchor,
+  });
+  liveRemotePositionSync.lastSequence = latest.positionSequence;
+  setWidgetFromNormalizedPosition(position);
 }
 
 function renderPictureInPicture(rendered) {
@@ -2369,6 +2533,7 @@ function renderPartyFlubbers() {
     for (const path of view.paths) path.setAttribute("d", rendered.path);
     view.root.hidden = false;
     applyPartyGuestPlacement(view, placement);
+    applyPartyGuestRemotePosition(view, guest.latest);
     view.root.style.setProperty("--party-color", rendered.color);
     view.root.setAttribute("aria-label", `Draggable invited ${guest.label}. Valence ${guest.latest.currentX.toFixed(2)}, arousal ${guest.latest.currentY.toFixed(2)}${guest.phase === "stale" ? ", signal stale and holding" : ""}. Drag independently or use arrow keys to move this Flubber on screen.`);
   }
@@ -2764,6 +2929,7 @@ function finishWidgetDrag(event) {
     elements.widget.releasePointerCapture(event.pointerId);
   }
   savePreferences();
+  reanchorLiveRemotePosition();
   recordEvent("pointer", "drag-complete", "widget", `${Math.round(state.widgetX)}:${Math.round(state.widgetY)}`);
 }
 
@@ -3927,6 +4093,54 @@ function initializeEvents() {
     elements.panel.classList.remove("is-mobile-settings-open");
     elements.mobileCoordinateSpace.focus();
   });
+  elements.mobileDirectFlubber.addEventListener("pointerdown", (event) => {
+    if (event.isPrimary === false || (event.pointerType === "mouse" && event.button !== 0)) return;
+    const bounds = elements.mobileDirectFlubber.getBoundingClientRect();
+    event.preventDefault();
+    mobileFlubberPointerId = event.pointerId;
+    mobileFlubberDragOffsetX = event.clientX - (bounds.left + bounds.width / 2);
+    mobileFlubberDragOffsetY = event.clientY - (bounds.top + bounds.height / 2);
+    elements.mobileDirectFlubber.classList.add("is-dragging");
+    elements.mobileDirectFlubber.setPointerCapture(event.pointerId);
+  });
+  elements.mobileDirectFlubber.addEventListener("pointermove", (event) => {
+    if (event.pointerId !== mobileFlubberPointerId) return;
+    event.preventDefault();
+    chooseMobileFlubberPosition(event);
+  });
+  const finishMobileFlubberDrag = (event) => {
+    if (event.pointerId !== mobileFlubberPointerId) return;
+    mobileFlubberPointerId = undefined;
+    elements.mobileDirectFlubber.classList.remove("is-dragging");
+    if (elements.mobileDirectFlubber.hasPointerCapture(event.pointerId)) {
+      elements.mobileDirectFlubber.releasePointerCapture(event.pointerId);
+    }
+    reanchorLiveRemotePosition();
+    savePreferences();
+    recordEvent("pointer", "drag-complete", "mobile-flubber", `${Math.round(state.widgetX)}:${Math.round(state.widgetY)}`);
+  };
+  elements.mobileDirectFlubber.addEventListener("pointerup", finishMobileFlubberDrag);
+  elements.mobileDirectFlubber.addEventListener("pointercancel", finishMobileFlubberDrag);
+  elements.mobileDirectFlubber.addEventListener("keydown", (event) => {
+    const step = event.shiftKey ? 0.1 : 0.05;
+    const delta = {
+      ArrowLeft: [-step, 0],
+      ArrowRight: [step, 0],
+      ArrowUp: [0, -step],
+      ArrowDown: [0, step],
+    }[event.key];
+    if (!delta) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const normalized = normalizedWidgetPosition();
+    setWidgetFromNormalizedPosition({
+      viewportX: clamp(normalized.viewportX + delta[0], 0, 1),
+      viewportY: clamp(normalized.viewportY + delta[1], 0, 1),
+    });
+    reanchorLiveRemotePosition();
+    savePreferences();
+    recordEvent("pointer", "move", `mobile-flubber-${event.key}`, `${Math.round(state.widgetX)}:${Math.round(state.widgetY)}`);
+  });
   elements.mobileCoordinateSpace.addEventListener("pointerdown", (event) => {
     if (event.isPrimary === false) return;
     const bounds = elements.mobileCoordinateSpace.getBoundingClientRect();
@@ -4089,6 +4303,7 @@ function animationFrame(timestamp) {
   const touchMetric = touchTrace.update(timestamp, deltaSeconds);
   const incoming = liveRemoteSnapshot();
   const incomingOwnsAxes = liveRemoteOwnsAxes(incoming);
+  applyLiveRemoteViewportPosition(incoming);
   const universe = universeLink.snapshot();
   if (touchTrackingActive() && !incomingOwnsAxes) {
     applyTouchTraceState(touchMetric);
@@ -4135,6 +4350,8 @@ function animationFrame(timestamp) {
   // The floating foreground window has its own animation-frame clock. Keep
   // all transport rate limiting on the broadcaster's single monotonic clock.
   flubberBroadcaster.offer(state.currentX, state.currentY);
+  const viewportPosition = normalizedWidgetPosition();
+  flubberBroadcaster.offerViewportPosition(viewportPosition.viewportX, viewportPosition.viewportY);
 
   const currentParameters = affectParameters(state.currentX, state.currentY);
   if (state.animationActive) {
@@ -4168,6 +4385,7 @@ function animationFrame(timestamp) {
   elements.touchPreviewFlubber.style.opacity = state.widgetVisible ? state.widgetOpacity : 0;
   elements.mobileDirectFlubber.style.setProperty("--affect-color", rendered.color);
   elements.mobileDirectFlubber.style.opacity = state.widgetVisible ? state.widgetOpacity : 0;
+  renderMobileFlubberPosition();
   renderPictureInPicture(rendered);
   renderPartyBirthVector(rendered);
   renderPartyFlubbers();

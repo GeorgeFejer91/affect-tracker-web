@@ -1969,11 +1969,39 @@ body.is-smartphone-layout .mobile-direct-controller {
 }
 
 .mobile-direct-flubber {
+  position: absolute;
+  left: 50%;
+  top: 50%;
   display: block;
   width: min(44dvh, 74%, 14rem);
+  aspect-ratio: 1;
   max-height: 100%;
   overflow: visible;
+  transform: translate(-50%, -50%);
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
   filter: drop-shadow(0 0 1rem rgb(255 255 255 / 14%));
+}
+
+.mobile-direct-flubber.is-dragging { cursor: grabbing; }
+
+.mobile-flubber-drag-area {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+
+.mobile-flubber-drag-hint {
+  position: absolute;
+  right: 0;
+  bottom: 0.18rem;
+  left: 0;
+  color: rgb(255 255 255 / 48%);
+  font-size: 0.55rem;
+  text-align: center;
+  pointer-events: none;
 }
 
 .mobile-direct-flubber .shape-outline { stroke-width: 0.055; }
