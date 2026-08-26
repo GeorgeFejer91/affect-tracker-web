@@ -1,5 +1,13 @@
 # Testing and release gates
 
+## Universal publication gate
+
+- Every completed, validated in-scope change must be committed and pushed to the canonical GitHub repository as soon as practical. This includes application code, static assets, configuration, tests, and changes confined to `for-ai/`; a local commit is a checkpoint, not a completed handoff.
+- Treat the user's standing project direction as authorization for routine commit and push publication. Do not pause after validation merely to request ordinary push approval again. Follow the repository's normal branch policy, preserve unrelated work, and never rewrite shared history.
+- After each pushed commit, wait for the standard GitHub Pages workflow associated with that exact commit and verify its result. For any web-facing change, open the public project-path URL with a cache-busting request and verify the changed behavior or asset in the deployed build before calling the work complete. For repository-only changes, verify the public commit and a healthy Pages run without claiming that non-site files are served by Pages.
+- If validation fails, credentials or CI are unavailable, ownership is ambiguous, or the user explicitly requests local-only/no-push work, stop publication and report the exact blocker. Resume and publish as soon as the blocker is resolved.
+- This standing rule covers repository and GitHub Pages publication only. It does not authorize signed/notarized installers, public package releases, app-store submissions, production credentials, or other release actions that retain an explicit authorization requirement below.
+
 ## Web gates
 
 - Run the Node built-in unit suite.
