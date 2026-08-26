@@ -339,7 +339,8 @@ button.is-held {
 .screen-calibration-coin[data-coin-shape="scalloped"],
 .screen-calibration-coin[data-coin-shape="spanish-flower"] { border-radius: 36%; }
 .screen-calibration-coin small { font-size: 0.58rem; }
-.screen-calibration-draw-view { grid-template-rows: auto auto minmax(16rem, 1fr) auto auto auto; width: 100%; min-height: 0; text-align: center; }
+.screen-calibration-draw-view { width: 100%; min-height: 0; text-align: center; }
+.screen-calibration-draw-controls { display: grid; min-height: 0; align-content: center; gap: 0.55rem; overflow: auto; padding: 0.65rem max(1rem, env(safe-area-inset-right)) 0.65rem max(1rem, env(safe-area-inset-left)); }
 .screen-calibration-selected-coin { color: #b9e9fa; }
 .screen-calibration-canvas { width: 100%; min-height: 16rem; height: 100%; overflow: visible; border: 1px solid rgb(121 221 255 / 28%); border-radius: 0.65rem; background: #020405; touch-action: none; cursor: crosshair; }
 .screen-calibration-draw-surface { fill: transparent; }
@@ -355,6 +356,39 @@ button.is-held {
 .screen-calibration-help { color: #9eabb6; font-size: 0.72rem; }
 .screen-calibration-cancel-choose { justify-self: end; min-width: 8rem; }
 body.is-screen-calibrating { overflow: hidden; }
+
+.screen-calibration-layer:is([data-calibration-step="draw"], [data-calibration-step="adjust"]) {
+  overflow: hidden;
+  padding: 0;
+}
+
+.screen-calibration-layer:is([data-calibration-step="draw"], [data-calibration-step="adjust"]) .screen-calibration-overlay {
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 0;
+  height: 100dvh;
+  min-height: 100dvh;
+}
+
+.screen-calibration-layer:is([data-calibration-step="draw"], [data-calibration-step="adjust"]) .screen-calibration-wizard-header {
+  padding: max(0.65rem, env(safe-area-inset-top)) max(1rem, env(safe-area-inset-right)) 0.55rem max(1rem, env(safe-area-inset-left));
+}
+
+.screen-calibration-layer:is([data-calibration-step="draw"], [data-calibration-step="adjust"]) .screen-calibration-draw-view {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) 50dvh;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+}
+
+.screen-calibration-layer:is([data-calibration-step="draw"], [data-calibration-step="adjust"]) .screen-calibration-canvas {
+  width: 100%;
+  height: 50dvh;
+  min-height: 50dvh;
+  border: 0;
+  border-radius: 0;
+  box-shadow: inset 0 1px rgb(121 221 255 / 45%);
+}
 
 .experiment-layer {
   position: fixed;
@@ -2307,6 +2341,8 @@ html[data-theme="windows-95"] .screen-calibration-square-rect { fill: rgb(0 0 12
 html[data-theme="windows-95"] .screen-calibration-corner-handle { fill: #c0c0c0; stroke: #000; }
 html[data-theme="windows-95"] .screen-calibration-selected-coin,
 html[data-theme="windows-95"] .screen-calibration-help { color: #000; }
+html[data-theme="windows-95"] .screen-calibration-layer:is([data-calibration-step="draw"], [data-calibration-step="adjust"]) .screen-calibration-overlay { padding: 0; border: 0; box-shadow: none; }
+html[data-theme="windows-95"] .screen-calibration-layer:is([data-calibration-step="draw"], [data-calibration-step="adjust"]) .screen-calibration-canvas { border: 0; box-shadow: inset 0 2px #808080; }
 
 html[data-theme="windows-95"] .binding-capture-dialog::backdrop { background: rgb(0 0 0 / 48%); backdrop-filter: none; }
 html[data-theme="windows-95"] .binding-capture-content { padding: 2.15rem 0.55rem 0.55rem; }

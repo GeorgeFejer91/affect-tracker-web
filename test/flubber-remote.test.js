@@ -705,7 +705,7 @@ test("remote pages load only the local SDK and feature code makes no microphone 
   assert.match(index, />Broadcast Live FLUBBER</);
   assert.match(index, /id="flubber-remote-foreground-button"[^>]*hidden>Restore low-latency foreground mode</);
   assert.match(webxr, />Use incoming signal</);
-  assert.match(index, /src="\.\/src\/app\.js\?v=screen-calibration-module-1-mobile-direct-4-collaboration-4-retro-1"/);
+  assert.match(index, /src="\.\/src\/app\.js\?v=screen-calibration-module-2-mobile-direct-4-collaboration-4-retro-1"/);
   assert.match(webxr, /src="\.\/src\/webxr-study\.js\?v=collaboration-1"/);
   assert.match(app, /from "\.\/flubber-remote\.js\?v=collaboration-1"/);
   assert.match(receiver, /from "\.\/flubber-remote\.js\?v=collaboration-1"/);

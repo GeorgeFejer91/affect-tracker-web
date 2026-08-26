@@ -146,7 +146,8 @@ test("the sixth Screen Calibration module owns the complete coin protocol and Ex
   assert.match(html, /id="screen-calibration-directory"/);
   assert.match(html, /id="screen-calibration-country-select"/);
   assert.match(html, /id="screen-calibration-layer"[^>]*aria-labelledby=/);
-  assert.match(html, /id="screen-calibration-canvas"/);
+  assert.match(html, /The entire lower half is the measuring surface/);
+  assert.match(html, /id="screen-calibration-canvas"[^>]*aria-label="Lower-half screen-edge measuring surface"/);
   assert.match(html, /data-edge="top"/);
   assert.match(html, /data-corner="nw"/);
   assert.match(html, />Use this measurement</);
@@ -160,10 +161,14 @@ test("the sixth Screen Calibration module owns the complete coin protocol and Ex
   assert.match(controller, /createCountryFlagSvg/);
   assert.match(controller, /createCurrencySvg/);
   assert.match(controller, /elements\.directory\.hidden = true/);
+  assert.match(controller, /elements\.layer\.dataset\.calibrationStep = step/);
+  assert.match(controller, /left, right, or bottom screen rim/);
   assert.match(controller, /maximum outer span/);
   assert.match(controller, /pointercancel/);
   assert.match(css, /touch-action: none/);
   assert.match(css, /\.screen-calibration-layer \[hidden\] \{ display: none !important; \}/);
+  assert.match(css, /grid-template-rows: minmax\(0, 1fr\) 50dvh/);
+  assert.match(css, /\.screen-calibration-canvas \{[\s\S]{0,180}height: 50dvh;[\s\S]{0,120}border-radius: 0/);
   assert.match(icon, /<svg[^>]*viewBox="0 0 64 64"/);
   for (const field of ["screen_calibration_protocol", "screen_calibration_version", "screen_calibration_country_code", "screen_calibration_country_name", "screen_calibration_repeatability_percent"]) assert.match(logger, new RegExp(`"${field}"`));
 });

@@ -25,7 +25,7 @@ import {
   experimentFilename,
   normalizeExperimentConfig,
 } from "./experiment.js";
-import { createScreenCalibrationController } from "../screen-calibration/controller.js?v=screen-calibration-1";
+import { createScreenCalibrationController } from "../screen-calibration/controller.js?v=screen-calibration-2";
 import {
   fitTracePoints,
   TOUCH_FEEDBACK_CONTINUOUS,

@@ -217,6 +217,7 @@ export function createScreenCalibrationController({
 
   const setStep = (step) => {
     run.step = step;
+    elements.layer.dataset.calibrationStep = step;
     const choosing = step === "choose";
     elements.chooseView.hidden = !choosing;
     elements.drawView.hidden = choosing;
@@ -226,8 +227,8 @@ export function createScreenCalibrationController({
     elements.actions.hidden = step !== "adjust";
     elements.handles.hidden = step !== "adjust";
     elements.instructions.textContent = step === "draw"
-      ? "Place the selected coin flat anywhere on the screen with space around it, then drag diagonally around its outer edge."
-      : "Fine-tune the square so its four sides meet the coin's outer edge and its corners remain visible.";
+      ? "The entire lower half is the measuring surface. Place the selected coin there—even against the left, right, or bottom screen rim—then drag diagonally around its outer edge."
+      : "Fine-tune the square in the unobstructed lower half so its four sides meet the coin's outer edge. The square may touch the left, right, or bottom screen rim.";
   };
 
   const renderSquare = () => {

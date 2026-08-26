@@ -7,7 +7,7 @@
     <meta name="description" content="A draggable, browser-only 2D affect tracker inspired by AffectTracker.">
     <title>2D Affect Tracker</title>
     <script src="./src/theme-bootstrap.js?v=retro-1"></script>
-    <link rel="stylesheet" href="./styles.css?v=mobile-direct-4-collaboration-4-retro-1">
+    <link rel="stylesheet" href="./styles.css?v=screen-calibration-rim-1-mobile-direct-4-collaboration-4-retro-1">
   </head>
   <body>
     <main id="stage" aria-label="Interactive affect tracker">
@@ -412,9 +412,20 @@
                 </section>
               </section>
               <section id="screen-calibration-draw-view" class="screen-calibration-view screen-calibration-draw-view" hidden aria-label="Draw and adjust square">
-                <p id="screen-calibration-instructions">Place the selected coin flat anywhere on the screen with space around it, then drag diagonally around its outer edge.</p>
-                <p id="screen-calibration-selected-coin" class="screen-calibration-selected-coin"></p>
-                <svg id="screen-calibration-canvas" class="screen-calibration-canvas" role="img" aria-label="Draw a square around the physical coin" tabindex="0">
+                <div class="screen-calibration-draw-controls">
+                  <p id="screen-calibration-instructions">The entire lower half is the measuring surface. Place the selected coin there—even against the left, right, or bottom screen rim—then drag diagonally around its outer edge.</p>
+                  <p id="screen-calibration-selected-coin" class="screen-calibration-selected-coin"></p>
+                  <p class="screen-calibration-readout"><output id="screen-calibration-size-output">Draw a square</output></p>
+                  <div id="screen-calibration-actions" class="screen-calibration-actions" hidden>
+                    <button id="screen-calibration-confirm" type="button">Use this measurement</button>
+                    <button id="screen-calibration-redraw" type="button" class="secondary-button">Redraw</button>
+                    <button id="screen-calibration-choose-another" type="button" class="secondary-button">Choose another coin</button>
+                    <button id="screen-calibration-cancel" type="button" class="secondary-button">Cancel</button>
+                  </div>
+                  <p id="screen-calibration-error" class="screen-calibration-error" role="alert" hidden></p>
+                  <p id="screen-calibration-help" class="screen-calibration-help">Drag an edge to move on one axis or a corner to resize. Arrow keys move; + and − resize. Hold Shift for 10-pixel steps.</p>
+                </div>
+                <svg id="screen-calibration-canvas" class="screen-calibration-canvas" role="img" aria-label="Lower-half screen-edge measuring surface" aria-describedby="screen-calibration-instructions screen-calibration-help" tabindex="0">
                   <rect id="screen-calibration-draw-surface" class="screen-calibration-draw-surface" x="0" y="0" width="100%" height="100%"></rect>
                   <g id="screen-calibration-square" class="screen-calibration-square" hidden>
                     <rect id="screen-calibration-square-rect" class="screen-calibration-square-rect"></rect>
@@ -430,16 +441,7 @@
                     </g>
                   </g>
                 </svg>
-                <p class="screen-calibration-readout"><output id="screen-calibration-size-output">Draw a square</output></p>
-                <div id="screen-calibration-actions" class="screen-calibration-actions" hidden>
-                  <button id="screen-calibration-confirm" type="button">Use this measurement</button>
-                  <button id="screen-calibration-redraw" type="button" class="secondary-button">Redraw</button>
-                  <button id="screen-calibration-choose-another" type="button" class="secondary-button">Choose another coin</button>
-                  <button id="screen-calibration-cancel" type="button" class="secondary-button">Cancel</button>
-                </div>
-                <p class="screen-calibration-help">Drag an edge to move on one axis or a corner to resize. Arrow keys move; + and − resize. Hold Shift for 10-pixel steps.</p>
               </section>
-              <p id="screen-calibration-error" class="screen-calibration-error" role="alert" hidden></p>
               <button id="screen-calibration-cancel-choose" type="button" class="secondary-button screen-calibration-cancel-choose">Cancel</button>
             </div>
           </section>
@@ -803,6 +805,6 @@
     </main>
 
     <script src="./vendor/vdoninja/1.5.5/vdoninja-sdk.min.js"></script>
-    <script type="module" src="./src/app.js?v=screen-calibration-module-1-mobile-direct-4-collaboration-4-retro-1"></script>
+    <script type="module" src="./src/app.js?v=screen-calibration-module-2-mobile-direct-4-collaboration-4-retro-1"></script>
   </body>
 </html>
