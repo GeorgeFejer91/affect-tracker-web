@@ -65,7 +65,7 @@ import {
   denormalizeFlubberViewportPosition,
   normalizeFlubberViewportPosition,
   relativeFlubberViewportPosition,
-} from "./flubber-remote.js?v=collaboration-2";
+} from "./flubber-remote.js?v=collaboration-3";
 import {
   createSettingsSnapshotBroadcaster,
   createSettingsSnapshotReceiver,
@@ -81,7 +81,7 @@ import {
   oneWayGroundRole,
   partyBudVectorGeometry,
   partyFlubberPlacement,
-} from "./flubber-collaboration.js?v=collaboration-7";
+} from "./flubber-collaboration.js?v=collaboration-8";
 import { createRetroSoundboard, retroCueForMessage, RETRO_THEME_ID } from "./retro-theme.js?v=retro-1";
 import {
   actionForBinding,
@@ -4349,9 +4349,13 @@ function animationFrame(timestamp) {
 
   // The floating foreground window has its own animation-frame clock. Keep
   // all transport rate limiting on the broadcaster's single monotonic clock.
-  flubberBroadcaster.offer(state.currentX, state.currentY);
   const viewportPosition = normalizedWidgetPosition();
-  flubberBroadcaster.offerViewportPosition(viewportPosition.viewportX, viewportPosition.viewportY);
+  flubberBroadcaster.offerState(
+    state.currentX,
+    state.currentY,
+    viewportPosition.viewportX,
+    viewportPosition.viewportY,
+  );
 
   const currentParameters = affectParameters(state.currentX, state.currentY);
   if (state.animationActive) {

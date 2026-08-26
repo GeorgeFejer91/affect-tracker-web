@@ -30,7 +30,7 @@ import {
   POLAR_METRICS,
   polarWebBluetoothSupport,
 } from "./polar-stream.js?v=remote-13";
-import { createFlubberReceiver } from "./flubber-remote.js?v=collaboration-2";
+import { createFlubberReceiver } from "./flubber-remote.js?v=collaboration-3";
 
 const VIDEO_MODEL = modelMatrix(0, 1.55, -2.8, 2.4, 1.35);
 const SPHERE_MODEL = modelMatrix(0, 0, 0, 1, 1);

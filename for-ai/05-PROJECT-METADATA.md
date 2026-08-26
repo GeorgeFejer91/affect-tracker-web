@@ -44,7 +44,7 @@ The web, desktop, and Quest applications must feel like the same instrument. Sha
 - `site/`: static online application and online-only experiment module; optional VDO.Ninja transport is checked in locally and requires no CDN, package install, or project backend.
 - `site/src/touch-trace.js`: browser-only trajectory filtering, equal-distance geometry, direct continuous and gated live move-and-hold feedback, adaptive calibration, and trace fitting.
 - `site/src/polar-stream.js`: browser-only Web Bluetooth capability boundary, Polar H10 PMD/heart-rate decoding, bounded ECG/RR metrics, and GATT lifecycle.
-- `site/src/flubber-remote.js`: browser-neutral VDO.Ninja discovery, data-channel lifecycle, separate 12-byte Flubber affect and normalized-viewport-position protocols, sequencing, scheduling, staleness, diagnostics, relative-placement math, and test injection boundary.
+- `site/src/flubber-remote.js`: browser-neutral VDO.Ninja discovery, data-channel lifecycle, the shared-channel 12-byte affect and typed 16-byte normalized-viewport-position protocols, sequencing, scheduling, staleness, diagnostics, relative-placement math, and test injection boundary.
 - `site/vendor/vdoninja/1.5.5/`: locally loaded unmodified official VDO.Ninja SDK distribution/source, MPL-2.0 license, provenance notice, and verified hashes.
 - `vr/app/src/main/java/io/github/georgefejer91/affecttracker/vr/PolarH10Manager.kt`: application-scoped native Quest H10 discovery, official-SDK streaming, readiness, lifecycle, and privacy boundary.
 - `vr/app/src/main/java/io/github/georgefejer91/affecttracker/vr/PolarMetrics.kt`: native bounded mirror of the browser's ten metric definitions, per-axis mappings, and readiness gate.

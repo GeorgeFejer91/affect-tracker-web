@@ -55,7 +55,7 @@ test("the upper phone Flubber is an independently grabbed normalized viewport co
   assert.match(app, /normalizeFlubberViewportPosition\(\{/);
   assert.match(app, /setWidgetFromNormalizedPosition\(normalized\)/);
   assert.match(app, /mobileDirectFlubber\.addEventListener\("keydown"/);
-  assert.match(app, /offerViewportPosition\(viewportPosition\.viewportX, viewportPosition\.viewportY\)/);
+  assert.match(app, /offerState\([\s\S]*viewportPosition\.viewportX,[\s\S]*viewportPosition\.viewportY/);
 });
 
 test("a first smartphone visit opens the direct Affect controller without enabling tracking", async () => {

@@ -1,5 +1,5 @@
 import { clamp } from "./math.js";
-import { createFlubberBroadcaster, createFlubberReceiver } from "./flubber-remote.js?v=collaboration-2";
+import { createFlubberBroadcaster, createFlubberReceiver } from "./flubber-remote.js?v=collaboration-3";
 
 export const UNIVERSE_ROOM = "affect_tracker_universe_v1";
 export const UNIVERSE_STREAM_PREFIX = "aft_universe_";
