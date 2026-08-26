@@ -79,7 +79,8 @@ import {
   createSettingsSnapshotReceiver,
   groundControlFilename,
   normalizeGroundControlName,
-} from "./ground-control.js?v=ground-control-1";
+  shouldDismissGroundRadar,
+} from "./ground-control.js?v=ground-control-2";
 import { createRetroSoundboard, retroCueForMessage, RETRO_THEME_ID } from "./retro-theme.js?v=retro-1";
 import {
   actionForBinding,
@@ -3317,6 +3318,13 @@ function initializeEvents() {
   flubberBroadcaster.addEventListener("statechange", (event) => updateRemoteBroadcastUi(event.detail));
   flubberReceiver.addEventListener("statechange", (event) => {
     updateLiveReceiveUi(event.detail);
+    if (shouldDismissGroundRadar({ mode: groundRadarMode, phase: event.detail.phase })) {
+      const sourceLabel = event.detail.sourceLabel || "live FLUBBER signal";
+      groundRadarMode = "";
+      if (elements.groundRadarDialog.open) elements.groundRadarDialog.close();
+      announce(`Connected to ${sourceLabel}. Radar closed.`);
+      return;
+    }
     if (groundRadarMode === "live") {
       elements.groundRadarStatus.textContent = event.detail.message
         || (event.detail.phase === "live" ? "Live FLUBBER signal connected." : "Scanning live FLUBBER signals…");

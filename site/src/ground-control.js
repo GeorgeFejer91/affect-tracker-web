@@ -9,6 +9,10 @@ export const GROUND_CONTROL_SETTINGS_VERSION = 1;
 export const GROUND_CONTROL_MAX_BYTES = 64 * 1024;
 export const GROUND_CONTROL_DISCOVERY_SETTLE_MS = 300;
 
+export function shouldDismissGroundRadar({ mode, phase } = {}) {
+  return mode === "live" && phase === "live";
+}
+
 const encoder = new TextEncoder();
 const decoder = new TextDecoder("utf-8", { fatal: true });
 

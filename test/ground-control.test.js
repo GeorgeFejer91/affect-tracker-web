@@ -12,6 +12,7 @@ import {
   generateSettingsSourceId,
   groundControlFilename,
   normalizeGroundControlName,
+  shouldDismissGroundRadar,
   sourceNameFromLabel,
 } from "../site/src/ground-control.js";
 import { cloneDefaultSettings } from "../site/src/portable-settings.js";
@@ -66,6 +67,12 @@ test("Ground Control names are public-display safe and determine the JSON filena
   assert.equal(groundControlFilename("Aurora Lab / Session 4"), "aurora-lab-session-4.json");
   assert.throws(() => normalizeGroundControlName("\n\t"), /Enter a name/);
   assert.throws(() => normalizeGroundControlName("x".repeat(65)), /64 characters/);
+});
+
+test("the radar closes only after a live stream delivers its first valid frame", () => {
+  assert.equal(shouldDismissGroundRadar({ mode: "live", phase: "connecting" }), false);
+  assert.equal(shouldDismissGroundRadar({ mode: "live", phase: "live" }), true);
+  assert.equal(shouldDismissGroundRadar({ mode: "json", phase: "ready" }), false);
 });
 
 test("settings discovery IDs expose the public name while retaining a random suffix", () => {
@@ -170,6 +177,7 @@ test("Ground Control exposes the requested hierarchy, animated SVG states, and p
   assert.match(css, /prefers-reduced-motion[\s\S]*animation: none !important/);
   assert.match(app, /settingsSnapshotBroadcaster\.start\(\{ name, settings: settingsFromState\(\) \}\)/);
   assert.match(app, /pendingSettingsSnapshot[\s\S]*groundJsonApplyButton\.addEventListener/);
+  assert.match(app, /shouldDismissGroundRadar\(\{ mode: groundRadarMode, phase: event\.detail\.phase \}\)[\s\S]*groundRadarDialog\.close\(\)[\s\S]*Radar closed/);
   assert.match(app, /incomingOwnsAxes[\s\S]*state\.targetX = incoming\.latest\.currentX;[\s\S]*state\.currentY = incoming\.latest\.currentY;/);
   assert.doesNotMatch(app, /startGroundRadar\("(?:json|live)"\);\s*\/\/.*page load/);
 });
