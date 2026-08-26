@@ -186,12 +186,18 @@ test("Ground Control exposes the requested hierarchy, animated SVG states, and p
   assert.match(css, /@keyframes party-main-budding/);
   assert.match(css, /@keyframes party-guest-budding/);
   assert.match(css, /@keyframes party-bud-neck/);
+  assert.match(css, /\.party-guest-flubber[\s\S]*pointer-events: auto/);
+  assert.match(css, /\.party-guest-flubber\.is-dragging/);
   assert.match(css, /prefers-reduced-motion[\s\S]*animation: none !important/);
   assert.match(app, /settingsSnapshotBroadcaster\.start\(\{ name, settings: settingsFromState\(\) \}\)/);
   assert.match(app, /pendingSettingsSnapshot[\s\S]*groundJsonApplyButton\.addEventListener/);
   assert.match(app, /function dismissGroundRadarAfterSuccess\(message\)[\s\S]*groundRadarDialog\.close\(\)[\s\S]*Radar closed/);
   assert.match(app, /showReceivedSettings\(detail\)[\s\S]*shouldDismissGroundRadar\(\{ mode: groundRadarMode, phase: "ready" \}\)/);
   assert.match(app, /pendingGuest[\s\S]*shouldDismissGroundRadar\(\{ mode: "party", phase: pendingGuest\.phase \}\)[\s\S]*startPartyBirthAnimation\(pendingGuest, detail\)[\s\S]*dismissGroundRadarAfterSuccess/);
+  assert.match(app, /function beginPartyGuestDrag\(event, view\)[\s\S]*setPointerCapture\(event\.pointerId\)/);
+  assert.match(app, /function movePartyGuestDrag\(event, view\)[\s\S]*movePartyGuest\(view,/);
+  assert.match(app, /function movePartyGuestWithKeyboard\(event, view\)[\s\S]*ArrowLeft[\s\S]*ArrowDown/);
+  assert.match(app, /Drag independently or use arrow keys to move this Flubber on screen/);
   assert.match(app, /incomingOwnsAxes[\s\S]*state\.targetX = incoming\.latest\.currentX;[\s\S]*state\.currentY = incoming\.latest\.currentY;/);
   assert.match(app, /oneWayGroundRole[\s\S]*Stop sending before receiving from this browser/);
   assert.match(app, /combineUniverseCoordinates\(universeLocalCurrent, universe\.latest\)/);
