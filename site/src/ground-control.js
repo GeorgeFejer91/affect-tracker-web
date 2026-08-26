@@ -10,7 +10,12 @@ export const GROUND_CONTROL_MAX_BYTES = 64 * 1024;
 export const GROUND_CONTROL_DISCOVERY_SETTLE_MS = 300;
 
 export function shouldDismissGroundRadar({ mode, phase } = {}) {
-  return mode === "live" && phase === "live";
+  return ({
+    json: "ready",
+    live: "live",
+    universe: "live",
+    party: "live",
+  })[mode] === phase;
 }
 
 const encoder = new TextEncoder();

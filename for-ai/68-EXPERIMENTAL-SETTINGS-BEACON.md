@@ -9,7 +9,7 @@ This is the normative contract for Ground Control's browser-to-browser portable-
 - A non-empty operator-entered Ground Control name determines the safe local filename and the public beacon name. The name is browser-local, must not identify a participant, and is encoded as a bounded public discovery token plus a fresh random per-session suffix because VDO.Ninja room listings do not expose custom labels before peer connection.
 - Starting a broadcast captures exactly one normalized portable version-1 object from the same `settingsFromState()` authority used by local JSON download. The running snapshot is immutable; later UI changes require stop and restart.
 - The snapshot contains the complete portable settings object, including LSL metadata. It never includes current/target X/Y, physiology, CSV rows, experiment data, touch trajectories, screen calibration, Windows 95 theme state, Polar mappings, or other browser-local preferences.
-- Receiving is discovery, validation, and preview—not automatic application. The radar displays one or many named sources, validates the received envelope and portable schema, shows the snapshot name/shape/time, and applies it only after **Apply received settings** is pressed.
+- Receiving is discovery, validation, and preview—not automatic application. The radar displays one or many named sources and validates the received envelope and portable schema. Successful validation closes the radar automatically, then the persistent Ground Control panel shows the snapshot name/shape/time and applies it only after **Apply received settings** is pressed.
 
 ## Discovery and transport
 
@@ -28,5 +28,5 @@ This is the normative contract for Ground Control's browser-to-browser portable-
 ## Validation
 
 - Unit tests cover name/filename normalization, named random source IDs, the exact bounded versioned envelope, portable-settings validation, immutable start-time capture, reliable channel options, one/many-source discovery, explicit selection, and teardown.
-- Static tests require the complete Ground Control hierarchy, local SDK loading, zero automatic connection, separate static/live semantics, animated but reduced-motion-safe SVG states, named radar controls, public privacy disclosure, and preview-before-apply.
+- Static tests require the complete Ground Control hierarchy, local SDK loading, zero automatic connection, separate static/live semantics, animated but reduced-motion-safe SVG states, named radar controls, success dismissal with persistent preview-before-apply, and public privacy disclosure.
 - Browser qualification uses two fresh page instances against the real VDO.Ninja path: publish a named snapshot, discover that name before connection, select it, validate the exact received settings, and keep Apply separate. Reload must return both roles to idle.

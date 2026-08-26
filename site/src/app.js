@@ -54,7 +54,12 @@ import {
   TRACE_DURATION_MS,
 } from "./touch-trace.js";
 import { pictureInPictureOptions, pictureInPictureSupported } from "./picture-in-picture.js";
-import { isSmartphoneTouchViewport } from "./mobile.js";
+import {
+  clientPointToAffectCoordinate,
+  isSmartphoneTouchViewport,
+  SMARTPHONE_LAYOUT_MAX_WIDTH,
+  startsOnCoordinateMarker,
+} from "./mobile.js?v=mobile-direct-1";
 import {
   ACCORDION_PROTOCOLS,
   normalizeAccordionState,
@@ -80,13 +85,14 @@ import {
   groundControlFilename,
   normalizeGroundControlName,
   shouldDismissGroundRadar,
-} from "./ground-control.js?v=ground-control-2";
+} from "./ground-control.js?v=ground-control-3";
 import {
-  blendUniverseCoordinates,
+  combineUniverseCoordinates,
   createFlubberParty,
   createUniverseLink,
   oneWayGroundRole,
-} from "./flubber-collaboration.js?v=collaboration-1";
+  partyFlubberPlacement,
+} from "./flubber-collaboration.js?v=collaboration-3";
 import { createRetroSoundboard, retroCueForMessage, RETRO_THEME_ID } from "./retro-theme.js?v=retro-1";
 import {
   actionForBinding,
@@ -109,6 +115,7 @@ const SAMPLE_INTERVAL_SECONDS = 1 / 20;
 const MAX_DELTA_SECONDS = 0.05;
 const FEATURE_FLUBBER_INSET_PERCENT = 7.5;
 const FEATURE_DOT_INSET_PERCENT = 3;
+const PARTY_BIRTH_DURATION_MS = 2100;
 
 const elements = {
   stage: document.querySelector("#stage"),
@@ -121,6 +128,18 @@ const elements = {
   panelToggle: document.querySelector("#panel-toggle"),
   panelContent: document.querySelector("#panel-content"),
   toggleSymbol: document.querySelector(".toggle-symbol"),
+  mobileDirectController: document.querySelector("#mobile-direct-controller"),
+  mobileDirectFlubber: document.querySelector("#mobile-direct-flubber"),
+  mobileDirectBasePath: document.querySelector("#mobile-direct-base-path"),
+  mobileDirectOutlinePath: document.querySelector("#mobile-direct-outline-path"),
+  mobileDirectHaloPath: document.querySelector("#mobile-direct-halo-path"),
+  mobileDirectValenceOutput: document.querySelector("#mobile-direct-valence-output"),
+  mobileDirectArousalOutput: document.querySelector("#mobile-direct-arousal-output"),
+  mobileCoordinateSpace: document.querySelector("#mobile-coordinate-space"),
+  mobileCoordinateCanvas: document.querySelector("#mobile-coordinate-canvas"),
+  mobileCoordinatePoint: document.querySelector("#mobile-coordinate-point"),
+  mobileOpenSettings: document.querySelector("#mobile-open-settings"),
+  mobileCloseSettings: document.querySelector("#mobile-close-settings"),
   experimentPanel: document.querySelector("#experiment-panel"),
   experimentPanelToggle: document.querySelector("#experiment-panel-toggle"),
   experimentToggleSymbol: document.querySelector("#experiment-toggle-symbol"),
@@ -152,6 +171,7 @@ const elements = {
   groundPartyStatus: document.querySelector("#ground-party-status"),
   groundPartyRoster: document.querySelector("#ground-party-roster"),
   groundPartyGuests: document.querySelector("#ground-party-guests"),
+  groundPartyStopButton: document.querySelector("#ground-party-stop-button"),
   groundRadarDialog: document.querySelector("#ground-radar-dialog"),
   groundRadarTitle: document.querySelector("#ground-radar-title"),
   groundRadarStatus: document.querySelector("#ground-radar-status"),
@@ -402,6 +422,17 @@ function readPreferences(bundledSettings) {
 
 const bundledSettings = await loadBundledSettings();
 const preferences = readPreferences(bundledSettings);
+const smartphoneTouchViewport = isSmartphoneTouchViewport({
+  width: window.innerWidth,
+  height: window.innerHeight,
+  coarsePointer: window.matchMedia("(pointer: coarse)").matches,
+  maxTouchPoints: navigator.maxTouchPoints,
+});
+const smartphoneLayoutActive = (Number.isFinite(window.innerWidth)
+  && window.innerWidth > 0
+  && window.innerWidth <= SMARTPHONE_LAYOUT_MAX_WIDTH)
+  || smartphoneTouchViewport;
+document.body.classList.toggle("is-smartphone-layout", smartphoneLayoutActive);
 const state = {
   currentX: 0,
   currentY: 0,
@@ -450,15 +481,10 @@ const state = {
   mobileTouchIntroSeen: preferences.mobileTouchIntroSeen,
 };
 Object.assign(state, normalizeAccordionState(state));
-if (isSmartphoneTouchViewport({
-  width: window.innerWidth,
-  height: window.innerHeight,
-  coarsePointer: window.matchMedia("(pointer: coarse)").matches,
-  maxTouchPoints: navigator.maxTouchPoints,
-}) && !state.mobileTouchIntroSeen) {
-  state.panelOpen = false;
+if (smartphoneTouchViewport && !state.mobileTouchIntroSeen) {
+  state.panelOpen = true;
   state.experimentPanelOpen = false;
-  state.touchPlaygroundPanelOpen = true;
+  state.touchPlaygroundPanelOpen = false;
   state.polarStreamPanelOpen = false;
   state.groundControlPanelOpen = false;
   state.mobileTouchIntroSeen = true;
@@ -568,9 +594,12 @@ const flubberParty = createFlubberParty();
 const settingsSnapshotBroadcaster = createSettingsSnapshotBroadcaster();
 const settingsSnapshotReceiver = createSettingsSnapshotReceiver();
 let groundRadarMode = "";
+let groundRadarPendingSourceId = "";
 let pendingSettingsSnapshot;
 let universeLocalCurrent = { currentX: state.currentX, currentY: state.currentY };
 const partyGuestViews = new Map();
+let partyBirthGuestId = "";
+let partyBirthTimer;
 let polarEcgWindow = [];
 let polarBatteryPercent;
 let polarObservedSampleRate = 130;
@@ -581,6 +610,7 @@ let sampleAccumulator = 0;
 let dragOffsetX = 0;
 let dragOffsetY = 0;
 let featurePointerId;
+let mobileCoordinatePointerId;
 let captureInput;
 let pictureInPictureWindow;
 let pictureInPictureView;
@@ -1154,6 +1184,14 @@ function updateGroundRoleGate() {
   }
 }
 
+function dismissGroundRadarAfterSuccess(message) {
+  if (!groundRadarMode) return;
+  groundRadarMode = "";
+  groundRadarPendingSourceId = "";
+  if (elements.groundRadarDialog.open) elements.groundRadarDialog.close();
+  announce(`${message} Radar closed.`);
+}
+
 function updateUniverseUi(detail = universeLink.snapshot()) {
   const enabled = detail.enabled;
   const active = detail.phase === "live" || detail.phase === "stale" || detail.phase === "awaiting-reciprocal";
@@ -1182,10 +1220,8 @@ function updateUniverseUi(detail = universeLink.snapshot()) {
   if (groundRadarMode === "universe") {
     elements.groundRadarStatus.textContent = detail.message;
     updateRadarSources();
-    if (detail.phase === "live") {
-      groundRadarMode = "";
-      if (elements.groundRadarDialog.open) elements.groundRadarDialog.close();
-      announce(`Universe synchronized with ${detail.sourceLabel}. Radar closed.`);
+    if (shouldDismissGroundRadar({ mode: "universe", phase: detail.phase })) {
+      dismissGroundRadarAfterSuccess(`Universe synchronized with ${detail.sourceLabel}.`);
     }
   }
   updateBroadcastForegroundButton();
@@ -1233,6 +1269,55 @@ function syncPartyGuestViews(detail = flubberParty.snapshot()) {
   elements.partyStage.hidden = detail.guests.length === 0;
 }
 
+function applyPartyGuestPlacement(view, placement) {
+  view.root.style.setProperty("--party-size", `${placement.size}px`);
+  view.root.style.setProperty("--party-x", `${placement.x}px`);
+  view.root.style.setProperty("--party-y", `${placement.y}px`);
+  view.root.style.setProperty("--party-bud-x", `${placement.budX}px`);
+  view.root.style.setProperty("--party-bud-y", `${placement.budY}px`);
+  view.root.style.setProperty("--party-angle", `${placement.angle}rad`);
+}
+
+function clearPartyBirthAnimation() {
+  if (partyBirthTimer !== undefined) window.clearTimeout(partyBirthTimer);
+  partyBirthTimer = undefined;
+  elements.widget.classList.remove("is-party-budding");
+  if (partyBirthGuestId) partyGuestViews.get(partyBirthGuestId)?.root.classList.remove("is-party-budding");
+  partyBirthGuestId = "";
+}
+
+function startPartyBirthAnimation(guest, detail) {
+  clearPartyBirthAnimation();
+  const view = partyGuestViews.get(guest.streamId) ?? createPartyGuestView(guest.streamId, guest.label);
+  const liveGuests = detail.guests.filter((item) => item.latest && (item.phase === "live" || item.phase === "stale"));
+  const index = Math.max(0, liveGuests.findIndex((item) => item.streamId === guest.streamId));
+  const originX = state.widgetX;
+  const originY = state.widgetY;
+  state.widgetX = window.innerWidth / 2;
+  state.widgetY = window.innerHeight / 2;
+  const placement = partyFlubberPlacement({
+    index,
+    count: liveGuests.length,
+    widgetX: state.widgetX,
+    widgetY: state.widgetY,
+    widgetSize: state.widgetSize,
+    viewportWidth: window.innerWidth,
+    viewportHeight: window.innerHeight,
+  });
+  applyPartyGuestPlacement(view, placement);
+  view.root.hidden = false;
+  constrainAndRenderWidget();
+  if (reducedMotionQuery.matches || elements.widget.hidden) return;
+  elements.widget.style.setProperty("--party-origin-x", `${originX}px`);
+  elements.widget.style.setProperty("--party-origin-y", `${originY}px`);
+  elements.widget.style.setProperty("--party-center-x", `${state.widgetX}px`);
+  elements.widget.style.setProperty("--party-center-y", `${state.widgetY}px`);
+  partyBirthGuestId = guest.streamId;
+  elements.widget.classList.add("is-party-budding");
+  view.root.classList.add("is-party-budding");
+  partyBirthTimer = window.setTimeout(clearPartyBirthAnimation, PARTY_BIRTH_DURATION_MS);
+}
+
 function updatePartyUi(detail = flubberParty.snapshot()) {
   const guestCount = detail.guests.length;
   const enabled = detail.enabled;
@@ -1252,12 +1337,22 @@ function updatePartyUi(detail = flubberParty.snapshot()) {
     const remove = document.createElement("button");
     remove.type = "button";
     remove.textContent = "Remove";
-    remove.addEventListener("click", () => { void flubberParty.remove(guest.streamId); });
+    remove.addEventListener("click", () => {
+      if (partyBirthGuestId === guest.streamId) clearPartyBirthAnimation();
+      void flubberParty.remove(guest.streamId);
+    });
     row.append(label, remove);
     elements.groundPartyGuests.append(row);
   }
   syncPartyGuestViews(detail);
-  if (groundRadarMode === "party") updateRadarSources();
+  if (groundRadarMode === "party") {
+    updateRadarSources();
+    const pendingGuest = detail.guests.find((guest) => guest.streamId === groundRadarPendingSourceId);
+    if (pendingGuest && shouldDismissGroundRadar({ mode: "party", phase: pendingGuest.phase })) {
+      startPartyBirthAnimation(pendingGuest, detail);
+      dismissGroundRadarAfterSuccess(`${pendingGuest.label} joined the FLUBBER party.`);
+    }
+  }
   updateGroundRoleGate();
 }
 
@@ -1305,6 +1400,7 @@ function updateRadarSources() {
       button.append(copy, action);
       button.addEventListener("click", async () => {
         button.disabled = true;
+        groundRadarPendingSourceId = source.streamId;
         if (groundRadarMode === "json") await settingsSnapshotReceiver.selectSource(source.streamId);
         else if (groundRadarMode === "live") await flubberReceiver.selectSource(source.streamId);
         else if (groundRadarMode === "universe") await universeLink.selectSource(source.streamId);
@@ -1337,10 +1433,14 @@ function showReceivedSettings(detail) {
   elements.groundJsonReceivedShape.value = pendingSettingsSnapshot.settings.visual.baseShape;
   elements.groundJsonReceivedTime.value = new Date(pendingSettingsSnapshot.createdAt).toLocaleString();
   elements.groundRadarStatus.textContent = `${pendingSettingsSnapshot.name} passed validation. Apply remains a separate action.`;
+  if (shouldDismissGroundRadar({ mode: groundRadarMode, phase: "ready" })) {
+    dismissGroundRadarAfterSuccess(`${pendingSettingsSnapshot.name} settings received and ready to apply.`);
+  }
 }
 
 async function startGroundRadar(mode) {
   groundRadarMode = mode;
+  groundRadarPendingSourceId = "";
   pendingSettingsSnapshot = undefined;
   elements.groundJsonReceived.hidden = true;
   elements.groundRadarTitle.textContent = mode === "json"
@@ -1391,8 +1491,12 @@ async function stopGroundRadar() {
     await universeLink.stop();
     await releaseBroadcastLatencyMode();
   }
-  if (groundRadarMode === "party") await flubberParty.stop();
+  if (groundRadarMode === "party") {
+    clearPartyBirthAnimation();
+    await flubberParty.stop();
+  }
   groundRadarMode = "";
+  groundRadarPendingSourceId = "";
   pendingSettingsSnapshot = undefined;
   elements.groundJsonReceived.hidden = true;
   elements.groundRadarSources.replaceChildren();
@@ -1869,23 +1973,33 @@ function updateFeatureSpace() {
   const paletteKey = JSON.stringify(state.palette);
   renderPaletteCanvas(elements.featureCanvas, paletteKey);
   renderPaletteCanvas(elements.touchAffectCanvas, paletteKey);
+  renderPaletteCanvas(elements.mobileCoordinateCanvas, paletteKey);
   elements.featurePoint.style.left = `${coordinateToFeaturePercent(state.currentX, FEATURE_FLUBBER_INSET_PERCENT)}%`;
   elements.featurePoint.style.top = `${coordinateToFeaturePercent(-state.currentY, FEATURE_FLUBBER_INSET_PERCENT)}%`;
   elements.touchAffectPoint.style.left = `${coordinateToFeaturePercent(state.currentX, FEATURE_DOT_INSET_PERCENT)}%`;
   elements.touchAffectPoint.style.top = `${coordinateToFeaturePercent(-state.currentY, FEATURE_DOT_INSET_PERCENT)}%`;
+  elements.mobileCoordinatePoint.style.left = `${coordinateToFeaturePercent(state.currentX, 0)}%`;
+  elements.mobileCoordinatePoint.style.top = `${coordinateToFeaturePercent(-state.currentY, 0)}%`;
   const currentColor = affectPaletteColor(state.currentX, state.currentY, state.palette);
   elements.featurePoint.style.setProperty("--preview-color", currentColor);
   elements.touchAffectPoint.style.background = currentColor;
+  elements.mobileCoordinatePoint.style.setProperty("--point-color", currentColor);
   elements.featureValenceOutput.value = formatCoordinate(state.currentX);
   elements.featureArousalOutput.value = formatCoordinate(state.currentY);
   elements.touchAffectValenceOutput.value = formatCoordinate(state.currentX);
   elements.touchAffectArousalOutput.value = formatCoordinate(state.currentY);
+  elements.mobileDirectValenceOutput.value = formatCoordinate(state.currentX);
+  elements.mobileDirectArousalOutput.value = formatCoordinate(state.currentY);
   elements.touchAffectSpace.setAttribute(
     "aria-label",
     `Experimental movement mapping. Valence ${state.currentX.toFixed(2)}, arousal ${state.currentY.toFixed(2)}.`,
   );
   for (const input of elements.paletteInputs) input.value = state.palette[input.dataset.palette];
   elements.featureSpace.setAttribute("aria-valuetext", `Valence ${state.targetX.toFixed(2)}, arousal ${state.targetY.toFixed(2)}`);
+  elements.mobileCoordinateSpace.setAttribute(
+    "aria-valuetext",
+    `Valence ${state.targetX.toFixed(2)}, arousal ${state.targetY.toFixed(2)}`,
+  );
 }
 
 function claimFeatureSpaceControl() {
@@ -1913,6 +2027,21 @@ function chooseFeatureCoordinate(event) {
   const bounds = elements.featureSpace.getBoundingClientRect();
   state.targetX = clamp(((event.clientX - bounds.left) / bounds.width) * 2 - 1, -1, 1);
   state.targetY = clamp(1 - ((event.clientY - bounds.top) / bounds.height) * 2, -1, 1);
+  state.currentX = state.targetX;
+  state.currentY = state.targetY;
+  updateCoordinateDisplay();
+  updateFeatureSpace();
+}
+
+function chooseMobileCoordinate(event) {
+  const coordinate = clientPointToAffectCoordinate({
+    clientX: event.clientX,
+    clientY: event.clientY,
+    bounds: elements.mobileCoordinateSpace.getBoundingClientRect(),
+  });
+  if (!coordinate) return;
+  state.targetX = coordinate.x;
+  state.targetY = coordinate.y;
   state.currentX = state.targetX;
   state.currentY = state.targetY;
   updateCoordinateDisplay();
@@ -2093,14 +2222,18 @@ function renderPictureInPicture(rendered) {
 function renderPartyFlubbers() {
   const guests = flubberParty.snapshot().guests.filter((guest) => guest.latest
     && (guest.phase === "live" || guest.phase === "stale"));
-  const size = Math.max(72, Math.min(132, state.widgetSize * 0.56));
-  const radius = Math.max(state.widgetSize * 0.78, size * 1.15);
   for (let index = 0; index < guests.length; index += 1) {
     const guest = guests[index];
     const view = partyGuestViews.get(guest.streamId) ?? createPartyGuestView(guest.streamId, guest.label);
-    const angle = guests.length === 1 ? 0 : (Math.PI * 2 * index) / guests.length;
-    const x = clamp(state.widgetX + Math.cos(angle) * radius, size / 2 + 8, window.innerWidth - size / 2 - 8);
-    const y = clamp(state.widgetY + Math.sin(angle) * radius, size / 2 + 8, window.innerHeight - size / 2 - 8);
+    const placement = partyFlubberPlacement({
+      index,
+      count: guests.length,
+      widgetX: state.widgetX,
+      widgetY: state.widgetY,
+      widgetSize: state.widgetSize,
+      viewportWidth: window.innerWidth,
+      viewportHeight: window.innerHeight,
+    });
     const rendered = buildFlubberPath({
       profiles,
       offsets: view.offsets,
@@ -2115,9 +2248,7 @@ function renderPartyFlubbers() {
     });
     for (const path of view.paths) path.setAttribute("d", rendered.path);
     view.root.hidden = false;
-    view.root.style.setProperty("--party-size", `${size}px`);
-    view.root.style.setProperty("--party-x", `${x}px`);
-    view.root.style.setProperty("--party-y", `${y}px`);
+    applyPartyGuestPlacement(view, placement);
     view.root.style.setProperty("--party-color", rendered.color);
     view.root.setAttribute("aria-label", `${guest.label}. Valence ${guest.latest.currentX.toFixed(2)}, arousal ${guest.latest.currentY.toFixed(2)}${guest.phase === "stale" ? ", signal stale and holding" : ""}.`);
   }
@@ -3604,9 +3735,7 @@ function initializeEvents() {
     updateLiveReceiveUi(event.detail);
     if (shouldDismissGroundRadar({ mode: groundRadarMode, phase: event.detail.phase })) {
       const sourceLabel = event.detail.sourceLabel || "live FLUBBER signal";
-      groundRadarMode = "";
-      if (elements.groundRadarDialog.open) elements.groundRadarDialog.close();
-      announce(`Connected to ${sourceLabel}. Radar closed.`);
+      dismissGroundRadarAfterSuccess(`Connected to ${sourceLabel}.`);
       return;
     }
     if (groundRadarMode === "live") {
@@ -3770,6 +3899,9 @@ function initializeEvents() {
     if (settingsSnapshotReceiver.snapshot().phase !== "idle") {
       await settingsSnapshotReceiver.stop();
       if (groundRadarMode === "json") groundRadarMode = "";
+      groundRadarPendingSourceId = "";
+      pendingSettingsSnapshot = undefined;
+      elements.groundJsonReceived.hidden = true;
       updateSettingsRadar();
       announce("JSON radar stopped.");
       return;
@@ -3781,6 +3913,7 @@ function initializeEvents() {
       const previous = flubberReceiver.snapshot().sourceLabel;
       await flubberReceiver.stop();
       if (groundRadarMode === "live") groundRadarMode = "";
+      groundRadarPendingSourceId = "";
       updateLiveReceiveUi();
       recordEvent("ground-control", "live-receive-stop", previous, 0);
       announce("Incoming live FLUBBER disconnected; local controls are available again.");
@@ -3794,6 +3927,7 @@ function initializeEvents() {
       await universeLink.stop();
       await releaseBroadcastLatencyMode();
       if (groundRadarMode === "universe") groundRadarMode = "";
+      groundRadarPendingSourceId = "";
       universeLocalCurrent = { currentX: state.currentX, currentY: state.currentY };
       updateUniverseUi();
       recordEvent("ground-control", "universe-stop", partner, 0);
@@ -3809,12 +3943,8 @@ function initializeEvents() {
   });
   elements.groundPartyButton.addEventListener("click", async () => {
     if (flubberParty.snapshot().enabled) {
-      const count = flubberParty.snapshot().guests.length;
-      await flubberParty.stop();
-      if (groundRadarMode === "party") groundRadarMode = "";
-      updatePartyUi();
-      recordEvent("ground-control", "party-stop", "guests", count);
-      announce("FLUBBER party stopped and all invited signals disconnected.");
+      await startGroundRadar("party");
+      announce("Party radar reopened. Choose another FLUBBER to invite.");
       return;
     }
     if (currentOneWayRole() !== "idle" || universeLink.snapshot().enabled) {
@@ -3823,6 +3953,16 @@ function initializeEvents() {
     }
     await startGroundRadar("party");
     recordEvent("ground-control", "party-start", "radar", 1);
+  });
+  elements.groundPartyStopButton.addEventListener("click", async () => {
+    const count = flubberParty.snapshot().guests.length;
+    clearPartyBirthAnimation();
+    await flubberParty.stop();
+    if (groundRadarMode === "party") groundRadarMode = "";
+    groundRadarPendingSourceId = "";
+    updatePartyUi();
+    recordEvent("ground-control", "party-stop", "guests", count);
+    announce("FLUBBER party stopped and all invited signals disconnected.");
   });
   elements.groundRadarStop.addEventListener("click", async () => {
     await stopGroundRadar();
@@ -3843,8 +3983,10 @@ function initializeEvents() {
     recordEvent("ground-control", "settings-snapshot-apply", applied.name, 1);
     await settingsSnapshotReceiver.stop();
     groundRadarMode = "";
+    groundRadarPendingSourceId = "";
     pendingSettingsSnapshot = undefined;
-    elements.groundRadarDialog.close();
+    elements.groundJsonReceived.hidden = true;
+    if (elements.groundRadarDialog.open) elements.groundRadarDialog.close();
     updateSettingsRadar();
     announce(`${applied.name} settings applied.`);
   });
@@ -4066,6 +4208,61 @@ function initializeEvents() {
       }
     });
   }
+  elements.mobileOpenSettings.addEventListener("click", () => {
+    elements.panel.classList.add("is-mobile-settings-open");
+    elements.mobileCloseSettings.focus();
+  });
+  elements.mobileCloseSettings.addEventListener("click", () => {
+    elements.panel.classList.remove("is-mobile-settings-open");
+    elements.mobileCoordinateSpace.focus();
+  });
+  elements.mobileCoordinateSpace.addEventListener("pointerdown", (event) => {
+    if (event.isPrimary === false) return;
+    const bounds = elements.mobileCoordinateSpace.getBoundingClientRect();
+    if (!startsOnCoordinateMarker({
+      clientX: event.clientX,
+      clientY: event.clientY,
+      x: state.currentX,
+      y: state.currentY,
+      bounds,
+    })) {
+      announce("Drag the existing point to change the phone control. Touching elsewhere does not move it.");
+      return;
+    }
+    if (!claimFeatureSpaceControl()) return;
+    event.preventDefault();
+    mobileCoordinatePointerId = event.pointerId;
+    elements.mobileCoordinateSpace.classList.add("is-dragging");
+    elements.mobileCoordinateSpace.setPointerCapture(event.pointerId);
+    chooseMobileCoordinate(event);
+  });
+  elements.mobileCoordinateSpace.addEventListener("pointermove", (event) => {
+    if (event.pointerId !== mobileCoordinatePointerId) return;
+    event.preventDefault();
+    chooseMobileCoordinate(event);
+  });
+  const finishMobileCoordinateSelection = (event) => {
+    if (event.pointerId !== mobileCoordinatePointerId) return;
+    mobileCoordinatePointerId = undefined;
+    elements.mobileCoordinateSpace.classList.remove("is-dragging");
+    recordEvent("feature-space", "select-coordinate", "mobile-pointer", `${state.targetX.toFixed(4)},${state.targetY.toFixed(4)}`);
+  };
+  elements.mobileCoordinateSpace.addEventListener("pointerup", finishMobileCoordinateSelection);
+  elements.mobileCoordinateSpace.addEventListener("pointercancel", finishMobileCoordinateSelection);
+  elements.mobileCoordinateSpace.addEventListener("keydown", (event) => {
+    const direction = { ArrowLeft: [-0.05, 0], ArrowRight: [0.05, 0], ArrowUp: [0, 0.05], ArrowDown: [0, -0.05] }[event.key];
+    if (!direction) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (!claimFeatureSpaceControl()) return;
+    state.targetX = clamp(state.targetX + direction[0], -1, 1);
+    state.targetY = clamp(state.targetY + direction[1], -1, 1);
+    state.currentX = state.targetX;
+    state.currentY = state.targetY;
+    updateCoordinateDisplay();
+    updateFeatureSpace();
+    recordEvent("feature-space", "select-coordinate", `mobile-${event.key}`, `${state.targetX.toFixed(4)},${state.targetY.toFixed(4)}`);
+  });
   elements.featureSpace.addEventListener("pointerdown", (event) => {
     event.preventDefault();
     if (!claimFeatureSpaceControl()) return;
@@ -4281,7 +4478,7 @@ function animationFrame(timestamp) {
     }
     universeLink.offer(universeLocalCurrent.currentX, universeLocalCurrent.currentY);
     const shared = universe.reciprocal
-      ? blendUniverseCoordinates(universeLocalCurrent, universe.latest)
+      ? combineUniverseCoordinates(universeLocalCurrent, universe.latest)
       : universeLocalCurrent;
     state.currentX = shared.currentX;
     state.currentY = shared.currentY;
@@ -4324,9 +4521,14 @@ function animationFrame(timestamp) {
   elements.touchPreviewBasePath.setAttribute("d", rendered.path);
   elements.touchPreviewOutlinePath.setAttribute("d", rendered.path);
   elements.touchPreviewHaloPath.setAttribute("d", rendered.path);
+  elements.mobileDirectBasePath.setAttribute("d", rendered.path);
+  elements.mobileDirectOutlinePath.setAttribute("d", rendered.path);
+  elements.mobileDirectHaloPath.setAttribute("d", rendered.path);
   elements.widget.style.setProperty("--affect-color", rendered.color);
   elements.touchPreviewFlubber.style.setProperty("--affect-color", rendered.color);
   elements.touchPreviewFlubber.style.opacity = state.widgetVisible ? state.widgetOpacity : 0;
+  elements.mobileDirectFlubber.style.setProperty("--affect-color", rendered.color);
+  elements.mobileDirectFlubber.style.opacity = state.widgetVisible ? state.widgetOpacity : 0;
   renderPictureInPicture(rendered);
   renderPartyFlubbers();
   updateCoordinateDisplay();

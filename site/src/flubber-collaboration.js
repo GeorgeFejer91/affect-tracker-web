@@ -33,16 +33,46 @@ export function oneWayGroundRole({
   return "idle";
 }
 
-export function blendUniverseCoordinates(local, remote, remoteWeight = 0.5) {
-  const weight = Math.min(1, Math.max(0, Number(remoteWeight) || 0));
+export function combineUniverseCoordinates(local, remote) {
   const localX = clamp(Number(local?.currentX) || 0);
   const localY = clamp(Number(local?.currentY) || 0);
   if (!Number.isFinite(remote?.currentX) || !Number.isFinite(remote?.currentY)) {
     return { currentX: localX, currentY: localY };
   }
   return {
-    currentX: clamp(localX * (1 - weight) + clamp(remote.currentX) * weight),
-    currentY: clamp(localY * (1 - weight) + clamp(remote.currentY) * weight),
+    currentX: clamp(localX + clamp(remote.currentX)),
+    currentY: clamp(localY + clamp(remote.currentY)),
+  };
+}
+
+export function partyFlubberPlacement({
+  index = 0,
+  count = 1,
+  widgetX,
+  widgetY,
+  widgetSize,
+  viewportWidth,
+  viewportHeight,
+} = {}) {
+  const safeCount = Math.max(1, Math.floor(Number(count) || 1));
+  const safeIndex = Math.min(safeCount - 1, Math.max(0, Math.floor(Number(index) || 0)));
+  const mainSize = Math.max(1, Number(widgetSize) || 180);
+  const width = Math.max(1, Number(viewportWidth) || 1);
+  const height = Math.max(1, Number(viewportHeight) || 1);
+  const centerX = Number.isFinite(widgetX) ? widgetX : width / 2;
+  const centerY = Number.isFinite(widgetY) ? widgetY : height / 2;
+  const size = Math.max(72, Math.min(132, mainSize * 0.56));
+  const radius = Math.max(mainSize * 0.78, size * 1.15);
+  const angle = safeCount === 1 ? 0 : (Math.PI * 2 * safeIndex) / safeCount;
+  const directionX = Math.cos(angle);
+  const directionY = Math.sin(angle);
+  return {
+    size,
+    angle,
+    x: clamp(centerX + directionX * radius, size / 2 + 8, width - size / 2 - 8),
+    y: clamp(centerY + directionY * radius, size / 2 + 8, height - size / 2 - 8),
+    budX: centerX + directionX * mainSize * 0.42,
+    budY: centerY + directionY * mainSize * 0.42,
   };
 }
 

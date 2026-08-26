@@ -7,7 +7,7 @@
     <meta name="description" content="A draggable, browser-only 2D affect tracker inspired by AffectTracker.">
     <title>2D Affect Tracker</title>
     <script src="./src/theme-bootstrap.js?v=retro-1"></script>
-    <link rel="stylesheet" href="./styles.css?v=collaboration-1-retro-1">
+    <link rel="stylesheet" href="./styles.css?v=mobile-direct-4-collaboration-3-retro-1">
   </head>
   <body>
     <main id="stage" aria-label="Interactive affect tracker">
@@ -65,6 +65,49 @@
         </button>
 
         <div id="panel-content" class="panel-content">
+          <section id="mobile-direct-controller" class="mobile-direct-controller" aria-labelledby="mobile-direct-title">
+            <div class="mobile-flubber-pane">
+              <header class="mobile-controller-header">
+                <div>
+                  <span class="mobile-controller-kicker">Live affect</span>
+                  <h2 id="mobile-direct-title">Flubber</h2>
+                </div>
+                <button id="mobile-open-settings" type="button" aria-label="Open Affect Tracker settings">Settings</button>
+              </header>
+              <svg id="mobile-direct-flubber" class="mobile-direct-flubber" viewBox="-1.62 -1.62 3.24 3.24" aria-hidden="true" focusable="false">
+                <path id="mobile-direct-halo-path" class="shape-halo"></path>
+                <path id="mobile-direct-base-path" class="shape-base"></path>
+                <path id="mobile-direct-outline-path" class="shape-outline"></path>
+                <circle class="center-dot" cx="0" cy="0" r="0.025"></circle>
+              </svg>
+              <div class="mobile-direct-values" aria-live="off">
+                <span>Valence <output id="mobile-direct-valence-output">+0.000</output></span>
+                <span>Arousal <output id="mobile-direct-arousal-output">+0.000</output></span>
+              </div>
+            </div>
+
+            <div class="mobile-coordinate-pane">
+              <div
+                id="mobile-coordinate-space"
+                class="mobile-coordinate-space"
+                role="slider"
+                tabindex="0"
+                aria-label="Direct valence and arousal control"
+                aria-describedby="mobile-direct-help"
+                aria-valuetext="Valence 0.00, arousal 0.00"
+              >
+                <canvas id="mobile-coordinate-canvas" width="360" height="360" aria-hidden="true"></canvas>
+                <span class="mobile-coordinate-axis axis-arousal-positive">Arousal +</span>
+                <span class="mobile-coordinate-axis axis-arousal-negative">Arousal −</span>
+                <span class="mobile-coordinate-axis axis-valence-negative">Valence −</span>
+                <span class="mobile-coordinate-axis axis-valence-positive">Valence +</span>
+                <span id="mobile-coordinate-point" class="mobile-coordinate-point" aria-hidden="true"><span></span></span>
+                <p id="mobile-direct-help">Drag the existing point to a new position. Touching elsewhere does not move it.</p>
+              </div>
+            </div>
+          </section>
+
+          <button id="mobile-close-settings" class="mobile-close-settings" type="button">Back to phone controller</button>
           <div class="coordinates" aria-label="Current affect coordinates">
             <div><span>Valence</span><output id="valence-output">+0.000</output></div>
             <div><span>Arousal</span><output id="arousal-output">+0.000</output></div>
@@ -603,12 +646,19 @@
               </dl>
             </div>
 
+            <section id="ground-json-received" class="ground-json-received" hidden aria-labelledby="ground-json-received-title">
+              <h3 id="ground-json-received-title">Validated settings snapshot</h3>
+              <dl><div><dt>Name</dt><dd><output id="ground-json-received-name">—</output></dd></div><div><dt>Flubber</dt><dd><output id="ground-json-received-shape">—</output></dd></div><div><dt>Created</dt><dd><output id="ground-json-received-time">—</output></dd></div></dl>
+              <button id="ground-json-apply-button" type="button">Apply received settings</button>
+            </section>
+
             <section id="ground-party-roster" class="ground-party-roster" hidden aria-labelledby="ground-party-roster-title">
               <div><h4 id="ground-party-roster-title">FLUBBER party</h4><small>Up to eight selected public guests appear beside your locally controlled Flubber.</small></div>
               <div id="ground-party-guests" class="ground-party-guests"></div>
+              <button id="ground-party-stop-button" type="button">Stop party and disconnect guests</button>
             </section>
 
-            <p class="ground-control-distinction"><strong>Snapshot vs stream:</strong> JSON is one frozen settings snapshot; Live FLUBBER is a connection that stays open for changing X/Y coordinates. Ordinary broadcast and scan are sender-or-receiver only. <strong>Synch with Universe</strong> is an explicit reciprocal exception that averages two people's local controls into one shared Flubber. <strong>Invite a FLUBBER</strong> keeps your controls local and adds selected remote Flubbers alongside yours.</p>
+            <p class="ground-control-distinction"><strong>Snapshot vs stream:</strong> JSON is one frozen settings snapshot; Live FLUBBER is a connection that stays open for changing X/Y coordinates. Ordinary broadcast and scan are sender-or-receiver only. <strong>Synch with Universe</strong> is an explicit reciprocal exception where both people's full-scale X/Y inputs steer one shared Flubber; matching directions add up to the coordinate limits instead of being averaged. <strong>Invite a FLUBBER</strong> keeps your controls local and adds selected remote Flubbers alongside yours.</p>
             <p class="experiment-privacy"><strong>Public experimental connection:</strong> pressing a Broadcast or Scan action connects to a public VDO.Ninja discovery room. Your chosen signal name is visible to room listeners; peers may learn this device's IP address; third-party signaling and STUN/TURN may be used; relay paths add latency; and the free service has no availability guarantee. Static JSON contains the complete portable settings object, including desktop LSL metadata. Live mode sends only final smoothed X/Y coordinates—never raw physiology, timestamps, CSV rows, or participant identity.</p>
           </section>
         </div>
@@ -722,11 +772,6 @@
           <div class="ground-radar-display" aria-hidden="true"><span class="radar-ring ring-one"></span><span class="radar-ring ring-two"></span><span class="radar-crosshair"></span><span class="radar-beam"></span><span class="radar-blip blip-one"></span><span class="radar-blip blip-two"></span></div>
           <p id="ground-radar-status" role="status" aria-live="polite">Radar idle.</p>
           <div id="ground-radar-sources" class="ground-radar-sources" aria-label="Available public signals"></div>
-          <section id="ground-json-received" class="ground-json-received" hidden aria-labelledby="ground-json-received-title">
-            <h3 id="ground-json-received-title">Validated settings snapshot</h3>
-            <dl><div><dt>Name</dt><dd><output id="ground-json-received-name">—</output></dd></div><div><dt>Flubber</dt><dd><output id="ground-json-received-shape">—</output></dd></div><div><dt>Created</dt><dd><output id="ground-json-received-time">—</output></dd></div></dl>
-            <button id="ground-json-apply-button" type="button">Apply received settings</button>
-          </section>
           <footer><button id="ground-radar-stop" type="button">Stop radar</button></footer>
         </div>
       </dialog>
@@ -735,6 +780,6 @@
     </main>
 
     <script src="./vendor/vdoninja/1.5.5/vdoninja-sdk.min.js"></script>
-    <script type="module" src="./src/app.js?v=collaboration-1-retro-1"></script>
+    <script type="module" src="./src/app.js?v=mobile-direct-4-collaboration-3-retro-1"></script>
   </body>
 </html>

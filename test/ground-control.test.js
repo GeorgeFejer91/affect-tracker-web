@@ -69,10 +69,15 @@ test("Ground Control names are public-display safe and determine the JSON filena
   assert.throws(() => normalizeGroundControlName("x".repeat(65)), /64 characters/);
 });
 
-test("the radar closes only after a live stream delivers its first valid frame", () => {
+test("every Ground Control radar closes only after its selected connection succeeds", () => {
   assert.equal(shouldDismissGroundRadar({ mode: "live", phase: "connecting" }), false);
   assert.equal(shouldDismissGroundRadar({ mode: "live", phase: "live" }), true);
-  assert.equal(shouldDismissGroundRadar({ mode: "json", phase: "ready" }), false);
+  assert.equal(shouldDismissGroundRadar({ mode: "json", phase: "ready" }), true);
+  assert.equal(shouldDismissGroundRadar({ mode: "universe", phase: "awaiting-reciprocal" }), false);
+  assert.equal(shouldDismissGroundRadar({ mode: "universe", phase: "live" }), true);
+  assert.equal(shouldDismissGroundRadar({ mode: "party", phase: "connecting" }), false);
+  assert.equal(shouldDismissGroundRadar({ mode: "party", phase: "live" }), true);
+  assert.equal(shouldDismissGroundRadar({ mode: "json", phase: "live" }), false);
 });
 
 test("settings discovery IDs expose the public name while retaining a random suffix", () => {
@@ -170,20 +175,26 @@ test("Ground Control exposes the requested hierarchy, animated SVG states, and p
   const app = await readFile(new URL("../site/src/app.js", import.meta.url), "utf8");
   assert.match(html, /id="ground-control-panel"[^>]*data-module-protocol="ground"/);
   assert.match(html, /Enter name[\s\S]*>Download JSON<[\s\S]*>Load JSON<[\s\S]*>Broadcast JSON<[\s\S]*>Scan JSON<[\s\S]*>Broadcast Live FLUBBER<[\s\S]*>Scan Live FLUBBER<[\s\S]*>Synch with Universe<[\s\S]*>Invite a FLUBBER</);
-  assert.match(html, /id="ground-radar-dialog"[\s\S]*id="ground-radar-sources"[\s\S]*id="ground-json-apply-button"/);
+  assert.match(html, /id="ground-control-panel"[\s\S]*id="ground-json-received"[\s\S]*id="ground-json-apply-button"[\s\S]*id="ground-party-stop-button"/);
+  assert.match(html, /id="ground-radar-dialog"[\s\S]*id="ground-radar-sources"/);
   assert.match(html, /Up to eight selected public guests/);
   assert.match(html, /Snapshot vs stream:[\s\S]*public VDO\.Ninja discovery room[\s\S]*STUN\/TURN/);
   assert.match(css, /@keyframes signal-wave/);
   assert.match(css, /@keyframes radar-sweep/);
   assert.match(css, /@keyframes universe-orbit/);
   assert.match(css, /@keyframes party-pulse/);
+  assert.match(css, /@keyframes party-main-budding/);
+  assert.match(css, /@keyframes party-guest-budding/);
+  assert.match(css, /@keyframes party-bud-neck/);
   assert.match(css, /prefers-reduced-motion[\s\S]*animation: none !important/);
   assert.match(app, /settingsSnapshotBroadcaster\.start\(\{ name, settings: settingsFromState\(\) \}\)/);
   assert.match(app, /pendingSettingsSnapshot[\s\S]*groundJsonApplyButton\.addEventListener/);
-  assert.match(app, /shouldDismissGroundRadar\(\{ mode: groundRadarMode, phase: event\.detail\.phase \}\)[\s\S]*groundRadarDialog\.close\(\)[\s\S]*Radar closed/);
+  assert.match(app, /function dismissGroundRadarAfterSuccess\(message\)[\s\S]*groundRadarDialog\.close\(\)[\s\S]*Radar closed/);
+  assert.match(app, /showReceivedSettings\(detail\)[\s\S]*shouldDismissGroundRadar\(\{ mode: groundRadarMode, phase: "ready" \}\)/);
+  assert.match(app, /pendingGuest[\s\S]*shouldDismissGroundRadar\(\{ mode: "party", phase: pendingGuest\.phase \}\)[\s\S]*startPartyBirthAnimation\(pendingGuest, detail\)[\s\S]*dismissGroundRadarAfterSuccess/);
   assert.match(app, /incomingOwnsAxes[\s\S]*state\.targetX = incoming\.latest\.currentX;[\s\S]*state\.currentY = incoming\.latest\.currentY;/);
   assert.match(app, /oneWayGroundRole[\s\S]*Stop sending before receiving from this browser/);
-  assert.match(app, /blendUniverseCoordinates\(universeLocalCurrent, universe\.latest\)/);
+  assert.match(app, /combineUniverseCoordinates\(universeLocalCurrent, universe\.latest\)/);
   assert.match(app, /renderPartyFlubbers\(\)/);
   assert.doesNotMatch(app, /startGroundRadar\("(?:json|live)"\);\s*\/\/.*page load/);
 });

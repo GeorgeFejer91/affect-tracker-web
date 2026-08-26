@@ -1,9 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  blendUniverseCoordinates,
+  combineUniverseCoordinates,
   FlubberParty,
   oneWayGroundRole,
+  partyFlubberPlacement,
   PARTY_MAX_GUESTS,
   UNIVERSE_CHANNEL,
   UNIVERSE_ROOM,
@@ -57,14 +58,26 @@ test("ordinary Ground Control transport is an exclusive sender-or-receiver gate"
   assert.equal(oneWayGroundRole({ liveBroadcastPhase: "broadcasting", liveReceivePhase: "live" }), "conflict");
 });
 
-test("Universe co-control is a symmetric bounded blend", () => {
+test("Universe co-control gives both inputs full-scale saturated influence", () => {
   assert.deepEqual(
-    blendUniverseCoordinates({ currentX: 1, currentY: -1 }, { currentX: -1, currentY: 1 }),
+    combineUniverseCoordinates({ currentX: 1, currentY: -1 }, { currentX: -1, currentY: 1 }),
     { currentX: 0, currentY: 0 },
   );
   assert.deepEqual(
-    blendUniverseCoordinates({ currentX: 0.5, currentY: 0.25 }, undefined),
+    combineUniverseCoordinates({ currentX: 0.5, currentY: 0.25 }, undefined),
     { currentX: 0.5, currentY: 0.25 },
+  );
+  assert.deepEqual(
+    combineUniverseCoordinates({ currentX: 1, currentY: -1 }, { currentX: 0, currentY: 0 }),
+    { currentX: 1, currentY: -1 },
+  );
+  assert.deepEqual(
+    combineUniverseCoordinates({ currentX: 0.75, currentY: -0.8 }, { currentX: 0.6, currentY: -0.5 }),
+    { currentX: 1, currentY: -1 },
+  );
+  assert.deepEqual(
+    combineUniverseCoordinates({ currentX: 0.25, currentY: -0.4 }, { currentX: 0.5, currentY: 0.1 }),
+    combineUniverseCoordinates({ currentX: 0.5, currentY: 0.1 }, { currentX: 0.25, currentY: -0.4 }),
   );
 });
 
@@ -90,6 +103,34 @@ test("Universe uses an isolated room/channel and requires reciprocal selection",
   assert.equal(link.snapshot().phase, "live");
   link.offer(0.4, 0.6);
   assert.deepEqual(broadcaster.offers, [[0.4, 0.6]]);
+});
+
+test("party guest placement starts as a bud on the centered Flubber and separates into the bounded orbit", () => {
+  const placement = partyFlubberPlacement({
+    index: 0,
+    count: 1,
+    widgetX: 500,
+    widgetY: 400,
+    widgetSize: 180,
+    viewportWidth: 1000,
+    viewportHeight: 800,
+  });
+  assert.ok(Math.abs(placement.size - 100.8) < 1e-9);
+  assert.ok(Math.abs(placement.budX - 575.6) < 1e-9);
+  assert.equal(placement.budY, 400);
+  assert.ok(placement.x > placement.budX);
+  assert.equal(placement.y, 400);
+  const bounded = partyFlubberPlacement({
+    index: 0,
+    count: 1,
+    widgetX: 990,
+    widgetY: 790,
+    widgetSize: 180,
+    viewportWidth: 1000,
+    viewportHeight: 800,
+  });
+  assert.ok(bounded.x <= 1000 - bounded.size / 2 - 8);
+  assert.ok(bounded.y <= 800 - bounded.size / 2 - 8);
 });
 
 test("a FLUBBER party invites explicit sources and enforces its browser bound", async () => {
