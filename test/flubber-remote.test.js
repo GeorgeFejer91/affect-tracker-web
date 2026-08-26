@@ -16,6 +16,7 @@ import {
   formatFlubberSourceLabel,
   flubberRemoteForceTurnEnabled,
   flubberRemoteSdkOptions,
+  generateFlubberSourceId,
   isNewerFlubberSequence,
 } from "../site/src/flubber-remote.js";
 
@@ -390,17 +391,17 @@ test("receiver discovers one source without typing and exposes multiple sources 
   const many = new FlubberReceiver(manyClock.options(() => manySdk));
   await many.startDiscovery();
   manySdk.emit("listing", { list: [
-    { streamID: "aft_flubber_aaaabbbb", UUID: "peer-a" },
+    { streamID: "aft_flubber_Aurora_Lab_aaaabbbb", UUID: "peer-a" },
     { streamID: "unrelated_stream", UUID: "other" },
     { streamID: "aft_flubber_ccccdddd", UUID: "peer-c" },
   ] });
   manyClock.advance(300);
   assert.equal(many.snapshot().phase, "selecting");
-  assert.deepEqual(many.snapshot().sources.map((source) => source.label), ["Source AAAA BBBB", "Source CCCC DDDD"]);
+  assert.deepEqual(many.snapshot().sources.map((source) => source.label), ["Aurora Lab · Live FLUBBER", "Source CCCC DDDD"]);
   assert.equal(manySdk.calls.some((call) => call[0] === "view"), false);
   await many.selectSource("aft_flubber_ccccdddd");
   assert.equal(many.snapshot().sourceLabel, "Source CCCC DDDD");
-  await many.selectSource("aft_flubber_aaaabbbb");
+  await many.selectSource("aft_flubber_Aurora_Lab_aaaabbbb");
   assert.deepEqual(manySdk.calls.filter((call) => call[0] === "stopViewing").at(-1), ["stopViewing", "aft_flubber_ccccdddd"]);
   await many.stop();
 
@@ -610,8 +611,12 @@ test("late packets and close events from a switched source cannot affect the new
   await receiver.stop();
 });
 
-test("source labels are display-only derivations of anonymous random stream IDs", () => {
+test("source labels retain anonymous fallback and named discovery IDs keep a random suffix", () => {
   assert.equal(formatFlubberSourceLabel("aft_flubber_ab12cd34"), "Source AB12 CD34");
+  assert.equal(
+    generateFlubberSourceId(() => new Uint8Array([0xab, 0x12, 0xcd, 0x34]), "Aurora Lab"),
+    "aft_flubber_Aurora_Lab_ab12cd34",
+  );
 });
 
 test("vendored VDO.Ninja 1.5.5 SDK, source, and MPL license match recorded hashes", () => {
@@ -636,13 +641,13 @@ test("remote pages load only the local SDK and feature code makes no microphone 
     assert.match(page, /src="\.\/vendor\/vdoninja\/1\.5\.5\/vdoninja-sdk\.min\.js"/);
     assert.doesNotMatch(page, /<script[^>]+https?:\/\//);
   }
-  assert.match(index, />Broadcast this to VR \/ remote interface</);
+  assert.match(index, />Broadcast Live FLUBBER</);
   assert.match(index, /id="flubber-remote-foreground-button"[^>]*hidden>Restore low-latency foreground mode</);
   assert.match(webxr, />Use incoming signal</);
-  assert.match(index, /src="\.\/src\/app\.js\?v=shape-buttons-1"/);
-  assert.match(webxr, /src="\.\/src\/webxr-study\.js\?v=shape-2"/);
-  assert.match(app, /from "\.\/flubber-remote\.js\?v=remote-13"/);
-  assert.match(receiver, /from "\.\/flubber-remote\.js\?v=remote-13"/);
+  assert.match(index, /src="\.\/src\/app\.js\?v=ground-control-1"/);
+  assert.match(webxr, /src="\.\/src\/webxr-study\.js\?v=ground-control-1"/);
+  assert.match(app, /from "\.\/flubber-remote\.js\?v=ground-control-1"/);
+  assert.match(receiver, /from "\.\/flubber-remote\.js\?v=ground-control-1"/);
   assert.match(transport, /FLUBBER_REMOTE_FORCE_TURN_PARAM = "remote-force-turn"/);
   assert.match(transport, /forceTURN: Boolean\(forceTurn\)/);
   assert.match(app, /flubberBroadcaster\.offer\(state\.currentX, state\.currentY\);/);

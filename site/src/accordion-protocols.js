@@ -23,6 +23,12 @@ export const ACCORDION_PROTOCOLS = Object.freeze({
     domainModule: "polar-stream.js",
     responsibilities: Object.freeze(["bluetooth-session", "physiology-metrics", "sensor-mapping"]),
   }),
+  ground: Object.freeze({
+    stateKey: "groundControlPanelOpen",
+    panelId: "ground-control-panel",
+    domainModule: "ground-control.js",
+    responsibilities: Object.freeze(["portable-files", "settings-snapshot-transport", "live-coordinate-orchestration"]),
+  }),
 });
 
 export const ACCORDION_PROTOCOL_IDS = Object.freeze(Object.keys(ACCORDION_PROTOCOLS));

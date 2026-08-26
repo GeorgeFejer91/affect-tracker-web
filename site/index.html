@@ -6,7 +6,7 @@
     <meta name="color-scheme" content="dark">
     <meta name="description" content="A draggable, browser-only 2D affect tracker inspired by AffectTracker.">
     <title>2D Affect Tracker</title>
-    <link rel="stylesheet" href="./styles.css?v=shape-buttons-1">
+    <link rel="stylesheet" href="./styles.css?v=ground-control-1">
   </head>
   <body>
     <main id="stage" aria-label="Interactive affect tracker">
@@ -185,7 +185,7 @@
             </details>
 
             <details class="settings-section">
-              <summary>Data &amp; settings files</summary>
+              <summary>Data</summary>
               <div class="settings-section-content">
                 <div class="settings-button-row">
                   <button id="export-button" type="button">Download CSV</button>
@@ -196,12 +196,7 @@
                   <div><dt>Samples</dt><dd id="sample-count">0</dd></div>
                   <div><dt>Buffered</dt><dd id="buffer-count">0 / 10,000</dd></div>
                 </dl>
-                <div class="settings-button-row">
-                  <input id="settings-import-file" class="visually-hidden" type="file" accept="application/json,.json">
-                  <button id="settings-import-button" type="button">Import settings JSON</button>
-                  <button id="settings-export-button" type="button">Export settings JSON</button>
-                </div>
-                <p>The same version-1 JSON is accepted by Affect Tracker Desktop. Records remain in this tab only, so download the CSV before closing or refreshing.</p>
+                <p>Records remain in this tab only, so download the CSV before closing or refreshing. Portable JSON files now live in Ground Control.</p>
               </div>
             </details>
 
@@ -506,27 +501,82 @@
               </div>
             </details>
 
-            <section class="flubber-remote-broadcast" aria-labelledby="flubber-remote-broadcast-title">
-              <div class="flubber-remote-broadcast-head">
-                <div>
-                  <h4 id="flubber-remote-broadcast-title">VR / remote output</h4>
-                  <output id="flubber-remote-broadcast-status" aria-live="polite">Broadcast off</output>
-                </div>
-                <div class="flubber-remote-broadcast-actions">
-                  <button id="flubber-remote-broadcast-button" type="button">Broadcast this to VR / remote interface</button>
-                  <button id="flubber-remote-foreground-button" type="button" hidden>Restore low-latency foreground mode</button>
-                </div>
+            <p class="experiment-privacy"><strong>Local physiology:</strong> ECG and RR data stay in this tab. The waveform keeps only the latest five seconds in memory; CSV samples contain mapped state and current metric context, not the 130 Hz raw ECG. Ground Control can separately broadcast only final X/Y coordinates. These signals are not a diagnosis or a direct measure of emotion.</p>
+          </section>
+        </div>
+      </section>
+
+      <section id="ground-control-panel" class="control-panel ground-control-panel is-collapsed" data-module-protocol="ground" aria-labelledby="ground-control-panel-title">
+        <button id="ground-control-panel-toggle" class="panel-toggle" type="button" aria-label="Ground Control — Experimental public exchange" aria-expanded="false" aria-controls="ground-control-panel-content">
+          <span id="ground-control-panel-title" class="panel-title-group">
+            <svg class="ground-control-mark" viewBox="0 0 32 32" aria-hidden="true" focusable="false">
+              <circle cx="16" cy="16" r="12"></circle><path d="M16 4v24M4 16h24"></path><circle cx="16" cy="16" r="3"></circle>
+            </svg>
+            <span class="panel-label-full">Ground Control</span>
+            <span class="panel-label-mobile">Control</span>
+            <span class="experimental-badge" aria-hidden="true"><span class="panel-label-full">Experimental</span><span class="panel-label-mobile">EXP</span></span>
+          </span>
+          <span id="ground-control-toggle-symbol" class="toggle-symbol" aria-hidden="true">+</span>
+        </button>
+        <div id="ground-control-panel-content" class="panel-content">
+          <section class="ground-control-console" aria-labelledby="ground-control-title">
+            <header class="ground-control-header">
+              <div>
+                <span class="ground-control-kicker">F.L.U.B.B.E.R. telemetry desk</span>
+                <h3 id="ground-control-title">Ground Control</h3>
               </div>
-              <dl id="flubber-remote-broadcast-details" class="flubber-remote-broadcast-details" hidden>
-                <div><dt>Public source</dt><dd><output id="flubber-remote-source">—</output></dd></div>
+              <span class="ground-control-orbit" aria-hidden="true"><i></i></span>
+            </header>
+            <label class="ground-control-name">Enter name
+              <input id="ground-control-name" maxlength="64" autocomplete="off" placeholder="e.g. Aurora Lab" aria-describedby="ground-control-name-note">
+            </label>
+            <p id="ground-control-name-note">This name determines the downloaded JSON filename and the public settings/live signal labels. Use a study or station name—never a participant identifier.</p>
+
+            <div class="ground-control-actions" aria-label="Ground Control actions">
+              <button id="settings-export-button" class="ground-action" type="button">
+                <svg class="ground-action-icon icon-download" viewBox="0 0 64 64" aria-hidden="true"><path class="icon-frame" d="M11 9h42v46H11z"></path><path class="icon-paper" d="M22 14h20v18H22z"></path><path class="icon-motion" d="M32 25v20m-8-8 8 8 8-8"></path></svg>
+                <span><strong>Download JSON</strong><small>Save named settings locally</small></span>
+              </button>
+              <button id="settings-import-button" class="ground-action" type="button">
+                <svg class="ground-action-icon icon-load" viewBox="0 0 64 64" aria-hidden="true"><path class="icon-frame" d="M11 9h42v46H11z"></path><path class="icon-paper" d="M22 32h20v18H22z"></path><path class="icon-motion" d="M32 39V19m-8 8 8-8 8 8"></path></svg>
+                <span><strong>Load JSON</strong><small>Apply an existing file</small></span>
+              </button>
+              <input id="settings-import-file" class="visually-hidden" type="file" accept="application/json,.json">
+
+              <button id="ground-json-broadcast-button" class="ground-action" type="button" aria-pressed="false">
+                <svg class="ground-action-icon icon-beacon" viewBox="0 0 64 64" aria-hidden="true"><path class="tower" d="M32 21 22 55h20L32 21Zm-6 22h12M18 55h28"></path><circle class="signal-core" cx="32" cy="16" r="4"></circle><path class="signal-wave wave-one" d="M23 8a12 12 0 0 0 0 16M41 8a12 12 0 0 1 0 16"></path><path class="signal-wave wave-two" d="M17 3a19 19 0 0 0 0 26M47 3a19 19 0 0 1 0 26"></path></svg>
+                <span><strong>Broadcast JSON</strong><small id="ground-json-broadcast-status">Static beacon off</small></span>
+              </button>
+              <button id="ground-json-scan-button" class="ground-action" type="button" aria-pressed="false">
+                <svg class="ground-action-icon icon-radar" viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="24"></circle><circle cx="32" cy="32" r="15"></circle><path d="M8 32h48M32 8v48"></path><path class="radar-sweep" d="M32 32 32 8a24 24 0 0 1 17 7Z"></path><circle class="radar-hit" cx="43" cy="23" r="3"></circle></svg>
+                <span><strong>Scan JSON</strong><small>Find named settings snapshots</small></span>
+              </button>
+
+              <button id="flubber-remote-broadcast-button" class="ground-action" type="button" aria-pressed="false">
+                <svg class="ground-action-icon icon-live-beacon" viewBox="0 0 64 64" aria-hidden="true"><path class="tower" d="M32 20 22 55h20L32 20Zm-6 23h12M18 55h28"></path><circle class="signal-core" cx="32" cy="16" r="4"></circle><path class="live-wave" d="M7 34h11l5-11 8 22 7-16 5 5h14"></path><path class="signal-wave wave-one" d="M20 8a14 14 0 0 0 0 17M44 8a14 14 0 0 1 0 17"></path></svg>
+                <span><strong>Broadcast Live FLUBBER</strong><small id="flubber-remote-broadcast-status">Continuous stream off</small></span>
+              </button>
+              <button id="ground-live-scan-button" class="ground-action" type="button" aria-pressed="false">
+                <svg class="ground-action-icon icon-radar" viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="24"></circle><circle cx="32" cy="32" r="15"></circle><path d="M8 32h48M32 8v48"></path><path class="radar-sweep" d="M32 32 32 8a24 24 0 0 1 17 7Z"></path><circle class="radar-hit hit-one" cx="43" cy="23" r="3"></circle><circle class="radar-hit hit-two" cx="21" cy="42" r="2"></circle></svg>
+                <span><strong>Scan Live FLUBBER</strong><small id="ground-live-receive-status">Continuous receiver off</small></span>
+              </button>
+            </div>
+
+            <button id="flubber-remote-foreground-button" class="ground-restore-button" type="button" hidden>Restore low-latency foreground mode</button>
+            <div class="ground-control-status-grid">
+              <dl id="ground-json-broadcast-details" hidden>
+                <div><dt>JSON beacon</dt><dd><output id="ground-json-source">—</output></dd></div>
+                <div><dt>Listeners</dt><dd><output id="ground-json-listeners">0</output></dd></div>
+              </dl>
+              <dl id="flubber-remote-broadcast-details" hidden>
+                <div><dt>Live signal</dt><dd><output id="flubber-remote-source">—</output></dd></div>
                 <div><dt>Listeners</dt><dd><output id="flubber-remote-listeners">0</output></dd></div>
                 <div><dt>Route</dt><dd><output id="flubber-remote-route">Waiting</output></dd></div>
               </dl>
-              <p>Only the final smoothed X/Y coordinates used to draw Flubber are sent. Raw ECG, RR intervals, heart rate, metric choices, timestamps, and participant identifiers are never included.</p>
-              <p class="experiment-privacy"><strong>Public experimental connection:</strong> VDO.Ninja supplies signaling and may use STUN/TURN. Remote peers may learn this device's IP address, relayed connections can add latency, and the free service has no availability guarantee.</p>
-            </section>
+            </div>
 
-            <p class="experiment-privacy"><strong>Local physiology:</strong> ECG and RR data stay in this tab. The waveform keeps only the latest five seconds in memory; CSV samples contain mapped state and current metric context, not the 130 Hz raw ECG. The optional remote output sends only final X/Y coordinates. These signals are not a diagnosis or a direct measure of emotion.</p>
+            <p class="ground-control-distinction"><strong>Snapshot vs stream:</strong> JSON is one frozen settings package that you explicitly apply. Live FLUBBER is a continuous connection that controls X and Y until you disconnect.</p>
+            <p class="experiment-privacy"><strong>Public experimental connection:</strong> pressing a Broadcast or Scan action connects to a public VDO.Ninja discovery room. Your chosen signal name is visible to room listeners; peers may learn this device's IP address; third-party signaling and STUN/TURN may be used; relay paths add latency; and the free service has no availability guarantee. Static JSON contains the complete portable settings object, including desktop LSL metadata. Live mode sends only final smoothed X/Y coordinates—never raw physiology, timestamps, CSV rows, or participant identity.</p>
           </section>
         </div>
       </section>
@@ -552,10 +602,25 @@
         </div>
       </dialog>
 
+      <dialog id="ground-radar-dialog" class="ground-radar-dialog" aria-labelledby="ground-radar-title" aria-describedby="ground-radar-status">
+        <div class="ground-radar-shell">
+          <header><div><span class="ground-control-kicker">F.L.U.B.B.E.R. Radar</span><h2 id="ground-radar-title">Scanning public signals</h2></div><button id="ground-radar-close" type="button" aria-label="Close radar">×</button></header>
+          <div class="ground-radar-display" aria-hidden="true"><span class="radar-ring ring-one"></span><span class="radar-ring ring-two"></span><span class="radar-crosshair"></span><span class="radar-beam"></span><span class="radar-blip blip-one"></span><span class="radar-blip blip-two"></span></div>
+          <p id="ground-radar-status" role="status" aria-live="polite">Radar idle.</p>
+          <div id="ground-radar-sources" class="ground-radar-sources" aria-label="Available public signals"></div>
+          <section id="ground-json-received" class="ground-json-received" hidden aria-labelledby="ground-json-received-title">
+            <h3 id="ground-json-received-title">Validated settings snapshot</h3>
+            <dl><div><dt>Name</dt><dd><output id="ground-json-received-name">—</output></dd></div><div><dt>Flubber</dt><dd><output id="ground-json-received-shape">—</output></dd></div><div><dt>Created</dt><dd><output id="ground-json-received-time">—</output></dd></div></dl>
+            <button id="ground-json-apply-button" type="button">Apply received settings</button>
+          </section>
+          <footer><button id="ground-radar-stop" type="button">Stop radar</button></footer>
+        </div>
+      </dialog>
+
       <p id="status-region" class="visually-hidden" aria-live="polite"></p>
     </main>
 
     <script src="./vendor/vdoninja/1.5.5/vdoninja-sdk.min.js"></script>
-    <script type="module" src="./src/app.js?v=shape-buttons-1"></script>
+    <script type="module" src="./src/app.js?v=ground-control-1"></script>
   </body>
 </html>

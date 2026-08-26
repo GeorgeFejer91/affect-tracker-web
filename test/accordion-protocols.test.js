@@ -14,14 +14,15 @@ const allOpen = {
   experimentPanelOpen: true,
   touchPlaygroundPanelOpen: true,
   polarStreamPanelOpen: true,
+  groundControlPanelOpen: true,
 };
 
-test("the four UI accordions expose distinct protocol boundaries", async () => {
+test("the five UI accordions expose distinct protocol boundaries", async () => {
   const html = await readFile(new URL("../site/index.html", import.meta.url), "utf8");
-  assert.deepEqual(Object.keys(ACCORDION_PROTOCOLS), ["settings", "experiment", "touch", "polar"]);
+  assert.deepEqual(Object.keys(ACCORDION_PROTOCOLS), ["settings", "experiment", "touch", "polar", "ground"]);
   const responsibilities = Object.values(ACCORDION_PROTOCOLS).flatMap((protocol) => protocol.responsibilities);
   assert.equal(new Set(responsibilities).size, responsibilities.length);
-  assert.equal(new Set(Object.values(ACCORDION_PROTOCOLS).map(({ domainModule }) => domainModule)).size, 4);
+  assert.equal(new Set(Object.values(ACCORDION_PROTOCOLS).map(({ domainModule }) => domainModule)).size, 5);
   for (const [protocolId, protocol] of Object.entries(ACCORDION_PROTOCOLS)) {
     assert.match(html, new RegExp(`id="${protocol.panelId}"[^>]*data-module-protocol="${protocolId}"`));
     const implementation = await readFile(new URL(`../site/src/${protocol.domainModule}`, import.meta.url), "utf8");
@@ -35,18 +36,21 @@ test("the accordion shell keeps exactly one module open", () => {
     experimentPanelOpen: false,
     touchPlaygroundPanelOpen: false,
     polarStreamPanelOpen: false,
+    groundControlPanelOpen: false,
   });
   assert.deepEqual(setAccordionProtocolOpen(allOpen, "polar", true), {
     panelOpen: false,
     experimentPanelOpen: false,
     touchPlaygroundPanelOpen: false,
     polarStreamPanelOpen: true,
+    groundControlPanelOpen: false,
   });
   assert.deepEqual(toggleAccordionProtocol({ ...allOpen, panelOpen: false }, "experiment"), {
     panelOpen: false,
     experimentPanelOpen: false,
     touchPlaygroundPanelOpen: false,
     polarStreamPanelOpen: false,
+    groundControlPanelOpen: false,
   });
 });
 

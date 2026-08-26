@@ -71,9 +71,25 @@ function defaultRandomBytes(length) {
   return bytes;
 }
 
-export function generateFlubberSourceId(randomBytes = defaultRandomBytes) {
+function publicFlubberNameToken(value, maxLength = 40) {
+  return normalizeFlubberSourceName(value)
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/gi, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, maxLength);
+}
+
+function flubberNameFromStreamId(streamId) {
+  const suffix = String(streamId ?? "").slice(FLUBBER_REMOTE_STREAM_PREFIX.length);
+  const token = suffix.replace(/_[a-f0-9]{8}$/i, "");
+  return token && token !== suffix ? token.replace(/_/g, " ") : "";
+}
+
+export function generateFlubberSourceId(randomBytes = defaultRandomBytes, sourceName = "") {
   const suffix = Array.from(randomBytes(4), (value) => value.toString(16).padStart(2, "0")).join("");
-  return `${FLUBBER_REMOTE_STREAM_PREFIX}${suffix}`;
+  const nameToken = publicFlubberNameToken(sourceName);
+  return `${FLUBBER_REMOTE_STREAM_PREFIX}${nameToken ? `${nameToken}_` : ""}${suffix}`;
 }
 
 export function formatFlubberSourceLabel(streamId) {
@@ -131,11 +147,29 @@ export function isNewerFlubberSequence(sequence, previousSequence) {
 }
 
 function sourceItem(value) {
-  if (typeof value === "string") return { streamId: value, uuid: "" };
+  if (typeof value === "string") return { streamId: value, uuid: "", label: "" };
   return {
     streamId: value?.streamID ?? value?.streamId ?? "",
     uuid: value?.UUID ?? value?.uuid ?? "",
+    label: value?.label ?? value?.streamLabel ?? value?.name ?? "",
   };
+}
+
+export function normalizeFlubberSourceName(value) {
+  if (typeof value !== "string") return "";
+  return value.replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim().slice(0, 64);
+}
+
+export function flubberAdvertisedLabel(sourceName, streamId) {
+  const name = normalizeFlubberSourceName(sourceName);
+  return name ? `${name} · Live FLUBBER` : formatFlubberSourceLabel(streamId);
+}
+
+function listedFlubberLabel(label, streamId) {
+  const listedName = String(label ?? "").replace(/\s*·\s*Live FLUBBER\s*$/i, "")
+    || flubberNameFromStreamId(streamId);
+  const name = normalizeFlubberSourceName(listedName);
+  return name ? `${name} · Live FLUBBER` : formatFlubberSourceLabel(streamId);
 }
 
 function qualitySummary(quality) {
@@ -237,6 +271,7 @@ export class FlubberBroadcaster extends FlubberRemoteBase {
     this.randomBytes = options.randomBytes ?? defaultRandomBytes;
     this.phase = "idle";
     this.streamId = "";
+    this.sourceName = "";
     this.channels = new Map();
     this.openingPeers = new Set();
     this.backpressuredPeers = new Set();
@@ -259,7 +294,8 @@ export class FlubberBroadcaster extends FlubberRemoteBase {
     return {
       phase: this.phase,
       streamId: this.streamId,
-      sourceLabel: this.streamId ? formatFlubberSourceLabel(this.streamId) : "",
+      sourceName: this.sourceName,
+      sourceLabel: this.streamId ? flubberAdvertisedLabel(this.sourceName, this.streamId) : "",
       listenerCount: this.channels.size,
       directListeners: direct,
       relayedListeners: relayed,
@@ -275,11 +311,12 @@ export class FlubberBroadcaster extends FlubberRemoteBase {
     this.dispatchEvent(detailEvent("statechange", { ...this.snapshot(), ...extra }));
   }
 
-  async start() {
+  async start({ sourceName = "" } = {}) {
     if (this.phase !== "idle" && this.phase !== "error") return this.snapshot();
     await this.stop();
     this.phase = "connecting";
-    this.streamId = generateFlubberSourceId(this.randomBytes);
+    this.sourceName = normalizeFlubberSourceName(sourceName);
+    this.streamId = generateFlubberSourceId(this.randomBytes, this.sourceName);
     this.emitState();
     let stage = "loading the bundled VDO.Ninja SDK";
     try {
@@ -299,7 +336,7 @@ export class FlubberBroadcaster extends FlubberRemoteBase {
       stage = "announcing the data-only source";
       await this.sdk.announce({
         streamID: this.streamId,
-        label: formatFlubberSourceLabel(this.streamId),
+        label: flubberAdvertisedLabel(this.sourceName, this.streamId),
       });
       this.phase = "broadcasting";
       this.scheduleHeartbeat();
@@ -455,6 +492,7 @@ export class FlubberBroadcaster extends FlubberRemoteBase {
     }
     const disconnecting = this.disconnectSdk();
     this.streamId = "";
+    this.sourceName = "";
     this.channels.clear();
     this.openingPeers.clear();
     this.backpressuredPeers.clear();
@@ -523,7 +561,9 @@ export class FlubberReceiver extends FlubberRemoteBase {
       phase: stale ? "stale" : this.phase,
       sources: Array.from(this.sources.values()).sort((left, right) => left.label.localeCompare(right.label)),
       selectedStreamId: this.selectedStreamId,
-      sourceLabel: this.selectedStreamId ? formatFlubberSourceLabel(this.selectedStreamId) : "",
+      sourceLabel: this.selectedStreamId
+        ? (this.sources.get(this.selectedStreamId)?.label ?? formatFlubberSourceLabel(this.selectedStreamId))
+        : "",
       latest: this.latest ? {
         sequence: this.latest.sequence,
         currentX: this.latest.currentX,
@@ -551,10 +591,11 @@ export class FlubberReceiver extends FlubberRemoteBase {
   }
 
   addSource(item) {
-    const { streamId, uuid } = sourceItem(item);
+    const { streamId, uuid, label } = sourceItem(item);
     if (!isFlubberSource(streamId)) return;
     const existing = this.sources.get(streamId);
     if (existing) {
+      existing.label = listedFlubberLabel(label, streamId);
       if (uuid && uuid !== existing.uuid) {
         existing.uuid = uuid;
         if (streamId === this.selectedStreamId) this.selectedUuid = uuid;
@@ -565,7 +606,7 @@ export class FlubberReceiver extends FlubberRemoteBase {
     this.sources.set(streamId, {
       streamId,
       uuid,
-      label: formatFlubberSourceLabel(streamId),
+      label: listedFlubberLabel(label, streamId),
     });
     if (!this.selectedStreamId) this.scheduleAutoSelection();
     this.emitState();
@@ -677,7 +718,7 @@ export class FlubberReceiver extends FlubberRemoteBase {
     this.phase = "connecting";
     this.emitState({
       transition: previous ? "switched" : "selected",
-      message: `Connecting to ${formatFlubberSourceLabel(streamId)}…`,
+      message: `Connecting to ${source?.label ?? formatFlubberSourceLabel(streamId)}…`,
     });
     try {
       await this.sdk.view(streamId, {

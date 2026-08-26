@@ -49,7 +49,8 @@ The web, desktop, and Quest applications must feel like the same instrument. Sha
 - `vr/app/src/main/java/io/github/georgefejer91/affecttracker/vr/PolarH10Manager.kt`: application-scoped native Quest H10 discovery, official-SDK streaming, readiness, lifecycle, and privacy boundary.
 - `vr/app/src/main/java/io/github/georgefejer91/affecttracker/vr/PolarMetrics.kt`: native bounded mirror of the browser's ten metric definitions, per-axis mappings, and readiness gate.
 - `site/src/mobile.js`: browser-only narrow touch-capable viewport detection for one-time smartphone Touch Lab discovery; responsive presentation remains in `site/styles.css`.
-- `site/src/accordion-protocols.js`: canonical registry for the four top-level web modules, their distinct responsibilities, mutually exclusive open state, and cross-module Touch/Trackpad activation rule.
+- `site/src/accordion-protocols.js`: canonical registry for the five top-level web modules, their distinct responsibilities, mutually exclusive open state, and cross-module Touch/Trackpad activation rule.
+- `site/src/ground-control.js`: browser-neutral Ground Control authority for named portable-settings snapshots, validated public discovery, and the static-settings VDO.Ninja channel. Live X/Y remains delegated to `flubber-remote.js`.
 - `site/webxr.html`, `site/src/webxr-study.js`, `site/src/webxr-study-core.js`, and `site/src/webxr-stimuli.js`: experimental headset-browser study entrypoint, flat/equirectangular WebXR/WebGL adapter, selectable repository-hosted stimulus catalog, Quest-controller, explicitly assigned Polar-metric, or explicit remote-coordinate affect input, stimulus-aware CSV download, and explicit per-run webhook delivery.
 - `for-ai/70-RESEARCH-PROVENANCE.md` and `for-ai/references.bib`: source-decision ledger and citation-ready bibliography.
 - `for-ai/65-EXPERIMENTAL-POLAR-STREAM.md`: normative Polar Stream support, privacy, metric, mapping, precedence, and qualification contract.

@@ -53,7 +53,13 @@ import {
   polarWebBluetoothSupport,
 } from "./polar-stream.js?v=remote-13";
 import { createPolarH10ReplaySession, polarReplayEnabled } from "./polar-replay.js?v=remote-13";
-import { createFlubberBroadcaster } from "./flubber-remote.js?v=remote-13";
+import { createFlubberBroadcaster, createFlubberReceiver } from "./flubber-remote.js?v=ground-control-1";
+import {
+  createSettingsSnapshotBroadcaster,
+  createSettingsSnapshotReceiver,
+  groundControlFilename,
+  normalizeGroundControlName,
+} from "./ground-control.js?v=ground-control-1";
 import {
   actionForBinding,
   ADVANCED_BINDING_LABELS,
@@ -95,6 +101,29 @@ const elements = {
   polarStreamPanel: document.querySelector("#polar-stream-panel"),
   polarStreamPanelToggle: document.querySelector("#polar-stream-panel-toggle"),
   polarStreamToggleSymbol: document.querySelector("#polar-stream-toggle-symbol"),
+  groundControlPanel: document.querySelector("#ground-control-panel"),
+  groundControlPanelToggle: document.querySelector("#ground-control-panel-toggle"),
+  groundControlToggleSymbol: document.querySelector("#ground-control-toggle-symbol"),
+  groundControlName: document.querySelector("#ground-control-name"),
+  groundJsonBroadcastButton: document.querySelector("#ground-json-broadcast-button"),
+  groundJsonBroadcastStatus: document.querySelector("#ground-json-broadcast-status"),
+  groundJsonBroadcastDetails: document.querySelector("#ground-json-broadcast-details"),
+  groundJsonSource: document.querySelector("#ground-json-source"),
+  groundJsonListeners: document.querySelector("#ground-json-listeners"),
+  groundJsonScanButton: document.querySelector("#ground-json-scan-button"),
+  groundLiveScanButton: document.querySelector("#ground-live-scan-button"),
+  groundLiveReceiveStatus: document.querySelector("#ground-live-receive-status"),
+  groundRadarDialog: document.querySelector("#ground-radar-dialog"),
+  groundRadarTitle: document.querySelector("#ground-radar-title"),
+  groundRadarStatus: document.querySelector("#ground-radar-status"),
+  groundRadarSources: document.querySelector("#ground-radar-sources"),
+  groundRadarClose: document.querySelector("#ground-radar-close"),
+  groundRadarStop: document.querySelector("#ground-radar-stop"),
+  groundJsonReceived: document.querySelector("#ground-json-received"),
+  groundJsonReceivedName: document.querySelector("#ground-json-received-name"),
+  groundJsonReceivedShape: document.querySelector("#ground-json-received-shape"),
+  groundJsonReceivedTime: document.querySelector("#ground-json-received-time"),
+  groundJsonApplyButton: document.querySelector("#ground-json-apply-button"),
   polarSupportNote: document.querySelector("#polar-support-note"),
   polarDiagnosticOutputs: [...document.querySelectorAll("[data-polar-diagnostic]")],
   polarConnectButton: document.querySelector("#polar-connect-button"),
@@ -256,6 +285,8 @@ function readPreferences(bundledSettings) {
       experimentPanelOpen: typeof parsed.experimentPanelOpen === "boolean" ? parsed.experimentPanelOpen : false,
       touchPlaygroundPanelOpen: typeof parsed.touchPlaygroundPanelOpen === "boolean" ? parsed.touchPlaygroundPanelOpen : false,
       polarStreamPanelOpen: typeof parsed.polarStreamPanelOpen === "boolean" ? parsed.polarStreamPanelOpen : false,
+      groundControlPanelOpen: typeof parsed.groundControlPanelOpen === "boolean" ? parsed.groundControlPanelOpen : false,
+      groundControlName: typeof parsed.groundControlName === "string" ? parsed.groundControlName : "",
       polarMappings: normalizePolarMappings(parsed.polarMappings),
       inputSource: parsed.inputSource === "touch-trace" ? "touch-trace" : "manual",
       touchFeedbackMode: parsed.touchFeedbackMode === TOUCH_FEEDBACK_CONTINUOUS
@@ -275,6 +306,8 @@ function readPreferences(bundledSettings) {
       experimentPanelOpen: false,
       touchPlaygroundPanelOpen: false,
       polarStreamPanelOpen: false,
+      groundControlPanelOpen: false,
+      groundControlName: "",
       polarMappings: defaultPolarMappings(),
       inputSource: "manual",
       touchFeedbackMode: TOUCH_FEEDBACK_GATED,
@@ -314,6 +347,8 @@ const state = {
   experimentPanelOpen: preferences.experimentPanelOpen,
   touchPlaygroundPanelOpen: preferences.touchPlaygroundPanelOpen,
   polarStreamPanelOpen: preferences.polarStreamPanelOpen,
+  groundControlPanelOpen: preferences.groundControlPanelOpen,
+  groundControlName: preferences.groundControlName,
   polarMappings: preferences.polarMappings,
   polarConnected: false,
   polarConnecting: false,
@@ -344,6 +379,7 @@ if (isSmartphoneTouchViewport({
   state.experimentPanelOpen = false;
   state.touchPlaygroundPanelOpen = true;
   state.polarStreamPanelOpen = false;
+  state.groundControlPanelOpen = false;
   state.mobileTouchIntroSeen = true;
 }
 
@@ -371,6 +407,15 @@ function touchTrackingActive() {
     touchPlaygroundPanelOpen: state.touchPlaygroundPanelOpen,
     experimentPhase: experiment.phase,
   });
+}
+
+function liveRemoteSnapshot() {
+  return flubberReceiver.snapshot();
+}
+
+function liveRemoteOwnsAxes(snapshot = liveRemoteSnapshot()) {
+  return Boolean(snapshot.selectedStreamId && snapshot.latest
+    && (snapshot.phase === "live" || snapshot.phase === "stale"));
 }
 
 function currentExperimentActiveElapsedMs(now = performance.now()) {
@@ -406,6 +451,11 @@ const touchTrace = new TouchTraceAnalyzer({
 const polarReplay = polarReplayEnabled();
 const polarSession = polarReplay ? createPolarH10ReplaySession() : createPolarH10BrowserSession();
 const flubberBroadcaster = createFlubberBroadcaster();
+const flubberReceiver = createFlubberReceiver();
+const settingsSnapshotBroadcaster = createSettingsSnapshotBroadcaster();
+const settingsSnapshotReceiver = createSettingsSnapshotReceiver();
+let groundRadarMode = "";
+let pendingSettingsSnapshot;
 let polarEcgWindow = [];
 let polarBatteryPercent;
 let polarObservedSampleRate = 130;
@@ -442,6 +492,8 @@ function savePreferences() {
     experimentPanelOpen: state.experimentPanelOpen,
     touchPlaygroundPanelOpen: state.touchPlaygroundPanelOpen,
     polarStreamPanelOpen: state.polarStreamPanelOpen,
+    groundControlPanelOpen: state.groundControlPanelOpen,
+    groundControlName: state.groundControlName,
     polarMappings: state.polarMappings,
     inputSource: state.inputSource,
     touchFeedbackMode: state.touchFeedbackMode,
@@ -634,11 +686,18 @@ function updatePolarPanelState() {
   elements.polarStreamToggleSymbol.textContent = state.polarStreamPanelOpen ? "−" : "+";
 }
 
+function updateGroundControlPanelState() {
+  elements.groundControlPanel.classList.toggle("is-collapsed", !state.groundControlPanelOpen);
+  elements.groundControlPanelToggle.setAttribute("aria-expanded", String(state.groundControlPanelOpen));
+  elements.groundControlToggleSymbol.textContent = state.groundControlPanelOpen ? "−" : "+";
+}
+
 function updateAccordionPanelStates() {
   updatePanelState();
   updateExperimentPanelState();
   updateTouchPlaygroundPanelState();
   updatePolarPanelState();
+  updateGroundControlPanelState();
 }
 
 function toggleTopLevelProtocol(protocolId) {
@@ -673,7 +732,7 @@ function polarAxisDriven(axis) {
 }
 
 function manualAxisAvailable(axis) {
-  return !touchTrackingActive() && !polarAxisDriven(axis);
+  return !liveRemoteOwnsAxes() && !touchTrackingActive() && !polarAxisDriven(axis);
 }
 
 function directionAxis(direction) {
@@ -807,10 +866,11 @@ function updateRemoteBroadcastUi(detail = flubberBroadcaster.snapshot()) {
   const wakeLockActive = Boolean(broadcastWakeLock && !broadcastWakeLock.released);
   const foregroundModeDegraded = broadcasting && (!foregroundWindowActive || (wakeLockAvailable && !wakeLockActive));
   elements.remoteBroadcastButton.disabled = connecting || stopping;
-  elements.remoteBroadcastButton.textContent = broadcasting
-    ? "Stop broadcast"
-    : connecting ? "Starting broadcast…"
-      : stopping ? "Stopping broadcast…" : "Broadcast this to VR / remote interface";
+  elements.remoteBroadcastButton.classList.toggle("is-active", broadcasting);
+  elements.remoteBroadcastButton.setAttribute("aria-pressed", String(broadcasting));
+  elements.remoteBroadcastButton.setAttribute("aria-label", broadcasting
+    ? "Stop broadcasting live FLUBBER coordinates"
+    : "Broadcast live FLUBBER coordinates");
   elements.remoteBroadcastForegroundButton.hidden = !foregroundModeDegraded
     || (!pictureInPictureAvailable && (!wakeLockAvailable || wakeLockActive));
   elements.remoteBroadcastForegroundButton.disabled = connecting || stopping;
@@ -834,13 +894,150 @@ function updateRemoteBroadcastUi(detail = flubberBroadcaster.snapshot()) {
     : broadcasting && wakeLockAvailable && !wakeLockActive
       ? "SCREEN WAKE LOCK INACTIVE — restore low-latency foreground mode before a soak."
       : "";
-  elements.remoteBroadcastStatus.value = foregroundMessage || detail.message
+  elements.remoteBroadcastStatus.textContent = foregroundMessage || detail.message
     || (broadcasting
       ? `${detail.sourceLabel} is public and ready.`
       : connecting ? "Connecting to VDO.Ninja signaling…"
-        : stopping ? "Stopping remote broadcast…" : "Broadcast off");
+        : stopping ? "Stopping remote broadcast…" : "Continuous stream off");
   elements.remoteBroadcastStatus.classList.toggle("is-error", Boolean(detail.error || detail.phase === "error"));
   elements.remoteBroadcastStatus.classList.toggle("is-warning", Boolean(foregroundMessage));
+}
+
+function requiredGroundControlName() {
+  const name = normalizeGroundControlName(elements.groundControlName.value);
+  state.groundControlName = name;
+  elements.groundControlName.value = name;
+  savePreferences();
+  return name;
+}
+
+function updateSettingsBroadcastUi(detail = settingsSnapshotBroadcaster.snapshot()) {
+  const broadcasting = detail.phase === "broadcasting";
+  const busy = detail.phase === "connecting" || detail.phase === "stopping";
+  elements.groundJsonBroadcastButton.disabled = busy;
+  elements.groundJsonBroadcastButton.classList.toggle("is-active", broadcasting);
+  elements.groundJsonBroadcastButton.setAttribute("aria-pressed", String(broadcasting));
+  elements.groundJsonBroadcastButton.setAttribute("aria-label", broadcasting
+    ? "Stop broadcasting the JSON settings snapshot"
+    : "Broadcast a frozen JSON settings snapshot");
+  elements.groundJsonBroadcastStatus.textContent = detail.message
+    || (broadcasting ? `${detail.sourceLabel} is public.` : busy ? "Changing beacon state…" : "Static beacon off");
+  elements.groundJsonBroadcastStatus.classList.toggle("is-error", Boolean(detail.error || detail.phase === "error"));
+  elements.groundJsonBroadcastDetails.hidden = !detail.streamId;
+  elements.groundJsonSource.value = detail.sourceLabel || "—";
+  elements.groundJsonListeners.value = String(detail.listenerCount ?? 0);
+}
+
+function updateLiveReceiveUi(detail = liveRemoteSnapshot()) {
+  const enabled = detail.phase !== "idle";
+  const scanning = detail.phase === "discovering" || detail.phase === "selecting" || detail.phase === "connecting";
+  const owning = liveRemoteOwnsAxes(detail);
+  elements.groundLiveScanButton.classList.toggle("is-scanning", scanning);
+  elements.groundLiveScanButton.classList.toggle("is-active", owning);
+  elements.groundLiveScanButton.setAttribute("aria-pressed", String(enabled));
+  elements.groundLiveReceiveStatus.textContent = detail.message
+    || (owning
+      ? `${detail.sourceLabel} · ${detail.phase === "stale" ? "signal lost, holding X/Y" : "live X/Y connected"}`
+      : enabled ? "Radar active; choose a live signal" : "Continuous receiver off");
+  elements.groundLiveReceiveStatus.classList.toggle("is-error", detail.phase === "error");
+  elements.groundLiveReceiveStatus.classList.toggle("is-warning", detail.phase === "stale");
+}
+
+function updateRadarSources() {
+  if (!groundRadarMode) return;
+  const snapshot = groundRadarMode === "json" ? settingsSnapshotReceiver.snapshot() : liveRemoteSnapshot();
+  const sources = snapshot.sources ?? [];
+  elements.groundRadarSources.replaceChildren();
+  if (sources.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "ground-radar-empty";
+    empty.textContent = groundRadarMode === "json"
+      ? "No public JSON settings beacons are visible yet. Radar remains active."
+      : "No public live FLUBBER streams are visible yet. Radar remains active.";
+    elements.groundRadarSources.append(empty);
+  } else {
+    for (const source of sources) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "ground-radar-source";
+      button.dataset.streamId = source.streamId;
+      const copy = document.createElement("span");
+      const title = document.createElement("strong");
+      title.textContent = groundRadarMode === "json" ? source.name : source.label;
+      const meta = document.createElement("small");
+      meta.textContent = groundRadarMode === "json" ? "Static version-1 settings snapshot" : "Continuous X/Y stream";
+      copy.append(title, meta);
+      const action = document.createElement("span");
+      action.textContent = groundRadarMode === "json" ? "Receive" : "Connect";
+      button.append(copy, action);
+      button.addEventListener("click", async () => {
+        button.disabled = true;
+        if (groundRadarMode === "json") await settingsSnapshotReceiver.selectSource(source.streamId);
+        else await flubberReceiver.selectSource(source.streamId);
+      });
+      elements.groundRadarSources.append(button);
+    }
+  }
+  if (snapshot.message) elements.groundRadarStatus.textContent = snapshot.message;
+}
+
+function updateSettingsRadar(detail = settingsSnapshotReceiver.snapshot()) {
+  const scanning = detail.phase !== "idle";
+  elements.groundJsonScanButton.classList.toggle("is-scanning", scanning && detail.phase !== "ready");
+  elements.groundJsonScanButton.classList.toggle("is-active", detail.phase === "ready");
+  elements.groundJsonScanButton.setAttribute("aria-pressed", String(scanning));
+  if (groundRadarMode === "json") {
+    elements.groundRadarStatus.textContent = detail.message
+      || (detail.phase === "ready" ? "Snapshot received. Review it before applying." : "Scanning for public JSON settings beacons…");
+    updateRadarSources();
+  }
+}
+
+function showReceivedSettings(detail) {
+  pendingSettingsSnapshot = detail.received;
+  if (!pendingSettingsSnapshot) return;
+  elements.groundJsonReceived.hidden = false;
+  elements.groundJsonReceivedName.value = pendingSettingsSnapshot.name;
+  elements.groundJsonReceivedShape.value = pendingSettingsSnapshot.settings.visual.baseShape;
+  elements.groundJsonReceivedTime.value = new Date(pendingSettingsSnapshot.createdAt).toLocaleString();
+  elements.groundRadarStatus.textContent = `${pendingSettingsSnapshot.name} passed validation. Apply remains a separate action.`;
+}
+
+async function startGroundRadar(mode) {
+  groundRadarMode = mode;
+  pendingSettingsSnapshot = undefined;
+  elements.groundJsonReceived.hidden = true;
+  elements.groundRadarTitle.textContent = mode === "json" ? "Scanning JSON settings beacons" : "Scanning live FLUBBER streams";
+  elements.groundRadarStatus.textContent = mode === "json"
+    ? "Connecting to the public settings discovery room…"
+    : "Connecting to the public live-coordinate discovery room…";
+  elements.groundRadarSources.replaceChildren();
+  if (!elements.groundRadarDialog.open) elements.groundRadarDialog.showModal();
+  try {
+    if (mode === "json") {
+      await settingsSnapshotReceiver.startDiscovery();
+      updateSettingsRadar();
+    } else {
+      await flubberReceiver.startDiscovery();
+      updateLiveReceiveUi();
+      updateRadarSources();
+    }
+  } catch (error) {
+    elements.groundRadarStatus.textContent = error?.message ?? String(error);
+    announce(elements.groundRadarStatus.textContent);
+  }
+}
+
+async function stopGroundRadar() {
+  if (groundRadarMode === "json") await settingsSnapshotReceiver.stop();
+  if (groundRadarMode === "live") await flubberReceiver.stop();
+  groundRadarMode = "";
+  pendingSettingsSnapshot = undefined;
+  elements.groundJsonReceived.hidden = true;
+  elements.groundRadarSources.replaceChildren();
+  elements.groundRadarStatus.textContent = "Radar stopped.";
+  updateSettingsRadar();
+  updateLiveReceiveUi();
 }
 
 function drawPolarEcg() {
@@ -1331,19 +1528,24 @@ function updateFeatureSpace() {
 }
 
 function claimFeatureSpaceControl() {
+  if (liveRemoteOwnsAxes()) {
+    announce("Disconnect incoming live FLUBBER in Ground Control before choosing a local grid point.");
+    return false;
+  }
   const releasedAxes = [];
   for (const axis of ["valence", "arousal"]) {
     if (state.polarMappings[axis].metric === "manual") continue;
     state.polarMappings[axis] = { ...defaultPolarMappings()[axis] };
     releasedAxes.push(axis);
   }
-  if (releasedAxes.length === 0) return;
+  if (releasedAxes.length === 0) return true;
   applyPolarMappings();
   savePreferences();
   for (const axis of releasedAxes) {
     recordEvent("feature-space", "mapping-change", axis, JSON.stringify(state.polarMappings[axis]));
   }
   announce("The 2D grid returned valence and arousal to manual control.");
+  return true;
 }
 
 function chooseFeatureCoordinate(event) {
@@ -2481,17 +2683,18 @@ function recordPhysicalInput(source, action, control, value = "") {
 }
 
 function exportSettings() {
+  const name = requiredGroundControlName();
   const blob = new Blob([portableSettingsJson(settingsFromState())], { type: "application/json;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = url;
-  anchor.download = "affect-tracker-settings-v1.json";
+  anchor.download = groundControlFilename(name);
   document.body.append(anchor);
   anchor.click();
   anchor.remove();
   setTimeout(() => URL.revokeObjectURL(url), 0);
-  recordEvent("settings", "export", "json", 1);
-  announce("Portable settings JSON exported.");
+  recordEvent("ground-control", "export", groundControlFilename(name), 1);
+  announce(`${groundControlFilename(name)} downloaded.`);
 }
 
 function downloadJson(contents, filename) {
@@ -2562,7 +2765,15 @@ async function importSettings(file) {
   if (file.size > 256 * 1024) throw new Error("Settings JSON must be smaller than 256 KB.");
   const imported = normalizePortableSettings(JSON.parse(await file.text()));
   applyPortableSettings(imported, true);
-  recordEvent("settings", "import", "json", 1);
+  const fileStem = file.name.replace(/\.json$/i, "").replace(/[-_]+/g, " ").trim();
+  if (!state.groundControlName && fileStem) {
+    try {
+      state.groundControlName = normalizeGroundControlName(fileStem);
+      elements.groundControlName.value = state.groundControlName;
+      savePreferences();
+    } catch { /* keep the operator-entered name requirement */ }
+  }
+  recordEvent("ground-control", "import", "json", 1);
   announce("Portable settings JSON imported and applied.");
 }
 
@@ -2578,6 +2789,18 @@ function clearLog() {
 
 function initializeEvents() {
   flubberBroadcaster.addEventListener("statechange", (event) => updateRemoteBroadcastUi(event.detail));
+  flubberReceiver.addEventListener("statechange", (event) => {
+    updateLiveReceiveUi(event.detail);
+    if (groundRadarMode === "live") {
+      elements.groundRadarStatus.textContent = event.detail.message
+        || (event.detail.phase === "live" ? "Live FLUBBER signal connected." : "Scanning live FLUBBER signals…");
+      updateRadarSources();
+    }
+  });
+  flubberReceiver.addEventListener("frame", (event) => updateLiveReceiveUi(event.detail));
+  settingsSnapshotBroadcaster.addEventListener("statechange", (event) => updateSettingsBroadcastUi(event.detail));
+  settingsSnapshotReceiver.addEventListener("statechange", (event) => updateSettingsRadar(event.detail));
+  settingsSnapshotReceiver.addEventListener("snapshot", (event) => showReceivedSettings(event.detail));
   window.addEventListener("pointerdown", (event) => ingestPointerEvent(event, "down"), { capture: true, passive: false });
   window.addEventListener("pointermove", (event) => ingestPointerEvent(event, "move"), { capture: true, passive: false });
   window.addEventListener("pointerup", (event) => ingestPointerEvent(event, "up"), { capture: true, passive: false });
@@ -2644,6 +2867,9 @@ function initializeEvents() {
   elements.polarStreamPanelToggle.addEventListener("click", () => {
     toggleTopLevelProtocol("polar");
   });
+  elements.groundControlPanelToggle.addEventListener("click", () => {
+    toggleTopLevelProtocol("ground");
+  });
 
   elements.polarConnectButton.addEventListener("click", async () => {
     // A failed or cancelled chooser must never leave values from an earlier
@@ -2664,6 +2890,84 @@ function initializeEvents() {
   elements.polarDisconnectButton.addEventListener("click", async () => {
     await polarSession.disconnect();
   });
+  elements.groundControlName.value = state.groundControlName;
+  elements.groundControlName.addEventListener("change", () => {
+    try {
+      state.groundControlName = normalizeGroundControlName(elements.groundControlName.value);
+      elements.groundControlName.value = state.groundControlName;
+      savePreferences();
+      announce(`Ground Control name set to ${state.groundControlName}.`);
+    } catch (error) {
+      state.groundControlName = "";
+      announce(error?.message ?? String(error));
+      elements.groundControlName.focus();
+    }
+  });
+  elements.groundJsonBroadcastButton.addEventListener("click", async () => {
+    elements.groundJsonBroadcastButton.disabled = true;
+    try {
+      if (settingsSnapshotBroadcaster.snapshot().phase === "broadcasting") {
+        const previousName = settingsSnapshotBroadcaster.snapshot().name;
+        await settingsSnapshotBroadcaster.stop();
+        recordEvent("ground-control", "settings-broadcast-stop", previousName, 0);
+        announce("JSON settings beacon stopped.");
+      } else {
+        const name = requiredGroundControlName();
+        const started = await settingsSnapshotBroadcaster.start({ name, settings: settingsFromState() });
+        recordEvent("ground-control", "settings-broadcast-start", started.sourceLabel, 1);
+        announce(`${started.sourceLabel} is broadcasting one frozen validated snapshot.`);
+      }
+    } catch (error) {
+      announce(error?.message ?? String(error));
+      updateSettingsBroadcastUi();
+    }
+  });
+  elements.groundJsonScanButton.addEventListener("click", async () => {
+    if (settingsSnapshotReceiver.snapshot().phase !== "idle") {
+      await settingsSnapshotReceiver.stop();
+      if (groundRadarMode === "json") groundRadarMode = "";
+      updateSettingsRadar();
+      announce("JSON radar stopped.");
+      return;
+    }
+    await startGroundRadar("json");
+  });
+  elements.groundLiveScanButton.addEventListener("click", async () => {
+    if (flubberReceiver.snapshot().phase !== "idle") {
+      const previous = flubberReceiver.snapshot().sourceLabel;
+      await flubberReceiver.stop();
+      if (groundRadarMode === "live") groundRadarMode = "";
+      updateLiveReceiveUi();
+      recordEvent("ground-control", "live-receive-stop", previous, 0);
+      announce("Incoming live FLUBBER disconnected; local controls are available again.");
+      return;
+    }
+    await startGroundRadar("live");
+  });
+  elements.groundRadarStop.addEventListener("click", async () => {
+    await stopGroundRadar();
+    announce("F.L.U.B.B.E.R. Radar stopped.");
+  });
+  elements.groundRadarClose.addEventListener("click", () => elements.groundRadarDialog.close());
+  elements.groundRadarDialog.addEventListener("cancel", (event) => {
+    event.preventDefault();
+    elements.groundRadarDialog.close();
+  });
+  elements.groundJsonApplyButton.addEventListener("click", async () => {
+    if (!pendingSettingsSnapshot) return;
+    const applied = pendingSettingsSnapshot;
+    applyPortableSettings(applied.settings, true);
+    state.groundControlName = applied.name;
+    elements.groundControlName.value = state.groundControlName;
+    savePreferences();
+    recordEvent("ground-control", "settings-snapshot-apply", applied.name, 1);
+    await settingsSnapshotReceiver.stop();
+    groundRadarMode = "";
+    pendingSettingsSnapshot = undefined;
+    elements.groundRadarDialog.close();
+    updateSettingsRadar();
+    announce(`${applied.name} settings applied.`);
+  });
   elements.remoteBroadcastButton.addEventListener("click", async () => {
     const snapshot = flubberBroadcaster.snapshot();
     elements.remoteBroadcastButton.disabled = true;
@@ -2675,8 +2979,9 @@ function initializeEvents() {
         recordEvent("remote-flubber", "remote-broadcast-stop", sourceLabel, 0);
         announce("Remote Flubber broadcast stopped.");
       } else {
+        const sourceName = requiredGroundControlName();
         await acquireBroadcastLatencyMode();
-        const started = await flubberBroadcaster.start();
+        const started = await flubberBroadcaster.start({ sourceName });
         recordEvent("remote-flubber", "remote-broadcast-start", started.sourceLabel, 1);
         announce(`${started.sourceLabel} is broadcasting final Flubber coordinates.`);
       }
@@ -2820,7 +3125,12 @@ function initializeEvents() {
     if (elements.pictureInPictureToggle.checked) await openPictureInPicture();
     else if (pictureInPictureWindow && !pictureInPictureWindow.closed) pictureInPictureWindow.close();
   });
-  elements.settingsExportButton.addEventListener("click", exportSettings);
+  elements.settingsExportButton.addEventListener("click", () => {
+    try { exportSettings(); } catch (error) {
+      announce(error?.message ?? String(error));
+      elements.groundControlName.focus();
+    }
+  });
   elements.questFollowController.addEventListener("change", updateQuestControllerFollowControls);
   updateQuestControllerFollowControls();
   elements.questExportButton.addEventListener("click", async () => {
@@ -2877,7 +3187,7 @@ function initializeEvents() {
   }
   elements.featureSpace.addEventListener("pointerdown", (event) => {
     event.preventDefault();
-    claimFeatureSpaceControl();
+    if (!claimFeatureSpaceControl()) return;
     featurePointerId = event.pointerId;
     elements.featureSpace.setPointerCapture(event.pointerId);
     chooseFeatureCoordinate(event);
@@ -2900,7 +3210,7 @@ function initializeEvents() {
     if (!direction) return;
     event.preventDefault();
     event.stopPropagation();
-    claimFeatureSpaceControl();
+    if (!claimFeatureSpaceControl()) return;
     if (direction[0] !== 0) state.targetX = clamp(state.targetX + direction[0], -1, 1);
     if (direction[1] !== 0) state.targetY = clamp(state.targetY + direction[1], -1, 1);
     state.currentX = state.targetX;
@@ -2951,9 +3261,15 @@ function initializeEvents() {
   window.addEventListener("beforeunload", () => {
     void polarSession.disconnect({ emit: false });
     void flubberBroadcaster.stop();
+    void flubberReceiver.stop();
+    void settingsSnapshotBroadcaster.stop();
+    void settingsSnapshotReceiver.stop();
   });
   window.addEventListener("pagehide", () => {
     void flubberBroadcaster.stop();
+    void flubberReceiver.stop();
+    void settingsSnapshotBroadcaster.stop();
+    void settingsSnapshotReceiver.stop();
     void releaseBroadcastLatencyMode();
   }, { once: true });
   document.addEventListener("visibilitychange", () => {
@@ -2977,10 +3293,17 @@ function animationFrame(timestamp) {
 
   updateContinuousInput(deltaSeconds);
   const touchMetric = touchTrace.update(timestamp, deltaSeconds);
-  if (touchTrackingActive()) {
+  const incoming = liveRemoteSnapshot();
+  const incomingOwnsAxes = liveRemoteOwnsAxes(incoming);
+  if (touchTrackingActive() && !incomingOwnsAxes) {
     applyTouchTraceState(touchMetric);
   }
-  if (touchTrackingActive() && state.touchFeedbackMode === TOUCH_FEEDBACK_GATED) {
+  if (incomingOwnsAxes) {
+    state.targetX = incoming.latest.currentX;
+    state.targetY = incoming.latest.currentY;
+    state.currentX = incoming.latest.currentX;
+    state.currentY = incoming.latest.currentY;
+  } else if (touchTrackingActive() && state.touchFeedbackMode === TOUCH_FEEDBACK_GATED) {
     // The bounded live gate velocity is already the smoothing layer. Rendering
     // it directly lets participants stop on the exact visible grid position.
     state.currentX = state.targetX;
@@ -3048,6 +3371,9 @@ function initialize() {
   constrainAndRenderWidget();
   initializeEvents();
   updateRemoteBroadcastUi();
+  updateSettingsBroadcastUi();
+  updateSettingsRadar();
+  updateLiveReceiveUi();
   updateLoggerDisplay();
   savePreferences();
   recordEvent("system", "session-start", "session", logger.sessionId);
