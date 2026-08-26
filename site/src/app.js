@@ -25,26 +25,7 @@ import {
   experimentFilename,
   normalizeExperimentConfig,
 } from "./experiment.js";
-import {
-  BIS_2025_MOST_TRADED_CURRENCY_CODES,
-  COUNTRY_CATALOG,
-  coinReferenceById,
-  countryByCode,
-  currencyByCode,
-} from "./coin-reference-catalog.js";
-import {
-  calibrationRecordContext,
-  calibrationSquareAfterPointerCancellation,
-  createCalibrationSquareFromDrag,
-  createScreenCalibration,
-  currentDisplaySignature,
-  parseScreenCalibration,
-  resizeCalibrationSquareFromCorner,
-  SCREEN_CALIBRATION_STORAGE_KEY,
-  screenCalibrationStatus,
-  translateCalibrationSquare,
-  translateCalibrationSquareFromEdge,
-} from "./screen-calibration.js";
+import { createScreenCalibrationController } from "../screen-calibration/controller.js?v=screen-calibration-1";
 import {
   fitTracePoints,
   TOUCH_FEEDBACK_CONTINUOUS,
@@ -143,6 +124,9 @@ const elements = {
   experimentPanel: document.querySelector("#experiment-panel"),
   experimentPanelToggle: document.querySelector("#experiment-panel-toggle"),
   experimentToggleSymbol: document.querySelector("#experiment-toggle-symbol"),
+  screenCalibrationPanel: document.querySelector("#screen-calibration-panel"),
+  screenCalibrationPanelToggle: document.querySelector("#screen-calibration-panel-toggle"),
+  screenCalibrationToggleSymbol: document.querySelector("#screen-calibration-toggle-symbol"),
   touchPlaygroundPanel: document.querySelector("#touch-playground-panel"),
   touchPlaygroundPanelToggle: document.querySelector("#touch-playground-panel-toggle"),
   touchPlaygroundToggleSymbol: document.querySelector("#touch-playground-toggle-symbol"),
@@ -308,40 +292,6 @@ const elements = {
   experimentPlayerShell: document.querySelector("#experiment-player-shell"),
   experimentVideo: document.querySelector("#experiment-video"),
   youtubePlayer: document.querySelector("#youtube-player"),
-  screenCalibrationStart: document.querySelector("#screen-calibration-start"),
-  screenCalibrationStatus: document.querySelector("#screen-calibration-status"),
-  screenCalibrationResult: document.querySelector("#screen-calibration-result"),
-  screenCalibrationLayer: document.querySelector("#screen-calibration-layer"),
-  screenCalibrationTitle: document.querySelector("#screen-calibration-overlay-title"),
-  screenCalibrationStep: document.querySelector("#screen-calibration-step"),
-  screenCalibrationChooseView: document.querySelector("#screen-calibration-choose-view"),
-  screenCalibrationDrawView: document.querySelector("#screen-calibration-draw-view"),
-  screenCalibrationDirectory: document.querySelector("#screen-calibration-directory"),
-  screenCalibrationShortcuts: document.querySelector("#screen-calibration-shortcuts"),
-  screenCalibrationCountrySearch: document.querySelector("#screen-calibration-country-search"),
-  screenCalibrationCountryGrid: document.querySelector("#screen-calibration-country-grid"),
-  screenCalibrationCoinPicker: document.querySelector("#screen-calibration-coin-picker"),
-  screenCalibrationCountryBack: document.querySelector("#screen-calibration-country-back"),
-  screenCalibrationCurrencyTitle: document.querySelector("#screen-calibration-currency-title"),
-  screenCalibrationCurrencyDescription: document.querySelector("#screen-calibration-currency-description"),
-  screenCalibrationCountrySelectField: document.querySelector("#screen-calibration-country-select-field"),
-  screenCalibrationCountrySelect: document.querySelector("#screen-calibration-country-select"),
-  screenCalibrationCoinGrid: document.querySelector("#screen-calibration-coin-grid"),
-  screenCalibrationCanvas: document.querySelector("#screen-calibration-canvas"),
-  screenCalibrationDrawSurface: document.querySelector("#screen-calibration-draw-surface"),
-  screenCalibrationSquare: document.querySelector("#screen-calibration-square"),
-  screenCalibrationSquareRect: document.querySelector("#screen-calibration-square-rect"),
-  screenCalibrationHandles: document.querySelector("#screen-calibration-handles"),
-  screenCalibrationInstructions: document.querySelector("#screen-calibration-instructions"),
-  screenCalibrationSizeOutput: document.querySelector("#screen-calibration-size-output"),
-  screenCalibrationSelectedCoin: document.querySelector("#screen-calibration-selected-coin"),
-  screenCalibrationActions: document.querySelector("#screen-calibration-actions"),
-  screenCalibrationConfirm: document.querySelector("#screen-calibration-confirm"),
-  screenCalibrationRedraw: document.querySelector("#screen-calibration-redraw"),
-  screenCalibrationChooseAnother: document.querySelector("#screen-calibration-choose-another"),
-  screenCalibrationCancel: document.querySelector("#screen-calibration-cancel"),
-  screenCalibrationCancelChoose: document.querySelector("#screen-calibration-cancel-choose"),
-  screenCalibrationError: document.querySelector("#screen-calibration-error"),
   retroThemeToggle: document.querySelector("#retro-theme-toggle"),
   retroThemeState: document.querySelector("#retro-theme-state"),
   retroToast: document.querySelector("#retro-toast"),
@@ -381,6 +331,7 @@ function readPreferences(bundledSettings) {
       widgetY: Number.isFinite(parsed.widgetY) ? parsed.widgetY : settings.overlay.y + settings.overlay.size / 2,
       panelOpen: typeof parsed.panelOpen === "boolean" ? parsed.panelOpen : !parsed.seenIntro,
       experimentPanelOpen: typeof parsed.experimentPanelOpen === "boolean" ? parsed.experimentPanelOpen : false,
+      screenCalibrationPanelOpen: typeof parsed.screenCalibrationPanelOpen === "boolean" ? parsed.screenCalibrationPanelOpen : false,
       touchPlaygroundPanelOpen: typeof parsed.touchPlaygroundPanelOpen === "boolean" ? parsed.touchPlaygroundPanelOpen : false,
       polarStreamPanelOpen: typeof parsed.polarStreamPanelOpen === "boolean" ? parsed.polarStreamPanelOpen : false,
       groundControlPanelOpen: typeof parsed.groundControlPanelOpen === "boolean" ? parsed.groundControlPanelOpen : false,
@@ -403,6 +354,7 @@ function readPreferences(bundledSettings) {
       widgetY: bundledSettings.overlay.y + bundledSettings.overlay.size / 2,
       panelOpen: true,
       experimentPanelOpen: false,
+      screenCalibrationPanelOpen: false,
       touchPlaygroundPanelOpen: false,
       polarStreamPanelOpen: false,
       groundControlPanelOpen: false,
@@ -456,6 +408,7 @@ const state = {
   widgetDragEnabled: true,
   panelOpen: preferences.panelOpen,
   experimentPanelOpen: preferences.experimentPanelOpen,
+  screenCalibrationPanelOpen: preferences.screenCalibrationPanelOpen,
   touchPlaygroundPanelOpen: preferences.touchPlaygroundPanelOpen,
   polarStreamPanelOpen: preferences.polarStreamPanelOpen,
   groundControlPanelOpen: preferences.groundControlPanelOpen,
@@ -484,6 +437,7 @@ Object.assign(state, normalizeAccordionState(state));
 if (smartphoneTouchViewport && !state.mobileTouchIntroSeen) {
   state.panelOpen = true;
   state.experimentPanelOpen = false;
+  state.screenCalibrationPanelOpen = false;
   state.touchPlaygroundPanelOpen = false;
   state.polarStreamPanelOpen = false;
   state.groundControlPanelOpen = false;
@@ -508,34 +462,11 @@ const experiment = {
   traceRect: undefined,
 };
 
-function loadSavedScreenCalibration() {
-  try {
-    const stored = localStorage.getItem(SCREEN_CALIBRATION_STORAGE_KEY);
-    return stored ? parseScreenCalibration(stored) : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-let savedScreenCalibration = loadSavedScreenCalibration();
-const screenCalibrationRun = {
-  active: false,
-  ownsFullscreen: false,
-  step: "choose",
-  currencyCode: "",
-  countryCode: "",
-  coinId: "",
-  square: undefined,
-  pointer: undefined,
-};
-
-function currentScreenCalibrationStatus() {
-  try {
-    return screenCalibrationStatus(savedScreenCalibration, currentDisplaySignature(window));
-  } catch {
-    return { state: "invalid", message: "Display information is unavailable" };
-  }
-}
+const screenCalibration = createScreenCalibrationController({
+  announce,
+  canStart: () => experiment.phase === "idle",
+  onStateChange: () => updateExperimentSourceControls(),
+});
 
 function touchTrackingActive() {
   return touchProtocolActive({
@@ -575,7 +506,7 @@ function experimentRecordContext() {
     activeElapsedMs: currentExperimentActiveElapsedMs(),
     playbackActive: experiment.playbackActive,
     algorithmVersion: touchTrackingActive() ? TOUCH_TRACE_ALGORITHM_VERSION : "",
-    ...calibrationRecordContext(currentScreenCalibrationStatus()),
+    ...screenCalibration.recordContext(),
   };
 }
 
@@ -637,6 +568,7 @@ function savePreferences() {
     widgetY: savedY,
     panelOpen: state.panelOpen,
     experimentPanelOpen: state.experimentPanelOpen,
+    screenCalibrationPanelOpen: state.screenCalibrationPanelOpen,
     touchPlaygroundPanelOpen: state.touchPlaygroundPanelOpen,
     polarStreamPanelOpen: state.polarStreamPanelOpen,
     groundControlPanelOpen: state.groundControlPanelOpen,
@@ -848,6 +780,12 @@ function updateExperimentPanelState() {
   elements.experimentToggleSymbol.textContent = state.experimentPanelOpen ? "−" : "+";
 }
 
+function updateScreenCalibrationPanelState() {
+  elements.screenCalibrationPanel.classList.toggle("is-collapsed", !state.screenCalibrationPanelOpen);
+  elements.screenCalibrationPanelToggle.setAttribute("aria-expanded", String(state.screenCalibrationPanelOpen));
+  elements.screenCalibrationToggleSymbol.textContent = state.screenCalibrationPanelOpen ? "−" : "+";
+}
+
 function updateTouchPlaygroundPanelState() {
   elements.touchPlaygroundPanel.classList.toggle("is-collapsed", !state.touchPlaygroundPanelOpen);
   elements.touchPlaygroundPanelToggle.setAttribute("aria-expanded", String(state.touchPlaygroundPanelOpen));
@@ -869,6 +807,7 @@ function updateGroundControlPanelState() {
 function updateAccordionPanelStates() {
   updatePanelState();
   updateExperimentPanelState();
+  updateScreenCalibrationPanelState();
   updateTouchPlaygroundPanelState();
   updatePolarPanelState();
   updateGroundControlPanelState();
@@ -1228,11 +1167,74 @@ function updateUniverseUi(detail = universeLink.snapshot()) {
   updateGroundRoleGate();
 }
 
+function constrainPartyGuestPosition(view, x, y) {
+  const size = view.size ?? 108;
+  const margin = size / 2 + 8;
+  return {
+    x: window.innerWidth <= margin * 2 ? window.innerWidth / 2 : clamp(x, margin, window.innerWidth - margin),
+    y: window.innerHeight <= margin * 2 ? window.innerHeight / 2 : clamp(y, margin, window.innerHeight - margin),
+  };
+}
+
+function movePartyGuest(view, x, y) {
+  view.position = constrainPartyGuestPosition(view, x, y);
+  view.root.style.setProperty("--party-x", `${view.position.x}px`);
+  view.root.style.setProperty("--party-y", `${view.position.y}px`);
+}
+
+function beginPartyGuestDrag(event, view) {
+  if (event.isPrimary === false || (event.pointerType === "mouse" && event.button !== 0)) return;
+  if (!view.position || view.root.classList.contains("is-party-budding")) return;
+  event.preventDefault();
+  event.stopPropagation();
+  view.drag = {
+    pointerId: event.pointerId,
+    offsetX: event.clientX - view.position.x,
+    offsetY: event.clientY - view.position.y,
+  };
+  view.root.classList.add("is-dragging");
+  view.root.focus({ preventScroll: true });
+  view.root.setPointerCapture(event.pointerId);
+}
+
+function movePartyGuestDrag(event, view) {
+  if (view.drag?.pointerId !== event.pointerId) return;
+  event.preventDefault();
+  movePartyGuest(view, event.clientX - view.drag.offsetX, event.clientY - view.drag.offsetY);
+}
+
+function finishPartyGuestDrag(event, view) {
+  if (view.drag?.pointerId !== event.pointerId) return;
+  view.drag = undefined;
+  view.root.classList.remove("is-dragging");
+  if (view.root.hasPointerCapture(event.pointerId)) view.root.releasePointerCapture(event.pointerId);
+  recordEvent("ground-control", "party-guest-position", view.root.dataset.streamId, `${view.position.x.toFixed(1)},${view.position.y.toFixed(1)}`);
+}
+
+function movePartyGuestWithKeyboard(event, view) {
+  const step = event.shiftKey ? 20 : 10;
+  const delta = {
+    ArrowLeft: [-step, 0],
+    ArrowRight: [step, 0],
+    ArrowUp: [0, -step],
+    ArrowDown: [0, step],
+  }[event.key];
+  if (!delta || !view.position || view.root.classList.contains("is-party-budding")) return;
+  event.preventDefault();
+  event.stopPropagation();
+  movePartyGuest(view, view.position.x + delta[0], view.position.y + delta[1]);
+  recordEvent("ground-control", "party-guest-position", view.root.dataset.streamId, `${view.position.x.toFixed(1)},${view.position.y.toFixed(1)}`);
+}
+
 function createPartyGuestView(streamId, label) {
   const root = document.createElement("div");
   root.className = "party-guest-flubber";
   root.dataset.streamId = streamId;
   root.setAttribute("role", "img");
+  root.tabIndex = 0;
+  root.hidden = true;
+  root.setAttribute("aria-keyshortcuts", "ArrowUp ArrowDown ArrowLeft ArrowRight");
+  root.setAttribute("aria-label", `Draggable invited ${label}. Waiting for its first coordinate frame.`);
   const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
   svg.setAttribute("viewBox", "-1.62 -1.62 3.24 3.24");
   svg.setAttribute("aria-hidden", "true");
@@ -1251,8 +1253,16 @@ function createPartyGuestView(streamId, label) {
     root,
     paths: [halo, base, outline],
     offsets: createProjectionOffsets(streamId, profiles.waveCount),
+    position: undefined,
+    size: 108,
+    drag: undefined,
   };
   partyGuestViews.set(streamId, view);
+  root.addEventListener("pointerdown", (event) => beginPartyGuestDrag(event, view));
+  root.addEventListener("pointermove", (event) => movePartyGuestDrag(event, view));
+  root.addEventListener("pointerup", (event) => finishPartyGuestDrag(event, view));
+  root.addEventListener("pointercancel", (event) => finishPartyGuestDrag(event, view));
+  root.addEventListener("keydown", (event) => movePartyGuestWithKeyboard(event, view));
   return view;
 }
 
@@ -1269,10 +1279,11 @@ function syncPartyGuestViews(detail = flubberParty.snapshot()) {
   elements.partyStage.hidden = detail.guests.length === 0;
 }
 
-function applyPartyGuestPlacement(view, placement) {
+function applyPartyGuestPlacement(view, placement, { resetPosition = false } = {}) {
+  view.size = placement.size;
+  if (resetPosition || !view.position) view.position = { x: placement.x, y: placement.y };
+  movePartyGuest(view, view.position.x, view.position.y);
   view.root.style.setProperty("--party-size", `${placement.size}px`);
-  view.root.style.setProperty("--party-x", `${placement.x}px`);
-  view.root.style.setProperty("--party-y", `${placement.y}px`);
   view.root.style.setProperty("--party-bud-x", `${placement.budX}px`);
   view.root.style.setProperty("--party-bud-y", `${placement.budY}px`);
   view.root.style.setProperty("--party-angle", `${placement.angle}rad`);
@@ -1304,7 +1315,7 @@ function startPartyBirthAnimation(guest, detail) {
     viewportWidth: window.innerWidth,
     viewportHeight: window.innerHeight,
   });
-  applyPartyGuestPlacement(view, placement);
+  applyPartyGuestPlacement(view, placement, { resetPosition: true });
   view.root.hidden = false;
   constrainAndRenderWidget();
   if (reducedMotionQuery.matches || elements.widget.hidden) return;
@@ -2250,7 +2261,7 @@ function renderPartyFlubbers() {
     view.root.hidden = false;
     applyPartyGuestPlacement(view, placement);
     view.root.style.setProperty("--party-color", rendered.color);
-    view.root.setAttribute("aria-label", `${guest.label}. Valence ${guest.latest.currentX.toFixed(2)}, arousal ${guest.latest.currentY.toFixed(2)}${guest.phase === "stale" ? ", signal stale and holding" : ""}.`);
+    view.root.setAttribute("aria-label", `Draggable invited ${guest.label}. Valence ${guest.latest.currentX.toFixed(2)}, arousal ${guest.latest.currentY.toFixed(2)}${guest.phase === "stale" ? ", signal stale and holding" : ""}. Drag independently or use arrow keys to move this Flubber on screen.`);
   }
   const liveIds = new Set(guests.map((guest) => guest.streamId));
   for (const [streamId, view] of partyGuestViews) view.root.hidden = !liveIds.has(streamId);
@@ -2960,416 +2971,13 @@ function readExperimentConfig() {
   });
 }
 
-function renderScreenCalibrationStatus() {
-  const status = currentScreenCalibrationStatus();
-  elements.screenCalibrationStatus.dataset.state = status.state;
-  elements.screenCalibrationStatus.value = status.message;
-  if (status.state === "valid") {
-    const calibration = status.calibration;
-    const side = calibration.version === 2 ? calibration.squareSideCssPx : calibration.meanCssPx;
-    const place = calibration.version === 2 ? `${calibration.country.name} · ` : "";
-    elements.screenCalibrationResult.textContent = `${place}${calibration.coin.denomination}: ${side.toFixed(1)} CSS px; fullscreen viewport approximately ${calibration.fullscreenViewport.widthMm.toFixed(0)} × ${calibration.fullscreenViewport.heightMm.toFixed(0)} mm.`;
-  } else if (status.state === "stale") {
-    elements.screenCalibrationResult.textContent = "The saved result belongs to a different display size, scale, or orientation. Recalibrate before relying on physical-size estimates.";
-  } else {
-    elements.screenCalibrationResult.textContent = "Calibration is approximate and applies only while this display, scaling, and orientation stay unchanged.";
-  }
-}
-
-function flagEmoji(code) {
-  return [...code].map((letter) => String.fromCodePoint(127397 + letter.charCodeAt(0))).join("");
-}
-
-const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
-
-function calibrationSvgIcon(className) {
-  const svg = document.createElementNS(SVG_NAMESPACE, "svg");
-  svg.setAttribute("viewBox", "0 0 48 36");
-  svg.setAttribute("aria-hidden", "true");
-  svg.setAttribute("focusable", "false");
-  svg.classList.add(className);
-  return svg;
-}
-
-function createCountryFlagSvg(countryCode) {
-  const svg = calibrationSvgIcon("screen-calibration-flag-svg");
-  const hue = currencyIconHue(countryCode);
-  svg.style.setProperty("--country-hue", String(hue));
-  for (let index = 0; index < 3; index += 1) {
-    const band = document.createElementNS(SVG_NAMESPACE, "rect");
-    band.setAttribute("x", "1");
-    band.setAttribute("y", String(1 + index * 11.33));
-    band.setAttribute("width", "46");
-    band.setAttribute("height", "11.5");
-    band.setAttribute("class", `screen-calibration-country-band band-${index + 1}`);
-    svg.append(band);
-  }
-  const border = document.createElementNS(SVG_NAMESPACE, "rect");
-  border.setAttribute("x", "1");
-  border.setAttribute("y", "1");
-  border.setAttribute("width", "46");
-  border.setAttribute("height", "34");
-  border.setAttribute("rx", "5");
-  border.setAttribute("class", "screen-calibration-country-border");
-  const glyph = document.createElementNS(SVG_NAMESPACE, "text");
-  glyph.setAttribute("x", "24");
-  glyph.setAttribute("y", "22");
-  glyph.setAttribute("text-anchor", "middle");
-  glyph.setAttribute("class", "screen-calibration-flag-glyph");
-  glyph.textContent = countryCode;
-  svg.append(border, glyph);
-  return svg;
-}
-
-function currencyIconHue(currencyCode) {
-  return [...currencyCode].reduce((value, character) => value * 31 + character.charCodeAt(0), 17) % 360;
-}
-
-function coinShapeLabel(shape) {
-  return ({
-    round: "round",
-    "spanish-flower": "Spanish-flower edge",
-    scalloped: "scalloped edge",
-    heptagonal: "seven-sided",
-    hendecagonal: "eleven-sided",
-    dodecagonal: "twelve-sided",
-    tridecagonal: "thirteen-sided",
-  })[shape] ?? shape;
-}
-
-function createCurrencySvg(currency) {
-  const svg = calibrationSvgIcon("screen-calibration-currency-svg");
-  const hue = currencyIconHue(currency.code);
-  svg.style.setProperty("--currency-hue", String(hue));
-  const background = document.createElementNS(SVG_NAMESPACE, "rect");
-  background.setAttribute("x", "1");
-  background.setAttribute("y", "1");
-  background.setAttribute("width", "46");
-  background.setAttribute("height", "34");
-  background.setAttribute("rx", "7");
-  background.setAttribute("class", "screen-calibration-currency-background");
-  const ring = document.createElementNS(SVG_NAMESPACE, "circle");
-  ring.setAttribute("cx", "24");
-  ring.setAttribute("cy", "18");
-  ring.setAttribute("r", "12");
-  ring.setAttribute("class", "screen-calibration-currency-ring");
-  const symbol = document.createElementNS(SVG_NAMESPACE, "text");
-  symbol.setAttribute("x", "24");
-  symbol.setAttribute("y", "22");
-  symbol.setAttribute("text-anchor", "middle");
-  symbol.setAttribute("class", "screen-calibration-currency-symbol");
-  symbol.textContent = currency.symbol.length <= 3 ? currency.symbol : currency.code;
-  svg.append(background, ring, symbol);
-  return svg;
-}
-
-function screenCalibrationCanvasBounds() {
-  const rect = elements.screenCalibrationCanvas.getBoundingClientRect();
-  return { width: rect.width, height: rect.height };
-}
-
-function calibrationPointerPoint(event) {
-  const rect = elements.screenCalibrationCanvas.getBoundingClientRect();
-  return { x: event.clientX - rect.left, y: event.clientY - rect.top };
-}
-
-function setScreenCalibrationStep(step) {
-  screenCalibrationRun.step = step;
-  const choosing = step === "choose";
-  elements.screenCalibrationChooseView.hidden = !choosing;
-  elements.screenCalibrationDrawView.hidden = choosing;
-  elements.screenCalibrationCancelChoose.hidden = !choosing;
-  elements.screenCalibrationStep.value = choosing ? "Step 1 of 3" : (step === "draw" ? "Step 2 of 3" : "Step 3 of 3");
-  elements.screenCalibrationTitle.textContent = choosing ? "Choose a reference coin" : (step === "draw" ? "Draw a square around the coin" : "Adjust and confirm");
-  elements.screenCalibrationActions.hidden = step !== "adjust";
-  elements.screenCalibrationHandles.hidden = step !== "adjust";
-  elements.screenCalibrationInstructions.textContent = step === "draw"
-    ? "Place the selected coin flat anywhere on the screen with space around it, then drag diagonally around its outer edge."
-    : "Fine-tune the square so its four sides meet the coin's outer edge and its corners remain visible.";
-}
-
-function renderCalibrationSquare() {
-  const square = screenCalibrationRun.square;
-  elements.screenCalibrationSquare.hidden = !square;
-  if (!square) {
-    elements.screenCalibrationSizeOutput.value = "Draw a square";
-    return;
-  }
-  const { x, y, side } = square;
-  for (const [name, value] of Object.entries({ x, y, width: side, height: side })) elements.screenCalibrationSquareRect.setAttribute(name, value);
-  const hit = Math.min(28, Math.max(18, side * 0.2));
-  const edges = { top: [x, y - hit / 2, side, hit], right: [x + side - hit / 2, y, hit, side], bottom: [x, y + side - hit / 2, side, hit], left: [x - hit / 2, y, hit, side] };
-  for (const handle of elements.screenCalibrationHandles.querySelectorAll("[data-edge]")) {
-    const [hx, hy, width, height] = edges[handle.dataset.edge];
-    for (const [name, value] of Object.entries({ x: hx, y: hy, width, height })) handle.setAttribute(name, value);
-  }
-  const corners = { nw: [x, y], ne: [x + side, y], se: [x + side, y + side], sw: [x, y + side] };
-  for (const handle of elements.screenCalibrationHandles.querySelectorAll("[data-corner]")) {
-    const [cx, cy] = corners[handle.dataset.corner];
-    handle.setAttribute("cx", cx);
-    handle.setAttribute("cy", cy);
-  }
-  elements.screenCalibrationSizeOutput.value = `${side.toFixed(1)} CSS px × ${side.toFixed(1)} CSS px`;
-}
-
-function renderCountryGrid(query = "") {
-  const needle = query.trim().toLocaleLowerCase();
-  elements.screenCalibrationCountryGrid.replaceChildren();
-  const matches = COUNTRY_CATALOG.filter((country) => !needle || `${country.name} ${country.currencyCode} ${country.currencyName}`.toLocaleLowerCase().includes(needle));
-  for (const country of matches) {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "screen-calibration-country";
-    button.dataset.countryCode = country.code;
-    const flag = createCountryFlagSvg(country.code);
-    const currencyIcon = createCurrencySvg(currencyByCode(country.currencyCode));
-    const label = document.createElement("span");
-    label.textContent = `${country.name} · ${country.currencyCode}`;
-    button.append(flag, currencyIcon, label);
-    elements.screenCalibrationCountryGrid.append(button);
-  }
-  if (!matches.length) elements.screenCalibrationCountryGrid.textContent = "No matching countries.";
-}
-
-function showCalibrationCurrency(currencyCode, countryCode = "") {
-  const currency = currencyByCode(currencyCode);
-  const country = countryByCode(countryCode);
-  if (!currency || (country && country.currencyCode !== currency.code)) return;
-  const selectedCountry = country ?? (currency.countries.length === 1 ? currency.countries[0] : undefined);
-  screenCalibrationRun.currencyCode = currency.code;
-  screenCalibrationRun.countryCode = selectedCountry?.code ?? "";
-  elements.screenCalibrationDirectory.hidden = true;
-  elements.screenCalibrationCoinPicker.hidden = false;
-  elements.screenCalibrationCurrencyTitle.replaceChildren(createCurrencySvg(currency), document.createTextNode(`${currency.code} · ${currency.name}`));
-  elements.screenCalibrationCountrySelect.replaceChildren();
-  if (currency.countries.length > 1) {
-    const placeholder = document.createElement("option");
-    placeholder.value = "";
-    placeholder.textContent = "Choose the country where the participant is located";
-    elements.screenCalibrationCountrySelect.append(placeholder);
-  }
-  for (const candidate of currency.countries) {
-    const option = document.createElement("option");
-    option.value = candidate.code;
-    option.textContent = `${flagEmoji(candidate.code)} ${candidate.name}`;
-    option.selected = candidate.code === screenCalibrationRun.countryCode;
-    elements.screenCalibrationCountrySelect.append(option);
-  }
-  elements.screenCalibrationCountrySelectField.hidden = currency.countries.length === 1;
-  elements.screenCalibrationCountrySelect.value = screenCalibrationRun.countryCode;
-  elements.screenCalibrationCurrencyDescription.textContent = selectedCountry
-    ? `${selectedCountry.name} selected. Choose the undamaged standard circulating coin you will place on the screen. For a non-round coin, fit its furthest outer edges.`
-    : "Choose the participant country from the compact list, then choose an undamaged standard circulating coin. Non-round sizes use the official maximum outer span.";
-  elements.screenCalibrationCoinGrid.replaceChildren();
-  const diameters = currency.coins.map(({ diameterMm }) => diameterMm);
-  const minimum = Math.min(...diameters);
-  const maximum = Math.max(...diameters);
-  for (const coin of currency.coins) {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "screen-calibration-coin";
-    button.dataset.coinId = coin.id;
-    button.dataset.coinShape = coin.shape;
-    button.disabled = !screenCalibrationRun.countryCode;
-    button.style.setProperty("--currency-hue", String(currencyIconHue(currency.code)));
-    const relative = maximum === minimum ? 4.5 : 3.6 + ((coin.diameterMm - minimum) / (maximum - minimum)) * 1.8;
-    button.style.setProperty("--coin-button-size", `${relative}rem`);
-    button.title = `${coin.denomination}, ${coin.diameterMm} mm ${coin.shape === "round" ? "diameter" : "maximum outer span"}, ${coinShapeLabel(coin.shape)}`;
-    const label = document.createElement("strong");
-    label.textContent = coin.label;
-    const size = document.createElement("small");
-    size.textContent = `${coin.diameterMm} mm${coin.shape === "round" ? "" : " outer"}`;
-    button.append(label, size);
-    elements.screenCalibrationCoinGrid.append(button);
-  }
-}
-
-function chooseCalibrationCoin(coinId) {
-  const coin = coinReferenceById(coinId);
-  if (!coin || !screenCalibrationRun.countryCode || coin.currency !== screenCalibrationRun.currencyCode) return;
-  screenCalibrationRun.coinId = coin.id;
-  screenCalibrationRun.square = undefined;
-  const measuredAs = coin.shape === "round" ? "diameter" : `maximum outer span · ${coinShapeLabel(coin.shape)}`;
-  elements.screenCalibrationSelectedCoin.replaceChildren(document.createTextNode(`${coin.label} · ${coin.diameterMm} mm ${measuredAs} · ${coin.authority} · `));
-  const source = document.createElement("a");
-  source.href = coin.sourceUrl;
-  source.target = "_blank";
-  source.rel = "noreferrer";
-  source.textContent = "official specification";
-  elements.screenCalibrationSelectedCoin.append(source);
-  setScreenCalibrationStep("draw");
-  renderCalibrationSquare();
-  requestAnimationFrame(() => {
-    const bounds = screenCalibrationCanvasBounds();
-    elements.screenCalibrationCanvas.setAttribute("viewBox", `0 0 ${bounds.width} ${bounds.height}`);
-    elements.screenCalibrationCanvas.focus();
-  });
-}
-
-function endScreenCalibration({ exitFullscreen = true } = {}) {
-  const shouldExit = exitFullscreen
-    && screenCalibrationRun.ownsFullscreen
-    && document.fullscreenElement === elements.screenCalibrationLayer;
-  screenCalibrationRun.active = false;
-  screenCalibrationRun.ownsFullscreen = false;
-  screenCalibrationRun.pointer = undefined;
-  screenCalibrationRun.square = undefined;
-  elements.screenCalibrationLayer.hidden = true;
-  document.body.classList.remove("is-screen-calibrating");
-  if (shouldExit) document.exitFullscreen?.().catch(() => {});
-  renderScreenCalibrationStatus();
-  updateExperimentSourceControls();
-}
-
-async function beginScreenCalibration() {
-  if (experiment.phase !== "idle" || screenCalibrationRun.active) return;
-  if (!document.fullscreenEnabled || !elements.screenCalibrationLayer.requestFullscreen) {
-    announce("This browser does not permit the fullscreen calibration protocol.");
-    return;
-  }
-  screenCalibrationRun.active = true;
-  screenCalibrationRun.currencyCode = "";
-  screenCalibrationRun.countryCode = "";
-  screenCalibrationRun.coinId = "";
-  screenCalibrationRun.square = undefined;
-  screenCalibrationRun.pointer = undefined;
-  elements.screenCalibrationLayer.hidden = false;
-  document.body.classList.add("is-screen-calibrating");
-  elements.screenCalibrationCountrySearch.value = "";
-  elements.screenCalibrationDirectory.hidden = false;
-  elements.screenCalibrationCountryGrid.hidden = false;
-  elements.screenCalibrationCoinPicker.hidden = true;
-  elements.screenCalibrationError.hidden = true;
-  renderCountryGrid();
-  setScreenCalibrationStep("choose");
-  updateExperimentSourceControls();
-  try {
-    await elements.screenCalibrationLayer.requestFullscreen();
-    screenCalibrationRun.ownsFullscreen = document.fullscreenElement === elements.screenCalibrationLayer;
-    if (!screenCalibrationRun.ownsFullscreen) throw new Error("Fullscreen did not start.");
-    elements.screenCalibrationCountrySearch.focus();
-    announce("Fullscreen screen calibration started.");
-  } catch {
-    endScreenCalibration({ exitFullscreen: false });
-    announce("Fullscreen permission is required for screen calibration.");
-  }
-}
-
-function confirmScreenCalibrationMeasurement() {
-  if (!screenCalibrationRun.active || document.fullscreenElement !== elements.screenCalibrationLayer || !screenCalibrationRun.square) return;
-  try {
-    savedScreenCalibration = createScreenCalibration({
-      coinId: screenCalibrationRun.coinId,
-      countryCode: screenCalibrationRun.countryCode,
-      squareSideCssPx: screenCalibrationRun.square.side,
-      viewportWidthCssPx: window.innerWidth,
-      viewportHeightCssPx: window.innerHeight,
-      displaySignature: currentDisplaySignature(window),
-    });
-    localStorage.setItem(SCREEN_CALIBRATION_STORAGE_KEY, JSON.stringify(savedScreenCalibration));
-    endScreenCalibration();
-    announce("Screen calibration saved in this browser.");
-  } catch (error) {
-    elements.screenCalibrationError.textContent = error?.message ?? String(error);
-    elements.screenCalibrationError.hidden = false;
-  }
-}
-
-function initializeScreenCalibrationUi() {
-  for (const currencyCode of BIS_2025_MOST_TRADED_CURRENCY_CODES) {
-    const currency = currencyByCode(currencyCode);
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "screen-calibration-shortcut";
-    button.dataset.currencyCode = currency.code;
-    const code = document.createElement("strong");
-    code.textContent = currency.symbol === currency.code ? currency.code : `${currency.symbol} ${currency.code}`;
-    const name = document.createElement("span");
-    name.textContent = currency.name;
-    button.append(createCurrencySvg(currency), code, name);
-    elements.screenCalibrationShortcuts.append(button);
-  }
-  renderCountryGrid();
-  renderScreenCalibrationStatus();
-}
-
-function beginCalibrationPointer(event) {
-  if (!screenCalibrationRun.active || !event.isPrimary || (event.pointerType === "mouse" && event.button !== 0)) return;
-  const point = calibrationPointerPoint(event);
-  let kind;
-  let edge;
-  let corner;
-  if (screenCalibrationRun.step === "draw" && event.target === elements.screenCalibrationDrawSurface) kind = "draw";
-  if (screenCalibrationRun.step === "adjust") {
-    edge = event.target.dataset?.edge;
-    corner = event.target.dataset?.corner;
-    if (edge) kind = "edge";
-    else if (corner) kind = "corner";
-    else if (event.target === elements.screenCalibrationSquareRect) kind = "move";
-  }
-  if (!kind) return;
-  event.preventDefault();
-  elements.screenCalibrationCanvas.setPointerCapture(event.pointerId);
-  screenCalibrationRun.pointer = { id: event.pointerId, kind, edge, corner, start: point, original: screenCalibrationRun.square };
-  if (kind === "draw") {
-    screenCalibrationRun.square = createCalibrationSquareFromDrag(point, point, screenCalibrationCanvasBounds());
-    renderCalibrationSquare();
-  }
-}
-
-function moveCalibrationPointer(event) {
-  const operation = screenCalibrationRun.pointer;
-  if (!operation || operation.id !== event.pointerId) return;
-  event.preventDefault();
-  const point = calibrationPointerPoint(event);
-  const bounds = screenCalibrationCanvasBounds();
-  if (operation.kind === "draw") screenCalibrationRun.square = createCalibrationSquareFromDrag(operation.start, point, bounds);
-  if (operation.kind === "move") screenCalibrationRun.square = translateCalibrationSquare(operation.original, point.x - operation.start.x, point.y - operation.start.y, bounds);
-  if (operation.kind === "edge") {
-    const delta = operation.edge === "top" || operation.edge === "bottom" ? point.y - operation.start.y : point.x - operation.start.x;
-    screenCalibrationRun.square = translateCalibrationSquareFromEdge(operation.original, operation.edge, delta, bounds);
-  }
-  if (operation.kind === "corner") screenCalibrationRun.square = resizeCalibrationSquareFromCorner(operation.original, operation.corner, point, bounds);
-  renderCalibrationSquare();
-}
-
-function finishCalibrationPointer(event, cancelled = false) {
-  const operation = screenCalibrationRun.pointer;
-  if (!operation || operation.id !== event.pointerId) return;
-  if (cancelled) screenCalibrationRun.square = calibrationSquareAfterPointerCancellation(operation.kind, operation.original);
-  screenCalibrationRun.pointer = undefined;
-  if (elements.screenCalibrationCanvas.hasPointerCapture(event.pointerId)) elements.screenCalibrationCanvas.releasePointerCapture(event.pointerId);
-  if (!cancelled && operation.kind === "draw" && screenCalibrationRun.square) setScreenCalibrationStep("adjust");
-  renderCalibrationSquare();
-}
-
-function redrawCalibrationSquare() {
-  screenCalibrationRun.square = undefined;
-  screenCalibrationRun.pointer = undefined;
-  setScreenCalibrationStep("draw");
-  renderCalibrationSquare();
-  elements.screenCalibrationCanvas.focus();
-}
-
-function chooseAnotherCalibrationCoin() {
-  screenCalibrationRun.square = undefined;
-  screenCalibrationRun.coinId = "";
-  screenCalibrationRun.currencyCode = "";
-  screenCalibrationRun.countryCode = "";
-  elements.screenCalibrationDirectory.hidden = false;
-  elements.screenCalibrationCountryGrid.hidden = false;
-  elements.screenCalibrationCoinPicker.hidden = true;
-  setScreenCalibrationStep("choose");
-  elements.screenCalibrationCountrySearch.focus();
-}
-
 function updateExperimentSourceControls() {
   const youtube = elements.experimentSource.value === "youtube";
   for (const element of [elements.experimentYoutubeUrl, elements.experimentStartSeconds, elements.experimentEndSeconds]) {
     element.disabled = !youtube || experiment.phase !== "idle";
   }
   elements.experimentSource.disabled = experiment.phase !== "idle";
-  elements.screenCalibrationStart.disabled = experiment.phase !== "idle" || screenCalibrationRun.active;
+  screenCalibration.setAvailable(experiment.phase === "idle");
   elements.experimentSourceNote.textContent = youtube
     ? "YouTube playback sends the requested video and normal embed metadata to YouTube. Recording remains local. Videos whose owners disable embedding cannot run here."
     : "The preloaded video and recording remain in this page. Physical key, mouse-button, and wheel identifiers—not typed text—are recorded locally during the experiment.";
@@ -3793,14 +3401,6 @@ function initializeEvents() {
     activeTracePointerId = undefined;
     recordPhysicalInput("window", "resize", "viewport", `${window.innerWidth}x${window.innerHeight}`);
     constrainAndRenderWidget();
-    if (screenCalibrationRun.active && screenCalibrationRun.step !== "choose") {
-      requestAnimationFrame(() => {
-        const bounds = screenCalibrationCanvasBounds();
-        elements.screenCalibrationCanvas.setAttribute("viewBox", `0 0 ${bounds.width} ${bounds.height}`);
-        if (screenCalibrationRun.square) screenCalibrationRun.square = translateCalibrationSquare(screenCalibrationRun.square, 0, 0, bounds);
-        renderCalibrationSquare();
-      });
-    } else renderScreenCalibrationStatus();
     savePreferences();
   });
   window.addEventListener("blur", () => {
@@ -3814,7 +3414,6 @@ function initializeEvents() {
     activeTracePointerId = undefined;
     recordPhysicalInput("window", "orientation-change", "orientation", screen.orientation.type);
     constrainAndRenderWidget();
-    if (!screenCalibrationRun.active) renderScreenCalibrationStatus();
   });
 
   elements.panelToggle.addEventListener("click", () => {
@@ -3822,6 +3421,9 @@ function initializeEvents() {
   });
   elements.experimentPanelToggle.addEventListener("click", () => {
     toggleTopLevelProtocol("experiment");
+  });
+  elements.screenCalibrationPanelToggle.addEventListener("click", () => {
+    toggleTopLevelProtocol("calibration");
   });
   elements.touchPlaygroundPanelToggle.addEventListener("click", () => {
     toggleTopLevelProtocol("touch");
@@ -4307,73 +3909,6 @@ function initializeEvents() {
   elements.exportButton.addEventListener("click", exportLog);
   elements.clearButton.addEventListener("click", clearLog);
   elements.experimentStartButton.addEventListener("click", startExperiment);
-  elements.screenCalibrationStart.addEventListener("click", beginScreenCalibration);
-  elements.screenCalibrationShortcuts.addEventListener("click", (event) => {
-    const button = event.target.closest("[data-currency-code]");
-    const currency = button && currencyByCode(button.dataset.currencyCode);
-    if (!currency) return;
-    showCalibrationCurrency(currency.code, currency.countries.length === 1 ? currency.countries[0].code : "");
-  });
-  elements.screenCalibrationCountrySearch.addEventListener("input", () => renderCountryGrid(elements.screenCalibrationCountrySearch.value));
-  elements.screenCalibrationCountryGrid.addEventListener("click", (event) => {
-    const button = event.target.closest("[data-country-code]");
-    const country = button && countryByCode(button.dataset.countryCode);
-    if (country) showCalibrationCurrency(country.currencyCode, country.code);
-  });
-  elements.screenCalibrationCountryBack.addEventListener("click", () => {
-    elements.screenCalibrationCoinPicker.hidden = true;
-    elements.screenCalibrationDirectory.hidden = false;
-    elements.screenCalibrationCountryGrid.hidden = false;
-    elements.screenCalibrationCountrySearch.focus();
-  });
-  elements.screenCalibrationCountrySelect.addEventListener("change", () => {
-    const country = countryByCode(elements.screenCalibrationCountrySelect.value);
-    const currency = currencyByCode(screenCalibrationRun.currencyCode);
-    if (!country || !currency || country.currencyCode !== currency.code) return;
-    showCalibrationCurrency(currency.code, country.code);
-    elements.screenCalibrationCountrySelect.focus();
-  });
-  elements.screenCalibrationCoinGrid.addEventListener("click", (event) => {
-    const button = event.target.closest("[data-coin-id]");
-    if (button) chooseCalibrationCoin(button.dataset.coinId);
-  });
-  elements.screenCalibrationCanvas.addEventListener("pointerdown", beginCalibrationPointer);
-  elements.screenCalibrationCanvas.addEventListener("pointermove", moveCalibrationPointer);
-  elements.screenCalibrationCanvas.addEventListener("pointerup", (event) => finishCalibrationPointer(event));
-  elements.screenCalibrationCanvas.addEventListener("pointercancel", (event) => finishCalibrationPointer(event, true));
-  elements.screenCalibrationConfirm.addEventListener("click", confirmScreenCalibrationMeasurement);
-  elements.screenCalibrationRedraw.addEventListener("click", redrawCalibrationSquare);
-  elements.screenCalibrationChooseAnother.addEventListener("click", chooseAnotherCalibrationCoin);
-  const cancelScreenCalibration = () => {
-    endScreenCalibration();
-    announce("Screen calibration cancelled.");
-  };
-  elements.screenCalibrationCancel.addEventListener("click", cancelScreenCalibration);
-  elements.screenCalibrationCancelChoose.addEventListener("click", cancelScreenCalibration);
-  elements.screenCalibrationLayer.addEventListener("keydown", (event) => {
-    if (!screenCalibrationRun.active) return;
-    if (event.key === "Escape") {
-      event.preventDefault();
-      event.stopImmediatePropagation();
-      endScreenCalibration();
-      announce("Screen calibration cancelled.");
-      return;
-    }
-    if (screenCalibrationRun.step !== "adjust" || !screenCalibrationRun.square) return;
-    const movement = event.shiftKey ? 10 : 1;
-    const delta = { ArrowLeft: [-movement, 0], ArrowRight: [movement, 0], ArrowUp: [0, -movement], ArrowDown: [0, movement] }[event.key];
-    const resize = event.key === "+" || event.key === "=" ? movement : (event.key === "-" || event.key === "_" ? -movement : 0);
-    if (!delta && !resize) return;
-    event.preventDefault();
-    event.stopImmediatePropagation();
-    const bounds = screenCalibrationCanvasBounds();
-    if (delta) screenCalibrationRun.square = translateCalibrationSquare(screenCalibrationRun.square, delta[0], delta[1], bounds);
-    if (resize) {
-      const target = { x: screenCalibrationRun.square.x + screenCalibrationRun.square.side + resize, y: screenCalibrationRun.square.y + screenCalibrationRun.square.side + resize };
-      screenCalibrationRun.square = resizeCalibrationSquareFromCorner(screenCalibrationRun.square, "se", target, bounds);
-    }
-    renderCalibrationSquare();
-  });
   elements.experimentRetryExportButton.addEventListener("click", () => {
     if (!experiment.lastExport) return;
     downloadCsvParts(experiment.lastExport.parts, experiment.lastExport.filename);
@@ -4382,11 +3917,6 @@ function initializeEvents() {
   document.addEventListener("fullscreenchange", () => {
     touchTrace.resize(window.innerWidth, window.innerHeight);
     activeTracePointerId = undefined;
-    if (screenCalibrationRun.active && document.fullscreenElement !== elements.screenCalibrationLayer) {
-      endScreenCalibration({ exitFullscreen: false });
-      announce("Screen calibration cancelled because fullscreen ended.");
-      return;
-    }
     if (experiment.phase === "running" && experiment.ownsFullscreen && !document.fullscreenElement) {
       finishExperiment("fullscreen-exited");
       return;
@@ -4550,7 +4080,6 @@ function initialize() {
   applyRetroTheme();
   updateAccordionPanelStates();
   initializePolarUi();
-  initializeScreenCalibrationUi();
   updateModeControls();
   updateFeatureSpace();
   updateCustomizationControls();

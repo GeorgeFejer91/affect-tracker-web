@@ -4,17 +4,19 @@ import { readFile } from "node:fs/promises";
 
 const readSiteFile = (name) => readFile(new URL(`../site/${name}`, import.meta.url), "utf8");
 
-test("the fourth Polar Stream widget is explicit, branded, and opt-in", async () => {
+test("the fifth Polar Stream widget is explicit, branded, and opt-in", async () => {
   const html = await readSiteFile("index.html");
   const css = await readSiteFile("styles.css");
   const settingsIndex = html.indexOf('id="control-panel"');
   const experimentIndex = html.indexOf('id="experiment-panel"');
+  const calibrationIndex = html.indexOf('id="screen-calibration-panel"');
   const touchIndex = html.indexOf('id="touch-playground-panel"');
   const polarIndex = html.indexOf('id="polar-stream-panel"');
 
   assert.ok(settingsIndex >= 0);
   assert.ok(experimentIndex > settingsIndex);
-  assert.ok(touchIndex > experimentIndex);
+  assert.ok(calibrationIndex > experimentIndex);
+  assert.ok(touchIndex > calibrationIndex);
   assert.ok(polarIndex > touchIndex);
   assert.match(html, /polar-stream-logo\.svg/);
   assert.match(html, /aria-label="Polar Stream — Experimental"/);
@@ -67,11 +69,11 @@ test("Polar assignments stay browser-local and defer to touch tracking", async (
   assert.doesNotMatch(portable, /polarMappings|polarStream/i);
 });
 
-test("all five top-level panels collapse their alternatives", async () => {
+test("all six top-level panels collapse their alternatives", async () => {
   const app = await readSiteFile("src/app.js");
   const protocols = await readSiteFile("src/accordion-protocols.js");
 
-  for (const id of ["settings", "experiment", "touch", "polar", "ground"]) {
+  for (const id of ["settings", "experiment", "calibration", "touch", "polar", "ground"]) {
     assert.match(app, new RegExp(`toggleTopLevelProtocol\\("${id}"\\)`));
     assert.match(protocols, new RegExp(`\\b${id}: Object\\.freeze`));
   }

@@ -2,7 +2,7 @@
 
 ## Scope and support boundary
 
-The fourth top-level **Polar Stream — Experimental** accordion is an opt-in,
+The fifth top-level **Polar Stream — Experimental** accordion is an opt-in,
 browser-only adapter for a Polar H10. It connects directly from the page through
 Web Bluetooth, starts the H10 PMD ECG stream at 130 Hz, subscribes to the
 standard heart-rate/RR characteristic when available, and reads battery level
@@ -16,7 +16,7 @@ metric IDs, default ranges, normalization, independent X/Y assignment, and
 bounded-physiology privacy contract. Native mappings exist only in application
 memory for the upcoming/running run and do not extend session JSON v1.
 
-The accordion is the fourth top-level control surface. Its connector is a
+The accordion is the fifth top-level control surface. Its connector is a
 compact logo/status/battery/action module rather than a second settings panel.
 Derived signals appear as independent metric modules with direct **X ·
 Valence** and **Y · Arousal** buttons. Detailed source/range/reversal controls
@@ -41,7 +41,7 @@ equipment, and other browser tabs. This is operator guidance, not a readiness
 claim: only a valid 130 Hz ECG frame makes the browser session live.
 
 The main page identifies the Quest user agent and fails closed because its
-fourth accordion is a desktop-browser support path. The separate experimental
+fifth accordion is a desktop-browser support path. The separate experimental
 `webxr.html` flow has a deliberately narrower diagnostic override: its Polar
 menu is enabled only when the exact headset browser exposes
 `navigator.bluetooth.requestDevice`, and it states that this does not qualify
@@ -241,7 +241,7 @@ assignments. The saved Touch source becomes active while its accordion is open
 or an experiment is running; during that time it pauses Polar affect drive
 without disconnecting the H10. Collapsing Touch outside an experiment suspends
 pointer drive and reapplies the most recent finite assigned Polar metrics.
-Turning Touch off returns the saved source to manual. All five top-level
+Turning Touch off returns the saved source to manual. All six top-level
 accordions are mutually exclusive protocol surfaces; opening or closing them
 never erases a Polar assignment or disconnects the H10.
 

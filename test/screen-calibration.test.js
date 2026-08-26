@@ -9,7 +9,7 @@ import {
   CURRENCY_CATALOG,
   coinReferenceById,
   validateCoinReferenceCatalog,
-} from "../site/src/coin-reference-catalog.js";
+} from "../site/screen-calibration/coin-reference-catalog.js";
 import {
   calibrationRecordContext,
   calibrationSquareAfterPointerCancellation,
@@ -23,7 +23,7 @@ import {
   screenCalibrationStatus,
   translateCalibrationSquare,
   translateCalibrationSquareFromEdge,
-} from "../site/src/screen-calibration.js";
+} from "../site/screen-calibration/screen-calibration.js";
 
 const display = createDisplaySignature({ screenWidth: 1920, screenHeight: 1080, devicePixelRatio: 1.25, orientation: "landscape-primary" });
 const bounds = { width: 800, height: 600 };
@@ -127,13 +127,18 @@ test("display scaling and orientation changes invalidate records and withhold ph
   assert.equal(screenCalibrationStatus(undefined, display).state, "missing");
 });
 
-test("experiment runner contains the compact fullscreen three-step pointer wizard", async () => {
-  const [html, app, css, logger] = await Promise.all([
+test("the sixth Screen Calibration module owns the complete coin protocol and Experiment only consumes its context", async () => {
+  const [html, app, controller, css, logger, icon] = await Promise.all([
     readFile(new URL("../site/index.html", import.meta.url), "utf8"),
     readFile(new URL("../site/src/app.js", import.meta.url), "utf8"),
+    readFile(new URL("../site/screen-calibration/controller.js", import.meta.url), "utf8"),
     readFile(new URL("../site/styles.css", import.meta.url), "utf8"),
     readFile(new URL("../site/src/logger.js", import.meta.url), "utf8"),
+    readFile(new URL("../site/screen-calibration/assets/module-icon.svg", import.meta.url), "utf8"),
   ]);
+  assert.match(html, /id="screen-calibration-panel"[^>]*data-module-protocol="calibration"/);
+  assert.match(html, /src="\.\/screen-calibration\/assets\/module-icon\.svg"/);
+  assert.match(html, /Experiment includes that physical-size context in every CSV row/);
   assert.doesNotMatch(html, /id="screen-calibration-coin"/);
   assert.doesNotMatch(html, /type="range"[^>]*screen-calibration/);
   assert.match(html, />Calibrate screen</);
@@ -147,14 +152,18 @@ test("experiment runner contains the compact fullscreen three-step pointer wizar
   assert.match(html, />Use this measurement</);
   assert.match(html, />Redraw</);
   assert.match(html, />Choose another coin</);
-  assert.match(app, /screenCalibrationLayer\.requestFullscreen\(\)/);
-  assert.match(app, /setPointerCapture\(event\.pointerId\)/);
-  assert.match(app, /createCountryFlagSvg/);
-  assert.match(app, /createCurrencySvg/);
-  assert.match(app, /screenCalibrationDirectory\.hidden = true/);
-  assert.match(app, /maximum outer span/);
-  assert.match(app, /pointercancel/);
+  assert.match(app, /createScreenCalibrationController/);
+  assert.match(app, /screenCalibration\.recordContext\(\)/);
+  assert.doesNotMatch(app, /function (?:renderScreenCalibrationStatus|createCountryFlagSvg|beginCalibrationPointer)/);
+  assert.match(controller, /layer\.requestFullscreen\(\)/);
+  assert.match(controller, /setPointerCapture\(event\.pointerId\)/);
+  assert.match(controller, /createCountryFlagSvg/);
+  assert.match(controller, /createCurrencySvg/);
+  assert.match(controller, /elements\.directory\.hidden = true/);
+  assert.match(controller, /maximum outer span/);
+  assert.match(controller, /pointercancel/);
   assert.match(css, /touch-action: none/);
   assert.match(css, /\.screen-calibration-layer \[hidden\] \{ display: none !important; \}/);
+  assert.match(icon, /<svg[^>]*viewBox="0 0 64 64"/);
   for (const field of ["screen_calibration_protocol", "screen_calibration_version", "screen_calibration_country_code", "screen_calibration_country_name", "screen_calibration_repeatability_percent"]) assert.match(logger, new RegExp(`"${field}"`));
 });

@@ -1,6 +1,6 @@
 # Experimental Ground Control settings beacon
 
-This is the normative contract for Ground Control's browser-to-browser portable-settings snapshot. It is the static half of the fifth Ground Control module, not the continuous FLUBBER X/Y transport, a database, persistent storage, physiology channel, or general messaging API.
+This is the normative contract for Ground Control's browser-to-browser portable-settings snapshot. It is the static half of the sixth Ground Control module, not the continuous FLUBBER X/Y transport, a database, persistent storage, physiology channel, or general messaging API.
 
 ## Product boundary
 

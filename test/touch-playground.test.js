@@ -4,15 +4,17 @@ import { readFile } from "node:fs/promises";
 
 const readSiteFile = (name) => readFile(new URL(`../site/${name}`, import.meta.url), "utf8");
 
-test("the online interface exposes a third experimental touch playground", async () => {
+test("the online interface exposes a fourth experimental touch playground", async () => {
   const html = await readSiteFile("index.html");
   const settingsIndex = html.indexOf('id="control-panel"');
   const experimentIndex = html.indexOf('id="experiment-panel"');
+  const calibrationIndex = html.indexOf('id="screen-calibration-panel"');
   const playgroundIndex = html.indexOf('id="touch-playground-panel"');
 
   assert.ok(settingsIndex >= 0);
   assert.ok(experimentIndex > settingsIndex);
-  assert.ok(playgroundIndex > experimentIndex);
+  assert.ok(calibrationIndex > experimentIndex);
+  assert.ok(playgroundIndex > calibrationIndex);
   assert.match(html, /Touch\/Trackpad Playground/);
   assert.match(html, /aria-label="Touch\/Trackpad Playground — Experimental"/);
   assert.match(html, /class="experimental-badge" aria-hidden="true"/);

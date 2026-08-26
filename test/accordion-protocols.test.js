@@ -12,17 +12,18 @@ import {
 const allOpen = {
   panelOpen: true,
   experimentPanelOpen: true,
+  screenCalibrationPanelOpen: true,
   touchPlaygroundPanelOpen: true,
   polarStreamPanelOpen: true,
   groundControlPanelOpen: true,
 };
 
-test("the five UI accordions expose distinct protocol boundaries", async () => {
+test("the six UI accordions expose distinct protocol boundaries", async () => {
   const html = await readFile(new URL("../site/index.html", import.meta.url), "utf8");
-  assert.deepEqual(Object.keys(ACCORDION_PROTOCOLS), ["settings", "experiment", "touch", "polar", "ground"]);
+  assert.deepEqual(Object.keys(ACCORDION_PROTOCOLS), ["settings", "experiment", "calibration", "touch", "polar", "ground"]);
   const responsibilities = Object.values(ACCORDION_PROTOCOLS).flatMap((protocol) => protocol.responsibilities);
   assert.equal(new Set(responsibilities).size, responsibilities.length);
-  assert.equal(new Set(Object.values(ACCORDION_PROTOCOLS).map(({ domainModule }) => domainModule)).size, 5);
+  assert.equal(new Set(Object.values(ACCORDION_PROTOCOLS).map(({ domainModule }) => domainModule)).size, 6);
   for (const [protocolId, protocol] of Object.entries(ACCORDION_PROTOCOLS)) {
     assert.match(html, new RegExp(`id="${protocol.panelId}"[^>]*data-module-protocol="${protocolId}"`));
     const implementation = await readFile(new URL(`../site/src/${protocol.domainModule}`, import.meta.url), "utf8");
@@ -34,6 +35,7 @@ test("the accordion shell keeps exactly one module open", () => {
   assert.deepEqual(normalizeAccordionState(allOpen), {
     panelOpen: true,
     experimentPanelOpen: false,
+    screenCalibrationPanelOpen: false,
     touchPlaygroundPanelOpen: false,
     polarStreamPanelOpen: false,
     groundControlPanelOpen: false,
@@ -41,6 +43,7 @@ test("the accordion shell keeps exactly one module open", () => {
   assert.deepEqual(setAccordionProtocolOpen(allOpen, "polar", true), {
     panelOpen: false,
     experimentPanelOpen: false,
+    screenCalibrationPanelOpen: false,
     touchPlaygroundPanelOpen: false,
     polarStreamPanelOpen: true,
     groundControlPanelOpen: false,
@@ -48,6 +51,7 @@ test("the accordion shell keeps exactly one module open", () => {
   assert.deepEqual(toggleAccordionProtocol({ ...allOpen, panelOpen: false }, "experiment"), {
     panelOpen: false,
     experimentPanelOpen: false,
+    screenCalibrationPanelOpen: false,
     touchPlaygroundPanelOpen: false,
     polarStreamPanelOpen: false,
     groundControlPanelOpen: false,

@@ -7,7 +7,7 @@
     <meta name="description" content="A draggable, browser-only 2D affect tracker inspired by AffectTracker.">
     <title>2D Affect Tracker</title>
     <script src="./src/theme-bootstrap.js?v=retro-1"></script>
-    <link rel="stylesheet" href="./styles.css?v=mobile-direct-4-collaboration-3-retro-1">
+    <link rel="stylesheet" href="./styles.css?v=mobile-direct-4-collaboration-4-retro-1">
   </head>
   <body>
     <main id="stage" aria-label="Interactive affect tracker">
@@ -327,17 +327,7 @@
           <section class="experiment-launch" aria-labelledby="experiment-title">
             <h3 id="experiment-title">Remote study demonstration</h3>
             <p>Runs the selected stimulus after a 3–2–1 countdown. The preloaded example begins at the source video's original 01:30 point; YouTube studies can define their own start and finish times.</p>
-            <section class="screen-calibration-card" aria-labelledby="screen-calibration-title">
-              <div class="screen-calibration-heading">
-                <div>
-                  <h4 id="screen-calibration-title">Screen calibration</h4>
-                  <p>Optional browser-local estimate of this display's physical size.</p>
-                </div>
-                <output id="screen-calibration-status" class="screen-calibration-status" data-state="missing">Not calibrated</output>
-              </div>
-              <button id="screen-calibration-start" type="button">Calibrate screen</button>
-              <p id="screen-calibration-result" class="experiment-privacy">Calibration is approximate and applies only while this display, scaling, and orientation stay unchanged.</p>
-            </section>
+            <p class="experiment-privacy">If the separate Screen Calibration module has a current valid result, Experiment includes that physical-size context in every CSV row. Missing or stale calibration never blocks a run.</p>
             <div class="experiment-settings">
               <label>Stimulus source
                 <select id="experiment-source">
@@ -356,6 +346,102 @@
             <button id="experiment-retry-export-button" type="button" hidden>Retry last experiment CSV</button>
             <p id="experiment-size-warning" class="experiment-warning" hidden></p>
             <p id="experiment-source-note" class="experiment-privacy">The preloaded video and recording remain in this page. Physical key, mouse-button, and wheel identifiers—not typed text—are recorded locally during the experiment.</p>
+          </section>
+        </div>
+      </section>
+
+      <section id="screen-calibration-panel" class="control-panel screen-calibration-panel is-collapsed" data-module-protocol="calibration" aria-labelledby="screen-calibration-panel-title">
+        <button id="screen-calibration-panel-toggle" class="panel-toggle" type="button" aria-label="Screen Calibration" aria-expanded="false" aria-controls="screen-calibration-panel-content">
+          <span id="screen-calibration-panel-title" class="panel-title-group">
+            <img class="screen-calibration-module-icon" src="./screen-calibration/assets/module-icon.svg" alt="">
+            <span class="panel-label-full">Screen Calibration</span>
+            <span class="panel-label-mobile">Screen</span>
+          </span>
+          <span id="screen-calibration-toggle-symbol" class="toggle-symbol" aria-hidden="true">+</span>
+        </button>
+        <div id="screen-calibration-panel-content" class="panel-content">
+          <section class="screen-calibration-module" aria-labelledby="screen-calibration-title">
+            <h3 id="screen-calibration-title">Coin-based physical screen calibration</h3>
+            <p>Estimate physical screen size with a current circulating coin whose official diameter or maximum outer span is known.</p>
+            <section class="screen-calibration-card" aria-label="Saved screen calibration">
+              <div class="screen-calibration-heading">
+                <div>
+                  <h4>Calibration record</h4>
+                  <p>Stored only in this browser and kept separate from portable settings.</p>
+                </div>
+                <output id="screen-calibration-status" class="screen-calibration-status" data-state="missing">Not calibrated</output>
+              </div>
+              <button id="screen-calibration-start" type="button">Calibrate screen</button>
+              <p id="screen-calibration-result" class="experiment-privacy">Calibration is approximate and applies only while this display, scaling, and orientation stay unchanged.</p>
+            </section>
+            <details class="screen-calibration-explanation">
+              <summary>How the coin protocol works</summary>
+              <p>Choose your country or currency and a coin you physically have. In fullscreen, place the coin on the display and fit a perfect square to its outermost edges. The module derives millimetres per CSS pixel from the official coin size; it never records the pointer path or claims to know the manufactured panel size without this reference.</p>
+            </details>
+          </section>
+
+          <section id="screen-calibration-layer" class="screen-calibration-layer" hidden aria-labelledby="screen-calibration-overlay-title">
+            <div class="screen-calibration-overlay">
+              <header class="screen-calibration-wizard-header">
+                <div>
+                  <p class="screen-calibration-kicker">Physical display calibration</p>
+                  <h2 id="screen-calibration-overlay-title">Choose a reference coin</h2>
+                </div>
+                <output id="screen-calibration-step" class="screen-calibration-step">Step 1 of 3</output>
+              </header>
+              <section id="screen-calibration-choose-view" class="screen-calibration-view" aria-label="Choose country and coin">
+                <div id="screen-calibration-directory" class="screen-calibration-directory">
+                  <p>Pick a coin you have with you. Coin diagrams show relative outer sizes only; they are not physically scaled. For a non-round coin, use its furthest outer edges.</p>
+                  <div>
+                    <h3>BIS 2025 ten most-traded currencies</h3>
+                    <div id="screen-calibration-shortcuts" class="screen-calibration-shortcuts"></div>
+                  </div>
+                  <label class="screen-calibration-search">Search countries and currencies
+                    <input id="screen-calibration-country-search" type="search" autocomplete="off" placeholder="Type a country, currency name, or code">
+                  </label>
+                  <div id="screen-calibration-country-grid" class="screen-calibration-country-grid" role="group" aria-label="Countries and currencies"></div>
+                </div>
+                <section id="screen-calibration-coin-picker" class="screen-calibration-coin-picker" hidden aria-labelledby="screen-calibration-currency-title">
+                  <button id="screen-calibration-country-back" type="button" class="text-button">← Countries and currencies</button>
+                  <h3 id="screen-calibration-currency-title"></h3>
+                  <p id="screen-calibration-currency-description"></p>
+                  <label id="screen-calibration-country-select-field" class="screen-calibration-country-select" hidden>Country
+                    <select id="screen-calibration-country-select"></select>
+                  </label>
+                  <div id="screen-calibration-coin-grid" class="screen-calibration-coin-grid"></div>
+                </section>
+              </section>
+              <section id="screen-calibration-draw-view" class="screen-calibration-view screen-calibration-draw-view" hidden aria-label="Draw and adjust square">
+                <p id="screen-calibration-instructions">Place the selected coin flat anywhere on the screen with space around it, then drag diagonally around its outer edge.</p>
+                <p id="screen-calibration-selected-coin" class="screen-calibration-selected-coin"></p>
+                <svg id="screen-calibration-canvas" class="screen-calibration-canvas" role="img" aria-label="Draw a square around the physical coin" tabindex="0">
+                  <rect id="screen-calibration-draw-surface" class="screen-calibration-draw-surface" x="0" y="0" width="100%" height="100%"></rect>
+                  <g id="screen-calibration-square" class="screen-calibration-square" hidden>
+                    <rect id="screen-calibration-square-rect" class="screen-calibration-square-rect"></rect>
+                    <g id="screen-calibration-handles" hidden>
+                      <rect class="screen-calibration-edge-handle" data-edge="top"></rect>
+                      <rect class="screen-calibration-edge-handle" data-edge="right"></rect>
+                      <rect class="screen-calibration-edge-handle" data-edge="bottom"></rect>
+                      <rect class="screen-calibration-edge-handle" data-edge="left"></rect>
+                      <circle class="screen-calibration-corner-handle" data-corner="nw" r="11"></circle>
+                      <circle class="screen-calibration-corner-handle" data-corner="ne" r="11"></circle>
+                      <circle class="screen-calibration-corner-handle" data-corner="se" r="11"></circle>
+                      <circle class="screen-calibration-corner-handle" data-corner="sw" r="11"></circle>
+                    </g>
+                  </g>
+                </svg>
+                <p class="screen-calibration-readout"><output id="screen-calibration-size-output">Draw a square</output></p>
+                <div id="screen-calibration-actions" class="screen-calibration-actions" hidden>
+                  <button id="screen-calibration-confirm" type="button">Use this measurement</button>
+                  <button id="screen-calibration-redraw" type="button" class="secondary-button">Redraw</button>
+                  <button id="screen-calibration-choose-another" type="button" class="secondary-button">Choose another coin</button>
+                  <button id="screen-calibration-cancel" type="button" class="secondary-button">Cancel</button>
+                </div>
+                <p class="screen-calibration-help">Drag an edge to move on one axis or a corner to resize. Arrow keys move; + and − resize. Hold Shift for 10-pixel steps.</p>
+              </section>
+              <p id="screen-calibration-error" class="screen-calibration-error" role="alert" hidden></p>
+              <button id="screen-calibration-cancel-choose" type="button" class="secondary-button screen-calibration-cancel-choose">Cancel</button>
+            </div>
           </section>
         </div>
       </section>
@@ -674,69 +760,6 @@
         </div>
       </section>
 
-      <section id="screen-calibration-layer" class="screen-calibration-layer" hidden aria-labelledby="screen-calibration-overlay-title">
-        <div class="screen-calibration-overlay">
-          <header class="screen-calibration-wizard-header">
-            <div>
-              <p class="screen-calibration-kicker">Physical display calibration</p>
-              <h2 id="screen-calibration-overlay-title">Choose a reference coin</h2>
-            </div>
-            <output id="screen-calibration-step" class="screen-calibration-step">Step 1 of 3</output>
-          </header>
-          <section id="screen-calibration-choose-view" class="screen-calibration-view" aria-label="Choose country and coin">
-            <div id="screen-calibration-directory" class="screen-calibration-directory">
-              <p>Pick a coin you have with you. Coin diagrams show relative outer sizes only; they are not physically scaled. For a non-round coin, use its furthest outer edges.</p>
-              <div>
-                <h3>BIS 2025 ten most-traded currencies</h3>
-                <div id="screen-calibration-shortcuts" class="screen-calibration-shortcuts"></div>
-              </div>
-              <label class="screen-calibration-search">Search countries and currencies
-                <input id="screen-calibration-country-search" type="search" autocomplete="off" placeholder="Type a country, currency name, or code">
-              </label>
-              <div id="screen-calibration-country-grid" class="screen-calibration-country-grid" role="group" aria-label="Countries and currencies"></div>
-            </div>
-            <section id="screen-calibration-coin-picker" class="screen-calibration-coin-picker" hidden aria-labelledby="screen-calibration-currency-title">
-              <button id="screen-calibration-country-back" type="button" class="text-button">← Countries and currencies</button>
-              <h3 id="screen-calibration-currency-title"></h3>
-              <p id="screen-calibration-currency-description"></p>
-              <label id="screen-calibration-country-select-field" class="screen-calibration-country-select" hidden>Country
-                <select id="screen-calibration-country-select"></select>
-              </label>
-              <div id="screen-calibration-coin-grid" class="screen-calibration-coin-grid"></div>
-            </section>
-          </section>
-          <section id="screen-calibration-draw-view" class="screen-calibration-view screen-calibration-draw-view" hidden aria-label="Draw and adjust square">
-            <p id="screen-calibration-instructions">Place the selected coin flat anywhere on the screen with space around it, then drag diagonally around its outer edge.</p>
-            <p id="screen-calibration-selected-coin" class="screen-calibration-selected-coin"></p>
-            <svg id="screen-calibration-canvas" class="screen-calibration-canvas" role="img" aria-label="Draw a square around the physical coin" tabindex="0">
-              <rect id="screen-calibration-draw-surface" class="screen-calibration-draw-surface" x="0" y="0" width="100%" height="100%"></rect>
-              <g id="screen-calibration-square" class="screen-calibration-square" hidden>
-                <rect id="screen-calibration-square-rect" class="screen-calibration-square-rect"></rect>
-                <g id="screen-calibration-handles" hidden>
-                  <rect class="screen-calibration-edge-handle" data-edge="top"></rect>
-                  <rect class="screen-calibration-edge-handle" data-edge="right"></rect>
-                  <rect class="screen-calibration-edge-handle" data-edge="bottom"></rect>
-                  <rect class="screen-calibration-edge-handle" data-edge="left"></rect>
-                  <circle class="screen-calibration-corner-handle" data-corner="nw" r="11"></circle>
-                  <circle class="screen-calibration-corner-handle" data-corner="ne" r="11"></circle>
-                  <circle class="screen-calibration-corner-handle" data-corner="se" r="11"></circle>
-                  <circle class="screen-calibration-corner-handle" data-corner="sw" r="11"></circle>
-                </g>
-              </g>
-            </svg>
-            <p class="screen-calibration-readout"><output id="screen-calibration-size-output">Draw a square</output></p>
-            <div id="screen-calibration-actions" class="screen-calibration-actions" hidden>
-              <button id="screen-calibration-confirm" type="button">Use this measurement</button>
-              <button id="screen-calibration-redraw" type="button" class="secondary-button">Redraw</button>
-              <button id="screen-calibration-choose-another" type="button" class="secondary-button">Choose another coin</button>
-              <button id="screen-calibration-cancel" type="button" class="secondary-button">Cancel</button>
-            </div>
-            <p class="screen-calibration-help">Drag an edge to move on one axis or a corner to resize. Arrow keys move; + and − resize. Hold Shift for 10-pixel steps.</p>
-          </section>
-          <p id="screen-calibration-error" class="screen-calibration-error" role="alert" hidden></p>
-          <button id="screen-calibration-cancel-choose" type="button" class="secondary-button screen-calibration-cancel-choose">Cancel</button>
-        </div>
-      </section>
 
       <dialog id="binding-capture-dialog" class="binding-capture-dialog" aria-labelledby="binding-capture-title" aria-describedby="binding-capture-instructions">
         <div class="binding-capture-content">
@@ -780,6 +803,6 @@
     </main>
 
     <script src="./vendor/vdoninja/1.5.5/vdoninja-sdk.min.js"></script>
-    <script type="module" src="./src/app.js?v=mobile-direct-4-collaboration-3-retro-1"></script>
+    <script type="module" src="./src/app.js?v=screen-calibration-module-1-mobile-direct-4-collaboration-4-retro-1"></script>
   </body>
 </html>
