@@ -11,16 +11,17 @@ test("web settings are split into compact task-focused sections", async () => {
     "Input &amp; shortcuts",
     "Appearance &amp; cursor",
     "2D grid &amp; colors",
-    "Data &amp; settings files",
+    "Data",
     "Advanced &amp; integrations",
   ]) {
     assert.match(html, new RegExp(`<summary>${label}</summary>`));
   }
-  assert.match(html, /Data &amp; settings files[\s\S]*id="settings-import-button"[\s\S]*id="settings-export-button"/);
+  assert.match(html, /<summary>Data<\/summary>[\s\S]*id="export-button"/);
+  assert.match(html, /id="ground-control-panel"[\s\S]*id="settings-export-button"[\s\S]*id="settings-import-button"/);
   assert.match(html, /Appearance &amp; cursor[\s\S]*id="settings-hide-cursor-toggle"[^>]*data-touch-hide-cursor/);
   const gridSection = html.slice(
     html.indexOf("<summary>2D grid &amp; colors</summary>"),
-    html.indexOf("<summary>Data &amp; settings files</summary>"),
+    html.indexOf("<summary>Data</summary>"),
   );
   assert.match(gridSection, /class="web-shape-buttons"[\s\S]*data-base-shape="circle"[\s\S]*data-base-shape="heart"[\s\S]*data-base-shape="triangle"[\s\S]*data-base-shape="square"/);
   assert.match(gridSection, /id="web-feature-space"[\s\S]*data-palette="up"/);
@@ -32,8 +33,8 @@ test("the shape picker uses persistent accessible buttons instead of a dropdown"
 
   assert.doesNotMatch(html, /id="web-base-shape"/);
   assert.equal((html.match(/data-base-shape=/g) ?? []).length, 4);
-  const shapePicker = html.slice(html.indexOf("class=\"web-shape-buttons\""), html.indexOf("id=\"web-shape-picker-help\""));
-  assert.equal((shapePicker.match(/aria-pressed="false"/g) ?? []).length, 4);
+  const picker = html.slice(html.indexOf('class="web-shape-buttons"'), html.indexOf('id="web-shape-picker-help"'));
+  assert.equal((picker.match(/aria-pressed="false"/g) ?? []).length, 4);
   assert.match(app, /baseShapeButtons: \[\.\.\.document\.querySelectorAll\("\[data-base-shape\]"\)\]/);
   assert.match(app, /button\.dataset\.baseShape === state\.visual\.baseShape/);
   assert.match(app, /state\.visual\.baseShape = button\.dataset\.baseShape/);

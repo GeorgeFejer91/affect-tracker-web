@@ -45,18 +45,18 @@ The web, desktop, and Quest applications must feel like the same instrument. Sha
 - `site/src/touch-trace.js`: browser-only trajectory filtering, equal-distance geometry, direct continuous and gated live move-and-hold feedback, adaptive calibration, and trace fitting.
 - `site/src/polar-stream.js`: browser-only Web Bluetooth capability boundary, Polar H10 PMD/heart-rate decoding, bounded ECG/RR metrics, and GATT lifecycle.
 - `site/src/flubber-remote.js`: browser-neutral VDO.Ninja discovery, data-channel lifecycle, 12-byte Flubber coordinate protocol, sequencing, scheduling, staleness, diagnostics, and test injection boundary.
-- `site/src/settings-beacon.js`: browser-neutral VDO.Ninja discovery and reliable ordered transfer for one immutable, validated portable-settings snapshot; it is independent from the coordinate protocol.
 - `site/vendor/vdoninja/1.5.5/`: locally loaded unmodified official VDO.Ninja SDK distribution/source, MPL-2.0 license, provenance notice, and verified hashes.
 - `vr/app/src/main/java/io/github/georgefejer91/affecttracker/vr/PolarH10Manager.kt`: application-scoped native Quest H10 discovery, official-SDK streaming, readiness, lifecycle, and privacy boundary.
 - `vr/app/src/main/java/io/github/georgefejer91/affecttracker/vr/PolarMetrics.kt`: native bounded mirror of the browser's ten metric definitions, per-axis mappings, and readiness gate.
 - `site/src/mobile.js`: browser-only narrow touch-capable viewport detection for one-time smartphone Touch Lab discovery; responsive presentation remains in `site/styles.css`.
 - `site/src/theme-bootstrap.js`, `site/src/retro-theme.js`, and `site/assets/retro-ui/`: browser-local pre-paint Windows 95 skin restoration, deterministic low-volume UI cue routing, and pinned local Kenney CC0 audio. The theme never enters portable settings or forks product behavior.
-- `site/src/accordion-protocols.js`: canonical registry for the four top-level web modules, their distinct responsibilities, mutually exclusive open state, and cross-module Touch/Trackpad activation rule.
+- `site/src/accordion-protocols.js`: canonical registry for the five top-level web modules, their distinct responsibilities, mutually exclusive open state, and cross-module Touch/Trackpad activation rule.
+- `site/src/ground-control.js`: browser-neutral Ground Control authority for named portable-settings snapshots, validated public discovery, and the static-settings VDO.Ninja channel. Live X/Y remains delegated to `flubber-remote.js`.
 - `site/webxr.html`, `site/src/webxr-study.js`, `site/src/webxr-study-core.js`, and `site/src/webxr-stimuli.js`: experimental headset-browser study entrypoint, flat/equirectangular WebXR/WebGL adapter, selectable repository-hosted stimulus catalog, Quest-controller, explicitly assigned Polar-metric, or explicit remote-coordinate affect input, stimulus-aware CSV download, and explicit per-run webhook delivery.
 - `for-ai/70-RESEARCH-PROVENANCE.md` and `for-ai/references.bib`: source-decision ledger and citation-ready bibliography.
 - `for-ai/65-EXPERIMENTAL-POLAR-STREAM.md`: normative Polar Stream support, privacy, metric, mapping, precedence, and qualification contract.
 - `for-ai/66-EXPERIMENTAL-REMOTE-FLUBBER.md`: normative public discovery, wire protocol, input ownership, privacy, observability, and hardware qualification contract for browser-to-browser Flubber coordinates.
-- `for-ai/68-EXPERIMENTAL-SETTINGS-BEACON.md`: normative public discovery, static snapshot, validation, preview/apply, and privacy contract for browser-to-browser portable settings.
+- `for-ai/68-EXPERIMENTAL-SETTINGS-BEACON.md`: normative Ground Control public discovery, named static snapshot, validation, preview/apply, and privacy contract for browser-to-browser portable settings.
 - `desktop/`: Tauri WebView presentation and typed native adapter.
 - `.github/workflows/`: deployment, verification, and native packaging automation.
 

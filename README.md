@@ -68,7 +68,7 @@ Brief WebRTC channel repair uses the same two-second loss grace, so it does not 
 
 ### Public settings JSON beacon
 
-The main page's **Data & settings files** section can press **Broadcast settings JSON** to capture the complete normalized object produced by **Export settings JSON** and make that one static snapshot available to other live copies of this site. It contains all portable Flubber configuration—input mode/rates, smoothing, normal and advanced bindings, animation/amplitude/disorder, base shape, palette, position, size, opacity, visibility, and LSL metadata—and no live X/Y coordinates. Later changes on the sending page do not alter the running beacon; stop and restart it to advertise a new snapshot.
+The main page's fifth **Ground Control** accordion provides named JSON download/load, a static **Broadcast JSON** / **Scan JSON** settings beacon, and a separate continuous **Broadcast Live FLUBBER** / **Scan Live FLUBBER** coordinate path. The static beacon captures one complete normalized portable settings object—including LSL metadata—and never sends live coordinates; the continuous stream sends only final X/Y and never sends settings or physiology. Both paths are inert until their explicit actions, use the operator-entered public name, and require stop/restart to change the advertised identity or frozen snapshot.
 
 Another browser presses **Find settings beacons**. One live source is selected automatically after a short discovery interval; several sources appear as large buttons. The receiver validates the protocol, source, size, schema version, and every portable field, then displays the complete formatted JSON. Nothing changes locally until **Apply received settings** is pressed. This path is independent from the low-latency `flubberxyv1` transport: it uses VDO.Ninja's default reliable ordered data channel, has no heartbeat or continuous loop, and does not use WebSocket fallback.
 
@@ -100,7 +100,7 @@ The normal tracker session keeps a fixed-size ring buffer of at most 10,000 reco
 - Semantic input events such as key/button presses, wheel changes, resets, mode changes, drag completion, export, and buffer clearing.
 - Affect samples at 20 Hz while the page is visible.
 
-By default, everything stays inside the current browser tab. There are no analytics. Network activity occurs only through reviewed explicit actions: optional YouTube playback, an entered WebXR HTTPS webhook, the remote-Flubber buttons, or the independent settings-beacon buttons described above. Remote Flubber sends only final anonymous X/Y coordinates; the settings beacon sends only one captured portable settings object. Neither sends physiology or records. Closing or refreshing the page discards records that have not been downloaded. Use **Download CSV** to export the current session in chronological order.
+By default, everything stays inside the current browser tab. There are no analytics. Network activity occurs only through reviewed explicit actions: optional YouTube playback, an entered WebXR HTTPS webhook, or Ground Control's static/live VDO.Ninja buttons. Live FLUBBER sends only final X/Y coordinates; the settings beacon sends only one captured portable settings object. Neither sends physiology or records. Closing or refreshing the page discards records that have not been downloaded. Use **Download CSV** to export the current session in chronological order.
 
 ### Remote study demonstration
 
@@ -132,7 +132,7 @@ The online and desktop apps expose the same input behavior, physical bindings, f
 
 The portable schema stores transparency as `overlay.opacity` (`1` is opaque, `0` is fully transparent) and the envelope as `visual.baseShape`. Additive version-1 `visual` and `advancedBindings` fields preserve backward compatibility with older version-1 files; an omitted `baseShape` resolves to Circle. The schema also carries the LSL stream metadata: GitHub Pages preserves those values for round-tripping, although a browser cannot publish LSL.
 
-Repository maintainers can replace [`site/settings.json`](./site/settings.json) with an exported version-1 file to change the hosted defaults. Returning browsers retain their own `localStorage` preferences; clear site data or import the JSON to apply new defaults immediately. File import/export itself stays local. Only the separate explicit public settings-beacon buttons transmit a captured copy, under the disclosure and preview-before-apply contract above.
+Repository maintainers can replace [`site/settings.json`](./site/settings.json) with an exported version-1 file to change the hosted defaults. Returning browsers retain their own `localStorage` preferences; clear site data or import the JSON to apply new defaults immediately. Ground Control file download/load stays local; only its explicit Broadcast JSON action transmits a frozen copy under the disclosure and preview-before-apply contract above.
 
 ### Float over other applications from the browser
 
