@@ -730,6 +730,80 @@ body.is-experiment-running .touch-trace-panel { z-index: 40; }
 .direction-button.is-capturing { border-color: #74d8ff; background: #123345; color: #bdefff; }
 .settings-button-row { display: grid; grid-template-columns: 1fr 1fr; gap: 0.45rem; margin-top: 0.65rem; }
 .settings-button-row button { min-height: 2.15rem; padding: 0.4rem; font-size: 0.7rem; }
+.settings-beacon {
+  margin-top: 0.8rem;
+  padding: 0.7rem;
+  border: 1px solid rgb(120 215 255 / 28%);
+  border-radius: 0.55rem;
+  background: rgb(31 91 121 / 9%);
+}
+.settings-beacon h3,
+.settings-beacon h4 { margin: 0; }
+.settings-beacon-status {
+  display: block;
+  margin-top: 0.6rem;
+  color: #a9e9ca;
+  font-size: 0.68rem;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+.settings-beacon-status.is-error { color: #ffb2a8; }
+.settings-beacon-details {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.4rem;
+  margin: 0.6rem 0 0;
+}
+.settings-beacon-details[hidden] { display: none; }
+.settings-beacon-details div {
+  min-width: 0;
+  padding: 0.4rem;
+  border-radius: 0.4rem;
+  background: rgb(0 0 0 / 24%);
+}
+.settings-beacon-details dt { color: #9eb2bd; font-size: 0.6rem; }
+.settings-beacon-details dd {
+  margin: 0.16rem 0 0;
+  color: #e8f8ff;
+  font: 700 0.63rem ui-monospace, SFMono-Regular, Consolas, monospace;
+  overflow-wrap: anywhere;
+}
+.settings-beacon-source-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.45rem;
+  margin-top: 0.65rem;
+}
+.settings-beacon-source-list[hidden] { display: none; }
+.settings-beacon-source-button {
+  min-height: 2.6rem;
+  padding: 0.45rem 0.55rem;
+  font-size: 0.68rem;
+  font-weight: 700;
+}
+.settings-beacon-source-button[aria-pressed="true"] {
+  border-color: #74d8ff;
+  background: #123345;
+  color: #bdefff;
+}
+.settings-beacon-preview {
+  margin-top: 0.65rem;
+  padding-top: 0.65rem;
+  border-top: 1px solid rgb(255 255 255 / 10%);
+}
+.settings-beacon-preview[hidden] { display: none; }
+.settings-beacon-preview pre {
+  max-height: 14rem;
+  margin: 0.5rem 0 0;
+  padding: 0.55rem;
+  overflow: auto;
+  border: 1px solid rgb(255 255 255 / 12%);
+  border-radius: 0.4rem;
+  background: #090c0e;
+  color: #dcebf1;
+  font: 0.6rem/1.4 ui-monospace, SFMono-Regular, Consolas, monospace;
+  white-space: pre-wrap;
+}
 .wide-action { width: 100%; min-height: 2.35rem; margin-top: 0.65rem; }
 .picture-in-picture-toggle { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.7rem; color: #f4f4f4; font-size: 0.72rem; cursor: pointer; }
 .picture-in-picture-toggle input { width: 1rem; height: 1rem; margin: 0; accent-color: #78d7ff; }
@@ -1384,7 +1458,9 @@ kbd {
 
 @media (max-width: 600px), (max-height: 500px) and (pointer: coarse) {
   .flubber-remote-broadcast-head,
-  .flubber-remote-broadcast-details { grid-template-columns: 1fr; }
+  .flubber-remote-broadcast-details,
+  .settings-beacon-details,
+  .settings-beacon-source-list { grid-template-columns: 1fr; }
 
   html,
   body,

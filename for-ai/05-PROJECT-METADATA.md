@@ -24,7 +24,7 @@ The web, desktop, and Quest applications must feel like the same instrument. Sha
 
 ## Global constraints
 
-- Research data stays participant-local unless a reviewed mode explicitly asks the participant or researcher for a destination. The experimental WebXR study may send its completed CSV only to an HTTPS webhook typed for that run; the URL is not persisted, and download remains available if delivery is absent or fails. The separate explicit remote-Flubber mode may publish only the anonymous final X/Y pair through the public VDO.Ninja room defined in `66-EXPERIMENTAL-REMOTE-FLUBBER.md`; it is never an experiment-record upload.
+- Research data stays participant-local unless a reviewed mode explicitly asks the participant or researcher for a destination. The experimental WebXR study may send its completed CSV only to an HTTPS webhook typed for that run; the URL is not persisted, and download remains available if delivery is absent or fails. The separate explicit remote-Flubber mode may publish only the anonymous final X/Y pair through the public VDO.Ninja room defined in `66-EXPERIMENTAL-REMOTE-FLUBBER.md`; it is never an experiment-record upload. The independent settings beacon may publish only one immutable copy of the complete portable settings JSON under `68-EXPERIMENTAL-SETTINGS-BEACON.md`; it sends no research records or live coordinates and requires preview plus explicit Apply at the receiver.
 - Never record composed text, clipboard content, application contents, unrelated window titles, or other unnecessary personal data. Pointer movement is permitted only under the explicit, visible web-only Experimental Touch/Trackpad source described in `60-EXPERIMENTAL-TOUCH-TRACE.md`; raw points are logged only during active experiment playback. Polar H10 physiology is permitted only after the user-triggered browser chooser or native launcher Connect/permission flow described in `65-EXPERIMENTAL-POLAR-STREAM.md`; raw ECG remains bounded in memory and is never persisted.
 - Keep the browser app static and GitHub Pages-compatible. Do not add a backend, telemetry, CDN, runtime package dependency, or remote asset silently.
 - Keep native authority in Rust behind narrow typed Tauri commands/events/channels. Treat WebView input and imported settings as untrusted.
@@ -45,6 +45,7 @@ The web, desktop, and Quest applications must feel like the same instrument. Sha
 - `site/src/touch-trace.js`: browser-only trajectory filtering, equal-distance geometry, direct continuous and gated live move-and-hold feedback, adaptive calibration, and trace fitting.
 - `site/src/polar-stream.js`: browser-only Web Bluetooth capability boundary, Polar H10 PMD/heart-rate decoding, bounded ECG/RR metrics, and GATT lifecycle.
 - `site/src/flubber-remote.js`: browser-neutral VDO.Ninja discovery, data-channel lifecycle, 12-byte Flubber coordinate protocol, sequencing, scheduling, staleness, diagnostics, and test injection boundary.
+- `site/src/settings-beacon.js`: browser-neutral VDO.Ninja discovery and reliable ordered transfer for one immutable, validated portable-settings snapshot; it is independent from the coordinate protocol.
 - `site/vendor/vdoninja/1.5.5/`: locally loaded unmodified official VDO.Ninja SDK distribution/source, MPL-2.0 license, provenance notice, and verified hashes.
 - `vr/app/src/main/java/io/github/georgefejer91/affecttracker/vr/PolarH10Manager.kt`: application-scoped native Quest H10 discovery, official-SDK streaming, readiness, lifecycle, and privacy boundary.
 - `vr/app/src/main/java/io/github/georgefejer91/affecttracker/vr/PolarMetrics.kt`: native bounded mirror of the browser's ten metric definitions, per-axis mappings, and readiness gate.
@@ -54,6 +55,7 @@ The web, desktop, and Quest applications must feel like the same instrument. Sha
 - `for-ai/70-RESEARCH-PROVENANCE.md` and `for-ai/references.bib`: source-decision ledger and citation-ready bibliography.
 - `for-ai/65-EXPERIMENTAL-POLAR-STREAM.md`: normative Polar Stream support, privacy, metric, mapping, precedence, and qualification contract.
 - `for-ai/66-EXPERIMENTAL-REMOTE-FLUBBER.md`: normative public discovery, wire protocol, input ownership, privacy, observability, and hardware qualification contract for browser-to-browser Flubber coordinates.
+- `for-ai/68-EXPERIMENTAL-SETTINGS-BEACON.md`: normative public discovery, static snapshot, validation, preview/apply, and privacy contract for browser-to-browser portable settings.
 - `desktop/`: Tauri WebView presentation and typed native adapter.
 - `.github/workflows/`: deployment, verification, and native packaging automation.
 

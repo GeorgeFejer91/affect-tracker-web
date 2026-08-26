@@ -201,6 +201,27 @@
                   <button id="settings-import-button" type="button">Import settings JSON</button>
                   <button id="settings-export-button" type="button">Export settings JSON</button>
                 </div>
+                <section class="settings-beacon" aria-labelledby="settings-beacon-title">
+                  <h3 id="settings-beacon-title">Public settings beacon</h3>
+                  <p>Send one captured copy of every field produced by Export settings JSON to another browser on this site, including the complete Flubber appearance, controls, placement, and metadata. This is independent from the realtime Flubber channel: it is reliable, ordered, and sends no continuous signal or X/Y coordinates.</p>
+                  <div class="settings-button-row">
+                    <button id="settings-beacon-broadcast-button" type="button">Broadcast settings JSON</button>
+                    <button id="settings-beacon-find-button" type="button">Find settings beacons</button>
+                  </div>
+                  <output id="settings-beacon-status" class="settings-beacon-status" aria-live="polite">Settings beacon off</output>
+                  <dl id="settings-beacon-details" class="settings-beacon-details" hidden>
+                    <div><dt>Broadcast source</dt><dd><output id="settings-beacon-source">—</output></dd></div>
+                    <div><dt>Listeners</dt><dd><output id="settings-beacon-listeners">0</output></dd></div>
+                    <div><dt>Snapshot</dt><dd><output id="settings-beacon-snapshot">—</output></dd></div>
+                  </dl>
+                  <div id="settings-beacon-source-list" class="settings-beacon-source-list" role="group" aria-label="Available settings beacons" hidden></div>
+                  <section id="settings-beacon-preview" class="settings-beacon-preview" aria-labelledby="settings-beacon-preview-title" hidden>
+                    <h4 id="settings-beacon-preview-title">Received settings preview</h4>
+                    <pre id="settings-beacon-preview-json" tabindex="0"></pre>
+                    <button id="settings-beacon-apply-button" class="wide-action" type="button">Apply received settings</button>
+                  </section>
+                  <p class="experiment-privacy"><strong>Public experimental connection:</strong> Only the captured portable settings JSON and minimal protocol/source metadata are sent. The shared room is public while active; untrusted peers can imitate a source, so every snapshot is validated and never applied automatically. VDO.Ninja supplies signaling and may use STUN/TURN; peers may learn IP addresses. No beacon survives after its source page closes.</p>
+                </section>
                 <p>The same version-1 JSON is accepted by Affect Tracker Desktop. Records remain in this tab only, so download the CSV before closing or refreshing.</p>
               </div>
             </details>
@@ -264,7 +285,7 @@
             <summary>Controls and privacy</summary>
             <p>The arrow keys control valence and arousal by default. Open Input &amp; shortcuts, then press a direction button to reassign it.</p>
             <p>Unassigned wheel gestures retain the browser fallback: wheel changes arousal and <kbd>Shift</kbd> + wheel changes valence.</p>
-            <p>Settings, recordings, and imported files stay participant-local.</p>
+            <p>Settings, recordings, and imported files stay participant-local by default. Only the explicit public settings-beacon buttons transmit one captured portable settings snapshot; recordings and imported files are never included.</p>
           </details>
 
           <p class="attribution">
@@ -631,6 +652,6 @@
     </main>
 
     <script src="./vendor/vdoninja/1.5.5/vdoninja-sdk.min.js"></script>
-    <script type="module" src="./src/app.js?v=screen-calibration-v3"></script>
+    <script type="module" src="./src/app.js?v=settings-beacon-1"></script>
   </body>
 </html>

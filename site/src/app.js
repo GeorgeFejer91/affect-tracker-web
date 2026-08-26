@@ -75,6 +75,10 @@ import {
 import { createPolarH10ReplaySession, polarReplayEnabled } from "./polar-replay.js?v=remote-13";
 import { createFlubberBroadcaster } from "./flubber-remote.js?v=remote-13";
 import {
+  createSettingsBeaconBroadcaster,
+  createSettingsBeaconReceiver,
+} from "./settings-beacon.js?v=settings-beacon-1";
+import {
   actionForBinding,
   ADVANCED_BINDING_LABELS,
   bindingUpdatesForCapture,
@@ -195,6 +199,17 @@ const elements = {
   settingsExportButton: document.querySelector("#settings-export-button"),
   settingsImportButton: document.querySelector("#settings-import-button"),
   settingsImportFile: document.querySelector("#settings-import-file"),
+  settingsBeaconBroadcastButton: document.querySelector("#settings-beacon-broadcast-button"),
+  settingsBeaconFindButton: document.querySelector("#settings-beacon-find-button"),
+  settingsBeaconApplyButton: document.querySelector("#settings-beacon-apply-button"),
+  settingsBeaconStatus: document.querySelector("#settings-beacon-status"),
+  settingsBeaconDetails: document.querySelector("#settings-beacon-details"),
+  settingsBeaconSource: document.querySelector("#settings-beacon-source"),
+  settingsBeaconListeners: document.querySelector("#settings-beacon-listeners"),
+  settingsBeaconSnapshot: document.querySelector("#settings-beacon-snapshot"),
+  settingsBeaconSourceList: document.querySelector("#settings-beacon-source-list"),
+  settingsBeaconPreview: document.querySelector("#settings-beacon-preview"),
+  settingsBeaconPreviewJson: document.querySelector("#settings-beacon-preview-json"),
   inputSettings: document.querySelector("#input-settings"),
   bindingCaptureDialog: document.querySelector("#binding-capture-dialog"),
   bindingCaptureTitle: document.querySelector("#binding-capture-title"),
@@ -490,6 +505,10 @@ const touchTrace = new TouchTraceAnalyzer({
 const polarReplay = polarReplayEnabled();
 const polarSession = polarReplay ? createPolarH10ReplaySession() : createPolarH10BrowserSession();
 const flubberBroadcaster = createFlubberBroadcaster();
+const settingsBeaconBroadcaster = createSettingsBeaconBroadcaster();
+const settingsBeaconReceiver = createSettingsBeaconReceiver();
+let settingsBeaconBroadcastState = settingsBeaconBroadcaster.snapshot();
+let settingsBeaconReceiverState = settingsBeaconReceiver.snapshot();
 let polarEcgWindow = [];
 let polarBatteryPercent;
 let polarObservedSampleRate = 130;
@@ -925,6 +944,90 @@ function updateRemoteBroadcastUi(detail = flubberBroadcaster.snapshot()) {
         : stopping ? "Stopping remote broadcast…" : "Broadcast off");
   elements.remoteBroadcastStatus.classList.toggle("is-error", Boolean(detail.error || detail.phase === "error"));
   elements.remoteBroadcastStatus.classList.toggle("is-warning", Boolean(foregroundMessage));
+}
+
+function settingsBeaconPhaseMessage(detail, role) {
+  if (detail.message) return detail.message;
+  if (role === "broadcast") {
+    if (detail.phase === "broadcasting") return `${detail.sourceLabel} is advertising one captured settings snapshot.`;
+    if (detail.phase === "connecting") return "Starting the settings broadcast…";
+    if (detail.phase === "stopping") return "Stopping the settings broadcast…";
+    if (detail.phase === "error") return "Settings broadcast error.";
+    return "Settings broadcast off.";
+  }
+  if (detail.phase === "discovering") return "Looking for live public settings beacons…";
+  if (detail.phase === "selecting") return "Choose a settings source below.";
+  if (detail.phase === "connecting") return `Connecting to ${detail.sourceLabel || "the selected settings source"}…`;
+  if (detail.phase === "received") return `${detail.sourceLabel} delivered a validated snapshot; review it before applying.`;
+  if (detail.phase === "error") return "Settings receiver error.";
+  return "Settings receiver off.";
+}
+
+function renderSettingsBeaconSources() {
+  elements.settingsBeaconSourceList.replaceChildren();
+  const sources = settingsBeaconReceiverState.sources ?? [];
+  const receiverActive = settingsBeaconReceiverState.phase !== "idle";
+  elements.settingsBeaconSourceList.hidden = !receiverActive || sources.length === 0;
+  for (const source of sources) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "settings-beacon-source-button";
+    button.textContent = source.label;
+    button.setAttribute("aria-pressed", String(source.streamId === settingsBeaconReceiverState.selectedStreamId));
+    button.addEventListener("click", () => {
+      void settingsBeaconReceiver.selectSource(source.streamId);
+    });
+    elements.settingsBeaconSourceList.append(button);
+  }
+}
+
+function updateSettingsBeaconUi({ broadcast, receiver } = {}) {
+  if (broadcast) settingsBeaconBroadcastState = broadcast;
+  if (receiver) settingsBeaconReceiverState = receiver;
+
+  const broadcasting = settingsBeaconBroadcastState.phase === "broadcasting";
+  const broadcastBusy = settingsBeaconBroadcastState.phase === "connecting"
+    || settingsBeaconBroadcastState.phase === "stopping";
+  elements.settingsBeaconBroadcastButton.disabled = broadcastBusy;
+  elements.settingsBeaconBroadcastButton.textContent = broadcasting
+    ? "Stop settings broadcast"
+    : settingsBeaconBroadcastState.phase === "connecting"
+      ? "Starting settings broadcast…"
+      : settingsBeaconBroadcastState.phase === "stopping"
+        ? "Stopping settings broadcast…"
+        : "Broadcast settings JSON";
+
+  const receiverActive = settingsBeaconReceiverState.phase !== "idle";
+  elements.settingsBeaconFindButton.disabled = false;
+  elements.settingsBeaconFindButton.textContent = receiverActive
+    ? "Stop finding beacons"
+    : "Find settings beacons";
+
+  const broadcastMessage = settingsBeaconPhaseMessage(settingsBeaconBroadcastState, "broadcast");
+  const receiverMessage = settingsBeaconPhaseMessage(settingsBeaconReceiverState, "receiver");
+  elements.settingsBeaconStatus.value = `${broadcastMessage} ${receiverMessage}`;
+  const hasError = Boolean(settingsBeaconBroadcastState.error
+    || settingsBeaconReceiverState.error
+    || settingsBeaconBroadcastState.phase === "error"
+    || settingsBeaconReceiverState.phase === "error");
+  elements.settingsBeaconStatus.classList.toggle("is-error", hasError);
+
+  elements.settingsBeaconDetails.hidden = !settingsBeaconBroadcastState.streamId;
+  elements.settingsBeaconSource.value = settingsBeaconBroadcastState.sourceLabel || "—";
+  elements.settingsBeaconListeners.value = String(settingsBeaconBroadcastState.listenerCount ?? 0);
+  const snapshotParts = [];
+  if (settingsBeaconBroadcastState.revision) snapshotParts.push(`v1 revision ${settingsBeaconBroadcastState.revision}`);
+  if (settingsBeaconBroadcastState.payloadBytes) snapshotParts.push(`${settingsBeaconBroadcastState.payloadBytes} bytes`);
+  if (settingsBeaconBroadcastState.deliveryCount) snapshotParts.push(`${settingsBeaconBroadcastState.deliveryCount} deliveries`);
+  elements.settingsBeaconSnapshot.value = snapshotParts.join(" · ") || "—";
+
+  renderSettingsBeaconSources();
+  const received = settingsBeaconReceiverState.received;
+  elements.settingsBeaconPreview.hidden = !received;
+  elements.settingsBeaconApplyButton.disabled = !received;
+  elements.settingsBeaconPreviewJson.textContent = received
+    ? portableSettingsJson(received.settings)
+    : "";
 }
 
 function drawPolarEcg() {
@@ -3066,6 +3169,12 @@ function clearLog() {
 
 function initializeEvents() {
   flubberBroadcaster.addEventListener("statechange", (event) => updateRemoteBroadcastUi(event.detail));
+  settingsBeaconBroadcaster.addEventListener("statechange", (event) => {
+    updateSettingsBeaconUi({ broadcast: event.detail });
+  });
+  settingsBeaconReceiver.addEventListener("statechange", (event) => {
+    updateSettingsBeaconUi({ receiver: event.detail });
+  });
   window.addEventListener("pointerdown", (event) => ingestPointerEvent(event, "down"), { capture: true, passive: false });
   window.addEventListener("pointermove", (event) => ingestPointerEvent(event, "move"), { capture: true, passive: false });
   window.addEventListener("pointerup", (event) => ingestPointerEvent(event, "up"), { capture: true, passive: false });
@@ -3318,6 +3427,53 @@ function initializeEvents() {
     else if (pictureInPictureWindow && !pictureInPictureWindow.closed) pictureInPictureWindow.close();
   });
   elements.settingsExportButton.addEventListener("click", exportSettings);
+  elements.settingsBeaconBroadcastButton.addEventListener("click", async () => {
+    elements.settingsBeaconBroadcastButton.disabled = true;
+    try {
+      if (settingsBeaconBroadcaster.snapshot().phase === "broadcasting") {
+        const sourceLabel = settingsBeaconBroadcaster.snapshot().sourceLabel;
+        await settingsBeaconBroadcaster.stop();
+        recordEvent("settings-beacon", "broadcast-stop", sourceLabel, 0);
+        announce("Settings JSON broadcast stopped.");
+      } else {
+        const started = await settingsBeaconBroadcaster.start(settingsFromState());
+        recordEvent("settings-beacon", "broadcast-start", started.sourceLabel, started.payloadBytes);
+        announce(`${started.sourceLabel} is advertising the captured settings JSON.`);
+      }
+    } catch (error) {
+      announce(`Settings broadcast could not start: ${error?.message ?? String(error)}`);
+    }
+  });
+  elements.settingsBeaconFindButton.addEventListener("click", async () => {
+    elements.settingsBeaconFindButton.disabled = true;
+    try {
+      if (settingsBeaconReceiver.snapshot().phase !== "idle") {
+        await settingsBeaconReceiver.stop();
+        recordEvent("settings-beacon", "receiver-stop", "public-room", 0);
+        announce("Settings beacon discovery stopped.");
+      } else {
+        await settingsBeaconReceiver.startDiscovery();
+        recordEvent("settings-beacon", "receiver-start", "public-room", 1);
+        announce("Looking for live public settings beacons.");
+      }
+    } catch (error) {
+      announce(`Settings discovery could not start: ${error?.message ?? String(error)}`);
+    } finally {
+      elements.settingsBeaconFindButton.disabled = false;
+    }
+  });
+  elements.settingsBeaconApplyButton.addEventListener("click", () => {
+    const received = settingsBeaconReceiverState.received;
+    if (!received) return;
+    applyPortableSettings(received.settings, true);
+    recordEvent(
+      "settings-beacon",
+      "snapshot-applied",
+      settingsBeaconReceiverState.sourceLabel,
+      received.revision,
+    );
+    announce(`Settings from ${settingsBeaconReceiverState.sourceLabel} were applied.`);
+  });
   elements.questFollowController.addEventListener("change", updateQuestControllerFollowControls);
   updateQuestControllerFollowControls();
   elements.questExportButton.addEventListener("click", async () => {
@@ -3520,9 +3676,13 @@ function initializeEvents() {
   window.addEventListener("beforeunload", () => {
     void polarSession.disconnect({ emit: false });
     void flubberBroadcaster.stop();
+    void settingsBeaconBroadcaster.stop();
+    void settingsBeaconReceiver.stop();
   });
   window.addEventListener("pagehide", () => {
     void flubberBroadcaster.stop();
+    void settingsBeaconBroadcaster.stop();
+    void settingsBeaconReceiver.stop();
     void releaseBroadcastLatencyMode();
   }, { once: true });
   document.addEventListener("visibilitychange", () => {
@@ -3618,6 +3778,7 @@ function initialize() {
   constrainAndRenderWidget();
   initializeEvents();
   updateRemoteBroadcastUi();
+  updateSettingsBeaconUi();
   updateLoggerDisplay();
   savePreferences();
   recordEvent("system", "session-start", "session", logger.sessionId);
