@@ -73,7 +73,7 @@ import {
   polarWebBluetoothSupport,
 } from "./polar-stream.js?v=remote-13";
 import { createPolarH10ReplaySession, polarReplayEnabled } from "./polar-replay.js?v=remote-13";
-import { createFlubberBroadcaster, createFlubberReceiver } from "./flubber-remote.js?v=ground-control-1";
+import { createFlubberBroadcaster, createFlubberReceiver } from "./flubber-remote.js?v=collaboration-1";
 import {
   createSettingsSnapshotBroadcaster,
   createSettingsSnapshotReceiver,
@@ -81,6 +81,12 @@ import {
   normalizeGroundControlName,
   shouldDismissGroundRadar,
 } from "./ground-control.js?v=ground-control-2";
+import {
+  blendUniverseCoordinates,
+  createFlubberParty,
+  createUniverseLink,
+  oneWayGroundRole,
+} from "./flubber-collaboration.js?v=collaboration-1";
 import { createRetroSoundboard, retroCueForMessage, RETRO_THEME_ID } from "./retro-theme.js?v=retro-1";
 import {
   actionForBinding,
@@ -107,6 +113,7 @@ const FEATURE_DOT_INSET_PERCENT = 3;
 const elements = {
   stage: document.querySelector("#stage"),
   widget: document.querySelector("#affect-widget"),
+  partyStage: document.querySelector("#flubber-party-stage"),
   basePath: document.querySelector("#base-path"),
   outlinePath: document.querySelector("#outline-path"),
   haloPath: document.querySelector("#halo-path"),
@@ -135,6 +142,16 @@ const elements = {
   groundJsonScanButton: document.querySelector("#ground-json-scan-button"),
   groundLiveScanButton: document.querySelector("#ground-live-scan-button"),
   groundLiveReceiveStatus: document.querySelector("#ground-live-receive-status"),
+  groundUniverseButton: document.querySelector("#ground-universe-button"),
+  groundUniverseStatus: document.querySelector("#ground-universe-status"),
+  groundUniverseDetails: document.querySelector("#ground-universe-details"),
+  groundUniversePartner: document.querySelector("#ground-universe-partner"),
+  groundUniverseListeners: document.querySelector("#ground-universe-listeners"),
+  groundUniverseState: document.querySelector("#ground-universe-state"),
+  groundPartyButton: document.querySelector("#ground-party-button"),
+  groundPartyStatus: document.querySelector("#ground-party-status"),
+  groundPartyRoster: document.querySelector("#ground-party-roster"),
+  groundPartyGuests: document.querySelector("#ground-party-guests"),
   groundRadarDialog: document.querySelector("#ground-radar-dialog"),
   groundRadarTitle: document.querySelector("#ground-radar-title"),
   groundRadarStatus: document.querySelector("#ground-radar-status"),
@@ -546,10 +563,14 @@ const polarReplay = polarReplayEnabled();
 const polarSession = polarReplay ? createPolarH10ReplaySession() : createPolarH10BrowserSession();
 const flubberBroadcaster = createFlubberBroadcaster();
 const flubberReceiver = createFlubberReceiver();
+const universeLink = createUniverseLink();
+const flubberParty = createFlubberParty();
 const settingsSnapshotBroadcaster = createSettingsSnapshotBroadcaster();
 const settingsSnapshotReceiver = createSettingsSnapshotReceiver();
 let groundRadarMode = "";
 let pendingSettingsSnapshot;
+let universeLocalCurrent = { currentX: state.currentX, currentY: state.currentY };
+const partyGuestViews = new Map();
 let polarEcgWindow = [];
 let polarBatteryPercent;
 let polarObservedSampleRate = 130;
@@ -987,16 +1008,13 @@ function updateRemoteBroadcastUi(detail = flubberBroadcaster.snapshot()) {
   const foregroundWindowActive = Boolean(pictureInPictureWindow && !pictureInPictureWindow.closed);
   const wakeLockAvailable = Boolean(navigator.wakeLock?.request);
   const wakeLockActive = Boolean(broadcastWakeLock && !broadcastWakeLock.released);
-  const foregroundModeDegraded = broadcasting && (!foregroundWindowActive || (wakeLockAvailable && !wakeLockActive));
   elements.remoteBroadcastButton.disabled = connecting || stopping;
   elements.remoteBroadcastButton.classList.toggle("is-active", broadcasting);
   elements.remoteBroadcastButton.setAttribute("aria-pressed", String(broadcasting));
   elements.remoteBroadcastButton.setAttribute("aria-label", broadcasting
     ? "Stop broadcasting live FLUBBER coordinates"
     : "Broadcast live FLUBBER coordinates");
-  elements.remoteBroadcastForegroundButton.hidden = !foregroundModeDegraded
-    || (!pictureInPictureAvailable && (!wakeLockAvailable || wakeLockActive));
-  elements.remoteBroadcastForegroundButton.disabled = connecting || stopping;
+  updateBroadcastForegroundButton({ busy: connecting || stopping });
   elements.remoteBroadcastDetails.hidden = !detail.streamId;
   elements.remoteBroadcastSource.value = detail.sourceLabel || "—";
   elements.remoteBroadcastListeners.value = String(detail.listenerCount ?? 0);
@@ -1024,6 +1042,20 @@ function updateRemoteBroadcastUi(detail = flubberBroadcaster.snapshot()) {
         : stopping ? "Stopping remote broadcast…" : "Continuous stream off");
   elements.remoteBroadcastStatus.classList.toggle("is-error", Boolean(detail.error || detail.phase === "error"));
   elements.remoteBroadcastStatus.classList.toggle("is-warning", Boolean(foregroundMessage));
+  updateGroundRoleGate();
+}
+
+function updateBroadcastForegroundButton({ busy = false } = {}) {
+  const continuousSending = flubberBroadcaster.snapshot().phase === "broadcasting"
+    || universeLink.snapshot().enabled;
+  const pictureInPictureAvailable = pictureInPictureSupported(window);
+  const foregroundWindowActive = Boolean(pictureInPictureWindow && !pictureInPictureWindow.closed);
+  const wakeLockAvailable = Boolean(navigator.wakeLock?.request);
+  const wakeLockActive = Boolean(broadcastWakeLock && !broadcastWakeLock.released);
+  const degraded = continuousSending && (!foregroundWindowActive || (wakeLockAvailable && !wakeLockActive));
+  elements.remoteBroadcastForegroundButton.hidden = !degraded
+    || (!pictureInPictureAvailable && (!wakeLockAvailable || wakeLockActive));
+  elements.remoteBroadcastForegroundButton.disabled = busy;
 }
 
 function requiredGroundControlName() {
@@ -1049,6 +1081,7 @@ function updateSettingsBroadcastUi(detail = settingsSnapshotBroadcaster.snapshot
   elements.groundJsonBroadcastDetails.hidden = !detail.streamId;
   elements.groundJsonSource.value = detail.sourceLabel || "—";
   elements.groundJsonListeners.value = String(detail.listenerCount ?? 0);
+  updateGroundRoleGate();
 }
 
 function updateLiveReceiveUi(detail = liveRemoteSnapshot()) {
@@ -1064,11 +1097,177 @@ function updateLiveReceiveUi(detail = liveRemoteSnapshot()) {
       : enabled ? "Radar active; choose a live signal" : "Continuous receiver off");
   elements.groundLiveReceiveStatus.classList.toggle("is-error", detail.phase === "error");
   elements.groundLiveReceiveStatus.classList.toggle("is-warning", detail.phase === "stale");
+  updateGroundRoleGate();
+}
+
+function groundTransportActive(phase) {
+  return phase !== "idle" && phase !== "error";
+}
+
+function currentOneWayRole() {
+  return oneWayGroundRole({
+    jsonBroadcastPhase: settingsSnapshotBroadcaster.snapshot().phase,
+    liveBroadcastPhase: flubberBroadcaster.snapshot().phase,
+    jsonReceivePhase: settingsSnapshotReceiver.snapshot().phase,
+    liveReceivePhase: flubberReceiver.snapshot().phase,
+  });
+}
+
+function updateGroundRoleGate() {
+  const role = currentOneWayRole();
+  const jsonSend = groundTransportActive(settingsSnapshotBroadcaster.snapshot().phase);
+  const liveSend = groundTransportActive(flubberBroadcaster.snapshot().phase);
+  const jsonReceive = groundTransportActive(settingsSnapshotReceiver.snapshot().phase);
+  const liveReceive = groundTransportActive(flubberReceiver.snapshot().phase);
+  const universeEnabled = universeLink.snapshot().enabled;
+  const partyEnabled = flubberParty.snapshot().enabled;
+  const collaborationEnabled = universeEnabled || partyEnabled;
+
+  const jsonSendBusy = ["connecting", "stopping"].includes(settingsSnapshotBroadcaster.snapshot().phase);
+  const liveSendBusy = ["connecting", "stopping"].includes(flubberBroadcaster.snapshot().phase);
+  elements.groundJsonBroadcastButton.disabled = jsonSendBusy
+    || (!jsonSend && (role === "receive" || collaborationEnabled));
+  elements.remoteBroadcastButton.disabled = liveSendBusy
+    || (!liveSend && (role === "receive" || collaborationEnabled));
+  elements.groundJsonScanButton.disabled = !jsonReceive
+    && (role === "send" || liveReceive || collaborationEnabled);
+  elements.groundLiveScanButton.disabled = !liveReceive
+    && (role === "send" || jsonReceive || collaborationEnabled);
+  elements.groundUniverseButton.disabled = !universeEnabled
+    && (role !== "idle" || partyEnabled);
+  elements.groundPartyButton.disabled = !partyEnabled
+    && (role !== "idle" || universeEnabled);
+
+  const gateMessage = role === "send"
+    ? "Stop sending before receiving from this browser."
+    : role === "receive" ? "Disconnect receiving before broadcasting from this browser."
+      : collaborationEnabled ? "Stop the active collaboration mode before changing ordinary roles." : "";
+  for (const button of [
+    elements.groundJsonBroadcastButton,
+    elements.remoteBroadcastButton,
+    elements.groundJsonScanButton,
+    elements.groundLiveScanButton,
+    elements.groundUniverseButton,
+    elements.groundPartyButton,
+  ]) {
+    button.title = button.disabled ? gateMessage : "";
+  }
+}
+
+function updateUniverseUi(detail = universeLink.snapshot()) {
+  const enabled = detail.enabled;
+  const active = detail.phase === "live" || detail.phase === "stale" || detail.phase === "awaiting-reciprocal";
+  elements.groundUniverseButton.classList.toggle("is-scanning", enabled && !active);
+  elements.groundUniverseButton.classList.toggle("is-active", active);
+  elements.groundUniverseButton.setAttribute("aria-pressed", String(enabled));
+  const foregroundWindowActive = Boolean(pictureInPictureWindow && !pictureInPictureWindow.closed);
+  const wakeLockAvailable = Boolean(navigator.wakeLock?.request);
+  const wakeLockActive = Boolean(broadcastWakeLock && !broadcastWakeLock.released);
+  const foregroundMessage = enabled && !foregroundWindowActive
+    ? pictureInPictureSupported(window)
+      ? "LOW-LATENCY FOREGROUND MODE CLOSED — restore it for a stable Universe link."
+      : "Universe link live — keep this browser visible for reliable timing."
+    : enabled && wakeLockAvailable && !wakeLockActive
+      ? "SCREEN WAKE LOCK INACTIVE — restore low-latency foreground mode."
+      : "";
+  elements.groundUniverseStatus.textContent = [detail.message, foregroundMessage].filter(Boolean).join(" ")
+    || "Two-way co-control off";
+  elements.groundUniverseStatus.classList.toggle("is-warning", Boolean(foregroundMessage)
+    || detail.phase === "stale" || detail.phase === "awaiting-reciprocal");
+  elements.groundUniverseStatus.classList.toggle("is-error", detail.phase === "error");
+  elements.groundUniverseDetails.hidden = !enabled;
+  elements.groundUniversePartner.value = detail.sourceLabel || "Choose a partner";
+  elements.groundUniverseListeners.value = String(detail.sending?.listenerCount ?? 0);
+  elements.groundUniverseState.value = detail.phase;
+  if (groundRadarMode === "universe") {
+    elements.groundRadarStatus.textContent = detail.message;
+    updateRadarSources();
+    if (detail.phase === "live") {
+      groundRadarMode = "";
+      if (elements.groundRadarDialog.open) elements.groundRadarDialog.close();
+      announce(`Universe synchronized with ${detail.sourceLabel}. Radar closed.`);
+    }
+  }
+  updateBroadcastForegroundButton();
+  updateGroundRoleGate();
+}
+
+function createPartyGuestView(streamId, label) {
+  const root = document.createElement("div");
+  root.className = "party-guest-flubber";
+  root.dataset.streamId = streamId;
+  root.setAttribute("role", "img");
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("viewBox", "-1.62 -1.62 3.24 3.24");
+  svg.setAttribute("aria-hidden", "true");
+  const halo = document.createElementNS(svg.namespaceURI, "path");
+  const base = document.createElementNS(svg.namespaceURI, "path");
+  const outline = document.createElementNS(svg.namespaceURI, "path");
+  halo.setAttribute("class", "shape-halo");
+  base.setAttribute("class", "shape-base");
+  outline.setAttribute("class", "shape-outline");
+  svg.append(halo, base, outline);
+  const caption = document.createElement("span");
+  caption.textContent = label.replace(/\s*·\s*Live FLUBBER\s*$/i, "");
+  root.append(svg, caption);
+  elements.partyStage.append(root);
+  const view = {
+    root,
+    paths: [halo, base, outline],
+    offsets: createProjectionOffsets(streamId, profiles.waveCount),
+  };
+  partyGuestViews.set(streamId, view);
+  return view;
+}
+
+function syncPartyGuestViews(detail = flubberParty.snapshot()) {
+  const present = new Set(detail.guests.map((guest) => guest.streamId));
+  for (const [streamId, view] of partyGuestViews) {
+    if (present.has(streamId)) continue;
+    view.root.remove();
+    partyGuestViews.delete(streamId);
+  }
+  for (const guest of detail.guests) {
+    if (!partyGuestViews.has(guest.streamId)) createPartyGuestView(guest.streamId, guest.label);
+  }
+  elements.partyStage.hidden = detail.guests.length === 0;
+}
+
+function updatePartyUi(detail = flubberParty.snapshot()) {
+  const guestCount = detail.guests.length;
+  const enabled = detail.enabled;
+  elements.groundPartyButton.classList.toggle("is-scanning", enabled && detail.phase !== "idle");
+  elements.groundPartyButton.classList.toggle("is-active", guestCount > 0);
+  elements.groundPartyButton.setAttribute("aria-pressed", String(enabled));
+  elements.groundPartyStatus.textContent = guestCount
+    ? `${guestCount} invited FLUBBER${guestCount === 1 ? "" : "s"} sharing the stage`
+    : enabled ? "Radar active; invite named FLUBBER signals" : "Party off";
+  elements.groundPartyRoster.hidden = guestCount === 0;
+  elements.groundPartyGuests.replaceChildren();
+  for (const guest of detail.guests) {
+    const row = document.createElement("div");
+    row.className = "ground-party-guest";
+    const label = document.createElement("strong");
+    label.textContent = `${guest.label} · ${guest.phase === "stale" ? "holding" : guest.phase}`;
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.textContent = "Remove";
+    remove.addEventListener("click", () => { void flubberParty.remove(guest.streamId); });
+    row.append(label, remove);
+    elements.groundPartyGuests.append(row);
+  }
+  syncPartyGuestViews(detail);
+  if (groundRadarMode === "party") updateRadarSources();
+  updateGroundRoleGate();
 }
 
 function updateRadarSources() {
   if (!groundRadarMode) return;
-  const snapshot = groundRadarMode === "json" ? settingsSnapshotReceiver.snapshot() : liveRemoteSnapshot();
+  const snapshot = groundRadarMode === "json"
+    ? settingsSnapshotReceiver.snapshot()
+    : groundRadarMode === "live" ? liveRemoteSnapshot()
+      : groundRadarMode === "universe" ? universeLink.snapshot()
+        : flubberParty.snapshot();
   const sources = snapshot.sources ?? [];
   elements.groundRadarSources.replaceChildren();
   if (sources.length === 0) {
@@ -1076,7 +1275,9 @@ function updateRadarSources() {
     empty.className = "ground-radar-empty";
     empty.textContent = groundRadarMode === "json"
       ? "No public JSON settings beacons are visible yet. Radar remains active."
-      : "No public live FLUBBER streams are visible yet. Radar remains active.";
+      : groundRadarMode === "universe"
+        ? "No other Universe partners are visible yet. Ask the other browser to press Synch with Universe."
+        : "No public live FLUBBER streams are visible yet. Radar remains active.";
     elements.groundRadarSources.append(empty);
   } else {
     for (const source of sources) {
@@ -1088,15 +1289,26 @@ function updateRadarSources() {
       const title = document.createElement("strong");
       title.textContent = groundRadarMode === "json" ? source.name : source.label;
       const meta = document.createElement("small");
-      meta.textContent = groundRadarMode === "json" ? "Static version-1 settings snapshot" : "Continuous X/Y stream";
+      meta.textContent = groundRadarMode === "json"
+        ? "Static version-1 settings snapshot"
+        : groundRadarMode === "universe" ? "Reciprocal two-person co-control"
+          : groundRadarMode === "party" ? "Add as a separate stage companion" : "Continuous X/Y stream";
       copy.append(title, meta);
       const action = document.createElement("span");
-      action.textContent = groundRadarMode === "json" ? "Receive" : "Connect";
+      const alreadyInvited = groundRadarMode === "party"
+        && flubberParty.snapshot().guests.some((guest) => guest.streamId === source.streamId);
+      action.textContent = groundRadarMode === "json"
+        ? "Receive"
+        : groundRadarMode === "universe" ? "Synchronize"
+          : groundRadarMode === "party" ? (alreadyInvited ? "Invited" : "Invite") : "Connect";
+      button.disabled = alreadyInvited;
       button.append(copy, action);
       button.addEventListener("click", async () => {
         button.disabled = true;
         if (groundRadarMode === "json") await settingsSnapshotReceiver.selectSource(source.streamId);
-        else await flubberReceiver.selectSource(source.streamId);
+        else if (groundRadarMode === "live") await flubberReceiver.selectSource(source.streamId);
+        else if (groundRadarMode === "universe") await universeLink.selectSource(source.streamId);
+        else if (groundRadarMode === "party") await flubberParty.invite(source.streamId);
       });
       elements.groundRadarSources.append(button);
     }
@@ -1114,6 +1326,7 @@ function updateSettingsRadar(detail = settingsSnapshotReceiver.snapshot()) {
       || (detail.phase === "ready" ? "Snapshot received. Review it before applying." : "Scanning for public JSON settings beacons…");
     updateRadarSources();
   }
+  updateGroundRoleGate();
 }
 
 function showReceivedSettings(detail) {
@@ -1130,22 +1343,42 @@ async function startGroundRadar(mode) {
   groundRadarMode = mode;
   pendingSettingsSnapshot = undefined;
   elements.groundJsonReceived.hidden = true;
-  elements.groundRadarTitle.textContent = mode === "json" ? "Scanning JSON settings beacons" : "Scanning live FLUBBER streams";
+  elements.groundRadarTitle.textContent = mode === "json"
+    ? "Scanning JSON settings beacons"
+    : mode === "universe" ? "Synch with Universe"
+      : mode === "party" ? "Invite FLUBBERs to the party" : "Scanning live FLUBBER streams";
   elements.groundRadarStatus.textContent = mode === "json"
     ? "Connecting to the public settings discovery room…"
-    : "Connecting to the public live-coordinate discovery room…";
+    : mode === "universe" ? "Announcing your local control and scanning for a reciprocal partner…"
+      : mode === "party" ? "Scanning for public FLUBBERs you can explicitly invite…"
+        : "Connecting to the public live-coordinate discovery room…";
   elements.groundRadarSources.replaceChildren();
   if (!elements.groundRadarDialog.open) elements.groundRadarDialog.showModal();
   try {
     if (mode === "json") {
       await settingsSnapshotReceiver.startDiscovery();
       updateSettingsRadar();
-    } else {
+    } else if (mode === "live") {
       await flubberReceiver.startDiscovery();
       updateLiveReceiveUi();
       updateRadarSources();
+    } else if (mode === "universe") {
+      const sourceName = requiredGroundControlName();
+      universeLocalCurrent = { currentX: state.currentX, currentY: state.currentY };
+      await acquireBroadcastLatencyMode();
+      await universeLink.start({ sourceName });
+      updateUniverseUi();
+      updateRadarSources();
+    } else if (mode === "party") {
+      await flubberParty.startDiscovery();
+      updatePartyUi();
+      updateRadarSources();
     }
   } catch (error) {
+    if (mode === "universe") {
+      await universeLink.stop();
+      await releaseBroadcastLatencyMode();
+    }
     elements.groundRadarStatus.textContent = error?.message ?? String(error);
     announce(elements.groundRadarStatus.textContent);
   }
@@ -1154,6 +1387,11 @@ async function startGroundRadar(mode) {
 async function stopGroundRadar() {
   if (groundRadarMode === "json") await settingsSnapshotReceiver.stop();
   if (groundRadarMode === "live") await flubberReceiver.stop();
+  if (groundRadarMode === "universe") {
+    await universeLink.stop();
+    await releaseBroadcastLatencyMode();
+  }
+  if (groundRadarMode === "party") await flubberParty.stop();
   groundRadarMode = "";
   pendingSettingsSnapshot = undefined;
   elements.groundJsonReceived.hidden = true;
@@ -1852,6 +2090,41 @@ function renderPictureInPicture(rendered) {
   );
 }
 
+function renderPartyFlubbers() {
+  const guests = flubberParty.snapshot().guests.filter((guest) => guest.latest
+    && (guest.phase === "live" || guest.phase === "stale"));
+  const size = Math.max(72, Math.min(132, state.widgetSize * 0.56));
+  const radius = Math.max(state.widgetSize * 0.78, size * 1.15);
+  for (let index = 0; index < guests.length; index += 1) {
+    const guest = guests[index];
+    const view = partyGuestViews.get(guest.streamId) ?? createPartyGuestView(guest.streamId, guest.label);
+    const angle = guests.length === 1 ? 0 : (Math.PI * 2 * index) / guests.length;
+    const x = clamp(state.widgetX + Math.cos(angle) * radius, size / 2 + 8, window.innerWidth - size / 2 - 8);
+    const y = clamp(state.widgetY + Math.sin(angle) * radius, size / 2 + 8, window.innerHeight - size / 2 - 8);
+    const rendered = buildFlubberPath({
+      profiles,
+      offsets: view.offsets,
+      x: guest.latest.currentX,
+      y: guest.latest.currentY,
+      phase: state.phase + index * 0.47,
+      palette: state.palette,
+      amplitudeScale: state.visual.amplitudeScale,
+      disorderScale: state.visual.disorderScale,
+      baseShape: state.visual.baseShape,
+      reducedMotion: reducedMotionQuery.matches,
+    });
+    for (const path of view.paths) path.setAttribute("d", rendered.path);
+    view.root.hidden = false;
+    view.root.style.setProperty("--party-size", `${size}px`);
+    view.root.style.setProperty("--party-x", `${x}px`);
+    view.root.style.setProperty("--party-y", `${y}px`);
+    view.root.style.setProperty("--party-color", rendered.color);
+    view.root.setAttribute("aria-label", `${guest.label}. Valence ${guest.latest.currentX.toFixed(2)}, arousal ${guest.latest.currentY.toFixed(2)}${guest.phase === "stale" ? ", signal stale and holding" : ""}.`);
+  }
+  const liveIds = new Set(guests.map((guest) => guest.streamId));
+  for (const [streamId, view] of partyGuestViews) view.root.hidden = !liveIds.has(streamId);
+}
+
 function finishPictureInPicture(childWindow) {
   if (pictureInPictureWindow !== childWindow) return;
   broadcastOwnsPictureInPicture = false;
@@ -1869,9 +2142,11 @@ function finishPictureInPicture(childWindow) {
   constrainAndRenderWidget();
   recordEvent("picture-in-picture", "close", "flubber", false);
   const broadcasting = flubberBroadcaster.snapshot().phase === "broadcasting";
-  if (broadcasting) {
+  const universeSending = universeLink.snapshot().enabled;
+  if (broadcasting || universeSending) {
     recordEvent("remote-flubber", "remote-foreground-lost", "floating-flubber", 0);
     updateRemoteBroadcastUi();
+    updateUniverseUi();
     announce("Low-latency foreground mode closed. Keep this Chrome tab visible or restore foreground mode.");
   } else {
     announce("Floating Flubber closed and restored to the page.");
@@ -1947,12 +2222,15 @@ async function acquireBroadcastWakeLock() {
     wakeLock.addEventListener("release", () => {
       if (broadcastWakeLock === wakeLock) broadcastWakeLock = undefined;
       updateRemoteBroadcastUi();
+      updateUniverseUi();
     }, { once: true });
     updateRemoteBroadcastUi();
+    updateUniverseUi();
     return true;
   } catch {
     broadcastWakeLock = undefined;
     updateRemoteBroadcastUi();
+    updateUniverseUi();
     return false;
   }
 }
@@ -1966,6 +2244,7 @@ async function releaseBroadcastLatencyMode() {
     pictureInPictureWindow.close();
   }
   updateRemoteBroadcastUi();
+  updateUniverseUi();
 }
 
 async function acquireBroadcastLatencyMode() {
@@ -1974,6 +2253,7 @@ async function acquireBroadcastLatencyMode() {
   }
   await acquireBroadcastWakeLock();
   updateRemoteBroadcastUi();
+  updateUniverseUi();
 }
 
 function updatePictureInPictureSupport() {
@@ -3150,6 +3430,10 @@ async function startExperiment() {
     return;
   }
   if (experiment.phase !== "idle") return;
+  if (universeLink.snapshot().enabled || flubberParty.snapshot().enabled) {
+    announce("Stop Universe synchronization or the FLUBBER party before starting an experiment.");
+    return;
+  }
   try {
     experiment.config = readExperimentConfig();
   } catch (error) {
@@ -3335,6 +3619,8 @@ function initializeEvents() {
   settingsSnapshotBroadcaster.addEventListener("statechange", (event) => updateSettingsBroadcastUi(event.detail));
   settingsSnapshotReceiver.addEventListener("statechange", (event) => updateSettingsRadar(event.detail));
   settingsSnapshotReceiver.addEventListener("snapshot", (event) => showReceivedSettings(event.detail));
+  universeLink.addEventListener("statechange", (event) => updateUniverseUi(event.detail));
+  flubberParty.addEventListener("statechange", (event) => updatePartyUi(event.detail));
   window.addEventListener("pointerdown", (event) => ingestPointerEvent(event, "down"), { capture: true, passive: false });
   window.addEventListener("pointermove", (event) => ingestPointerEvent(event, "move"), { capture: true, passive: false });
   window.addEventListener("pointerup", (event) => ingestPointerEvent(event, "up"), { capture: true, passive: false });
@@ -3502,6 +3788,42 @@ function initializeEvents() {
     }
     await startGroundRadar("live");
   });
+  elements.groundUniverseButton.addEventListener("click", async () => {
+    if (universeLink.snapshot().enabled) {
+      const partner = universeLink.snapshot().sourceLabel;
+      await universeLink.stop();
+      await releaseBroadcastLatencyMode();
+      if (groundRadarMode === "universe") groundRadarMode = "";
+      universeLocalCurrent = { currentX: state.currentX, currentY: state.currentY };
+      updateUniverseUi();
+      recordEvent("ground-control", "universe-stop", partner, 0);
+      announce("Universe synchronization stopped. Local control is independent again.");
+      return;
+    }
+    if (currentOneWayRole() !== "idle" || flubberParty.snapshot().enabled) {
+      announce("Stop the active sender, receiver, or FLUBBER party before starting Universe synchronization.");
+      return;
+    }
+    await startGroundRadar("universe");
+    recordEvent("ground-control", "universe-start", state.groundControlName, 1);
+  });
+  elements.groundPartyButton.addEventListener("click", async () => {
+    if (flubberParty.snapshot().enabled) {
+      const count = flubberParty.snapshot().guests.length;
+      await flubberParty.stop();
+      if (groundRadarMode === "party") groundRadarMode = "";
+      updatePartyUi();
+      recordEvent("ground-control", "party-stop", "guests", count);
+      announce("FLUBBER party stopped and all invited signals disconnected.");
+      return;
+    }
+    if (currentOneWayRole() !== "idle" || universeLink.snapshot().enabled) {
+      announce("Stop the active sender, receiver, or Universe link before opening a FLUBBER party.");
+      return;
+    }
+    await startGroundRadar("party");
+    recordEvent("ground-control", "party-start", "radar", 1);
+  });
   elements.groundRadarStop.addEventListener("click", async () => {
     await stopGroundRadar();
     announce("F.L.U.B.B.E.R. Radar stopped.");
@@ -3549,7 +3871,7 @@ function initializeEvents() {
     }
   });
   elements.remoteBroadcastForegroundButton.addEventListener("click", async () => {
-    if (flubberBroadcaster.snapshot().phase !== "broadcasting") return;
+    if (flubberBroadcaster.snapshot().phase !== "broadcasting" && !universeLink.snapshot().enabled) return;
     elements.remoteBroadcastForegroundButton.disabled = true;
     await acquireBroadcastLatencyMode();
     const pictureInPictureAvailable = pictureInPictureSupported(window);
@@ -3566,6 +3888,7 @@ function initializeEvents() {
       announce("Foreground mode could not be restored. Keep this Chrome tab visible and try again.");
     }
     updateRemoteBroadcastUi();
+    updateUniverseUi();
   });
   for (const fieldset of elements.polarAxisFields) {
     const axis = fieldset.dataset.polarAxis;
@@ -3894,16 +4217,21 @@ function initializeEvents() {
     void flubberReceiver.stop();
     void settingsSnapshotBroadcaster.stop();
     void settingsSnapshotReceiver.stop();
+    void universeLink.stop();
+    void flubberParty.stop();
   });
   window.addEventListener("pagehide", () => {
     void flubberBroadcaster.stop();
     void flubberReceiver.stop();
     void settingsSnapshotBroadcaster.stop();
     void settingsSnapshotReceiver.stop();
+    void universeLink.stop();
+    void flubberParty.stop();
     void releaseBroadcastLatencyMode();
   }, { once: true });
   document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "visible" && flubberBroadcaster.snapshot().phase === "broadcasting") {
+    if (document.visibilityState === "visible"
+      && (flubberBroadcaster.snapshot().phase === "broadcasting" || universeLink.snapshot().enabled)) {
       void acquireBroadcastWakeLock();
     }
   });
@@ -3925,6 +4253,7 @@ function animationFrame(timestamp) {
   const touchMetric = touchTrace.update(timestamp, deltaSeconds);
   const incoming = liveRemoteSnapshot();
   const incomingOwnsAxes = liveRemoteOwnsAxes(incoming);
+  const universe = universeLink.snapshot();
   if (touchTrackingActive() && !incomingOwnsAxes) {
     applyTouchTraceState(touchMetric);
   }
@@ -3933,6 +4262,29 @@ function animationFrame(timestamp) {
     state.targetY = incoming.latest.currentY;
     state.currentX = incoming.latest.currentX;
     state.currentY = incoming.latest.currentY;
+  } else if (universe.enabled) {
+    if (touchTrackingActive() && state.touchFeedbackMode === TOUCH_FEEDBACK_GATED) {
+      universeLocalCurrent = { currentX: state.targetX, currentY: state.targetY };
+    } else {
+      universeLocalCurrent.currentX = smoothToward(
+        universeLocalCurrent.currentX,
+        state.targetX,
+        state.response,
+        deltaSeconds,
+      );
+      universeLocalCurrent.currentY = smoothToward(
+        universeLocalCurrent.currentY,
+        state.targetY,
+        state.response,
+        deltaSeconds,
+      );
+    }
+    universeLink.offer(universeLocalCurrent.currentX, universeLocalCurrent.currentY);
+    const shared = universe.reciprocal
+      ? blendUniverseCoordinates(universeLocalCurrent, universe.latest)
+      : universeLocalCurrent;
+    state.currentX = shared.currentX;
+    state.currentY = shared.currentY;
   } else if (touchTrackingActive() && state.touchFeedbackMode === TOUCH_FEEDBACK_GATED) {
     // The bounded live gate velocity is already the smoothing layer. Rendering
     // it directly lets participants stop on the exact visible grid position.
@@ -3942,6 +4294,7 @@ function animationFrame(timestamp) {
     state.currentX = smoothToward(state.currentX, state.targetX, state.response, deltaSeconds);
     state.currentY = smoothToward(state.currentY, state.targetY, state.response, deltaSeconds);
   }
+  if (!universe.enabled) universeLocalCurrent = { currentX: state.currentX, currentY: state.currentY };
 
   // The floating foreground window has its own animation-frame clock. Keep
   // all transport rate limiting on the broadcaster's single monotonic clock.
@@ -3975,6 +4328,7 @@ function animationFrame(timestamp) {
   elements.touchPreviewFlubber.style.setProperty("--affect-color", rendered.color);
   elements.touchPreviewFlubber.style.opacity = state.widgetVisible ? state.widgetOpacity : 0;
   renderPictureInPicture(rendered);
+  renderPartyFlubbers();
   updateCoordinateDisplay();
   updateFeatureSpace();
   renderTouchTrace(timestamp);
@@ -4006,6 +4360,8 @@ function initialize() {
   updateSettingsBroadcastUi();
   updateSettingsRadar();
   updateLiveReceiveUi();
+  updateUniverseUi();
+  updatePartyUi();
   updateLoggerDisplay();
   savePreferences();
   recordEvent("system", "session-start", "session", logger.sessionId);

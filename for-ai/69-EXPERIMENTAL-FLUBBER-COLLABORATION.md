@@ -1,0 +1,30 @@
+# Experimental FLUBBER collaboration
+
+This is the normative contract for Ground Control's reciprocal **Synch with Universe** and multi-source **Invite a FLUBBER** modes. They extend the reviewed 12-byte coordinate transport; they are not chat, accounts, presence storage, experiment recording, physiology exchange, or a general networking API.
+
+## Shared boundary
+
+- Loading the page constructs no VDO.Ninja client. Each mode starts only from its exact user action and stops on explicit stop, page close, or refresh.
+- Universe and Party are mutually exclusive with one another and with every ordinary JSON/live send or receive role. They never enter portable settings, browser preferences, CSV, or Experiment state; Experiment start is blocked until collaboration stops.
+- Public names, peer-IP visibility, third-party signaling/STUN/TURN, relay latency, and hosted-service availability carry the same disclosures as ordinary remote FLUBBER. Only bounded final/local-intent X/Y frames use the wire; no physiology, metric, timestamp, identity, settings, animation phase, or research row is added.
+- Both modes reuse the locally vendored VDO.Ninja SDK and `flubber-remote.js` codec, 60 Hz cap, 100 ms heartbeat, partial-reliability channel, latest-state backpressure, stale hold, recovery hysteresis, diagnostics, and teardown. They add no backend or WebSocket fallback.
+
+## Synch with Universe
+
+- Universe is an explicit paired duplex exception intended for two people. Each named browser simultaneously advertises its own local control intent and discovers other Universe sources, but it excludes its own fresh random stream ID. Each browser selects only one incoming partner; as with every public unauthenticated room, unrelated listeners cannot be cryptographically excluded and must be treated as disclosed observers rather than trusted participants.
+- Use public room `affect_tracker_universe_v1`, source prefix `aft_universe_`, label suffix `Universe FLUBBER`, and custom channel `flubberuniversev1`. Discovery never auto-selects: each person explicitly selects the other person's named source.
+- A browser is reciprocal-live only after it has received a valid partner coordinate and at least one listener is connected to its outgoing source. Receiving alone reports that it is waiting for the partner to choose back. The radar closes only on reciprocal-live, not on discovery, selection, connecting, or one-way receipt.
+- Each browser preserves an independent locally smoothed intent pair. While reciprocal-live, the one displayed shared Flubber is the symmetric equal-weight mean of local intent and the partner's latest accepted pair, clamped to `[-1,1]`. Because both sides apply the same commutative rule to the same two intentions, they converge without assigning a master browser. Stale holds the latest shared position; it never falls through to unrelated input.
+- Universe transmission uses the existing Document Picture-in-Picture frame owner and renewable wake lock. Loss of that foreground helper is visible and recoverable with the same user-gesture restore action. Browser/OS scheduling cannot be overridden; reliable low latency still requires an active foreground frame owner.
+
+## Invite a FLUBBER
+
+- Party is local-plus-guests, not co-control. The host's main Flubber and axes stay local. Each invited ordinary public `aft_flubber_` source is rendered as a separate labelled companion using the canonical renderer and that guest's latest accepted X/Y.
+- Party discovery never auto-selects and remains open after an invitation so the host can add more sources. Every guest requires an explicit Invite action and an independent receiver connection. Invited sources may be individually removed; Stop closes discovery and every guest receiver.
+- A browser supports at most eight invited guests. This is a deliberate CPU, WebRTC-peer, accessibility, and viewport bound—not a claim that VDO.Ninja globally limits the room. Duplicate invitations are idempotent. A stale guest remains visible at its held position and labelled state; it never takes over the local main axes.
+
+## Validation
+
+- Unit tests cover the ordinary role gate, symmetric bounded blend, isolated Universe options, self-exclusion, explicit reciprocal readiness, explicit party invitations, duplicate behavior, the eight-guest bound, and teardown.
+- Static/UI tests cover the two buttons, dedicated reduced-motion-safe SVG animations, named radar actions, reciprocal-only Universe dismissal, separate guest stage/roster, role disabling, experiment exclusion, and no automatic connection.
+- Browser qualification requires fresh real VDO.Ninja endpoints. Test ordinary sender/receiver exclusion; reciprocal two-browser Universe selection and motion; foreground degradation/restoration; one/many party invitations, local-axis independence, stale/remove/stop behavior; reload-to-idle; and full cleanup of every signal.

@@ -7,7 +7,7 @@
     <meta name="description" content="A draggable, browser-only 2D affect tracker inspired by AffectTracker.">
     <title>2D Affect Tracker</title>
     <script src="./src/theme-bootstrap.js?v=retro-1"></script>
-    <link rel="stylesheet" href="./styles.css?v=ground-control-1-retro-1">
+    <link rel="stylesheet" href="./styles.css?v=collaboration-1-retro-1">
   </head>
   <body>
     <main id="stage" aria-label="Interactive affect tracker">
@@ -35,6 +35,8 @@
         </svg>
         <span class="drag-hint" aria-hidden="true">drag</span>
       </div>
+
+      <section id="flubber-party-stage" class="flubber-party-stage" hidden aria-label="Invited FLUBBER party"></section>
 
       <section id="touch-trace-panel" class="touch-trace-panel" hidden aria-label="Experimental movement trace feedback">
         <canvas id="touch-trace-canvas" width="320" height="160" aria-hidden="true"></canvas>
@@ -572,6 +574,15 @@
                 <svg class="ground-action-icon icon-radar" viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="24"></circle><circle cx="32" cy="32" r="15"></circle><path d="M8 32h48M32 8v48"></path><path class="radar-sweep" d="M32 32 32 8a24 24 0 0 1 17 7Z"></path><circle class="radar-hit hit-one" cx="43" cy="23" r="3"></circle><circle class="radar-hit hit-two" cx="21" cy="42" r="2"></circle></svg>
                 <span><strong>Scan Live FLUBBER</strong><small id="ground-live-receive-status">Continuous receiver off</small></span>
               </button>
+
+              <button id="ground-universe-button" class="ground-action ground-collaboration-action" type="button" aria-pressed="false">
+                <svg class="ground-action-icon icon-universe" viewBox="0 0 64 64" aria-hidden="true"><circle class="universe-orbit orbit-one" cx="32" cy="32" r="21"></circle><ellipse class="universe-orbit orbit-two" cx="32" cy="32" rx="27" ry="11"></ellipse><circle class="universe-peer peer-one" cx="14" cy="22" r="5"></circle><circle class="universe-peer peer-two" cx="50" cy="42" r="5"></circle><path class="universe-link" d="M18 24 46 40M18 20 46 44"></path></svg>
+                <span><strong>Synch with Universe</strong><small id="ground-universe-status">Two-way co-control off</small></span>
+              </button>
+              <button id="ground-party-button" class="ground-action ground-collaboration-action" type="button" aria-pressed="false">
+                <svg class="ground-action-icon icon-party" viewBox="0 0 64 64" aria-hidden="true"><path class="party-orbit" d="M8 35c8-18 18-24 29-19 9 4 9 15 19 18"></path><circle class="party-flubber party-one" cx="16" cy="39" r="8"></circle><circle class="party-flubber party-two" cx="34" cy="24" r="9"></circle><circle class="party-flubber party-three" cx="50" cy="42" r="7"></circle></svg>
+                <span><strong>Invite a FLUBBER</strong><small id="ground-party-status">Party off</small></span>
+              </button>
             </div>
 
             <button id="flubber-remote-foreground-button" class="ground-restore-button" type="button" hidden>Restore low-latency foreground mode</button>
@@ -585,9 +596,19 @@
                 <div><dt>Listeners</dt><dd><output id="flubber-remote-listeners">0</output></dd></div>
                 <div><dt>Route</dt><dd><output id="flubber-remote-route">Waiting</output></dd></div>
               </dl>
+              <dl id="ground-universe-details" hidden>
+                <div><dt>Universe partner</dt><dd><output id="ground-universe-partner">—</output></dd></div>
+                <div><dt>Outgoing listeners</dt><dd><output id="ground-universe-listeners">0</output></dd></div>
+                <div><dt>State</dt><dd><output id="ground-universe-state">Waiting</output></dd></div>
+              </dl>
             </div>
 
-            <p class="ground-control-distinction"><strong>Snapshot vs stream:</strong> JSON is one frozen settings package that you explicitly apply. Live FLUBBER is a continuous connection that controls X and Y until you disconnect.</p>
+            <section id="ground-party-roster" class="ground-party-roster" hidden aria-labelledby="ground-party-roster-title">
+              <div><h4 id="ground-party-roster-title">FLUBBER party</h4><small>Up to eight selected public guests appear beside your locally controlled Flubber.</small></div>
+              <div id="ground-party-guests" class="ground-party-guests"></div>
+            </section>
+
+            <p class="ground-control-distinction"><strong>Snapshot vs stream:</strong> JSON is one frozen settings snapshot; Live FLUBBER is a connection that stays open for changing X/Y coordinates. Ordinary broadcast and scan are sender-or-receiver only. <strong>Synch with Universe</strong> is an explicit reciprocal exception that averages two people's local controls into one shared Flubber. <strong>Invite a FLUBBER</strong> keeps your controls local and adds selected remote Flubbers alongside yours.</p>
             <p class="experiment-privacy"><strong>Public experimental connection:</strong> pressing a Broadcast or Scan action connects to a public VDO.Ninja discovery room. Your chosen signal name is visible to room listeners; peers may learn this device's IP address; third-party signaling and STUN/TURN may be used; relay paths add latency; and the free service has no availability guarantee. Static JSON contains the complete portable settings object, including desktop LSL metadata. Live mode sends only final smoothed X/Y coordinates—never raw physiology, timestamps, CSV rows, or participant identity.</p>
           </section>
         </div>
@@ -714,6 +735,6 @@
     </main>
 
     <script src="./vendor/vdoninja/1.5.5/vdoninja-sdk.min.js"></script>
-    <script type="module" src="./src/app.js?v=ground-control-2-retro-1"></script>
+    <script type="module" src="./src/app.js?v=collaboration-1-retro-1"></script>
   </body>
 </html>

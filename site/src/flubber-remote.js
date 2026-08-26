@@ -80,24 +80,49 @@ function publicFlubberNameToken(value, maxLength = 40) {
     .slice(0, maxLength);
 }
 
-function flubberNameFromStreamId(streamId) {
-  const suffix = String(streamId ?? "").slice(FLUBBER_REMOTE_STREAM_PREFIX.length);
+function escapedRegExp(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function generateSignalSourceId({ randomBytes, sourceName, streamPrefix }) {
+  const suffix = Array.from(randomBytes(4), (value) => value.toString(16).padStart(2, "0")).join("");
+  const nameToken = publicFlubberNameToken(sourceName);
+  return `${streamPrefix}${nameToken ? `${nameToken}_` : ""}${suffix}`;
+}
+
+function formatSignalSourceLabel(streamId, streamPrefix) {
+  const suffix = String(streamId ?? "").startsWith(streamPrefix)
+    ? String(streamId).slice(streamPrefix.length)
+    : String(streamId ?? "");
+  const compact = suffix.replace(/[^a-z0-9]/gi, "").toUpperCase().slice(-8).padStart(8, "0");
+  return `Source ${compact.slice(0, 4)} ${compact.slice(4)}`;
+}
+
+function signalNameFromStreamId(streamId, streamPrefix) {
+  const suffix = String(streamId ?? "").slice(streamPrefix.length);
   const token = suffix.replace(/_[a-f0-9]{8}$/i, "");
   return token && token !== suffix ? token.replace(/_/g, " ") : "";
 }
 
+function advertisedSignalLabel(sourceName, streamId, streamPrefix, labelSuffix) {
+  const name = normalizeFlubberSourceName(sourceName);
+  return name ? `${name} · ${labelSuffix}` : formatSignalSourceLabel(streamId, streamPrefix);
+}
+
+function listedSignalLabel(label, streamId, streamPrefix, labelSuffix) {
+  const suffixPattern = new RegExp(`\\s*·\\s*${escapedRegExp(labelSuffix)}\\s*$`, "i");
+  const listedName = String(label ?? "").replace(suffixPattern, "")
+    || signalNameFromStreamId(streamId, streamPrefix);
+  const name = normalizeFlubberSourceName(listedName);
+  return name ? `${name} · ${labelSuffix}` : formatSignalSourceLabel(streamId, streamPrefix);
+}
+
 export function generateFlubberSourceId(randomBytes = defaultRandomBytes, sourceName = "") {
-  const suffix = Array.from(randomBytes(4), (value) => value.toString(16).padStart(2, "0")).join("");
-  const nameToken = publicFlubberNameToken(sourceName);
-  return `${FLUBBER_REMOTE_STREAM_PREFIX}${nameToken ? `${nameToken}_` : ""}${suffix}`;
+  return generateSignalSourceId({ randomBytes, sourceName, streamPrefix: FLUBBER_REMOTE_STREAM_PREFIX });
 }
 
 export function formatFlubberSourceLabel(streamId) {
-  const suffix = String(streamId ?? "").startsWith(FLUBBER_REMOTE_STREAM_PREFIX)
-    ? String(streamId).slice(FLUBBER_REMOTE_STREAM_PREFIX.length)
-    : String(streamId ?? "");
-  const compact = suffix.replace(/[^a-z0-9]/gi, "").toUpperCase().slice(-8).padStart(8, "0");
-  return `Source ${compact.slice(0, 4)} ${compact.slice(4)}`;
+  return formatSignalSourceLabel(streamId, FLUBBER_REMOTE_STREAM_PREFIX);
 }
 
 export function isFlubberSource(streamId) {
@@ -161,15 +186,7 @@ export function normalizeFlubberSourceName(value) {
 }
 
 export function flubberAdvertisedLabel(sourceName, streamId) {
-  const name = normalizeFlubberSourceName(sourceName);
-  return name ? `${name} · Live FLUBBER` : formatFlubberSourceLabel(streamId);
-}
-
-function listedFlubberLabel(label, streamId) {
-  const listedName = String(label ?? "").replace(/\s*·\s*Live FLUBBER\s*$/i, "")
-    || flubberNameFromStreamId(streamId);
-  const name = normalizeFlubberSourceName(listedName);
-  return name ? `${name} · Live FLUBBER` : formatFlubberSourceLabel(streamId);
+  return advertisedSignalLabel(sourceName, streamId, FLUBBER_REMOTE_STREAM_PREFIX, "Live FLUBBER");
 }
 
 function qualitySummary(quality) {
@@ -268,6 +285,10 @@ class FlubberRemoteBase extends EventTarget {
 export class FlubberBroadcaster extends FlubberRemoteBase {
   constructor(options = {}) {
     super(options);
+    this.room = options.room ?? FLUBBER_REMOTE_ROOM;
+    this.streamPrefix = options.streamPrefix ?? FLUBBER_REMOTE_STREAM_PREFIX;
+    this.channelName = options.channelName ?? FLUBBER_REMOTE_CHANNEL;
+    this.labelSuffix = options.labelSuffix ?? "Live FLUBBER";
     this.randomBytes = options.randomBytes ?? defaultRandomBytes;
     this.phase = "idle";
     this.streamId = "";
@@ -295,7 +316,9 @@ export class FlubberBroadcaster extends FlubberRemoteBase {
       phase: this.phase,
       streamId: this.streamId,
       sourceName: this.sourceName,
-      sourceLabel: this.streamId ? flubberAdvertisedLabel(this.sourceName, this.streamId) : "",
+      sourceLabel: this.streamId
+        ? advertisedSignalLabel(this.sourceName, this.streamId, this.streamPrefix, this.labelSuffix)
+        : "",
       listenerCount: this.channels.size,
       directListeners: direct,
       relayedListeners: relayed,
@@ -316,7 +339,11 @@ export class FlubberBroadcaster extends FlubberRemoteBase {
     await this.stop();
     this.phase = "connecting";
     this.sourceName = normalizeFlubberSourceName(sourceName);
-    this.streamId = generateFlubberSourceId(this.randomBytes, this.sourceName);
+    this.streamId = generateSignalSourceId({
+      randomBytes: this.randomBytes,
+      sourceName: this.sourceName,
+      streamPrefix: this.streamPrefix,
+    });
     this.emitState();
     let stage = "loading the bundled VDO.Ninja SDK";
     try {
@@ -332,11 +359,11 @@ export class FlubberBroadcaster extends FlubberRemoteBase {
       stage = "connecting to signaling";
       await this.sdk.connect();
       stage = "joining the public discovery room";
-      await this.sdk.joinRoom({ room: FLUBBER_REMOTE_ROOM, password: false });
+      await this.sdk.joinRoom({ room: this.room, password: false });
       stage = "announcing the data-only source";
       await this.sdk.announce({
         streamID: this.streamId,
-        label: flubberAdvertisedLabel(this.sourceName, this.streamId),
+        label: advertisedSignalLabel(this.sourceName, this.streamId, this.streamPrefix, this.labelSuffix),
       });
       this.phase = "broadcasting";
       this.scheduleHeartbeat();
@@ -436,7 +463,7 @@ export class FlubberBroadcaster extends FlubberRemoteBase {
     if (!uuid || this.channels.has(uuid) || this.openingPeers.has(uuid) || !this.sdk) return;
     this.openingPeers.add(uuid);
     try {
-      const channel = await this.sdk.openChannel(uuid, FLUBBER_REMOTE_CHANNEL, {
+      const channel = await this.sdk.openChannel(uuid, this.channelName, {
         ordered: false,
         maxRetransmits: 0,
       });
@@ -516,6 +543,13 @@ export class FlubberBroadcaster extends FlubberRemoteBase {
 export class FlubberReceiver extends FlubberRemoteBase {
   constructor(options = {}) {
     super(options);
+    this.room = options.room ?? FLUBBER_REMOTE_ROOM;
+    this.streamPrefix = options.streamPrefix ?? FLUBBER_REMOTE_STREAM_PREFIX;
+    this.channelName = options.channelName ?? FLUBBER_REMOTE_CHANNEL;
+    this.labelSuffix = options.labelSuffix ?? "Live FLUBBER";
+    this.receiverLabel = options.receiverLabel ?? "Affect Tracker Quest receiver";
+    this.autoSelect = options.autoSelect !== false;
+    this.excludeSource = typeof options.excludeSource === "function" ? options.excludeSource : () => false;
     this.phase = "idle";
     this.sources = new Map();
     this.selectedStreamId = "";
@@ -562,7 +596,8 @@ export class FlubberReceiver extends FlubberRemoteBase {
       sources: Array.from(this.sources.values()).sort((left, right) => left.label.localeCompare(right.label)),
       selectedStreamId: this.selectedStreamId,
       sourceLabel: this.selectedStreamId
-        ? (this.sources.get(this.selectedStreamId)?.label ?? formatFlubberSourceLabel(this.selectedStreamId))
+        ? (this.sources.get(this.selectedStreamId)?.label
+          ?? formatSignalSourceLabel(this.selectedStreamId, this.streamPrefix))
         : "",
       latest: this.latest ? {
         sequence: this.latest.sequence,
@@ -592,10 +627,10 @@ export class FlubberReceiver extends FlubberRemoteBase {
 
   addSource(item) {
     const { streamId, uuid, label } = sourceItem(item);
-    if (!isFlubberSource(streamId)) return;
+    if (!streamId.startsWith(this.streamPrefix) || this.excludeSource(streamId)) return;
     const existing = this.sources.get(streamId);
     if (existing) {
-      existing.label = listedFlubberLabel(label, streamId);
+      existing.label = listedSignalLabel(label, streamId, this.streamPrefix, this.labelSuffix);
       if (uuid && uuid !== existing.uuid) {
         existing.uuid = uuid;
         if (streamId === this.selectedStreamId) this.selectedUuid = uuid;
@@ -606,7 +641,7 @@ export class FlubberReceiver extends FlubberRemoteBase {
     this.sources.set(streamId, {
       streamId,
       uuid,
-      label: listedFlubberLabel(label, streamId),
+      label: listedSignalLabel(label, streamId, this.streamPrefix, this.labelSuffix),
     });
     if (!this.selectedStreamId) this.scheduleAutoSelection();
     this.emitState();
@@ -636,7 +671,7 @@ export class FlubberReceiver extends FlubberRemoteBase {
     this.discoveryTimer = this.timeout(() => {
       this.discoveryTimer = undefined;
       if (this.selectedStreamId) return;
-      if (this.sources.size === 1) {
+      if (this.autoSelect && this.sources.size === 1) {
         const [source] = this.sources.values();
         void this.selectSource(source.streamId);
       } else {
@@ -672,7 +707,7 @@ export class FlubberReceiver extends FlubberRemoteBase {
       });
       this.listen("error", (event) => this.emitState({ message: normalizeError(event.detail?.error ?? event.detail), error: true }));
       await this.sdk.connect();
-      await this.sdk.joinRoom({ room: FLUBBER_REMOTE_ROOM, password: false });
+      await this.sdk.joinRoom({ room: this.room, password: false });
       this.interval(() => { void this.refreshQuality(); }, 2_000);
       this.scheduleAutoSelection();
       this.emitState();
@@ -686,7 +721,7 @@ export class FlubberReceiver extends FlubberRemoteBase {
   }
 
   async selectSource(streamId) {
-    if (!this.sdk || !isFlubberSource(streamId)) return this.snapshot();
+    if (!this.sdk || !streamId.startsWith(this.streamPrefix) || this.excludeSource(streamId)) return this.snapshot();
     const previous = this.selectedStreamId;
     const previousDisconnected = this.disconnectNotified;
     if (previous === streamId && (this.phase === "connecting" || this.phase === "live" || this.phase === "stale")) {
@@ -718,7 +753,7 @@ export class FlubberReceiver extends FlubberRemoteBase {
     this.phase = "connecting";
     this.emitState({
       transition: previous ? "switched" : "selected",
-      message: `Connecting to ${source?.label ?? formatFlubberSourceLabel(streamId)}…`,
+      message: `Connecting to ${source?.label ?? formatSignalSourceLabel(streamId, this.streamPrefix)}…`,
     });
     try {
       await this.sdk.view(streamId, {
@@ -726,7 +761,7 @@ export class FlubberReceiver extends FlubberRemoteBase {
         video: false,
         downloads: false,
         allowresources: false,
-        label: "Affect Tracker Quest receiver",
+        label: this.receiverLabel,
       });
     } catch (error) {
       this.phase = "error";
@@ -736,7 +771,7 @@ export class FlubberReceiver extends FlubberRemoteBase {
   }
 
   acceptChannel(detail) {
-    if (!detail || detail.label !== `x-${FLUBBER_REMOTE_CHANNEL}`) return;
+    if (!detail || detail.label !== `x-${this.channelName}`) return;
     if (!this.selectedStreamId) return;
     if (detail.streamID && detail.streamID !== this.selectedStreamId) return;
     if (this.selectedUuid && detail.uuid && detail.uuid !== this.selectedUuid) return;

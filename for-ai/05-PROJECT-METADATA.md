@@ -52,11 +52,13 @@ The web, desktop, and Quest applications must feel like the same instrument. Sha
 - `site/src/theme-bootstrap.js`, `site/src/retro-theme.js`, and `site/assets/retro-ui/`: browser-local pre-paint Windows 95 skin restoration, deterministic low-volume UI cue routing, and pinned local Kenney CC0 audio. The theme never enters portable settings or forks product behavior.
 - `site/src/accordion-protocols.js`: canonical registry for the five top-level web modules, their distinct responsibilities, mutually exclusive open state, and cross-module Touch/Trackpad activation rule.
 - `site/src/ground-control.js`: browser-neutral Ground Control authority for named portable-settings snapshots, validated public discovery, and the static-settings VDO.Ninja channel. Live X/Y remains delegated to `flubber-remote.js`.
+- `site/src/flubber-collaboration.js`: browser-neutral Ground Control role gate, isolated reciprocal Universe session, symmetric coordinate blend, and bounded explicit multi-receiver FLUBBER party orchestration.
 - `site/webxr.html`, `site/src/webxr-study.js`, `site/src/webxr-study-core.js`, and `site/src/webxr-stimuli.js`: experimental headset-browser study entrypoint, flat/equirectangular WebXR/WebGL adapter, selectable repository-hosted stimulus catalog, Quest-controller, explicitly assigned Polar-metric, or explicit remote-coordinate affect input, stimulus-aware CSV download, and explicit per-run webhook delivery.
 - `for-ai/70-RESEARCH-PROVENANCE.md` and `for-ai/references.bib`: source-decision ledger and citation-ready bibliography.
 - `for-ai/65-EXPERIMENTAL-POLAR-STREAM.md`: normative Polar Stream support, privacy, metric, mapping, precedence, and qualification contract.
 - `for-ai/66-EXPERIMENTAL-REMOTE-FLUBBER.md`: normative public discovery, wire protocol, input ownership, privacy, observability, and hardware qualification contract for browser-to-browser Flubber coordinates.
 - `for-ai/68-EXPERIMENTAL-SETTINGS-BEACON.md`: normative Ground Control public discovery, named static snapshot, validation, preview/apply, and privacy contract for browser-to-browser portable settings.
+- `for-ai/69-EXPERIMENTAL-FLUBBER-COLLABORATION.md`: normative ordinary-role exclusion, reciprocal Universe co-control, bounded party invitation, rendering, privacy, and lifecycle contract.
 - `desktop/`: Tauri WebView presentation and typed native adapter.
 - `.github/workflows/`: deployment, verification, and native packaging automation.
 

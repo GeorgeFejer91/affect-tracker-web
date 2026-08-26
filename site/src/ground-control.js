@@ -1,4 +1,4 @@
-import { flubberRemoteSdkOptions } from "./flubber-remote.js?v=ground-control-1";
+import { flubberRemoteSdkOptions } from "./flubber-remote.js?v=collaboration-1";
 import { normalizePortableSettings } from "./portable-settings.js?v=shape-1";
 
 export const GROUND_CONTROL_SETTINGS_ROOM = "affect_tracker_settings_v1";

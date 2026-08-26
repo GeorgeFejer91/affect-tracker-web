@@ -244,6 +244,67 @@ test("broadcaster is explicit, data-only, partial-reliability fan-out with immed
   assert.equal(sdk.calls.at(-1)[0], "disconnect");
 });
 
+test("protocol options isolate a named room, source prefix, channel, label, and manual receiver selection", async () => {
+  const room = "test_universe_room";
+  const streamPrefix = "test_universe_";
+  const channelName = "testuniversev1";
+  const labelSuffix = "Universe FLUBBER";
+  const broadcasterClock = new FakeClock();
+  const broadcasterSdk = new MockSdk();
+  const broadcaster = new FlubberBroadcaster({
+    ...broadcasterClock.options(() => broadcasterSdk),
+    randomBytes: () => new Uint8Array([1, 2, 3, 4]),
+    room,
+    streamPrefix,
+    channelName,
+    labelSuffix,
+  });
+  await broadcaster.start({ sourceName: "Aurora" });
+  assert.deepEqual(broadcasterSdk.calls.slice(0, 3), [
+    ["connect"],
+    ["joinRoom", { room, password: false }],
+    ["announce", { streamID: "test_universe_Aurora_01020304", label: "Aurora · Universe FLUBBER" }],
+  ]);
+  broadcasterSdk.emit("dataChannelOpen", { uuid: "peer-u" });
+  await settle();
+  assert.deepEqual(broadcasterSdk.calls.find((call) => call[0] === "openChannel"), [
+    "openChannel", "peer-u", channelName, { ordered: false, maxRetransmits: 0 },
+  ]);
+  await broadcaster.stop();
+
+  const receiverClock = new FakeClock();
+  const receiverSdk = new MockSdk();
+  const receiver = new FlubberReceiver({
+    ...receiverClock.options(() => receiverSdk),
+    room,
+    streamPrefix,
+    channelName,
+    labelSuffix,
+    receiverLabel: "Universe receiver",
+    autoSelect: false,
+    excludeSource: (streamId) => streamId.includes("self"),
+  });
+  await receiver.startDiscovery();
+  receiverSdk.emit("listing", { list: [
+    { streamID: "test_universe_self_11111111", UUID: "self", label: "Self · Universe FLUBBER" },
+    { streamID: "test_universe_Partner_22222222", UUID: "partner", label: "Partner · Universe FLUBBER" },
+  ] });
+  receiverClock.advance(500);
+  assert.deepEqual(receiver.snapshot().sources.map((source) => source.label), ["Partner · Universe FLUBBER"]);
+  assert.equal(receiverSdk.calls.some((call) => call[0] === "view"), false);
+  await receiver.selectSource("test_universe_Partner_22222222");
+  assert.deepEqual(receiverSdk.calls.find((call) => call[0] === "view"), [
+    "view", "test_universe_Partner_22222222", {
+      audio: false,
+      video: false,
+      downloads: false,
+      allowresources: false,
+      label: "Universe receiver",
+    },
+  ]);
+  await receiver.stop();
+});
+
 test("broadcaster caps changed sends at 60 Hz, heartbeats at 100 ms, and keeps only latest state under backpressure", async () => {
   const clock = new FakeClock();
   const sdk = new MockSdk();
@@ -644,10 +705,10 @@ test("remote pages load only the local SDK and feature code makes no microphone 
   assert.match(index, />Broadcast Live FLUBBER</);
   assert.match(index, /id="flubber-remote-foreground-button"[^>]*hidden>Restore low-latency foreground mode</);
   assert.match(webxr, />Use incoming signal</);
-  assert.match(index, /src="\.\/src\/app\.js\?v=ground-control-2-retro-1"/);
-  assert.match(webxr, /src="\.\/src\/webxr-study\.js\?v=ground-control-1"/);
-  assert.match(app, /from "\.\/flubber-remote\.js\?v=ground-control-1"/);
-  assert.match(receiver, /from "\.\/flubber-remote\.js\?v=ground-control-1"/);
+  assert.match(index, /src="\.\/src\/app\.js\?v=collaboration-1-retro-1"/);
+  assert.match(webxr, /src="\.\/src\/webxr-study\.js\?v=collaboration-1"/);
+  assert.match(app, /from "\.\/flubber-remote\.js\?v=collaboration-1"/);
+  assert.match(receiver, /from "\.\/flubber-remote\.js\?v=collaboration-1"/);
   assert.match(transport, /FLUBBER_REMOTE_FORCE_TURN_PARAM = "remote-force-turn"/);
   assert.match(transport, /forceTURN: Boolean\(forceTurn\)/);
   assert.match(app, /flubberBroadcaster\.offer\(state\.currentX, state\.currentY\);/);
