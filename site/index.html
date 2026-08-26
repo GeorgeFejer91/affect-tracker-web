@@ -6,7 +6,8 @@
     <meta name="color-scheme" content="dark">
     <meta name="description" content="A draggable, browser-only 2D affect tracker inspired by AffectTracker.">
     <title>2D Affect Tracker</title>
-    <link rel="stylesheet" href="./styles.css?v=screen-calibration-v3">
+    <script src="./src/theme-bootstrap.js?v=retro-1"></script>
+    <link rel="stylesheet" href="./styles.css?v=retro-1">
   </head>
   <body>
     <main id="stage" aria-label="Interactive affect tracker">
@@ -648,10 +649,27 @@
         </div>
       </dialog>
 
+      <aside id="retro-toast" class="retro-toast" aria-hidden="true" hidden>
+        <div class="retro-toast-titlebar">
+          <span>Affect Tracker</span>
+          <span class="retro-toast-close" aria-hidden="true">×</span>
+        </div>
+        <div class="retro-toast-body">
+          <span id="retro-toast-icon" class="retro-toast-icon" aria-hidden="true">i</span>
+          <p id="retro-toast-message"></p>
+        </div>
+        <div class="retro-toast-actions" aria-hidden="true"><span>OK</span></div>
+      </aside>
+
+      <button id="retro-theme-toggle" class="retro-theme-toggle" type="button" aria-pressed="false" aria-label="Enable Windows 95 visual and sound skin">
+        <span class="retro-theme-emblem" aria-hidden="true">95</span>
+        <span class="retro-theme-copy"><strong>Windows 95</strong><small id="retro-theme-state">skin off</small></span>
+      </button>
+
       <p id="status-region" class="visually-hidden" aria-live="polite"></p>
     </main>
 
     <script src="./vendor/vdoninja/1.5.5/vdoninja-sdk.min.js"></script>
-    <script type="module" src="./src/app.js?v=settings-beacon-1"></script>
+    <script type="module" src="./src/app.js?v=settings-beacon-1-retro-1"></script>
   </body>
 </html>

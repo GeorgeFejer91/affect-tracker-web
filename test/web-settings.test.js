@@ -32,7 +32,8 @@ test("the shape picker uses persistent accessible buttons instead of a dropdown"
 
   assert.doesNotMatch(html, /id="web-base-shape"/);
   assert.equal((html.match(/data-base-shape=/g) ?? []).length, 4);
-  assert.equal((html.match(/aria-pressed="false"/g) ?? []).length, 4);
+  const shapePicker = html.slice(html.indexOf("class=\"web-shape-buttons\""), html.indexOf("id=\"web-shape-picker-help\""));
+  assert.equal((shapePicker.match(/aria-pressed="false"/g) ?? []).length, 4);
   assert.match(app, /baseShapeButtons: \[\.\.\.document\.querySelectorAll\("\[data-base-shape\]"\)\]/);
   assert.match(app, /button\.dataset\.baseShape === state\.visual\.baseShape/);
   assert.match(app, /state\.visual\.baseShape = button\.dataset\.baseShape/);

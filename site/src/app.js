@@ -78,6 +78,7 @@ import {
   createSettingsBeaconBroadcaster,
   createSettingsBeaconReceiver,
 } from "./settings-beacon.js?v=settings-beacon-1";
+import { createRetroSoundboard, retroCueForMessage, RETRO_THEME_ID } from "./retro-theme.js?v=retro-1";
 import {
   actionForBinding,
   ADVANCED_BINDING_LABELS,
@@ -289,6 +290,11 @@ const elements = {
   screenCalibrationCancel: document.querySelector("#screen-calibration-cancel"),
   screenCalibrationCancelChoose: document.querySelector("#screen-calibration-cancel-choose"),
   screenCalibrationError: document.querySelector("#screen-calibration-error"),
+  retroThemeToggle: document.querySelector("#retro-theme-toggle"),
+  retroThemeState: document.querySelector("#retro-theme-state"),
+  retroToast: document.querySelector("#retro-toast"),
+  retroToastIcon: document.querySelector("#retro-toast-icon"),
+  retroToastMessage: document.querySelector("#retro-toast-message"),
 };
 
 async function loadBundledSettings() {
@@ -332,6 +338,7 @@ function readPreferences(bundledSettings) {
         : TOUCH_FEEDBACK_GATED,
       touchHideCursor: parsed.touchHideCursor === true,
       touchTraceFeedback: parsed.touchTraceFeedback === true,
+      retroTheme: parsed.retroTheme === true,
       mobileTouchIntroSeen: parsed.mobileTouchIntroSeen === true,
       settings,
       seenIntro: true,
@@ -349,6 +356,7 @@ function readPreferences(bundledSettings) {
       touchFeedbackMode: TOUCH_FEEDBACK_GATED,
       touchHideCursor: false,
       touchTraceFeedback: false,
+      retroTheme: false,
       mobileTouchIntroSeen: false,
       settings: structuredClone(bundledSettings),
       seenIntro: true,
@@ -400,6 +408,7 @@ const state = {
   dragging: false,
   touchHideCursor: preferences.touchHideCursor,
   touchTraceFeedback: preferences.touchTraceFeedback,
+  retroTheme: preferences.retroTheme,
   mobileTouchIntroSeen: preferences.mobileTouchIntroSeen,
 };
 Object.assign(state, normalizeAccordionState(state));
@@ -528,7 +537,9 @@ let animationFrameOwner;
 let animationFrameId;
 let activeTracePointerId;
 let lastLoggedGateCommitSequence = 0;
+let retroToastTimer;
 const reducedMotionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+const retroSoundboard = createRetroSoundboard();
 
 function savePreferences() {
   const savedX = experiment.restore?.widgetX ?? state.widgetX;
@@ -550,6 +561,7 @@ function savePreferences() {
     touchFeedbackMode: state.touchFeedbackMode,
     touchHideCursor: state.touchHideCursor,
     touchTraceFeedback: state.touchTraceFeedback,
+    retroTheme: state.retroTheme,
     mobileTouchIntroSeen: state.mobileTouchIntroSeen,
     settings,
     seenIntro: true,
@@ -583,6 +595,32 @@ function announce(message) {
   requestAnimationFrame(() => {
     elements.status.textContent = message;
   });
+  if (state.retroTheme) showRetroToast(message);
+}
+
+function showRetroToast(message) {
+  const cue = retroCueForMessage(message);
+  clearTimeout(retroToastTimer);
+  elements.retroToast.dataset.cue = cue;
+  elements.retroToastIcon.textContent = cue === "alert" ? "!" : cue === "confirm" ? "✓" : "i";
+  elements.retroToastMessage.textContent = message;
+  elements.retroToast.hidden = false;
+  retroSoundboard.play(cue);
+  retroToastTimer = setTimeout(() => {
+    elements.retroToast.hidden = true;
+  }, cue === "alert" ? 5200 : 3400);
+}
+
+function applyRetroTheme() {
+  document.documentElement.dataset.theme = state.retroTheme ? RETRO_THEME_ID : "modern";
+  document.body.classList.toggle("theme-windows-95", state.retroTheme);
+  elements.retroThemeToggle.setAttribute("aria-pressed", String(state.retroTheme));
+  elements.retroThemeToggle.setAttribute("aria-label", `${state.retroTheme ? "Disable" : "Enable"} Windows 95 visual and sound skin`);
+  elements.retroThemeState.textContent = state.retroTheme ? "skin on" : "skin off";
+  if (!state.retroTheme) {
+    clearTimeout(retroToastTimer);
+    elements.retroToast.hidden = true;
+  }
 }
 
 function activeLogger() {
@@ -3209,6 +3247,10 @@ function initializeEvents() {
   window.addEventListener("mousedown", handleGlobalMouseDown);
   window.addEventListener("mouseup", handleGlobalMouseUp);
   window.addEventListener("wheel", handleWheel, { passive: false });
+  document.addEventListener("click", (event) => {
+    if (!state.retroTheme || event.target.closest("#retro-theme-toggle")) return;
+    if (event.target.closest("button, a, summary, input, select, textarea")) retroSoundboard.play("click");
+  }, true);
   window.addEventListener("resize", () => {
     touchTrace.resize(window.innerWidth, window.innerHeight);
     activeTracePointerId = undefined;
@@ -3249,6 +3291,17 @@ function initializeEvents() {
   });
   elements.polarStreamPanelToggle.addEventListener("click", () => {
     toggleTopLevelProtocol("polar");
+  });
+  elements.retroThemeToggle.addEventListener("click", () => {
+    state.retroTheme = !state.retroTheme;
+    applyRetroTheme();
+    savePreferences();
+    recordEvent("appearance", "theme-change", "windows-95", state.retroTheme ? "enabled" : "disabled");
+    if (state.retroTheme) announce("Windows 95 skin enabled. Retro interface sounds are on.");
+    else {
+      retroSoundboard.play("click");
+      announce("Modern skin restored.");
+    }
   });
 
   elements.polarConnectButton.addEventListener("click", async () => {
@@ -3767,6 +3820,7 @@ function animationFrame(timestamp) {
 }
 
 function initialize() {
+  applyRetroTheme();
   updateAccordionPanelStates();
   initializePolarUi();
   initializeScreenCalibrationUi();

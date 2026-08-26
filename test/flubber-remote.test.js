@@ -639,7 +639,7 @@ test("remote pages load only the local SDK and feature code makes no microphone 
   assert.match(index, />Broadcast this to VR \/ remote interface</);
   assert.match(index, /id="flubber-remote-foreground-button"[^>]*hidden>Restore low-latency foreground mode</);
   assert.match(webxr, />Use incoming signal</);
-  assert.match(index, /src="\.\/src\/app\.js\?v=settings-beacon-1"/);
+  assert.match(index, /src="\.\/src\/app\.js\?v=settings-beacon-1-retro-1"/);
   assert.match(webxr, /src="\.\/src\/webxr-study\.js\?v=shape-2"/);
   assert.match(app, /from "\.\/flubber-remote\.js\?v=remote-13"/);
   assert.match(receiver, /from "\.\/flubber-remote\.js\?v=remote-13"/);

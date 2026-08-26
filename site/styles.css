@@ -1652,6 +1652,295 @@ kbd {
   }
 }
 
+/* Browser-local alternate presentation. The functional DOM and control state
+   remain shared with the modern skin; only CSS and opt-in local UI cues change. */
+.retro-theme-toggle {
+  position: fixed;
+  z-index: 240;
+  right: max(0.75rem, env(safe-area-inset-right));
+  bottom: max(0.75rem, env(safe-area-inset-bottom));
+  display: grid;
+  grid-template-columns: auto auto;
+  align-items: center;
+  gap: 0.48rem;
+  min-width: 8.6rem;
+  padding: 0.42rem 0.55rem;
+  border-color: rgb(122 216 255 / 48%);
+  background: rgb(9 16 21 / 92%);
+  box-shadow: 0 0.55rem 1.5rem rgb(0 0 0 / 52%);
+  text-align: left;
+}
+.retro-theme-emblem {
+  display: grid;
+  width: 2rem;
+  height: 1.6rem;
+  place-items: center;
+  border: 1px solid rgb(255 255 255 / 28%);
+  background: linear-gradient(135deg, #ef4949 0 25%, #3c9cf2 25% 50%, #58ba4a 50% 75%, #f2c84b 75%);
+  color: #fff;
+  font: 800 0.68rem ui-monospace, SFMono-Regular, Consolas, monospace;
+  text-shadow: 1px 1px #000;
+}
+.retro-theme-copy { display: grid; line-height: 1.12; }
+.retro-theme-copy strong { font-size: 0.7rem; }
+.retro-theme-copy small { color: rgb(255 255 255 / 56%); font-size: 0.56rem; text-transform: uppercase; }
+.retro-theme-toggle[aria-pressed="true"] { border-color: #fff; background: #c0c0c0; color: #000; }
+.retro-theme-toggle[aria-pressed="true"] .retro-theme-copy small { color: #333; }
+
+.retro-toast {
+  position: fixed;
+  z-index: 235;
+  right: max(0.75rem, env(safe-area-inset-right));
+  bottom: max(4.65rem, calc(env(safe-area-inset-bottom) + 4.1rem));
+  width: min(22rem, calc(100vw - 1.5rem));
+}
+.retro-toast[hidden] { display: none !important; }
+.retro-toast-titlebar { display: flex; align-items: center; justify-content: space-between; }
+.retro-toast-body { display: grid; grid-template-columns: 2rem 1fr; align-items: center; gap: 0.7rem; }
+.retro-toast-body p { margin: 0; }
+.retro-toast-icon { display: grid; place-items: center; }
+.retro-toast-actions { display: flex; justify-content: center; }
+
+html[data-theme="windows-95"] {
+  color-scheme: light;
+  background: #008080;
+  color: #000;
+  font-family: "MS Sans Serif", Tahoma, Geneva, Arial, sans-serif;
+  font-synthesis: none;
+}
+html[data-theme="windows-95"] body {
+  color: #000;
+  background-color: #008080;
+  background-image:
+    linear-gradient(45deg, rgb(255 255 255 / 2%) 25%, transparent 25%),
+    linear-gradient(-45deg, rgb(0 0 0 / 2%) 25%, transparent 25%);
+  background-size: 4px 4px;
+}
+html[data-theme="windows-95"] :is(button, input, select, textarea, output, label, legend, summary, p, h1, h2, h3, h4, h5, h6, dt, dd, small, strong, a, code, kbd) {
+  font-family: "MS Sans Serif", Tahoma, Geneva, Arial, sans-serif;
+}
+html[data-theme="windows-95"] :is(code, kbd, output, .coordinates output, .buffer-status dd, .feature-preview-values output, .polar-metric-card > output) {
+  font-family: "Courier New", Courier, monospace;
+}
+html[data-theme="windows-95"] :focus-visible { outline: 1px dotted #000; outline-offset: -4px; }
+html[data-theme="windows-95"] a { color: #0000ee !important; text-decoration: underline; }
+
+html[data-theme="windows-95"] button,
+html[data-theme="windows-95"] .webxr-experiment-link {
+  border: 2px solid;
+  border-color: #fff #000 #000 #fff;
+  border-radius: 0;
+  color: #000;
+  background: #c0c0c0;
+  box-shadow: inset 1px 1px #dfdfdf, inset -1px -1px #808080;
+}
+html[data-theme="windows-95"] button:hover,
+html[data-theme="windows-95"] .webxr-experiment-link:hover { border-color: #fff #000 #000 #fff; color: #000; background: #c0c0c0; }
+html[data-theme="windows-95"] button:active,
+html[data-theme="windows-95"] button.is-held,
+html[data-theme="windows-95"] button[aria-pressed="true"] {
+  border-color: #000 #fff #fff #000;
+  background: #b8b8b8;
+  box-shadow: inset 1px 1px #808080;
+  transform: translate(1px, 1px);
+}
+html[data-theme="windows-95"] button:disabled { color: #808080; text-shadow: 1px 1px #fff; opacity: 1; }
+html[data-theme="windows-95"] :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]), select, textarea) {
+  min-height: 1.75rem;
+  border: 2px solid;
+  border-color: #808080 #fff #fff #808080;
+  border-radius: 0;
+  color: #000;
+  background: #fff;
+  box-shadow: inset 1px 1px #000;
+}
+html[data-theme="windows-95"] :is(input[type="checkbox"], input[type="radio"]) { accent-color: #000080; }
+html[data-theme="windows-95"] :is(input[type="range"], progress) { accent-color: #000080; }
+html[data-theme="windows-95"] ::selection { color: #fff; background: #000080; }
+html[data-theme="windows-95"] ::-webkit-scrollbar { width: 16px; height: 16px; background: #c0c0c0; }
+html[data-theme="windows-95"] ::-webkit-scrollbar-thumb { border: 2px solid; border-color: #fff #000 #000 #fff; background: #c0c0c0; }
+
+html[data-theme="windows-95"] .panel-stack { width: min(23rem, calc(100vw - 2rem)); gap: 4px; }
+html[data-theme="windows-95"] .control-panel,
+html[data-theme="windows-95"] .binding-capture-dialog,
+html[data-theme="windows-95"] .retro-toast {
+  border: 2px solid;
+  border-color: #dfdfdf #000 #000 #dfdfdf;
+  border-radius: 0;
+  color: #000;
+  background: #c0c0c0;
+  box-shadow: 2px 2px 0 #000;
+  backdrop-filter: none;
+}
+html[data-theme="windows-95"] .panel-toggle {
+  width: calc(100% - 4px);
+  min-height: 1.72rem;
+  margin: 2px;
+  padding: 0.2rem 0.3rem;
+  border: 0;
+  color: #fff;
+  background: linear-gradient(90deg, #000080, #1084d0);
+  box-shadow: none;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+html[data-theme="windows-95"] .panel-toggle:hover,
+html[data-theme="windows-95"] .panel-toggle:active { color: #fff; background: linear-gradient(90deg, #000080, #1084d0); transform: none; }
+html[data-theme="windows-95"] .toggle-symbol {
+  display: grid;
+  width: 1.15rem;
+  height: 1.05rem;
+  place-items: center;
+  border: 1px solid;
+  border-color: #fff #000 #000 #fff;
+  color: #000;
+  background: #c0c0c0;
+  font: 700 0.78rem/1 "Courier New", monospace;
+}
+html[data-theme="windows-95"] .panel-content { padding: 0.2rem 0.45rem 0.5rem; }
+html[data-theme="windows-95"] .control-panel :is(p, label, legend, h3, h4, dt, dd, small, span, output, summary) { color: #000; }
+html[data-theme="windows-95"] .panel-toggle :is(span, strong, small) { color: #fff; }
+html[data-theme="windows-95"] :is(.settings-section, .settings-subsection, .experiment-launch, .screen-calibration-card, .polar-stream-intro, .polar-connect-module, .flubber-remote-broadcast, .polar-metric-card, .polar-mapping-grid fieldset, .touch-flubber-card, .touch-affect-map, .touch-live-summary, .touch-playground-options) {
+  border: 2px solid;
+  border-color: #808080 #fff #fff #808080;
+  border-radius: 0;
+  color: #000;
+  background: #c0c0c0;
+  box-shadow: none;
+}
+html[data-theme="windows-95"] :is(.settings-section, .settings-subsection) > summary {
+  min-height: 1.9rem;
+  padding: 0.38rem 0.45rem;
+  border-bottom-color: #808080;
+  color: #000;
+  background: #c0c0c0;
+  font-size: 0.7rem;
+}
+html[data-theme="windows-95"] :is(.settings-section, .settings-subsection)[open] > summary { background: #d4d0c8; }
+html[data-theme="windows-95"] .settings-section-content { padding: 0.45rem; }
+html[data-theme="windows-95"] :is(.coordinates div, .buffer-status div, .polar-connection-diagnostics div, .flubber-remote-broadcast-details div, .touch-live-status span, .feature-preview-values span) {
+  border: 1px solid #808080;
+  border-radius: 0;
+  color: #000;
+  background: #fff;
+}
+html[data-theme="windows-95"] .coordinates { gap: 0; margin: 0.25rem 0 0.5rem; border: 2px solid; border-color: #808080 #fff #fff #808080; }
+html[data-theme="windows-95"] .coordinates div { padding: 0.35rem; }
+html[data-theme="windows-95"] .coordinates span { color: #000; font-size: 0.62rem; letter-spacing: 0; text-transform: none; }
+html[data-theme="windows-95"] .coordinates output { color: #000080; font-size: 0.92rem; font-weight: 700; }
+html[data-theme="windows-95"] :is(.web-shape-button, .binding-assignment-button, .direction-button, .polar-axis-quick-buttons button) { color: #000; background: #c0c0c0; }
+html[data-theme="windows-95"] .web-shape-button[aria-pressed="true"] { color: #fff; background: #000080; }
+html[data-theme="windows-95"] .direction-binding-value { color: #000; }
+html[data-theme="windows-95"] :is(.mode-control, fieldset) { border-color: #808080; border-radius: 0; }
+html[data-theme="windows-95"] kbd { border: 1px solid; border-color: #fff #000 #000 #fff; border-radius: 0; color: #000; background: #c0c0c0; }
+html[data-theme="windows-95"] .attribution { color: #404040; }
+
+html[data-theme="windows-95"] .screen-calibration-layer { color: #000; background: #008080; }
+html[data-theme="windows-95"] .screen-calibration-overlay {
+  min-height: calc(100dvh - 2rem);
+  padding: 4px;
+  border: 2px solid;
+  border-color: #fff #000 #000 #fff;
+  background: #c0c0c0;
+  box-shadow: 3px 3px #000;
+}
+html[data-theme="windows-95"] .screen-calibration-wizard-header {
+  padding: 0.25rem 0.35rem;
+  color: #fff;
+  background: linear-gradient(90deg, #000080, #1084d0);
+}
+html[data-theme="windows-95"] .screen-calibration-wizard-header :is(h2, p, output) { color: #fff; }
+html[data-theme="windows-95"] .screen-calibration-kicker { color: #fff; font-size: 0.65rem; letter-spacing: 0; }
+html[data-theme="windows-95"] .screen-calibration-step { padding: 0.1rem 0.25rem; border: 1px solid #fff; border-radius: 0; color: #fff; }
+html[data-theme="windows-95"] .screen-calibration-view { padding: 0.55rem; }
+html[data-theme="windows-95"] .screen-calibration-view :is(p, h3, label, output, strong, small) { color: #000; }
+html[data-theme="windows-95"] :is(.screen-calibration-shortcut, .screen-calibration-country) { background: #c0c0c0; }
+html[data-theme="windows-95"] .screen-calibration-shortcut span { color: #303030; }
+html[data-theme="windows-95"] .screen-calibration-canvas { border: 2px solid; border-color: #808080 #fff #fff #808080; border-radius: 0; background: #fff; }
+html[data-theme="windows-95"] .screen-calibration-square-rect { fill: rgb(0 0 128 / 5%); stroke: #000080; }
+html[data-theme="windows-95"] .screen-calibration-corner-handle { fill: #c0c0c0; stroke: #000; }
+html[data-theme="windows-95"] .screen-calibration-selected-coin,
+html[data-theme="windows-95"] .screen-calibration-help { color: #000; }
+
+html[data-theme="windows-95"] .binding-capture-dialog::backdrop { background: rgb(0 0 0 / 48%); backdrop-filter: none; }
+html[data-theme="windows-95"] .binding-capture-content { padding: 2.15rem 0.55rem 0.55rem; }
+html[data-theme="windows-95"] .binding-capture-content::before {
+  content: "Affect Tracker — Input Assignment";
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  left: 3px;
+  padding: 0.28rem 0.35rem;
+  color: #fff;
+  background: linear-gradient(90deg, #000080, #1084d0);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+html[data-theme="windows-95"] .binding-capture-content :is(h2, p, output, span) { color: #000; }
+html[data-theme="windows-95"] .binding-capture-kicker { color: #000080; letter-spacing: 0; }
+
+html[data-theme="windows-95"] .retro-theme-toggle {
+  min-width: 9.25rem;
+  padding: 0.28rem 0.4rem;
+  border-color: #fff #000 #000 #fff;
+  border-radius: 0;
+  color: #000;
+  background: #c0c0c0;
+  box-shadow: 2px 2px 0 #000;
+}
+html[data-theme="windows-95"] .retro-theme-toggle[aria-pressed="true"] { border-color: #000 #fff #fff #000; background: #d4d0c8; transform: none; }
+html[data-theme="windows-95"] .retro-theme-copy small { color: #000080; }
+html[data-theme="windows-95"] .retro-toast { padding: 3px; }
+html[data-theme="windows-95"] .retro-toast-titlebar {
+  min-height: 1.45rem;
+  padding: 0.18rem 0.25rem;
+  color: #fff;
+  background: linear-gradient(90deg, #000080, #1084d0);
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+html[data-theme="windows-95"] .retro-toast-close {
+  display: grid;
+  width: 1rem;
+  height: 1rem;
+  place-items: center;
+  border: 1px solid;
+  border-color: #fff #000 #000 #fff;
+  color: #000;
+  background: #c0c0c0;
+}
+html[data-theme="windows-95"] .retro-toast-body { min-height: 4rem; padding: 0.65rem; }
+html[data-theme="windows-95"] .retro-toast-body p { color: #000; font-size: 0.72rem; line-height: 1.35; }
+html[data-theme="windows-95"] .retro-toast-icon {
+  width: 1.75rem;
+  height: 1.75rem;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  color: #fff;
+  background: #000080;
+  box-shadow: 1px 1px #000;
+  font: 700 italic 1rem Georgia, serif;
+}
+html[data-theme="windows-95"] .retro-toast[data-cue="alert"] .retro-toast-icon { background: #a00000; }
+html[data-theme="windows-95"] .retro-toast-actions { padding: 0 0 0.55rem; }
+html[data-theme="windows-95"] .retro-toast-actions span {
+  min-width: 4.5rem;
+  padding: 0.2rem 0.8rem;
+  border: 2px solid;
+  border-color: #fff #000 #000 #fff;
+  color: #000;
+  background: #c0c0c0;
+  font-size: 0.7rem;
+  text-align: center;
+}
+
+@media (max-width: 600px), (max-height: 500px) and (pointer: coarse) {
+  .retro-theme-toggle { right: 0.4rem; bottom: calc(0.4rem + env(safe-area-inset-bottom)); min-width: 7.4rem; }
+  .retro-theme-emblem { width: 1.6rem; height: 1.35rem; }
+  .retro-toast { right: 0.4rem; bottom: calc(4rem + env(safe-area-inset-bottom)); }
+  html[data-theme="windows-95"] .panel-stack { width: min(100%, calc(100vw - 0.6rem)); }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

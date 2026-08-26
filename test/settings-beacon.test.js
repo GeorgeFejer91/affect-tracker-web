@@ -302,6 +302,6 @@ test("static page exposes explicit settings-only controls with preview-before-ap
   assert.equal((app.match(/settingsBeaconBroadcaster\.start\(/g) ?? []).length, 1);
   assert.equal((app.match(/settingsBeaconReceiver\.startDiscovery\(/g) ?? []).length, 1);
   assert.match(page, /src="\.\/vendor\/vdoninja\/1\.5\.5\/vdoninja-sdk\.min\.js"/);
-  assert.match(page, /src="\.\/src\/app\.js\?v=settings-beacon-1"/);
+  assert.match(page, /src="\.\/src\/app\.js\?v=settings-beacon-1-retro-1"/);
   assert.doesNotMatch(page, /https?:\/\/[^"']*vdoninja[^"']*\.js/i);
 });
