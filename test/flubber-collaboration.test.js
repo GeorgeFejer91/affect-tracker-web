@@ -4,6 +4,7 @@ import {
   combineUniverseCoordinates,
   FlubberParty,
   oneWayGroundRole,
+  partyBudVectorGeometry,
   partyFlubberPlacement,
   PARTY_MAX_GUESTS,
   UNIVERSE_CHANNEL,
@@ -131,6 +132,36 @@ test("party guest placement starts as a bud on the centered Flubber and separate
   });
   assert.ok(bounded.x <= 1000 - bounded.size / 2 - 8);
   assert.ok(bounded.y <= 800 - bounded.size / 2 - 8);
+});
+
+test("party birth is a sinusoidal cellular SVG field that pinches from one contour into two", () => {
+  const options = {
+    originX: 240,
+    originY: 280,
+    centerX: 500,
+    centerY: 400,
+    finalX: 670,
+    finalY: 400,
+    mainRadius: 90,
+    guestRadius: 50,
+  };
+  const parent = partyBudVectorGeometry({ ...options, progress: 0 });
+  const growth = partyBudVectorGeometry({ ...options, progress: 0.58 });
+  const pinch = partyBudVectorGeometry({ ...options, progress: 0.84 });
+  const separatedEarly = partyBudVectorGeometry({ ...options, progress: 0.90 });
+  const separated = partyBudVectorGeometry({ ...options, progress: 1 });
+  assert.equal(parent.contourCount, 1);
+  assert.equal(growth.contourCount, 1);
+  assert.equal(growth.attached, true);
+  assert.equal(pinch.contourCount, 1);
+  assert.equal(separatedEarly.contourCount, 2);
+  assert.equal(separated.contourCount, 2);
+  assert.equal(separated.attached, false);
+  assert.match(growth.surfacePath, /^M [\d.-]+ [\d.-]+ L /);
+  assert.doesNotMatch(growth.surfacePath, /NaN|Infinity/);
+  assert.equal((separated.surfacePath.match(/\bM /g) ?? []).length, 2);
+  assert.ok(growth.guest.radius > parent.guest.radius);
+  assert.ok(separated.guest.x > growth.guest.x);
 });
 
 test("a FLUBBER party invites explicit sources and enforces its browser bound", async () => {

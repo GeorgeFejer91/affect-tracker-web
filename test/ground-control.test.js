@@ -183,9 +183,8 @@ test("Ground Control exposes the requested hierarchy, animated SVG states, and p
   assert.match(css, /@keyframes radar-sweep/);
   assert.match(css, /@keyframes universe-orbit/);
   assert.match(css, /@keyframes party-pulse/);
-  assert.match(css, /@keyframes party-main-budding/);
-  assert.match(css, /@keyframes party-guest-budding/);
-  assert.match(css, /@keyframes party-bud-neck/);
+  assert.match(css, /\.party-birth-vector-surface[\s\S]*party-cellular-gradient/);
+  assert.match(css, /\.party-birth-vector-outline/);
   assert.match(css, /\.party-guest-flubber[\s\S]*pointer-events: auto/);
   assert.match(css, /\.party-guest-flubber\.is-dragging/);
   assert.match(css, /prefers-reduced-motion[\s\S]*animation: none !important/);
@@ -194,6 +193,7 @@ test("Ground Control exposes the requested hierarchy, animated SVG states, and p
   assert.match(app, /function dismissGroundRadarAfterSuccess\(message\)[\s\S]*groundRadarDialog\.close\(\)[\s\S]*Radar closed/);
   assert.match(app, /showReceivedSettings\(detail\)[\s\S]*shouldDismissGroundRadar\(\{ mode: groundRadarMode, phase: "ready" \}\)/);
   assert.match(app, /pendingGuest[\s\S]*shouldDismissGroundRadar\(\{ mode: "party", phase: pendingGuest\.phase \}\)[\s\S]*startPartyBirthAnimation\(pendingGuest, detail\)[\s\S]*dismissGroundRadarAfterSuccess/);
+  assert.match(app, /function renderPartyBirthVector\(mainRendered\)[\s\S]*partyBudVectorGeometry[\s\S]*geometry\.surfacePath/);
   assert.match(app, /function beginPartyGuestDrag\(event, view\)[\s\S]*setPointerCapture\(event\.pointerId\)/);
   assert.match(app, /function movePartyGuestDrag\(event, view\)[\s\S]*movePartyGuest\(view,/);
   assert.match(app, /function movePartyGuestWithKeyboard\(event, view\)[\s\S]*ArrowLeft[\s\S]*ArrowDown/);

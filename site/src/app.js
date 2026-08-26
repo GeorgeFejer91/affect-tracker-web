@@ -72,8 +72,9 @@ import {
   createFlubberParty,
   createUniverseLink,
   oneWayGroundRole,
+  partyBudVectorGeometry,
   partyFlubberPlacement,
-} from "./flubber-collaboration.js?v=collaboration-3";
+} from "./flubber-collaboration.js?v=collaboration-5";
 import { createRetroSoundboard, retroCueForMessage, RETRO_THEME_ID } from "./retro-theme.js?v=retro-1";
 import {
   actionForBinding,
@@ -96,7 +97,7 @@ const SAMPLE_INTERVAL_SECONDS = 1 / 20;
 const MAX_DELTA_SECONDS = 0.05;
 const FEATURE_FLUBBER_INSET_PERCENT = 7.5;
 const FEATURE_DOT_INSET_PERCENT = 3;
-const PARTY_BIRTH_DURATION_MS = 2100;
+const PARTY_BIRTH_DURATION_MS = 3200;
 
 const elements = {
   stage: document.querySelector("#stage"),
@@ -531,6 +532,8 @@ let universeLocalCurrent = { currentX: state.currentX, currentY: state.currentY 
 const partyGuestViews = new Map();
 let partyBirthGuestId = "";
 let partyBirthTimer;
+let partyBirthAnimation;
+let partyBirthVectorView;
 let polarEcgWindow = [];
 let polarBatteryPercent;
 let polarObservedSampleRate = 130;
@@ -1289,9 +1292,73 @@ function applyPartyGuestPlacement(view, placement, { resetPosition = false } = {
   view.root.style.setProperty("--party-angle", `${placement.angle}rad`);
 }
 
+function createPartyBirthVectorView() {
+  if (partyBirthVectorView) return partyBirthVectorView;
+  const namespace = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(namespace, "svg");
+  svg.setAttribute("class", "party-birth-vector");
+  svg.setAttribute("aria-hidden", "true");
+  svg.setAttribute("hidden", "");
+  const definitions = document.createElementNS(namespace, "defs");
+  const gradient = document.createElementNS(namespace, "linearGradient");
+  gradient.id = "party-cellular-gradient";
+  gradient.setAttribute("gradientUnits", "userSpaceOnUse");
+  const mainStop = document.createElementNS(namespace, "stop");
+  const guestStop = document.createElementNS(namespace, "stop");
+  mainStop.setAttribute("offset", "0%");
+  guestStop.setAttribute("offset", "100%");
+  gradient.append(mainStop, guestStop);
+  definitions.append(gradient);
+  const halo = document.createElementNS(namespace, "path");
+  const surface = document.createElementNS(namespace, "path");
+  const outline = document.createElementNS(namespace, "path");
+  halo.setAttribute("class", "party-birth-vector-halo");
+  surface.setAttribute("class", "party-birth-vector-surface");
+  outline.setAttribute("class", "party-birth-vector-outline");
+  svg.append(definitions, halo, surface, outline);
+  elements.partyStage.prepend(svg);
+  partyBirthVectorView = { svg, gradient, mainStop, guestStop, paths: [halo, surface, outline] };
+  return partyBirthVectorView;
+}
+
+function renderPartyBirthVector(mainRendered) {
+  if (!partyBirthAnimation) return;
+  const guest = flubberParty.snapshot().guests.find((item) => item.streamId === partyBirthAnimation.guestId);
+  if (!guest?.latest) {
+    clearPartyBirthAnimation();
+    return;
+  }
+  const progress = clamp((performance.now() - partyBirthAnimation.startedAt) / PARTY_BIRTH_DURATION_MS, 0, 1);
+  const geometry = partyBudVectorGeometry({
+    progress,
+    originX: partyBirthAnimation.originX,
+    originY: partyBirthAnimation.originY,
+    centerX: partyBirthAnimation.centerX,
+    centerY: partyBirthAnimation.centerY,
+    finalX: partyBirthAnimation.finalX,
+    finalY: partyBirthAnimation.finalY,
+    mainRadius: partyBirthAnimation.mainRadius,
+    guestRadius: partyBirthAnimation.guestRadius,
+  });
+  const vectorView = createPartyBirthVectorView();
+  vectorView.svg.removeAttribute("hidden");
+  vectorView.svg.setAttribute("viewBox", `0 0 ${window.innerWidth} ${window.innerHeight}`);
+  vectorView.gradient.setAttribute("x1", String(geometry.main.x));
+  vectorView.gradient.setAttribute("y1", String(geometry.main.y));
+  vectorView.gradient.setAttribute("x2", String(geometry.guest.x));
+  vectorView.gradient.setAttribute("y2", String(geometry.guest.y));
+  vectorView.mainStop.setAttribute("stop-color", mainRendered.color);
+  vectorView.guestStop.setAttribute("stop-color", affectPaletteColor(guest.latest.currentX, guest.latest.currentY, state.palette));
+  for (const path of vectorView.paths) path.setAttribute("d", geometry.surfacePath);
+  vectorView.svg.dataset.contours = String(geometry.contourCount);
+  if (progress >= 1) clearPartyBirthAnimation();
+}
+
 function clearPartyBirthAnimation() {
   if (partyBirthTimer !== undefined) window.clearTimeout(partyBirthTimer);
   partyBirthTimer = undefined;
+  partyBirthAnimation = undefined;
+  if (partyBirthVectorView) partyBirthVectorView.svg.setAttribute("hidden", "");
   elements.widget.classList.remove("is-party-budding");
   if (partyBirthGuestId) partyGuestViews.get(partyBirthGuestId)?.root.classList.remove("is-party-budding");
   partyBirthGuestId = "";
@@ -1319,11 +1386,19 @@ function startPartyBirthAnimation(guest, detail) {
   view.root.hidden = false;
   constrainAndRenderWidget();
   if (reducedMotionQuery.matches || elements.widget.hidden) return;
-  elements.widget.style.setProperty("--party-origin-x", `${originX}px`);
-  elements.widget.style.setProperty("--party-origin-y", `${originY}px`);
-  elements.widget.style.setProperty("--party-center-x", `${state.widgetX}px`);
-  elements.widget.style.setProperty("--party-center-y", `${state.widgetY}px`);
   partyBirthGuestId = guest.streamId;
+  partyBirthAnimation = {
+    guestId: guest.streamId,
+    startedAt: performance.now(),
+    originX,
+    originY,
+    centerX: state.widgetX,
+    centerY: state.widgetY,
+    finalX: placement.x,
+    finalY: placement.y,
+    mainRadius: state.widgetSize / 2,
+    guestRadius: placement.size / 2,
+  };
   elements.widget.classList.add("is-party-budding");
   view.root.classList.add("is-party-budding");
   partyBirthTimer = window.setTimeout(clearPartyBirthAnimation, PARTY_BIRTH_DURATION_MS);
@@ -4060,6 +4135,7 @@ function animationFrame(timestamp) {
   elements.mobileDirectFlubber.style.setProperty("--affect-color", rendered.color);
   elements.mobileDirectFlubber.style.opacity = state.widgetVisible ? state.widgetOpacity : 0;
   renderPictureInPicture(rendered);
+  renderPartyBirthVector(rendered);
   renderPartyFlubbers();
   updateCoordinateDisplay();
   updateFeatureSpace();
