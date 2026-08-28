@@ -17,9 +17,9 @@ test("the Windows 95 skin remains a browser-local presentation preference", asyn
   assert.equal(RETRO_THEME_ID, "windows-95");
   assert.match(html, /id="retro-theme-toggle"[^>]*aria-pressed="false"/);
   assert.match(html, /id="retro-toast"[^>]*aria-hidden="true"[^>]*hidden/);
-  assert.match(html, /src="\.\/src\/theme-bootstrap\.js\?v=retro-1"/);
+  assert.match(html, /src="\.\/src\/theme-bootstrap\.js\?v=retro-2"/);
   assert.match(html, /src="\.\/src\/app\.js\?v=[^"]+"/);
-  assert.match(app, /from "\.\/retro-theme\.js\?v=retro-1"/);
+  assert.match(app, /from "\.\/retro-theme\.js\?v=retro-2"/);
   assert.match(bootstrap, /affect-tracker-web\/preferences-v1/);
   assert.match(bootstrap, /stored\?\.retroTheme === true/);
   assert.match(app, /retroTheme: parsed\.retroTheme === true/);
@@ -30,12 +30,15 @@ test("the Windows 95 skin remains a browser-local presentation preference", asyn
   assert.match(css, /#000080/);
   assert.match(css, /#008080/);
   assert.doesNotMatch(app, /settings\.retroTheme/);
+  assert.doesNotMatch(app, /closest\("button, a, summary, input, select, textarea"\)/);
 });
 
 test("retro messages map to stable interface cues", () => {
   assert.equal(retroCueForMessage("Settings exported."), "confirm");
   assert.equal(retroCueForMessage("Connection failed."), "alert");
   assert.equal(retroCueForMessage("Choose an input."), "open");
+  assert.equal(retroCueForMessage("3"), null);
+  assert.equal(retroCueForMessage("Valence changed."), null);
 });
 
 test("the local CC0 soundboard reuses preloaded low-volume players", () => {

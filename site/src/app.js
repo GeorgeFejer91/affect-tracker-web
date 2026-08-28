@@ -89,7 +89,7 @@ import {
   partyBudVectorGeometry,
   partyFlubberPlacement,
 } from "./flubber-collaboration.js?v=collaboration-9";
-import { createRetroSoundboard, retroCueForMessage, RETRO_THEME_ID } from "./retro-theme.js?v=retro-1";
+import { createRetroSoundboard, retroCueForMessage, RETRO_THEME_ID } from "./retro-theme.js?v=retro-2";
 import {
   actionForBinding,
   ADVANCED_BINDING_LABELS,
@@ -658,11 +658,11 @@ function announce(message) {
 function showRetroToast(message) {
   const cue = retroCueForMessage(message);
   clearTimeout(retroToastTimer);
-  elements.retroToast.dataset.cue = cue;
+  elements.retroToast.dataset.cue = cue ?? "status";
   elements.retroToastIcon.textContent = cue === "alert" ? "!" : cue === "confirm" ? "✓" : "i";
   elements.retroToastMessage.textContent = message;
   elements.retroToast.hidden = false;
-  retroSoundboard.play(cue);
+  if (cue) retroSoundboard.play(cue);
   retroToastTimer = setTimeout(() => {
     elements.retroToast.hidden = true;
   }, cue === "alert" ? 5200 : 3400);
@@ -4061,10 +4061,6 @@ function initializeEvents() {
   window.addEventListener("mousedown", handleGlobalMouseDown);
   window.addEventListener("mouseup", handleGlobalMouseUp);
   window.addEventListener("wheel", handleWheel, { passive: false });
-  document.addEventListener("click", (event) => {
-    if (!state.retroTheme || event.target.closest("#retro-theme-toggle")) return;
-    if (event.target.closest("button, a, summary, input, select, textarea")) retroSoundboard.play("click");
-  }, true);
   window.addEventListener("resize", () => {
     touchTrace.resize(window.innerWidth, window.innerHeight);
     activeTracePointerId = undefined;
@@ -4108,7 +4104,7 @@ function initializeEvents() {
     applyRetroTheme();
     savePreferences();
     recordEvent("appearance", "theme-change", "windows-95", state.retroTheme ? "enabled" : "disabled");
-    if (state.retroTheme) announce("Windows 95 skin enabled. Retro interface sounds are on.");
+    if (state.retroTheme) announce("Windows 95 skin enabled. Classic event sounds are on.");
     else {
       retroSoundboard.play("click");
       announce("Modern skin restored.");

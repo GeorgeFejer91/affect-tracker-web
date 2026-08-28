@@ -11,7 +11,8 @@ export function retroCueForMessage(message) {
   const normalized = String(message ?? "").toLowerCase();
   if (/error|failed|could not|cannot|invalid|unsupported|denied|required|lost|cancelled/.test(normalized)) return "alert";
   if (/saved|exported|complete|connected|started|restored|updated|assigned|enabled|shown/.test(normalized)) return "confirm";
-  return "open";
+  if (/choose|select|open|ready|permission|waiting|press an input/.test(normalized)) return "open";
+  return null;
 }
 
 export function createRetroSoundboard({ AudioConstructor = globalThis.Audio, urls = RETRO_SOUND_URLS } = {}) {
