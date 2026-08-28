@@ -38,9 +38,14 @@ import { pictureInPictureOptions, pictureInPictureSupported } from "./picture-in
 import {
   clientPointToAffectCoordinate,
   isSmartphoneTouchViewport,
+  MOBILE_PARTY_ZOOM_MAX,
+  MOBILE_PARTY_ZOOM_MIN,
+  normalizeMobilePartyCamera,
+  projectMobilePartyPoint,
   SMARTPHONE_LAYOUT_MAX_WIDTH,
   startsOnCoordinateMarker,
-} from "./mobile.js?v=mobile-direct-1";
+  unprojectMobilePartyPoint,
+} from "./mobile.js?v=mobile-party-camera-1";
 import {
   ACCORDION_PROTOCOLS,
   normalizeAccordionState,
@@ -63,9 +68,10 @@ import {
   createFlubberBroadcaster,
   createFlubberReceiver,
   denormalizeFlubberViewportPosition,
+  isNewerFlubberSequence,
   normalizeFlubberViewportPosition,
   relativeFlubberViewportPosition,
-} from "./flubber-remote.js?v=collaboration-3";
+} from "./flubber-remote.js?v=collaboration-4";
 import {
   createSettingsSnapshotBroadcaster,
   createSettingsSnapshotReceiver,
@@ -77,11 +83,12 @@ import {
   combineUniverseCoordinates,
   createFlubberParty,
   createUniverseLink,
+  decodePartySceneFrame,
   morphPartyBirthContours,
   oneWayGroundRole,
   partyBudVectorGeometry,
   partyFlubberPlacement,
-} from "./flubber-collaboration.js?v=collaboration-8";
+} from "./flubber-collaboration.js?v=collaboration-9";
 import { createRetroSoundboard, retroCueForMessage, RETRO_THEME_ID } from "./retro-theme.js?v=retro-1";
 import {
   actionForBinding,
@@ -107,11 +114,16 @@ const FEATURE_DOT_INSET_PERCENT = 3;
 const PARTY_BIRTH_DURATION_MS = 4000;
 const PARTY_BIRTH_MORPH_START = 0.72;
 const PARTY_BIRTH_TOPOLOGY_END = 0.87;
+const PARTY_SCENE_STALE_MS = 2_000;
 
 const elements = {
   stage: document.querySelector("#stage"),
   widget: document.querySelector("#affect-widget"),
   partyStage: document.querySelector("#flubber-party-stage"),
+  partyCameraSurface: document.querySelector("#party-camera-surface"),
+  partyCameraControls: document.querySelector("#party-camera-controls"),
+  partyCameraZoom: document.querySelector("#party-camera-zoom"),
+  partyCameraReset: document.querySelector("#party-camera-reset"),
   basePath: document.querySelector("#base-path"),
   outlinePath: document.querySelector("#outline-path"),
   haloPath: document.querySelector("#halo-path"),
@@ -540,6 +552,12 @@ let groundRadarPendingSourceId = "";
 let pendingSettingsSnapshot;
 let universeLocalCurrent = { currentX: state.currentX, currentY: state.currentY };
 const partyGuestViews = new Map();
+const incomingPartyViews = new Map();
+let incomingPartyScene;
+let mobilePartyCamera = normalizeMobilePartyCamera();
+const mobilePartyCameraPointers = new Map();
+let mobilePartyCameraGesture;
+const partyProjectionOffsets = new Map();
 let partyBirthGuestId = "";
 let partyBirthAnimation;
 let partyBirthVectorView;
@@ -552,6 +570,7 @@ let previousTimestamp;
 let sampleAccumulator = 0;
 let dragOffsetX = 0;
 let dragOffsetY = 0;
+let incomingPartyWidgetDragAnchor;
 let featurePointerId;
 let mobileCoordinatePointerId;
 let mobileFlubberPointerId;
@@ -1017,6 +1036,7 @@ function updateRemoteBroadcastUi(detail = flubberBroadcaster.snapshot()) {
   if (detail.droppedBackpressure) routeParts.push(`${detail.droppedBackpressure} backpressure drops`);
   if (foregroundWindowActive) routeParts.push("foreground Flubber window");
   if (wakeLockActive) routeParts.push("wake lock");
+  if (incomingPartySceneIsLive()) routeParts.push(`${incomingPartyScene.participants.length} party participants`);
   elements.remoteBroadcastRoute.value = routeParts.join(" · ") || (broadcasting ? "Waiting for listeners" : "Waiting");
   const foregroundMessage = broadcasting && !foregroundWindowActive
     ? pictureInPictureAvailable
@@ -1025,7 +1045,9 @@ function updateRemoteBroadcastUi(detail = flubberBroadcaster.snapshot()) {
     : broadcasting && wakeLockAvailable && !wakeLockActive
       ? "SCREEN WAKE LOCK INACTIVE — restore low-latency foreground mode before a soak."
       : "";
-  elements.remoteBroadcastStatus.textContent = foregroundMessage || detail.message
+  elements.remoteBroadcastStatus.textContent = foregroundMessage
+    || (incomingPartySceneIsLive() ? "Shared FLUBBER party scene live — everyone can see the same participants." : "")
+    || detail.message
     || (broadcasting
       ? `${detail.sourceLabel} is public and ready.`
       : connecting ? "Connecting to VDO.Ninja signaling…"
@@ -1188,6 +1210,90 @@ function updateUniverseUi(detail = universeLink.snapshot()) {
   updateGroundRoleGate();
 }
 
+function incomingPartySceneIsLive(now = performance.now()) {
+  return Boolean(incomingPartyScene && now - incomingPartyScene.receivedAt < PARTY_SCENE_STALE_MS);
+}
+
+function partySceneActive(now = performance.now()) {
+  return flubberParty.snapshot().guests.length > 0 || incomingPartySceneIsLive(now);
+}
+
+function mobilePartyCameraActive(now = performance.now()) {
+  return smartphoneLayoutActive && partySceneActive(now);
+}
+
+function sharedPartyLocalParticipant() {
+  if (!incomingPartySceneIsLive()) return undefined;
+  const localStreamId = flubberBroadcaster.snapshot().streamId;
+  return incomingPartyScene.participants.find((participant) => participant.streamId === localStreamId);
+}
+
+function activePartyRenderSettings() {
+  if (incomingPartySceneIsLive()) {
+    const localStreamId = flubberBroadcaster.snapshot().streamId;
+    const participantIndex = Math.max(0, incomingPartyScene.participants.findIndex(
+      (participant) => participant.streamId === localStreamId,
+    ));
+    return {
+      ...incomingPartyScene.visual,
+      offsets: projectionOffsetsForPartyParticipant(localStreamId),
+      phase: incomingPartyScene.visual.phase + participantIndex * 0.47,
+    };
+  }
+  const party = flubberParty.snapshot();
+  if (party.guests.length > 0) {
+    return {
+      ...state.visual,
+      opacity: state.widgetOpacity,
+      palette: state.palette,
+      offsets: projectionOffsetsForPartyParticipant(party.hostStreamId),
+      phase: state.phase,
+    };
+  }
+  return {
+    ...state.visual,
+    opacity: state.widgetOpacity,
+    palette: state.palette,
+    offsets,
+    phase: state.phase,
+  };
+}
+
+function projectPartyPixelPosition(x, y) {
+  if (!mobilePartyCameraActive()) return { x, y };
+  const projected = projectMobilePartyPoint({
+    viewportX: x / Math.max(1, window.innerWidth),
+    viewportY: y / Math.max(1, window.innerHeight),
+    camera: mobilePartyCamera,
+  });
+  return {
+    x: projected.viewportX * window.innerWidth,
+    y: projected.viewportY * window.innerHeight,
+  };
+}
+
+function unprojectPartyPixelPosition(x, y) {
+  if (!mobilePartyCameraActive()) return { x, y };
+  const unprojected = unprojectMobilePartyPoint({
+    viewportX: x / Math.max(1, window.innerWidth),
+    viewportY: y / Math.max(1, window.innerHeight),
+    camera: mobilePartyCamera,
+  });
+  return {
+    x: unprojected.viewportX * window.innerWidth,
+    y: unprojected.viewportY * window.innerHeight,
+  };
+}
+
+function renderPartyGuestPosition(view) {
+  if (!view.position) return;
+  const projected = projectPartyPixelPosition(view.position.x, view.position.y);
+  const cameraScale = mobilePartyCameraActive() ? mobilePartyCamera.zoom : 1;
+  view.root.style.setProperty("--party-x", `${projected.x}px`);
+  view.root.style.setProperty("--party-y", `${projected.y}px`);
+  view.root.style.setProperty("--party-size", `${(view.size ?? 108) * cameraScale}px`);
+}
+
 function constrainPartyGuestPosition(view, x, y) {
   const size = view.size ?? 108;
   const margin = size / 2 + 8;
@@ -1199,8 +1305,7 @@ function constrainPartyGuestPosition(view, x, y) {
 
 function movePartyGuest(view, x, y) {
   view.position = constrainPartyGuestPosition(view, x, y);
-  view.root.style.setProperty("--party-x", `${view.position.x}px`);
-  view.root.style.setProperty("--party-y", `${view.position.y}px`);
+  renderPartyGuestPosition(view);
 }
 
 function normalizedPartyGuestPosition(view) {
@@ -1251,10 +1356,11 @@ function beginPartyGuestDrag(event, view) {
   if (!view.position || view.root.classList.contains("is-party-budding")) return;
   event.preventDefault();
   event.stopPropagation();
+  const point = unprojectPartyPixelPosition(event.clientX, event.clientY);
   view.drag = {
     pointerId: event.pointerId,
-    offsetX: event.clientX - view.position.x,
-    offsetY: event.clientY - view.position.y,
+    offsetX: point.x - view.position.x,
+    offsetY: point.y - view.position.y,
   };
   view.root.classList.add("is-dragging");
   view.root.focus({ preventScroll: true });
@@ -1264,7 +1370,8 @@ function beginPartyGuestDrag(event, view) {
 function movePartyGuestDrag(event, view) {
   if (view.drag?.pointerId !== event.pointerId) return;
   event.preventDefault();
-  movePartyGuest(view, event.clientX - view.drag.offsetX, event.clientY - view.drag.offsetY);
+  const point = unprojectPartyPixelPosition(event.clientX, event.clientY);
+  movePartyGuest(view, point.x - view.drag.offsetX, point.y - view.drag.offsetY);
 }
 
 function finishPartyGuestDrag(event, view) {
@@ -1294,15 +1401,16 @@ function movePartyGuestWithKeyboard(event, view) {
   recordEvent("ground-control", "party-guest-position", view.root.dataset.streamId, `${view.position.x.toFixed(1)},${view.position.y.toFixed(1)}`);
 }
 
-function createPartyGuestView(streamId, label) {
+function createPartyGuestView(streamId, label, { collection = partyGuestViews, interactive = true } = {}) {
   const root = document.createElement("div");
   root.className = "party-guest-flubber";
   root.dataset.streamId = streamId;
+  root.dataset.partyReplica = interactive ? "host-guest" : "shared-scene";
   root.setAttribute("role", "img");
-  root.tabIndex = 0;
+  if (interactive) root.tabIndex = 0;
   root.hidden = true;
-  root.setAttribute("aria-keyshortcuts", "ArrowUp ArrowDown ArrowLeft ArrowRight");
-  root.setAttribute("aria-label", `Draggable invited ${label}. Waiting for its first coordinate frame.`);
+  if (interactive) root.setAttribute("aria-keyshortcuts", "ArrowUp ArrowDown ArrowLeft ArrowRight");
+  root.setAttribute("aria-label", `${interactive ? "Draggable invited" : "Shared party"} ${label}. Waiting for its first coordinate frame.`);
   const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
   svg.setAttribute("viewBox", "-1.62 -1.62 3.24 3.24");
   svg.setAttribute("aria-hidden", "true");
@@ -1325,14 +1433,25 @@ function createPartyGuestView(streamId, label) {
     size: 108,
     drag: undefined,
     remotePositionSync: undefined,
+    interactive,
   };
-  partyGuestViews.set(streamId, view);
-  root.addEventListener("pointerdown", (event) => beginPartyGuestDrag(event, view));
-  root.addEventListener("pointermove", (event) => movePartyGuestDrag(event, view));
-  root.addEventListener("pointerup", (event) => finishPartyGuestDrag(event, view));
-  root.addEventListener("pointercancel", (event) => finishPartyGuestDrag(event, view));
-  root.addEventListener("keydown", (event) => movePartyGuestWithKeyboard(event, view));
+  collection.set(streamId, view);
+  if (interactive) {
+    root.addEventListener("pointerdown", (event) => beginPartyGuestDrag(event, view));
+    root.addEventListener("pointermove", (event) => movePartyGuestDrag(event, view));
+    root.addEventListener("pointerup", (event) => finishPartyGuestDrag(event, view));
+    root.addEventListener("pointercancel", (event) => finishPartyGuestDrag(event, view));
+    root.addEventListener("keydown", (event) => movePartyGuestWithKeyboard(event, view));
+  }
   return view;
+}
+
+function projectionOffsetsForPartyParticipant(streamId) {
+  if (!streamId) return offsets;
+  if (!partyProjectionOffsets.has(streamId)) {
+    partyProjectionOffsets.set(streamId, createProjectionOffsets(streamId, profiles.waveCount));
+  }
+  return partyProjectionOffsets.get(streamId);
 }
 
 function syncPartyGuestViews(detail = flubberParty.snapshot()) {
@@ -1345,7 +1464,7 @@ function syncPartyGuestViews(detail = flubberParty.snapshot()) {
   for (const guest of detail.guests) {
     if (!partyGuestViews.has(guest.streamId)) createPartyGuestView(guest.streamId, guest.label);
   }
-  elements.partyStage.hidden = detail.guests.length === 0;
+  elements.partyStage.hidden = detail.guests.length === 0 && !incomingPartySceneIsLive();
 }
 
 function applyPartyGuestPlacement(view, placement, { resetPosition = false } = {}) {
@@ -1355,7 +1474,7 @@ function applyPartyGuestPlacement(view, placement, { resetPosition = false } = {
     view.remotePositionSync = undefined;
   }
   movePartyGuest(view, view.position.x, view.position.y);
-  view.root.style.setProperty("--party-size", `${placement.size}px`);
+  renderPartyGuestPosition(view);
   view.root.style.setProperty("--party-bud-x", `${placement.budX}px`);
   view.root.style.setProperty("--party-bud-y", `${placement.budY}px`);
   view.root.style.setProperty("--party-angle", `${placement.angle}rad`);
@@ -1508,11 +1627,17 @@ function startPartyBirthAnimation(guest, detail) {
 function updatePartyUi(detail = flubberParty.snapshot()) {
   const guestCount = detail.guests.length;
   const enabled = detail.enabled;
+  if (guestCount === 0 && !incomingPartySceneIsLive()) {
+    mobilePartyCamera = normalizeMobilePartyCamera();
+    mobilePartyCameraPointers.clear();
+    mobilePartyCameraGesture = undefined;
+    constrainAndRenderWidget();
+  }
   elements.groundPartyButton.classList.toggle("is-scanning", enabled && detail.phase !== "idle");
   elements.groundPartyButton.classList.toggle("is-active", guestCount > 0);
   elements.groundPartyButton.setAttribute("aria-pressed", String(enabled));
   elements.groundPartyStatus.textContent = guestCount
-    ? `${guestCount} invited FLUBBER${guestCount === 1 ? "" : "s"} sharing the stage`
+    ? `${guestCount} invited FLUBBER${guestCount === 1 ? "" : "s"}; the shared scene is visible to everyone`
     : enabled ? "Radar active; invite named FLUBBER signals" : "Party off";
   elements.groundPartyRoster.hidden = guestCount === 0;
   elements.groundPartyGuests.replaceChildren();
@@ -1657,7 +1782,7 @@ async function startGroundRadar(mode) {
       updateUniverseUi();
       updateRadarSources();
     } else if (mode === "party") {
-      await flubberParty.startDiscovery();
+      await flubberParty.startDiscovery({ hostName: requiredGroundControlName() });
       updatePartyUi();
       updateRadarSources();
     }
@@ -2379,9 +2504,13 @@ function layoutExperiment() {
 
 function constrainAndRenderWidget() {
   layoutExperiment();
-  const renderedWidgetSize = experiment.phase === "idle"
+  const sharedPartyParticipant = sharedPartyLocalParticipant();
+  const sharedPartySize = sharedPartyParticipant
+    ? sharedPartyParticipant.size * Math.max(1, Math.min(window.innerWidth, window.innerHeight))
+    : undefined;
+  const renderedWidgetSize = sharedPartySize ?? (experiment.phase === "idle"
     ? state.widgetSize
-    : (experiment.displayWidgetSize ?? state.widgetSize);
+    : (experiment.displayWidgetSize ?? state.widgetSize));
   const constrained = constrainWidgetPosition(
     state.widgetX,
     state.widgetY,
@@ -2396,10 +2525,20 @@ function constrainAndRenderWidget() {
     const maximumY = window.innerHeight - trace.height - 12 - state.widgetSize / 2;
     state.widgetY = clamp(state.widgetY, state.widgetSize / 2, Math.max(state.widgetSize / 2, maximumY));
   }
-  elements.widget.style.left = `${state.widgetX}px`;
-  elements.widget.style.top = `${state.widgetY}px`;
-  elements.widget.style.setProperty("--widget-size", `${renderedWidgetSize}px`);
-  elements.widget.style.opacity = String(state.widgetOpacity);
+  const partyDisplayPosition = sharedPartyParticipant
+    ? {
+      x: sharedPartyParticipant.viewportX * window.innerWidth,
+      y: sharedPartyParticipant.viewportY * window.innerHeight,
+    }
+    : { x: state.widgetX, y: state.widgetY };
+  const displayedPosition = projectPartyPixelPosition(partyDisplayPosition.x, partyDisplayPosition.y);
+  const cameraScale = mobilePartyCameraActive() ? mobilePartyCamera.zoom : 1;
+  elements.widget.style.left = `${displayedPosition.x}px`;
+  elements.widget.style.top = `${displayedPosition.y}px`;
+  elements.widget.style.setProperty("--widget-size", `${renderedWidgetSize * cameraScale}px`);
+  elements.widget.style.opacity = String(incomingPartySceneIsLive()
+    ? incomingPartyScene.visual.opacity
+    : state.widgetOpacity);
   elements.widget.hidden = !state.widgetVisible || Boolean(pictureInPictureWindow);
   elements.widget.classList.toggle("is-drag-disabled", !state.widgetDragEnabled || touchTrackingActive());
   positionTracePanel();
@@ -2491,11 +2630,11 @@ function applyLiveRemoteViewportPosition(snapshot = liveRemoteSnapshot()) {
   setWidgetFromNormalizedPosition(position);
 }
 
-function renderPictureInPicture(rendered) {
+function renderPictureInPicture(rendered, opacity = state.widgetOpacity) {
   if (!pictureInPictureView) return;
   for (const path of pictureInPictureView.paths) path.setAttribute("d", rendered.path);
   pictureInPictureView.root.style.setProperty("--affect-color", rendered.color);
-  pictureInPictureView.root.style.opacity = String(state.widgetOpacity);
+  pictureInPictureView.root.style.opacity = String(opacity);
   pictureInPictureView.root.hidden = !state.widgetVisible;
   pictureInPictureView.root.setAttribute(
     "aria-label",
@@ -2523,7 +2662,7 @@ function renderPartyFlubbers() {
       offsets: view.offsets,
       x: guest.latest.currentX,
       y: guest.latest.currentY,
-      phase: state.phase + index * 0.47,
+      phase: state.phase + (index + 1) * 0.47,
       palette: state.palette,
       amplitudeScale: state.visual.amplitudeScale,
       disorderScale: state.visual.disorderScale,
@@ -2535,10 +2674,227 @@ function renderPartyFlubbers() {
     applyPartyGuestPlacement(view, placement);
     applyPartyGuestRemotePosition(view, guest.latest);
     view.root.style.setProperty("--party-color", rendered.color);
+    view.root.style.opacity = String(state.widgetOpacity);
     view.root.setAttribute("aria-label", `Draggable invited ${guest.label}. Valence ${guest.latest.currentX.toFixed(2)}, arousal ${guest.latest.currentY.toFixed(2)}${guest.phase === "stale" ? ", signal stale and holding" : ""}. Drag independently or use arrow keys to move this Flubber on screen.`);
   }
   const liveIds = new Set(guests.map((guest) => guest.streamId));
   for (const [streamId, view] of partyGuestViews) view.root.hidden = !liveIds.has(streamId);
+  if (guests.length > 0) {
+    const minimumViewportSpan = Math.max(1, Math.min(window.innerWidth, window.innerHeight));
+    flubberParty.broadcastScene({
+      visual: {
+        ...state.visual,
+        opacity: state.widgetOpacity,
+        palette: state.palette,
+        phase: state.phase,
+      },
+      host: {
+        currentX: state.currentX,
+        currentY: state.currentY,
+        viewportX: state.widgetX / Math.max(1, window.innerWidth),
+        viewportY: state.widgetY / Math.max(1, window.innerHeight),
+        size: state.widgetSize / minimumViewportSpan,
+      },
+      guests: guests.map((guest) => {
+        const view = partyGuestViews.get(guest.streamId);
+        return {
+          streamId: guest.streamId,
+          label: guest.label.replace(/\s*·\s*Live FLUBBER\s*$/i, ""),
+          currentX: guest.latest.currentX,
+          currentY: guest.latest.currentY,
+          viewportX: (view?.position?.x ?? window.innerWidth / 2) / Math.max(1, window.innerWidth),
+          viewportY: (view?.position?.y ?? window.innerHeight / 2) / Math.max(1, window.innerHeight),
+          size: (view?.size ?? 108) / minimumViewportSpan,
+          stale: guest.phase === "stale",
+        };
+      }),
+    });
+  }
+}
+
+function removeIncomingPartyViews() {
+  for (const view of incomingPartyViews.values()) view.root.remove();
+  incomingPartyViews.clear();
+}
+
+function clearIncomingPartyScene({ announceDeparture = false } = {}) {
+  if (!incomingPartyScene) return;
+  incomingPartyScene = undefined;
+  removeIncomingPartyViews();
+  if (flubberParty.snapshot().guests.length === 0) {
+    mobilePartyCamera = normalizeMobilePartyCamera();
+    mobilePartyCameraPointers.clear();
+    mobilePartyCameraGesture = undefined;
+    constrainAndRenderWidget();
+  }
+  updateRemoteBroadcastUi();
+  updatePartyScenePresentation();
+  if (announceDeparture) announce("The shared FLUBBER party scene ended; your local Flubber remains available.");
+}
+
+function acceptIncomingPartyScene(detail) {
+  const frame = decodePartySceneFrame(detail?.data);
+  const localStreamId = flubberBroadcaster.snapshot().streamId;
+  if (!frame || !localStreamId || !frame.participants.some((participant) => participant.streamId === localStreamId)) return;
+  if (incomingPartySceneIsLive() && incomingPartyScene.peerUuid !== detail.uuid) return;
+  if (incomingPartyScene?.peerUuid === detail.uuid
+    && incomingPartyScene.partyId === frame.partyId
+    && !isNewerFlubberSequence(frame.sequence, incomingPartyScene.sequence)) return;
+  const changedParty = incomingPartyScene?.partyId !== frame.partyId;
+  incomingPartyScene = { ...frame, peerUuid: detail.uuid, receivedAt: performance.now() };
+  constrainAndRenderWidget();
+  updateRemoteBroadcastUi();
+  updatePartyScenePresentation();
+  if (changedParty) announce("You joined a shared FLUBBER party scene. Everyone in this party can now see the same participants.");
+}
+
+function renderIncomingPartyScene(now = performance.now()) {
+  if (incomingPartyScene && !incomingPartySceneIsLive(now)) clearIncomingPartyScene({ announceDeparture: true });
+  if (!incomingPartyScene) {
+    removeIncomingPartyViews();
+    return;
+  }
+  const localStreamId = flubberBroadcaster.snapshot().streamId;
+  const local = incomingPartyScene.participants.find((participant) => participant.streamId === localStreamId);
+  if (!local) {
+    clearIncomingPartyScene();
+    return;
+  }
+  const remoteParticipants = incomingPartyScene.participants.filter((participant) => participant.streamId !== localStreamId);
+  const present = new Set(remoteParticipants.map((participant) => participant.streamId));
+  for (const [streamId, view] of incomingPartyViews) {
+    if (present.has(streamId)) continue;
+    view.root.remove();
+    incomingPartyViews.delete(streamId);
+  }
+  const minimumViewportSpan = Math.max(1, Math.min(window.innerWidth, window.innerHeight));
+  for (let index = 0; index < remoteParticipants.length; index += 1) {
+    const participant = remoteParticipants[index];
+    const view = incomingPartyViews.get(participant.streamId)
+      ?? createPartyGuestView(participant.streamId, participant.label, { collection: incomingPartyViews, interactive: false });
+    view.size = participant.size * minimumViewportSpan;
+    view.position = {
+      x: participant.viewportX * window.innerWidth,
+      y: participant.viewportY * window.innerHeight,
+    };
+    renderPartyGuestPosition(view);
+    const rendered = buildFlubberPath({
+      profiles,
+      offsets: view.offsets,
+      x: participant.currentX,
+      y: participant.currentY,
+      phase: incomingPartyScene.visual.phase + incomingPartyScene.participants.indexOf(participant) * 0.47,
+      palette: incomingPartyScene.visual.palette,
+      amplitudeScale: incomingPartyScene.visual.amplitudeScale,
+      disorderScale: incomingPartyScene.visual.disorderScale,
+      baseShape: incomingPartyScene.visual.baseShape,
+      reducedMotion: reducedMotionQuery.matches,
+    });
+    for (const path of view.paths) path.setAttribute("d", rendered.path);
+    view.root.hidden = false;
+    view.root.style.setProperty("--party-color", rendered.color);
+    view.root.style.opacity = String(incomingPartyScene.visual.opacity);
+    view.root.setAttribute("aria-label", `${participant.host ? "Party host" : "Party participant"} ${participant.label}. Valence ${participant.currentX.toFixed(2)}, arousal ${participant.currentY.toFixed(2)}${participant.stale ? ", signal stale and holding" : ""}.`);
+  }
+}
+
+function updatePartyScenePresentation() {
+  const active = partySceneActive();
+  if (!active) partyProjectionOffsets.clear();
+  document.body.classList.toggle("is-party-scene-active", active);
+  elements.partyStage.hidden = !active && !partyBirthAnimation;
+  elements.partyCameraControls.hidden = !(active && smartphoneLayoutActive);
+  if (elements.partyCameraZoom) elements.partyCameraZoom.value = String(mobilePartyCamera.zoom);
+  for (const view of partyGuestViews.values()) renderPartyGuestPosition(view);
+  for (const view of incomingPartyViews.values()) renderPartyGuestPosition(view);
+}
+
+function setMobilePartyCamera(next) {
+  mobilePartyCamera = normalizeMobilePartyCamera(next);
+  if (elements.partyCameraZoom) elements.partyCameraZoom.value = String(mobilePartyCamera.zoom);
+  constrainAndRenderWidget();
+  for (const view of partyGuestViews.values()) renderPartyGuestPosition(view);
+  for (const view of incomingPartyViews.values()) renderPartyGuestPosition(view);
+}
+
+function partyCameraPointerCentroid(points = mobilePartyCameraPointers.values()) {
+  const values = Array.from(points);
+  if (values.length === 0) return undefined;
+  return {
+    x: values.reduce((sum, point) => sum + point.x, 0) / values.length,
+    y: values.reduce((sum, point) => sum + point.y, 0) / values.length,
+  };
+}
+
+function partyCameraPointerDistance() {
+  const points = Array.from(mobilePartyCameraPointers.values());
+  if (points.length < 2) return 0;
+  return Math.hypot(points[0].x - points[1].x, points[0].y - points[1].y);
+}
+
+function restartMobilePartyCameraGesture() {
+  const centroid = partyCameraPointerCentroid();
+  if (!centroid) {
+    mobilePartyCameraGesture = undefined;
+    return;
+  }
+  mobilePartyCameraGesture = {
+    camera: { ...mobilePartyCamera },
+    centroid,
+    distance: partyCameraPointerDistance(),
+  };
+}
+
+function beginMobilePartyCameraGesture(event) {
+  if (!mobilePartyCameraActive() || event.isPrimary === false && event.pointerType === "mouse") return;
+  event.preventDefault();
+  mobilePartyCameraPointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+  elements.partyCameraSurface.setPointerCapture(event.pointerId);
+  restartMobilePartyCameraGesture();
+}
+
+function moveMobilePartyCameraGesture(event) {
+  if (!mobilePartyCameraPointers.has(event.pointerId) || !mobilePartyCameraGesture) return;
+  event.preventDefault();
+  mobilePartyCameraPointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+  const centroid = partyCameraPointerCentroid();
+  const width = Math.max(1, window.innerWidth);
+  const height = Math.max(1, window.innerHeight);
+  if (mobilePartyCameraPointers.size >= 2 && mobilePartyCameraGesture.distance > 0) {
+    const zoom = clamp(
+      mobilePartyCameraGesture.camera.zoom * partyCameraPointerDistance() / mobilePartyCameraGesture.distance,
+      MOBILE_PARTY_ZOOM_MIN,
+      MOBILE_PARTY_ZOOM_MAX,
+    );
+    const anchor = unprojectMobilePartyPoint({
+      viewportX: mobilePartyCameraGesture.centroid.x / width,
+      viewportY: mobilePartyCameraGesture.centroid.y / height,
+      camera: mobilePartyCameraGesture.camera,
+    });
+    setMobilePartyCamera({
+      zoom,
+      panX: centroid.x / width - 0.5 - (anchor.viewportX - 0.5) * zoom,
+      panY: centroid.y / height - 0.5 - (anchor.viewportY - 0.5) * zoom,
+    });
+    return;
+  }
+  setMobilePartyCamera({
+    ...mobilePartyCameraGesture.camera,
+    panX: mobilePartyCameraGesture.camera.panX + (centroid.x - mobilePartyCameraGesture.centroid.x) / width,
+    panY: mobilePartyCameraGesture.camera.panY + (centroid.y - mobilePartyCameraGesture.centroid.y) / height,
+  });
+}
+
+function finishMobilePartyCameraGesture(event) {
+  if (!mobilePartyCameraPointers.has(event.pointerId)) return;
+  mobilePartyCameraPointers.delete(event.pointerId);
+  if (elements.partyCameraSurface.hasPointerCapture(event.pointerId)) {
+    elements.partyCameraSurface.releasePointerCapture(event.pointerId);
+  }
+  restartMobilePartyCameraGesture();
+  if (mobilePartyCameraPointers.size === 0) {
+    recordEvent("ground-control", "party-camera", "mobile-perspective", `${mobilePartyCamera.zoom.toFixed(2)}:${mobilePartyCamera.panX.toFixed(3)}:${mobilePartyCamera.panY.toFixed(3)}`);
+  }
 }
 
 function finishPictureInPicture(childWindow) {
@@ -2906,9 +3262,20 @@ function handleGlobalMouseUp(event) {
 
 function handleWidgetPointerDown(event) {
   if (event.button !== 0 || !state.widgetDragEnabled || touchTrackingActive()) return;
+  const point = unprojectPartyPixelPosition(event.clientX, event.clientY);
   state.dragging = true;
-  dragOffsetX = event.clientX - state.widgetX;
-  dragOffsetY = event.clientY - state.widgetY;
+  if (sharedPartyLocalParticipant()) {
+    incomingPartyWidgetDragAnchor = {
+      pointerX: point.x,
+      pointerY: point.y,
+      stateX: state.widgetX,
+      stateY: state.widgetY,
+    };
+  } else {
+    incomingPartyWidgetDragAnchor = undefined;
+    dragOffsetX = point.x - state.widgetX;
+    dragOffsetY = point.y - state.widgetY;
+  }
   elements.widget.classList.add("is-dragging");
   elements.widget.setPointerCapture(event.pointerId);
   event.preventDefault();
@@ -2916,14 +3283,21 @@ function handleWidgetPointerDown(event) {
 
 function handleWidgetPointerMove(event) {
   if (!state.dragging) return;
-  state.widgetX = event.clientX - dragOffsetX;
-  state.widgetY = event.clientY - dragOffsetY;
+  const point = unprojectPartyPixelPosition(event.clientX, event.clientY);
+  if (incomingPartyWidgetDragAnchor) {
+    state.widgetX = incomingPartyWidgetDragAnchor.stateX + point.x - incomingPartyWidgetDragAnchor.pointerX;
+    state.widgetY = incomingPartyWidgetDragAnchor.stateY + point.y - incomingPartyWidgetDragAnchor.pointerY;
+  } else {
+    state.widgetX = point.x - dragOffsetX;
+    state.widgetY = point.y - dragOffsetY;
+  }
   constrainAndRenderWidget();
 }
 
 function finishWidgetDrag(event) {
   if (!state.dragging) return;
   state.dragging = false;
+  incomingPartyWidgetDragAnchor = undefined;
   elements.widget.classList.remove("is-dragging");
   if (elements.widget.hasPointerCapture?.(event.pointerId)) {
     elements.widget.releasePointerCapture(event.pointerId);
@@ -3613,7 +3987,11 @@ function clearLog() {
 }
 
 function initializeEvents() {
-  flubberBroadcaster.addEventListener("statechange", (event) => updateRemoteBroadcastUi(event.detail));
+  flubberBroadcaster.addEventListener("statechange", (event) => {
+    updateRemoteBroadcastUi(event.detail);
+    if (event.detail.phase === "idle") clearIncomingPartyScene();
+  });
+  flubberBroadcaster.addEventListener("message", (event) => acceptIncomingPartyScene(event.detail));
   flubberReceiver.addEventListener("statechange", (event) => {
     updateLiveReceiveUi(event.detail);
     if (shouldDismissGroundRadar({ mode: groundRadarMode, phase: event.detail.phase })) {
@@ -3633,6 +4011,22 @@ function initializeEvents() {
   settingsSnapshotReceiver.addEventListener("snapshot", (event) => showReceivedSettings(event.detail));
   universeLink.addEventListener("statechange", (event) => updateUniverseUi(event.detail));
   flubberParty.addEventListener("statechange", (event) => updatePartyUi(event.detail));
+  elements.partyCameraSurface.addEventListener("pointerdown", beginMobilePartyCameraGesture);
+  elements.partyCameraSurface.addEventListener("pointermove", moveMobilePartyCameraGesture);
+  elements.partyCameraSurface.addEventListener("pointerup", finishMobilePartyCameraGesture);
+  elements.partyCameraSurface.addEventListener("pointercancel", finishMobilePartyCameraGesture);
+  elements.partyCameraZoom.addEventListener("input", () => {
+    setMobilePartyCamera({ ...mobilePartyCamera, zoom: Number(elements.partyCameraZoom.value) });
+  });
+  elements.partyCameraZoom.addEventListener("change", () => {
+    recordEvent("ground-control", "party-camera", "mobile-zoom", mobilePartyCamera.zoom.toFixed(2));
+    announce(`Party perspective set to ${Math.round(mobilePartyCamera.zoom * 100)} percent.`);
+  });
+  elements.partyCameraReset.addEventListener("click", () => {
+    setMobilePartyCamera({ zoom: 1, panX: 0, panY: 0 });
+    recordEvent("ground-control", "party-camera", "mobile-reset", 1);
+    announce("Party perspective reset.");
+  });
   window.addEventListener("pointerdown", (event) => ingestPointerEvent(event, "down"), { capture: true, passive: false });
   window.addEventListener("pointermove", (event) => ingestPointerEvent(event, "move"), { capture: true, passive: false });
   window.addEventListener("pointerup", (event) => ingestPointerEvent(event, "up"), { capture: true, passive: false });
@@ -4362,16 +4756,17 @@ function animationFrame(timestamp) {
     state.phase = (state.phase + deltaSeconds * Math.PI * 2 * currentParameters.frequency * state.visual.animationSpeed) % (Math.PI * 2);
   }
 
+  const partyRender = activePartyRenderSettings();
   const rendered = buildFlubberPath({
     profiles,
-    offsets,
+    offsets: partyRender.offsets,
     x: state.currentX,
     y: state.currentY,
-    phase: state.phase,
-    palette: state.palette,
-    amplitudeScale: state.visual.amplitudeScale,
-    disorderScale: state.visual.disorderScale,
-    baseShape: state.visual.baseShape,
+    phase: partyRender.phase,
+    palette: partyRender.palette,
+    amplitudeScale: partyRender.amplitudeScale,
+    disorderScale: partyRender.disorderScale,
+    baseShape: partyRender.baseShape,
     reducedMotion: reducedMotionQuery.matches,
   });
   elements.basePath.setAttribute("d", rendered.path);
@@ -4385,14 +4780,17 @@ function animationFrame(timestamp) {
   elements.mobileDirectOutlinePath.setAttribute("d", rendered.path);
   elements.mobileDirectHaloPath.setAttribute("d", rendered.path);
   elements.widget.style.setProperty("--affect-color", rendered.color);
+  elements.widget.style.opacity = state.widgetVisible ? String(partyRender.opacity) : "0";
   elements.touchPreviewFlubber.style.setProperty("--affect-color", rendered.color);
-  elements.touchPreviewFlubber.style.opacity = state.widgetVisible ? state.widgetOpacity : 0;
+  elements.touchPreviewFlubber.style.opacity = state.widgetVisible ? partyRender.opacity : 0;
   elements.mobileDirectFlubber.style.setProperty("--affect-color", rendered.color);
-  elements.mobileDirectFlubber.style.opacity = state.widgetVisible ? state.widgetOpacity : 0;
+  elements.mobileDirectFlubber.style.opacity = state.widgetVisible ? partyRender.opacity : 0;
   renderMobileFlubberPosition();
-  renderPictureInPicture(rendered);
+  renderPictureInPicture(rendered, partyRender.opacity);
   renderPartyBirthVector(rendered);
+  renderIncomingPartyScene();
   renderPartyFlubbers();
+  updatePartyScenePresentation();
   updateCoordinateDisplay();
   updateFeatureSpace();
   renderTouchTrace(timestamp);

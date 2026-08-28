@@ -1,11 +1,16 @@
 import { clamp } from "./math.js";
-import { createFlubberBroadcaster, createFlubberReceiver } from "./flubber-remote.js?v=collaboration-3";
+import { createFlubberBroadcaster, createFlubberReceiver } from "./flubber-remote.js?v=collaboration-4";
 
 export const UNIVERSE_ROOM = "affect_tracker_universe_v1";
 export const UNIVERSE_STREAM_PREFIX = "aft_universe_";
 export const UNIVERSE_CHANNEL = "flubberuniversev1";
 export const UNIVERSE_LABEL_SUFFIX = "Universe FLUBBER";
 export const PARTY_MAX_GUESTS = 8;
+export const PARTY_SCENE_PROTOCOL = "affect-tracker-party-scene";
+export const PARTY_SCENE_VERSION = 1;
+export const PARTY_SCENE_MAX_BYTES = 8_192;
+export const PARTY_SCENE_MAX_HZ = 30;
+export const PARTY_SCENE_HEARTBEAT_MS = 250;
 
 const IDLE_PHASES = new Set(["idle", "error"]);
 
@@ -17,6 +22,123 @@ function detailEvent(type, detail) {
 
 function activePhase(phase) {
   return !IDLE_PHASES.has(phase ?? "idle");
+}
+
+function boundedPartyText(value, maxLength) {
+  return String(value ?? "")
+    .replace(/[\u0000-\u001f\u007f]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, maxLength);
+}
+
+function normalizePartySceneParticipant(value) {
+  const streamId = boundedPartyText(value?.streamId, 128);
+  const label = boundedPartyText(value?.label, 64);
+  const currentX = Number(value?.currentX);
+  const currentY = Number(value?.currentY);
+  const viewportX = Number(value?.viewportX);
+  const viewportY = Number(value?.viewportY);
+  const size = Number(value?.size);
+  if (!streamId || !label || ![currentX, currentY, viewportX, viewportY, size].every(Number.isFinite)) {
+    throw new TypeError("Every party-scene participant needs a bounded ID, label, affect pair, viewport position, and relative size.");
+  }
+  return {
+    streamId,
+    label,
+    currentX: clamp(currentX),
+    currentY: clamp(currentY),
+    viewportX: clamp(viewportX, 0, 1),
+    viewportY: clamp(viewportY, 0, 1),
+    size: clamp(size, 0.04, 1),
+    stale: value?.stale === true,
+    host: value?.host === true,
+  };
+}
+
+function normalizePartySceneVisual(value) {
+  const baseShape = ["circle", "heart", "triangle", "square"].includes(value?.baseShape)
+    ? value.baseShape
+    : "circle";
+  const color = (candidate, fallback) => /^#[0-9a-f]{6}$/i.test(String(candidate ?? ""))
+    ? String(candidate).toLowerCase()
+    : fallback;
+  const finite = (candidate, fallback, low, high) => {
+    const number = Number(candidate);
+    return Number.isFinite(number) ? clamp(number, low, high) : fallback;
+  };
+  const phase = Number(value?.phase);
+  return {
+    baseShape,
+    animationSpeed: finite(value?.animationSpeed, 1, 0.25, 3),
+    amplitudeScale: finite(value?.amplitudeScale, 1, 0.25, 2),
+    disorderScale: finite(value?.disorderScale, 1, 0.25, 2),
+    opacity: finite(value?.opacity, 1, 0, 1),
+    phase: Number.isFinite(phase) ? ((phase % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2) : 0,
+    palette: {
+      up: color(value?.palette?.up, "#ffd166"),
+      down: color(value?.palette?.down, "#5c7cfa"),
+      left: color(value?.palette?.left, "#ff5b68"),
+      right: color(value?.palette?.right, "#5dffb0"),
+    },
+  };
+}
+
+export function encodePartySceneFrame({ partyId, sequence, participants, visual } = {}) {
+  const normalizedPartyId = boundedPartyText(partyId, 96);
+  if (!normalizedPartyId) throw new TypeError("A party scene needs a session ID.");
+  if (!Array.isArray(participants) || participants.length < 1 || participants.length > PARTY_MAX_GUESTS + 1) {
+    throw new TypeError(`A party scene must contain 1 to ${PARTY_MAX_GUESTS + 1} participants.`);
+  }
+  const normalizedParticipants = participants.map(normalizePartySceneParticipant);
+  const streamIds = new Set(normalizedParticipants.map((participant) => participant.streamId));
+  if (streamIds.size !== normalizedParticipants.length) throw new TypeError("Party-scene participant IDs must be unique.");
+  if (normalizedParticipants.filter((participant) => participant.host).length !== 1) {
+    throw new TypeError("A party scene needs exactly one host participant.");
+  }
+  const frame = JSON.stringify({
+    protocol: PARTY_SCENE_PROTOCOL,
+    version: PARTY_SCENE_VERSION,
+    partyId: normalizedPartyId,
+    sequence: Number(sequence) >>> 0,
+    visual: normalizePartySceneVisual(visual),
+    participants: normalizedParticipants,
+  });
+  if (new TextEncoder().encode(frame).byteLength > PARTY_SCENE_MAX_BYTES) {
+    throw new TypeError(`A party scene cannot exceed ${PARTY_SCENE_MAX_BYTES} UTF-8 bytes.`);
+  }
+  return frame;
+}
+
+export function decodePartySceneFrame(value) {
+  if (typeof value !== "string" || new TextEncoder().encode(value).byteLength > PARTY_SCENE_MAX_BYTES) return undefined;
+  try {
+    const parsed = JSON.parse(value);
+    if (parsed?.protocol !== PARTY_SCENE_PROTOCOL || parsed?.version !== PARTY_SCENE_VERSION) return undefined;
+    const frame = encodePartySceneFrame(parsed);
+    const normalized = JSON.parse(frame);
+    return {
+      partyId: normalized.partyId,
+      sequence: normalized.sequence,
+      visual: normalized.visual,
+      participants: normalized.participants,
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+function defaultPartyRandomBytes(length) {
+  const bytes = new Uint8Array(length);
+  globalThis.crypto?.getRandomValues?.(bytes);
+  if (bytes.every((value) => value === 0)) {
+    for (let index = 0; index < bytes.length; index += 1) bytes[index] = Math.floor(Math.random() * 256);
+  }
+  return bytes;
+}
+
+function partySessionId(randomBytes) {
+  return `party_${Array.from(randomBytes(8), (value) => value.toString(16).padStart(2, "0")).join("")}`;
 }
 
 export function oneWayGroundRole({
@@ -480,12 +602,22 @@ export class FlubberParty extends EventTarget {
     discoveryFactory = createFlubberReceiver,
     receiverFactory = createFlubberReceiver,
     maxGuests = PARTY_MAX_GUESTS,
+    randomBytes = defaultPartyRandomBytes,
+    now = () => performance.now(),
   } = {}) {
     super();
     this.receiverFactory = receiverFactory;
     this.maxGuests = Math.max(1, Math.floor(maxGuests));
+    this.randomBytes = randomBytes;
+    this.now = now;
     this.discovery = discoveryFactory({ autoSelect: false, receiverLabel: "Affect Tracker party radar" });
     this.guests = new Map();
+    this.partyId = "";
+    this.hostStreamId = "";
+    this.hostName = "";
+    this.sceneSequence = 0;
+    this.lastSceneState = "";
+    this.lastSceneSentAt = -Infinity;
     this.discovery.addEventListener("statechange", () => this.emitState());
   }
 
@@ -494,6 +626,9 @@ export class FlubberParty extends EventTarget {
       phase: this.discovery.snapshot().phase,
       enabled: activePhase(this.discovery.snapshot().phase) || this.guests.size > 0,
       sources: this.discovery.snapshot().sources ?? [],
+      partyId: this.partyId,
+      hostStreamId: this.hostStreamId,
+      hostName: this.hostName,
       guests: Array.from(this.guests, ([streamId, guest]) => ({
         streamId,
         label: guest.label,
@@ -507,10 +642,44 @@ export class FlubberParty extends EventTarget {
     this.dispatchEvent(detailEvent("statechange", this.snapshot()));
   }
 
-  async startDiscovery() {
+  async startDiscovery({ hostName = this.hostName } = {}) {
+    if (!this.partyId) {
+      this.partyId = partySessionId(this.randomBytes);
+      this.hostStreamId = `${this.partyId}_host`;
+    }
+    this.hostName = boundedPartyText(hostName, 64) || "Party host";
     await this.discovery.startDiscovery();
     this.emitState();
     return this.snapshot();
+  }
+
+  broadcastScene({ host, guests = [], visual } = {}, offeredAt = this.now()) {
+    if (!this.partyId || this.guests.size === 0) return false;
+    const participants = [
+      normalizePartySceneParticipant({
+        ...host,
+        streamId: this.hostStreamId,
+        label: this.hostName,
+        host: true,
+      }),
+      ...guests.slice(0, this.maxGuests).map((guest) => normalizePartySceneParticipant({ ...guest, host: false })),
+    ];
+    const normalizedVisual = normalizePartySceneVisual(visual);
+    const state = JSON.stringify({ partyId: this.partyId, visual: normalizedVisual, participants });
+    const changed = state !== this.lastSceneState;
+    const minimumInterval = 1_000 / PARTY_SCENE_MAX_HZ;
+    if ((changed && offeredAt - this.lastSceneSentAt < minimumInterval)
+      || (!changed && offeredAt - this.lastSceneSentAt < PARTY_SCENE_HEARTBEAT_MS)) return false;
+    const sequence = (this.sceneSequence + 1) >>> 0;
+    const frame = encodePartySceneFrame({ partyId: this.partyId, sequence, visual: normalizedVisual, participants });
+    let sent = false;
+    for (const guest of this.guests.values()) sent = guest.receiver.sendData?.(frame) || sent;
+    if (sent) {
+      this.sceneSequence = sequence;
+      this.lastSceneState = state;
+      this.lastSceneSentAt = offeredAt;
+    }
+    return sent;
   }
 
   async invite(streamId) {
@@ -561,6 +730,12 @@ export class FlubberParty extends EventTarget {
       guest.receiver.removeEventListener("frame", guest.forwardFrame);
     }
     await Promise.all([this.discovery.stop(), ...guests.map((guest) => guest.receiver.stop())]);
+    this.partyId = "";
+    this.hostStreamId = "";
+    this.hostName = "";
+    this.sceneSequence = 0;
+    this.lastSceneState = "";
+    this.lastSceneSentAt = -Infinity;
     this.emitState();
   }
 }

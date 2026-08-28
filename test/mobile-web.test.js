@@ -6,9 +6,14 @@ import {
   clientPointToAffectCoordinate,
   isSmartphoneTouchViewport,
   MOBILE_COORDINATE_GRAB_RADIUS_PX,
+  MOBILE_PARTY_ZOOM_MAX,
+  MOBILE_PARTY_ZOOM_MIN,
+  normalizeMobilePartyCamera,
+  projectMobilePartyPoint,
   SMARTPHONE_LANDSCAPE_MAX_HEIGHT,
   SMARTPHONE_LAYOUT_MAX_WIDTH,
   startsOnCoordinateMarker,
+  unprojectMobilePartyPoint,
 } from "../site/src/mobile.js";
 
 const readSiteFile = (name) => readFile(new URL(`../site/${name}`, import.meta.url), "utf8");
@@ -94,4 +99,28 @@ test("phone pointer capture uses primary Pointer Events with a Safari-compatible
   assert.match(app, /setPointerCapture\(event\.pointerId\)/);
   assert.match(app, /pointermove"[\s\S]*capture: true, passive: false/);
   assert.match(app, /event\.pointerType !== "mouse" && event\.cancelable/);
+});
+
+test("smartphone party perspective zooms out, pans, and round-trips scene coordinates", async () => {
+  assert.equal(MOBILE_PARTY_ZOOM_MIN, 0.5);
+  assert.equal(MOBILE_PARTY_ZOOM_MAX, 1.6);
+  const camera = normalizeMobilePartyCamera({ zoom: 0.5, panX: 0.1, panY: -0.08 });
+  const projected = projectMobilePartyPoint({ viewportX: 0.9, viewportY: 0.2, camera });
+  assert.ok(Math.abs(projected.viewportX - 0.8) < 1e-12);
+  assert.ok(Math.abs(projected.viewportY - 0.27) < 1e-12);
+  const restored = unprojectMobilePartyPoint({ ...projected, camera });
+  assert.ok(Math.abs(restored.viewportX - 0.9) < 1e-12);
+  assert.ok(Math.abs(restored.viewportY - 0.2) < 1e-12);
+
+  const html = await readSiteFile("index.html");
+  const css = await readSiteFile("styles.css");
+  const app = await readSiteFile("src/app.js");
+  assert.match(html, /id="party-camera-zoom"[^>]*min="0\.5"[^>]*max="1\.6"/);
+  assert.match(html, /Pinch to zoom and swipe empty space to pan/);
+  assert.match(css, /body\.is-smartphone-layout\.is-party-scene-active \.party-camera-surface \{ pointer-events: auto/);
+  assert.match(app, /partyCameraPointerDistance\(\)[\s\S]*MOBILE_PARTY_ZOOM_MIN[\s\S]*MOBILE_PARTY_ZOOM_MAX/);
+  assert.match(app, /partyCameraSurface\.addEventListener\("pointerdown"/);
+  assert.match(app, /partyCameraReset\.addEventListener\("click"/);
+  assert.match(app, /partyDisplayPosition = sharedPartyParticipant/);
+  assert.match(app, /incomingPartyWidgetDragAnchor\.stateX \+ point\.x/);
 });

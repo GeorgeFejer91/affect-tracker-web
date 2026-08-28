@@ -1,6 +1,9 @@
 export const SMARTPHONE_LAYOUT_MAX_WIDTH = 600;
 export const SMARTPHONE_LANDSCAPE_MAX_HEIGHT = 500;
 export const MOBILE_COORDINATE_GRAB_RADIUS_PX = 30;
+export const MOBILE_PARTY_ZOOM_MIN = 0.5;
+export const MOBILE_PARTY_ZOOM_MAX = 1.6;
+export const MOBILE_PARTY_PAN_LIMIT = 0.5;
 
 export function isSmartphoneTouchViewport({
   width,
@@ -52,4 +55,34 @@ export function startsOnCoordinateMarker({
   const marker = affectCoordinateToClientPoint({ x, y, bounds });
   if (!marker) return false;
   return Math.hypot(clientX - marker.x, clientY - marker.y) <= radius;
+}
+
+export function normalizeMobilePartyCamera({ zoom = 1, panX = 0, panY = 0 } = {}) {
+  return {
+    zoom: Math.max(MOBILE_PARTY_ZOOM_MIN, Math.min(MOBILE_PARTY_ZOOM_MAX, Number(zoom) || 1)),
+    panX: Math.max(-MOBILE_PARTY_PAN_LIMIT, Math.min(MOBILE_PARTY_PAN_LIMIT, Number(panX) || 0)),
+    panY: Math.max(-MOBILE_PARTY_PAN_LIMIT, Math.min(MOBILE_PARTY_PAN_LIMIT, Number(panY) || 0)),
+  };
+}
+
+export function projectMobilePartyPoint({ viewportX, viewportY, camera } = {}) {
+  const normalized = normalizeMobilePartyCamera(camera);
+  const x = Number(viewportX);
+  const y = Number(viewportY);
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return undefined;
+  return {
+    viewportX: 0.5 + (x - 0.5) * normalized.zoom + normalized.panX,
+    viewportY: 0.5 + (y - 0.5) * normalized.zoom + normalized.panY,
+  };
+}
+
+export function unprojectMobilePartyPoint({ viewportX, viewportY, camera } = {}) {
+  const normalized = normalizeMobilePartyCamera(camera);
+  const x = Number(viewportX);
+  const y = Number(viewportY);
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return undefined;
+  return {
+    viewportX: 0.5 + (x - 0.5 - normalized.panX) / normalized.zoom,
+    viewportY: 0.5 + (y - 0.5 - normalized.panY) / normalized.zoom,
+  };
 }

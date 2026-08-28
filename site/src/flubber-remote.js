@@ -12,6 +12,7 @@ export const FLUBBER_REMOTE_STALE_MS = 2_000;
 export const FLUBBER_REMOTE_RECOVERY_FRAMES = 3;
 export const FLUBBER_REMOTE_DISCOVERY_SETTLE_MS = 300;
 export const FLUBBER_REMOTE_FORCE_TURN_PARAM = "remote-force-turn";
+export const FLUBBER_REMOTE_AUXILIARY_MAX_BYTES = 16_384;
 
 const MIN_SEND_INTERVAL_MS = 1_000 / FLUBBER_REMOTE_MAX_HZ;
 // Chrome animation frames can arrive a fraction before the ideal 60 Hz
@@ -640,6 +641,10 @@ export class FlubberBroadcaster extends FlubberRemoteBase {
       this.channels.set(uuid, channel);
       const remove = () => this.removePeer(uuid);
       channel.addEventListener?.("close", remove, { once: true });
+      channel.addEventListener?.("message", (event) => {
+        if (typeof event.data !== "string" || !this.channels.has(uuid)) return;
+        this.dispatchEvent(detailEvent("message", { uuid, data: event.data }));
+      });
       channel.addEventListener?.("bufferedamountlow", () => {
         const coordinatesWaiting = this.backpressuredPeers.delete(uuid);
         const positionWaiting = this.positionBackpressuredPeers.delete(uuid);
@@ -988,6 +993,10 @@ export class FlubberReceiver extends FlubberRemoteBase {
     acceptedChannel.binaryType = "arraybuffer";
     acceptedChannel.addEventListener("message", (event) => {
       if (this.channel === acceptedChannel && this.selectedStreamId === acceptedStreamId) {
+        if (typeof event.data === "string") {
+          this.dispatchEvent(detailEvent("message", { streamId: acceptedStreamId, data: event.data }));
+          return;
+        }
         if (!this.acceptPositionFrame(event.data)) this.acceptFrame(event.data);
       }
     });
@@ -998,6 +1007,18 @@ export class FlubberReceiver extends FlubberRemoteBase {
     }, { once: true });
     this.emitState({ message: "Realtime channel open; waiting for coordinates…" });
     void this.refreshQuality();
+  }
+
+  sendData(value) {
+    if (typeof value !== "string" || !this.channel || this.channel.readyState !== "open") return false;
+    if (new TextEncoder().encode(value).byteLength > FLUBBER_REMOTE_AUXILIARY_MAX_BYTES) return false;
+    if (Number(this.channel.bufferedAmount) > 0) return false;
+    try {
+      this.channel.send(value);
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   acceptPositionChannel(detail, acceptedStreamId = this.selectedStreamId) {

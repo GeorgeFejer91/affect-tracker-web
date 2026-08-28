@@ -299,6 +299,40 @@ test("broadcaster is explicit, data-only, partial-reliability fan-out with immed
   assert.equal(sdk.calls.at(-1)[0], "disconnect");
 });
 
+test("the proven live channel carries bounded reciprocal party-scene messages", async () => {
+  const broadcasterClock = new FakeClock();
+  const broadcasterSdk = new MockSdk();
+  const broadcaster = new FlubberBroadcaster({
+    ...broadcasterClock.options(() => broadcasterSdk),
+    randomBytes: () => new Uint8Array(4),
+  });
+  let incoming;
+  broadcaster.addEventListener("message", (event) => { incoming = event.detail; });
+  await broadcaster.start();
+  broadcasterSdk.emit("dataChannelOpen", { uuid: "party-host" });
+  await settle();
+  broadcasterSdk.channels.get("party-host").message("party-scene-json");
+  assert.deepEqual(incoming, { uuid: "party-host", data: "party-scene-json" });
+
+  const receiverClock = new FakeClock();
+  const receiverSdk = new MockSdk();
+  const receiver = new FlubberReceiver({ ...receiverClock.options(() => receiverSdk), autoSelect: false });
+  await receiver.startDiscovery();
+  receiverSdk.emit("listing", { streamID: "aft_flubber_guest_12345678", UUID: "guest", label: "Guest · Live FLUBBER" });
+  await receiver.selectSource("aft_flubber_guest_12345678");
+  const channel = new MockChannel();
+  receiverSdk.emit("channelOpen", {
+    label: `x-${FLUBBER_REMOTE_CHANNEL}`,
+    streamID: "aft_flubber_guest_12345678",
+    uuid: "guest",
+    channel,
+  });
+  assert.equal(receiver.sendData("shared-party-scene"), true);
+  assert.deepEqual(channel.sent, ["shared-party-scene"]);
+  channel.bufferedAmount = 1;
+  assert.equal(receiver.sendData("newer-scene"), false, "party scene fan-out keeps only the latest state under pressure");
+});
+
 test("one state offer keeps affect and placement adjacent when the shared channel buffer rises", async () => {
   const clock = new FakeClock();
   const sdk = new MockSdk();
@@ -857,10 +891,10 @@ test("remote pages load only the local SDK and feature code makes no microphone 
   assert.match(index, />Broadcast Live FLUBBER</);
   assert.match(index, /id="flubber-remote-foreground-button"[^>]*hidden>Restore low-latency foreground mode</);
   assert.match(webxr, />Use incoming signal</);
-  assert.match(index, /src="\.\/src\/app\.js\?v=screen-calibration-module-4-mobile-direct-5-collaboration-8-retro-1"/);
-  assert.match(webxr, /src="\.\/src\/webxr-study\.js\?v=collaboration-3"/);
-  assert.match(app, /from "\.\/flubber-remote\.js\?v=collaboration-3"/);
-  assert.match(receiver, /from "\.\/flubber-remote\.js\?v=collaboration-3"/);
+  assert.match(index, /src="\.\/src\/app\.js\?v=screen-calibration-module-4-mobile-party-camera-1-collaboration-9-retro-1"/);
+  assert.match(webxr, /src="\.\/src\/webxr-study\.js\?v=collaboration-4"/);
+  assert.match(app, /from "\.\/flubber-remote\.js\?v=collaboration-4"/);
+  assert.match(receiver, /from "\.\/flubber-remote\.js\?v=collaboration-4"/);
   assert.match(transport, /FLUBBER_REMOTE_FORCE_TURN_PARAM = "remote-force-turn"/);
   assert.match(transport, /forceTURN: Boolean\(forceTurn\)/);
   assert.match(app, /flubberBroadcaster\.offerState\([\s\S]*state\.currentX,[\s\S]*state\.currentY,[\s\S]*viewportPosition\.viewportX,[\s\S]*viewportPosition\.viewportY/);

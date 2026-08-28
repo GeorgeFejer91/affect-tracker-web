@@ -7,7 +7,7 @@
     <meta name="description" content="A draggable, browser-only 2D affect tracker inspired by AffectTracker.">
     <title>2D Affect Tracker</title>
     <script src="./src/theme-bootstrap.js?v=retro-1"></script>
-    <link rel="stylesheet" href="./styles.css?v=screen-calibration-rim-2-mobile-direct-5-collaboration-7-retro-1">
+    <link rel="stylesheet" href="./styles.css?v=screen-calibration-rim-2-mobile-party-camera-1-collaboration-8-retro-1">
   </head>
   <body>
     <main id="stage" aria-label="Interactive affect tracker">
@@ -36,7 +36,15 @@
         <span class="drag-hint" aria-hidden="true">drag</span>
       </div>
 
-      <section id="flubber-party-stage" class="flubber-party-stage" hidden aria-label="Invited FLUBBER party"></section>
+      <section id="flubber-party-stage" class="flubber-party-stage" hidden aria-label="Shared FLUBBER party scene">
+        <div id="party-camera-surface" class="party-camera-surface" aria-hidden="true"></div>
+        <div id="party-camera-controls" class="party-camera-controls" hidden>
+          <label for="party-camera-zoom">Party perspective</label>
+          <input id="party-camera-zoom" type="range" min="0.5" max="1.6" step="0.05" value="1" aria-describedby="party-camera-help">
+          <button id="party-camera-reset" type="button">Reset view</button>
+          <small id="party-camera-help">Pinch to zoom and swipe empty space to pan. Zoom out to see more of the shared scene.</small>
+        </div>
+      </section>
 
       <section id="touch-trace-panel" class="touch-trace-panel" hidden aria-label="Experimental movement trace feedback">
         <canvas id="touch-trace-canvas" width="320" height="160" aria-hidden="true"></canvas>
@@ -752,13 +760,13 @@
             </section>
 
             <section id="ground-party-roster" class="ground-party-roster" hidden aria-labelledby="ground-party-roster-title">
-              <div><h4 id="ground-party-roster-title">FLUBBER party</h4><small>Up to eight selected public guests appear beside your locally controlled Flubber.</small></div>
+              <div><h4 id="ground-party-roster-title">FLUBBER party</h4><small>Up to eight selected public guests share one mirrored scene. Every invited broadcaster sees the host and all other connected Flubbers.</small></div>
               <div id="ground-party-guests" class="ground-party-guests"></div>
               <button id="ground-party-stop-button" type="button">Stop party and disconnect guests</button>
             </section>
 
-            <p class="ground-control-distinction"><strong>Snapshot vs stream:</strong> JSON is one frozen settings snapshot; Live FLUBBER is a connection that stays open for changing X/Y coordinates. Ordinary broadcast and scan are sender-or-receiver only. <strong>Synch with Universe</strong> is an explicit reciprocal exception where both people's full-scale X/Y inputs steer one shared Flubber; matching directions add up to the coordinate limits instead of being averaged. <strong>Invite a FLUBBER</strong> keeps your controls local and adds selected remote Flubbers alongside yours.</p>
-            <p class="experiment-privacy"><strong>Public experimental connection:</strong> pressing a Broadcast or Scan action connects to a public VDO.Ninja discovery room. Your chosen signal name is visible to room listeners; peers may learn this device's IP address; third-party signaling and STUN/TURN may be used; relay paths add latency; and the free service has no availability guarantee. Static JSON contains the complete portable settings object, including desktop LSL metadata. Live mode sends only final smoothed X/Y coordinates and normalized Flubber screen placement—never raw pointer trails, physiology, timestamps, CSV rows, or participant identity.</p>
+            <p class="ground-control-distinction"><strong>Snapshot vs stream:</strong> JSON is one frozen settings snapshot; Live FLUBBER is a connection that stays open for changing X/Y coordinates. Ordinary broadcast and scan are sender-or-receiver only. <strong>Synch with Universe</strong> is an explicit reciprocal exception where both people's full-scale X/Y inputs steer one shared Flubber; matching directions add up to the coordinate limits instead of being averaged. <strong>Invite a FLUBBER</strong> keeps each person's affect controls local while the host mirrors the complete Party scene to every invited broadcaster.</p>
+            <p class="experiment-privacy"><strong>Public experimental connection:</strong> pressing a Broadcast or Scan action connects to a public VDO.Ninja discovery room. Your chosen signal name is visible to room listeners; peers may learn this device's IP address; third-party signaling and STUN/TURN may be used; relay paths add latency; and the free service has no availability guarantee. Static JSON contains the complete portable settings object, including desktop LSL metadata. Live mode sends only final smoothed X/Y coordinates and normalized Flubber screen placement. If that signal is invited to a party, the same open channel also receives a bounded scene containing every party Flubber's public label, X/Y, normalized position, relative size, stale state, shared visual style, and animation phase so all connected screens can mirror it—never raw pointer trails, physiology, timestamps, CSV rows, or private participant identity.</p>
           </section>
         </div>
       </section>
@@ -816,6 +824,6 @@
     </main>
 
     <script src="./vendor/vdoninja/1.5.5/vdoninja-sdk.min.js"></script>
-    <script type="module" src="./src/app.js?v=screen-calibration-module-4-mobile-direct-5-collaboration-8-retro-1"></script>
+    <script type="module" src="./src/app.js?v=screen-calibration-module-4-mobile-party-camera-1-collaboration-9-retro-1"></script>
   </body>
 </html>
