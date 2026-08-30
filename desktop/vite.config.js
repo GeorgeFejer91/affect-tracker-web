@@ -5,6 +5,7 @@ const desktopRoot = resolve(import.meta.dirname);
 
 export default defineConfig({
   root: desktopRoot,
+  publicDir: resolve(desktopRoot, "../site/vendor"),
   clearScreen: false,
   server: {
     port: 1420,

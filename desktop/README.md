@@ -7,6 +7,12 @@ This directory contains the local WebView source for the Tauri v2 companion. The
 - `settings`: ordinary configuration and live-preview window.
 - `overlay`: transparent, borderless, always-on-top affect visualization. It ignores pointer events while locked and receives pointer events only in explicit edit-position mode.
 
+## FLUBBER Party
+
+The settings window can explicitly host a Party and invite a smartphone browser's **Live FLUBBER**, or broadcast the Rust-authoritative desktop Flubber so a smartphone browser Party host can invite it. The host renders one bounded logical scene and sends the identical aggregate roster, X/Y, normalized placement, relative size, stale state, and shared appearance back to every invited source. The smartphone's Party camera remains a local projection, so phone-only pinch/range zoom and swipe pan do not alter the scene transmitted to other screens.
+
+Party is experimental and separate from the offline desktop core. It starts only after **Host Party and scan** or **Broadcast desktop Flubber**, uses the checked-in VDO.Ninja v1.5.5 SDK with no camera or microphone, and stops on the explicit action or page teardown. VDO.Ninja internet signaling/STUN is still required even when WebRTC selects a direct Wi-Fi route, and TURN may relay traffic. Public signal names must not identify a participant. Returned scenes are display-only: they cannot change Rust affect state, persisted settings, markers, history, or LSL.
+
 ## Local development
 
 Prerequisites:

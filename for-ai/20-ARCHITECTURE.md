@@ -80,6 +80,8 @@ Incoming WebXR coordinates are a second explicit network mode, independent of th
 
 Rust owns authoritative affect state and durable settings. The `monio` raw-input hook maps global physical events to actions and marker records. A bounded background loop advances smoothed state, emits compact snapshots to both Tauri windows, and supplies the always-on LSL service. The WebView renders snapshots and issues narrow product commands.
 
+`desktop/src/party.js` is the explicit settings-WebView adapter for cross-runtime Party. It creates the browser-neutral `FlubberParty` and `FlubberBroadcaster` lifecycles inertly, starts either role only from its exact semantic button, and stops both transports on Stop or page teardown. Host mode projects the newest Rust snapshot into the local host participant, combines it with accepted guest snapshots through `party-core.js`, renders that exact logical aggregate in the desktop stage, then hands the same scene object to the shared validated fan-out codec. Broadcast mode offers only the Rust snapshot's bounded current X/Y and session placement upstream, accepts a reciprocal scene only when it contains the fresh desktop stream ID, binds to one live peer, enforces unsigned sequence order, and permits a new peer only after the old aggregate is stale. Returned Party data is presentation-only and has no path to a Tauri command, persistence, history, markers, or LSL.
+
 Do not make the SVG animation loop the source of LSL timestamps. Rendering can stall independently of research sampling.
 
 A transient data-channel close or selected-source departure edge is recorded immediately but does not bypass the receiver's packet-age grace or flash the HUD stale. A repaired channel that supplies a valid frame inside the grace resumes immediate coordinates and rearms the deadline without introducing a coordinate buffer.
@@ -88,7 +90,7 @@ A transient data-channel close or selected-source departure edge is recorded imm
 
 Allowed product-level commands include reading/saving settings, obtaining a snapshot/status, applying a directional action or exact coordinate, reset/pause, and toggling overlay editing/visibility. There is no LSL start/stop command. Validate ranges, lengths, enum values, colors, and input-binding conflicts in Rust.
 
-The overlay capability is intentionally narrower than the settings capability. Neither window gets shell, arbitrary filesystem, or general HTTP authority. Packaged content is local and the CSP remains restrictive.
+The overlay capability is intentionally narrower than the settings capability. Neither window gets shell, arbitrary filesystem, or general HTTP authority. Packaged content is local. The settings WebView CSP permits only Tauri IPC, `wss://wss.vdo.ninja` signaling, and the SDK's `https://turnservers.vdo.ninja` TURN-credential endpoint for the explicit Party role; it does not grant wildcard WebSocket/HTTP, remote-script, camera, or microphone authority. The overlay receives no network permission or Party code.
 
 ### Quest
 

@@ -58,7 +58,7 @@ The shared renderer also exposes an additive `visual.baseShape` envelope with ex
 - Product name: `Affect Tracker Desktop`.
 - Bundle identifier: `io.github.georgefejer91.affecttracker`.
 - Built with Tauri v2, Rust, HTML/CSS, native ES modules, and SVG.
-- Runs without internet access on Windows, macOS, and Linux.
+- Core tracking, settings, overlay, global input, persistence, and LSL run without internet access on Windows, macOS, and Linux. The separately labelled experimental Party feature is an explicit opt-in network exception: it requires VDO.Ninja internet signaling/STUN and may require TURN even when the media-less WebRTC data path selects direct local Wi-Fi.
 - Uses a normal settings window and a separate transparent, borderless, always-on-top overlay window.
 - Overlay is click-through when locked and draggable only in explicit edit-position mode.
 - Provides system-tray controls for settings, overlay visibility/editing, reset, and quit.
@@ -70,6 +70,8 @@ The shared renderer also exposes an additive `visual.baseShape` envelope with ex
 - Settings include input mode, step size, held-input speed, smoothing response, Circle/Heart/Triangle/Square base envelope, axis colors, overlay size/transparency/position, persisted LSL names/rate/source, and physical input bindings.
 - The canonical native icon is `desktop/icons/app-icon.svg`; regenerate platform PNG, ICO, and ICNS assets with `pnpm desktop:icons` after changing it.
 - Settings persist in the operating system application configuration directory. Affect history does not silently persist.
+- The settings window exposes explicit **Host Party and scan**, **Broadcast desktop Flubber**, and **Stop Party connection** actions. It constructs no VDO.Ninja client on launch. Host mode receives up to eight explicitly invited ordinary public live FLUBBER sources, renders one host-authored scene, and sends that identical bounded aggregate back through every guest's existing channel. Broadcast mode sends the Rust runtime's current displayed X/Y plus session-only normalized scene placement so a smartphone browser Party host can invite the desktop; it accepts only a newer returned aggregate that contains its fresh stream ID and then renders that same logical scene in the desktop Party stage. Remote coordinates never control Rust state or LSL.
+- Desktop Party reuses the checked-in VDO.Ninja v1.5.5 data-only SDK and the version-1 remote/Party codecs. It requests no camera, microphone, audio, browser media capture, popup, QR flow, or general local-network permission. The UI must disclose the public signal name/room, peer-IP visibility, third-party signaling/STUN/TURN, possible relay latency, and hosted-service dependency before activation.
 
 ## Portable settings
 

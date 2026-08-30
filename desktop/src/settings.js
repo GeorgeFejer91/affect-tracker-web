@@ -1,5 +1,6 @@
 import { nativeApi } from "./native.js";
 import { createFlubberRenderer } from "./render.js";
+import { createDesktopPartyController } from "./party.js";
 import { affectPaletteColor } from "../../site/src/math.js";
 import {
   ADVANCED_BINDING_LABELS,
@@ -40,6 +41,7 @@ let settings;
 let latestSnapshot;
 let captureInput;
 let featurePointerId;
+let partyController;
 
 function finishCapture(value) {
   if (!captureInput) return;
@@ -118,6 +120,7 @@ function formatCoordinate(value) {
 
 function renderSnapshot(snapshot) {
   latestSnapshot = snapshot;
+  partyController?.updateSnapshot(snapshot);
   if (settings && elements.dirtyStatus.textContent === "Settings loaded") {
     settings.visual.animationSpeed = snapshot.animationSpeed;
     settings.visual.amplitudeScale = snapshot.amplitudeScale;
@@ -306,6 +309,7 @@ async function invokeWithFeedback(operation, successMessage) {
 }
 
 async function initialize() {
+  partyController = createDesktopPartyController({ announce });
   fillForm(await nativeApi.getSettings());
   renderSnapshot(await nativeApi.getSnapshot());
   await nativeApi.onSnapshot(renderSnapshot);

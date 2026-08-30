@@ -50,6 +50,28 @@
         </div>
       </section>
 
+      <section class="dashboard-card party-card" aria-labelledby="desktop-party-title">
+        <div class="section-heading">
+          <div><p class="eyebrow">Experimental · data only</p><h2 id="desktop-party-title">FLUBBER Party</h2></div>
+          <span id="desktop-party-badge" class="status-pill">Idle</span>
+        </div>
+        <p class="field-help">Host a shared scene from this desktop, or broadcast the desktop Flubber so a smartphone browser can invite it. Every participant receives the same host-authored scene over the existing duplex VDO.Ninja data channel.</p>
+        <label>Public signal name<input id="desktop-party-name" maxlength="64" autocomplete="off" placeholder="For example: Lab desktop"></label>
+        <div class="button-row party-actions">
+          <button id="desktop-party-host-button" type="button">Host Party and scan</button>
+          <button id="desktop-party-broadcast-button" type="button">Broadcast desktop Flubber</button>
+          <button id="desktop-party-stop-button" type="button" disabled>Stop Party connection</button>
+        </div>
+        <p id="desktop-party-status" class="field-help" role="status" aria-live="polite">No remote connection is created on app launch.</p>
+        <details class="party-disclosure">
+          <summary>Network and privacy disclosure</summary>
+          <p class="field-help">The signal name and discovery room are public and must not contain a participant identifier. VDO.Ninja supplies third-party internet signaling, STUN, and possibly TURN even when WebRTC selects a direct local Wi-Fi path. Peers may learn each other’s IP addresses; relay routes may add latency. No camera, microphone, physiology, typed text, research record, or pointer trajectory is sent.</p>
+        </details>
+        <div id="desktop-party-sources" class="party-sources" aria-label="Available FLUBBER signals"></div>
+        <ul id="desktop-party-roster" class="party-roster" aria-label="Party participants"></ul>
+        <div id="desktop-party-stage" class="desktop-party-stage" aria-label="Shared authoritative FLUBBER Party scene" hidden></div>
+      </section>
+
       <form id="settings-form">
         <section class="dashboard-card" aria-labelledby="input-title">
           <div class="section-heading"><div><p class="eyebrow">Controls</p><h2 id="input-title">Input behavior</h2></div></div>
@@ -146,6 +168,7 @@
       </footer>
       <p id="live-region" class="visually-hidden" aria-live="polite"></p>
     </main>
+    <script src="./vdoninja/1.5.5/vdoninja-sdk.min.js"></script>
     <script type="module" src="./src/settings.js"></script>
   </body>
 </html>

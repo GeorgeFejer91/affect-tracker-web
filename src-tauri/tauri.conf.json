@@ -25,7 +25,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; connect-src ipc: http://ipc.localhost; img-src 'self' data:; style-src 'self'; script-src 'self'"
+      "csp": "default-src 'self'; connect-src ipc: http://ipc.localhost wss://wss.vdo.ninja https://turnservers.vdo.ninja; img-src 'self' data:; style-src 'self'; script-src 'self'"
     }
   },
   "bundle": {
