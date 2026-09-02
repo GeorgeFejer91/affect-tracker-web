@@ -1,5 +1,6 @@
 .DS_Store
 Thumbs.db
+.codex-remote-attachments/
 node_modules/
 desktop/dist/
 src-tauri/target/
