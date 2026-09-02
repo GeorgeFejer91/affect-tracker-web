@@ -30,20 +30,23 @@
         <div id="synchronized-affect-preview" class="synchronized-affect-preview" role="img" aria-label="Procedural affect display at neutral; face left, Flubber right.">
           <figure class="affect-figure">
             <div class="face-preview" aria-hidden="true">
-              <svg viewBox="-1.1 -1.1 2.2 2.2">
-                <circle class="face-halo" cx="0" cy="0" r="0.91"></circle>
-                <circle class="face-head" cx="0" cy="0" r="0.82"></circle>
-                <path class="face-brow face-brow-left"></path>
-                <path class="face-brow face-brow-right"></path>
-                <ellipse class="face-eye face-eye-left" cx="-0.34" cy="-0.13" rx="0.12" ry="0.0775"></ellipse>
-                <ellipse class="face-eye face-eye-right" cx="0.34" cy="-0.13" rx="0.12" ry="0.0775"></ellipse>
-                <circle class="face-pupil" cx="-0.34" cy="-0.13" r="0.035"></circle>
-                <circle class="face-pupil" cx="0.34" cy="-0.13" r="0.035"></circle>
-                <path class="face-nose" d="M 0 -0.03 L -0.045 0.19 L 0.055 0.19"></path>
-                <path class="face-mouth" d="M -0.42 0.36 Q 0 0.36 0.42 0.36 Q 0 0.36 -0.42 0.36 Z"></path>
-              </svg>
+              <canvas class="face-3d-canvas" width="640" height="640"></canvas>
+              <div class="face-3d-fallback" data-face-3d-fallback hidden>
+                <svg viewBox="-1.1 -1.1 2.2 2.2">
+                  <circle class="face-halo" cx="0" cy="0" r="0.91"></circle>
+                  <circle class="face-head" cx="0" cy="0" r="0.82"></circle>
+                  <path class="face-brow face-brow-left"></path>
+                  <path class="face-brow face-brow-right"></path>
+                  <ellipse class="face-eye face-eye-left" cx="-0.34" cy="-0.13" rx="0.12" ry="0.0775"></ellipse>
+                  <ellipse class="face-eye face-eye-right" cx="0.34" cy="-0.13" rx="0.12" ry="0.0775"></ellipse>
+                  <circle class="face-pupil" cx="-0.34" cy="-0.13" r="0.035"></circle>
+                  <circle class="face-pupil" cx="0.34" cy="-0.13" r="0.035"></circle>
+                  <path class="face-nose" d="M 0 -0.03 L -0.045 0.19 L 0.055 0.19"></path>
+                  <path class="face-mouth" d="M -0.42 0.36 Q 0 0.36 0.42 0.36 Q 0 0.36 -0.42 0.36 Z"></path>
+                </svg>
+              </div>
             </div>
-            <figcaption>Canonical face</figcaption>
+            <figcaption>Affect face</figcaption>
           </figure>
           <figure class="affect-figure">
             <div class="flubber-preview" aria-hidden="true">
@@ -54,7 +57,7 @@
             <figcaption>Flubber</figcaption>
           </figure>
         </div>
-        <p class="face-disclosure">The abstract face is a canonical visualization of the selected coordinates—not emotion recognition, diagnosis, or a claim that one face uniquely represents an affective state.</p>
+        <p class="face-disclosure">The project-authored 3D face is a visualization of the selected coordinates—not emotion recognition, diagnosis, face tracking, or a claim that one face uniquely represents an affective state. A 2D compatibility view appears if Canvas is unavailable.</p>
         <div class="preview-controls">
           <div class="preview-actions">
             <div class="direction-pad" aria-label="Nudge affect coordinates">

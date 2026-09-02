@@ -8,6 +8,7 @@ import {
   smoothToward,
 } from "./math.js?v=shape-1";
 import { createFaceRenderer } from "./face.js?v=face-1";
+import { createFace3dRenderer } from "./face-3d.js?v=face-3d-1";
 import {
   applyStep,
   constrainWidgetPosition,
@@ -120,6 +121,9 @@ const PARTY_SCENE_STALE_MS = 2_000;
 const elements = {
   stage: document.querySelector("#stage"),
   widget: document.querySelector("#affect-widget"),
+  mainAffectFace: document.querySelector("#main-affect-face"),
+  mainAffectFaceFallback: document.querySelector("#main-affect-face-fallback"),
+  mobileMainAffectFace: document.querySelector("#mobile-main-affect-face"),
   partyStage: document.querySelector("#flubber-party-stage"),
   partyCameraSurface: document.querySelector("#party-camera-surface"),
   partyCameraControls: document.querySelector("#party-camera-controls"),
@@ -133,6 +137,7 @@ const elements = {
   panelContent: document.querySelector("#panel-content"),
   toggleSymbol: document.querySelector(".toggle-symbol"),
   mobileDirectController: document.querySelector("#mobile-direct-controller"),
+  mobileDirectTitle: document.querySelector("#mobile-direct-title"),
   mobileFlubberDragArea: document.querySelector("#mobile-flubber-drag-area"),
   mobileDirectFlubber: document.querySelector("#mobile-direct-flubber"),
   mobileDirectBasePath: document.querySelector("#mobile-direct-base-path"),
@@ -148,10 +153,9 @@ const elements = {
   faceFlubberPanel: document.querySelector("#face-flubber-panel"),
   faceFlubberPanelToggle: document.querySelector("#face-flubber-panel-toggle"),
   faceFlubberToggleSymbol: document.querySelector("#face-flubber-toggle-symbol"),
-  synchronizedAffectPreview: document.querySelector("#web-synchronized-affect-preview"),
-  webAffectFace: document.querySelector("#web-affect-face"),
-  webAffectFlubber: document.querySelector(".web-affect-flubber"),
-  webAffectFlubberPaths: [...document.querySelectorAll("#web-affect-flubber-halo, #web-affect-flubber-base, #web-affect-flubber-outline")],
+  mainFaceEnabled: document.querySelector("#main-face-enabled"),
+  mainFaceCenterButton: document.querySelector("#main-face-center-button"),
+  mainFaceRendererOutput: document.querySelector("#main-face-renderer-output"),
   faceFlubberValenceOutput: document.querySelector("#face-flubber-valence-output"),
   faceFlubberArousalOutput: document.querySelector("#face-flubber-arousal-output"),
   experimentPanel: document.querySelector("#experiment-panel"),
@@ -364,6 +368,8 @@ function readPreferences(bundledSettings) {
       widgetY: Number.isFinite(parsed.widgetY) ? parsed.widgetY : settings.overlay.y + settings.overlay.size / 2,
       panelOpen: typeof parsed.panelOpen === "boolean" ? parsed.panelOpen : !parsed.seenIntro,
       faceFlubberPanelOpen: typeof parsed.faceFlubberPanelOpen === "boolean" ? parsed.faceFlubberPanelOpen : false,
+      mainFaceEnabled: parsed.mainFaceEnabled !== false,
+      mainFaceNeedsInitialCenter: !Object.prototype.hasOwnProperty.call(parsed, "mainFaceEnabled"),
       experimentPanelOpen: typeof parsed.experimentPanelOpen === "boolean" ? parsed.experimentPanelOpen : false,
       screenCalibrationPanelOpen: typeof parsed.screenCalibrationPanelOpen === "boolean" ? parsed.screenCalibrationPanelOpen : false,
       touchPlaygroundPanelOpen: typeof parsed.touchPlaygroundPanelOpen === "boolean" ? parsed.touchPlaygroundPanelOpen : false,
@@ -388,6 +394,8 @@ function readPreferences(bundledSettings) {
       widgetY: bundledSettings.overlay.y + bundledSettings.overlay.size / 2,
       panelOpen: true,
       faceFlubberPanelOpen: false,
+      mainFaceEnabled: true,
+      mainFaceNeedsInitialCenter: true,
       experimentPanelOpen: false,
       screenCalibrationPanelOpen: false,
       touchPlaygroundPanelOpen: false,
@@ -443,6 +451,8 @@ const state = {
   widgetDragEnabled: true,
   panelOpen: preferences.panelOpen,
   faceFlubberPanelOpen: preferences.faceFlubberPanelOpen,
+  mainFaceEnabled: preferences.mainFaceEnabled,
+  mainFaceNeedsInitialCenter: preferences.mainFaceNeedsInitialCenter,
   experimentPanelOpen: preferences.experimentPanelOpen,
   screenCalibrationPanelOpen: preferences.screenCalibrationPanelOpen,
   touchPlaygroundPanelOpen: preferences.touchPlaygroundPanelOpen,
@@ -607,7 +617,18 @@ let activeTracePointerId;
 let lastLoggedGateCommitSequence = 0;
 let retroToastTimer;
 const reducedMotionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
-const renderWebAffectFace = createFaceRenderer(elements.webAffectFace);
+const renderMainAffectFaceFallback = createFaceRenderer(elements.mainAffectFaceFallback);
+const renderMainAffectFace = createFace3dRenderer(elements.mainAffectFace, {
+  fallbackRenderer: renderMainAffectFaceFallback,
+  onModeChange: updateMainFaceRendererStatus,
+});
+const renderMobileAffectFaceFallback = createFaceRenderer(
+  elements.mobileMainAffectFace.querySelector("[data-face-3d-fallback]"),
+);
+const renderMobileAffectFace = createFace3dRenderer(elements.mobileMainAffectFace, {
+  fallbackRenderer: renderMobileAffectFaceFallback,
+  onModeChange: updateMainFaceRendererStatus,
+});
 const retroSoundboard = createRetroSoundboard();
 
 function savePreferences() {
@@ -623,6 +644,7 @@ function savePreferences() {
     widgetY: savedY,
     panelOpen: state.panelOpen,
     faceFlubberPanelOpen: state.faceFlubberPanelOpen,
+    mainFaceEnabled: state.mainFaceEnabled,
     experimentPanelOpen: state.experimentPanelOpen,
     screenCalibrationPanelOpen: state.screenCalibrationPanelOpen,
     touchPlaygroundPanelOpen: state.touchPlaygroundPanelOpen,
@@ -830,10 +852,24 @@ function updatePanelState() {
   elements.toggleSymbol.textContent = state.panelOpen ? "−" : "+";
 }
 
+function updateMainFaceRendererStatus(mode) {
+  elements.mainFaceRendererOutput.value = mode === "canvas"
+    ? "projected 3D canvas"
+    : "2D compatibility view";
+}
+
 function updateFaceFlubberPanelState() {
   elements.faceFlubberPanel.classList.toggle("is-collapsed", !state.faceFlubberPanelOpen);
   elements.faceFlubberPanelToggle.setAttribute("aria-expanded", String(state.faceFlubberPanelOpen));
   elements.faceFlubberToggleSymbol.textContent = state.faceFlubberPanelOpen ? "−" : "+";
+  elements.mainFaceEnabled.checked = state.mainFaceEnabled;
+  elements.mainFaceCenterButton.disabled = !state.mainFaceEnabled
+    || !state.widgetVisible
+    || experiment.phase !== "idle"
+    || Boolean(pictureInPictureWindow);
+  updateMainFaceRendererStatus(
+    smartphoneLayoutActive ? renderMobileAffectFace.mode : renderMainAffectFace.mode,
+  );
 }
 
 function updateExperimentPanelState() {
@@ -2274,16 +2310,20 @@ function formatCoordinate(value) {
 }
 
 function renderSynchronizedAffectPreview(snapshot, flubber) {
-  renderWebAffectFace(snapshot, reducedMotionQuery.matches, flubber.color);
-  for (const path of elements.webAffectFlubberPaths) path.setAttribute("d", flubber.path);
-  elements.webAffectFlubber.style.setProperty("--affect-color", flubber.color);
-  const flubberSvg = elements.webAffectFlubber.querySelector("svg");
-  flubberSvg.style.opacity = String(snapshot.overlayOpacity);
-  elements.synchronizedAffectPreview.dataset.renderPhase = snapshot.phase.toFixed(6);
-  elements.synchronizedAffectPreview.setAttribute(
-    "aria-label",
-    `Procedural affect display: valence ${snapshot.currentX.toFixed(3)}, arousal ${snapshot.currentY.toFixed(3)}; face left, Flubber right.`,
-  );
+  for (const [root, renderer] of [
+    [elements.mainAffectFace, renderMainAffectFace],
+    [elements.mobileMainAffectFace, renderMobileAffectFace],
+  ]) {
+    if (root.hidden) continue;
+    const face = renderer(snapshot, reducedMotionQuery.matches, flubber.color);
+    const faceKind = face.mode === "canvas-3d" ? "Procedural 3D affect face" : "Procedural affect face compatibility view";
+    root.style.opacity = String(snapshot.overlayOpacity ?? 1);
+    root.dataset.renderPhase = snapshot.phase.toFixed(6);
+    root.setAttribute(
+      "aria-label",
+      `${faceKind}: valence ${snapshot.currentX.toFixed(3)}, arousal ${snapshot.currentY.toFixed(3)}; synchronized with the Flubber to its right.`,
+    );
+  }
   elements.faceFlubberValenceOutput.value = formatCoordinate(snapshot.currentX);
   elements.faceFlubberArousalOutput.value = formatCoordinate(snapshot.currentY);
 }
@@ -2540,15 +2580,96 @@ function layoutExperiment() {
   experiment.traceRect = layout.traceRect;
 }
 
+function mainAffectPairLayout(requestedWidgetSize = state.widgetSize) {
+  const inset = 12;
+  const viewportWidth = Math.max(1, window.innerWidth);
+  const viewportHeight = Math.max(1, window.innerHeight);
+  const gap = clamp(viewportWidth * 0.035, 10, 28);
+  const minimumFaceSize = Math.min(96, Math.max(56, viewportWidth * 0.2));
+  const balancedWidthLimit = (viewportWidth - inset * 2 - gap) / 1.92;
+  const maximumWidgetSize = Math.max(80, Math.min(
+    balancedWidthLimit,
+    viewportHeight - inset * 2,
+  ));
+  const widgetSize = Math.min(Math.max(1, requestedWidgetSize), maximumWidgetSize);
+  const availableFaceSize = Math.max(1, viewportWidth - inset * 2 - gap - widgetSize);
+  const faceSize = Math.min(
+    360,
+    Math.max(minimumFaceSize, widgetSize * 0.92),
+    availableFaceSize,
+    Math.max(1, viewportHeight - inset * 2),
+  );
+  return Object.freeze({
+    inset,
+    gap,
+    widgetSize,
+    faceSize,
+    distance: (faceSize + widgetSize) / 2 + gap,
+  });
+}
+
+function mainAffectFaceShouldShow() {
+  return state.mainFaceEnabled
+    && state.widgetVisible
+    && experiment.phase === "idle"
+    && !pictureInPictureWindow;
+}
+
+function positionMainAffectFace(flubberPosition, pairLayout) {
+  const visible = mainAffectFaceShouldShow();
+  const desktopVisible = visible && !smartphoneLayoutActive;
+  const mobileVisible = visible && smartphoneLayoutActive;
+  elements.mainAffectFace.hidden = !desktopVisible;
+  elements.mobileMainAffectFace.hidden = !mobileVisible;
+  elements.mobileDirectTitle.textContent = mobileVisible ? "Face + Flubber" : "Flubber";
+  document.body.classList.toggle("is-main-face-visible", visible);
+  if (!visible) return;
+  if (mobileVisible) {
+    renderMobileAffectFace.resize?.();
+    return;
+  }
+
+  const { faceSize, distance, inset } = pairLayout;
+  const desiredX = flubberPosition.x - distance;
+  const x = clamp(desiredX, faceSize / 2 + inset, window.innerWidth - faceSize / 2 - inset);
+  const y = clamp(flubberPosition.y, faceSize / 2 + inset, window.innerHeight - faceSize / 2 - inset);
+
+  elements.mainAffectFace.dataset.side = "left";
+  elements.mainAffectFace.style.left = `${x}px`;
+  elements.mainAffectFace.style.top = `${y}px`;
+  elements.mainAffectFace.style.setProperty("--face-size", `${faceSize}px`);
+  renderMainAffectFace.resize?.();
+}
+
+function centerMainAffectPair() {
+  const pairLayout = mainAffectPairLayout(state.widgetSize);
+  state.widgetX = clamp(
+    window.innerWidth / 2 + (pairLayout.faceSize + pairLayout.gap) / 2,
+    pairLayout.widgetSize / 2,
+    window.innerWidth - pairLayout.widgetSize / 2,
+  );
+  state.widgetY = clamp(
+    window.innerHeight / 2,
+    Math.max(pairLayout.widgetSize, pairLayout.faceSize) / 2,
+    window.innerHeight - Math.max(pairLayout.widgetSize, pairLayout.faceSize) / 2,
+  );
+  constrainAndRenderWidget();
+}
+
 function constrainAndRenderWidget() {
   layoutExperiment();
   const sharedPartyParticipant = sharedPartyLocalParticipant();
   const sharedPartySize = sharedPartyParticipant
     ? sharedPartyParticipant.size * Math.max(1, Math.min(window.innerWidth, window.innerHeight))
     : undefined;
-  const renderedWidgetSize = sharedPartySize ?? (experiment.phase === "idle"
+  const requestedWidgetSize = sharedPartySize ?? (experiment.phase === "idle"
     ? state.widgetSize
     : (experiment.displayWidgetSize ?? state.widgetSize));
+  const cameraScale = mobilePartyCameraActive() ? mobilePartyCamera.zoom : 1;
+  const pairLayout = mainAffectPairLayout(requestedWidgetSize * cameraScale);
+  const renderedWidgetSize = mainAffectFaceShouldShow()
+    ? pairLayout.widgetSize / cameraScale
+    : requestedWidgetSize;
   const constrained = constrainWidgetPosition(
     state.widgetX,
     state.widgetY,
@@ -2558,6 +2679,17 @@ function constrainAndRenderWidget() {
   );
   state.widgetX = constrained.x;
   state.widgetY = constrained.y;
+  if (mainAffectFaceShouldShow() && !sharedPartyParticipant && cameraScale === 1) {
+    const minimumX = pairLayout.inset + pairLayout.faceSize + pairLayout.gap + pairLayout.widgetSize / 2;
+    const maximumX = window.innerWidth - pairLayout.inset - pairLayout.widgetSize / 2;
+    state.widgetX = clamp(state.widgetX, minimumX, maximumX);
+    const verticalHalfSize = Math.max(pairLayout.faceSize, pairLayout.widgetSize) / 2;
+    state.widgetY = clamp(
+      state.widgetY,
+      verticalHalfSize + pairLayout.inset,
+      window.innerHeight - verticalHalfSize - pairLayout.inset,
+    );
+  }
   if (experiment.phase === "idle" && touchTrackingActive() && state.touchTraceFeedback) {
     const trace = tracePanelDimensions();
     const maximumY = window.innerHeight - trace.height - 12 - state.widgetSize / 2;
@@ -2570,7 +2702,6 @@ function constrainAndRenderWidget() {
     }
     : { x: state.widgetX, y: state.widgetY };
   const displayedPosition = projectPartyPixelPosition(partyDisplayPosition.x, partyDisplayPosition.y);
-  const cameraScale = mobilePartyCameraActive() ? mobilePartyCamera.zoom : 1;
   elements.widget.style.left = `${displayedPosition.x}px`;
   elements.widget.style.top = `${displayedPosition.y}px`;
   elements.widget.style.setProperty("--widget-size", `${renderedWidgetSize * cameraScale}px`);
@@ -2579,6 +2710,7 @@ function constrainAndRenderWidget() {
     : state.widgetOpacity);
   elements.widget.hidden = !state.widgetVisible || Boolean(pictureInPictureWindow);
   elements.widget.classList.toggle("is-drag-disabled", !state.widgetDragEnabled || touchTrackingActive());
+  positionMainAffectFace(displayedPosition, pairLayout);
   positionTracePanel();
   if (pictureInPictureView) {
     pictureInPictureView.root.hidden = !state.widgetVisible;
@@ -2622,6 +2754,22 @@ function renderMobileFlubberPosition() {
   });
   elements.mobileDirectFlubber.style.left = `${local.x}px`;
   elements.mobileDirectFlubber.style.top = `${local.y}px`;
+  if (!elements.mobileMainAffectFace.hidden) {
+    const faceBounds = elements.mobileMainAffectFace.getBoundingClientRect();
+    const distance = (flubberBounds.width + faceBounds.width) / 2 + 8;
+    const faceX = clamp(
+      local.x - distance,
+      faceBounds.width / 2,
+      areaBounds.width - faceBounds.width / 2,
+    );
+    const faceY = clamp(
+      local.y,
+      faceBounds.height / 2,
+      areaBounds.height - faceBounds.height / 2,
+    );
+    elements.mobileMainAffectFace.style.left = `${faceX}px`;
+    elements.mobileMainAffectFace.style.top = `${faceY}px`;
+  }
 }
 
 function resetLiveRemotePositionSync() {
@@ -4125,6 +4273,23 @@ function initializeEvents() {
   elements.faceFlubberPanelToggle.addEventListener("click", () => {
     toggleTopLevelProtocol("face");
   });
+  elements.mainFaceEnabled.addEventListener("change", () => {
+    state.mainFaceEnabled = elements.mainFaceEnabled.checked;
+    if (state.mainFaceEnabled) centerMainAffectPair();
+    else constrainAndRenderWidget();
+    updateFaceFlubberPanelState();
+    savePreferences();
+    recordEvent("appearance", "main-face", "visibility", state.mainFaceEnabled ? "shown" : "hidden");
+    announce(state.mainFaceEnabled
+      ? "The affect face is shown to the left of Flubber on the main screen."
+      : "The affect face is hidden; Flubber remains on the main screen.");
+  });
+  elements.mainFaceCenterButton.addEventListener("click", () => {
+    centerMainAffectPair();
+    savePreferences();
+    recordEvent("appearance", "main-face", "center-pair", 1);
+    announce("The 3D affect face and Flubber are centered as a pair on the main screen.");
+  });
   elements.experimentPanelToggle.addEventListener("click", () => {
     toggleTopLevelProtocol("experiment");
   });
@@ -4863,7 +5028,9 @@ function initialize() {
   updateCustomizationControls();
   updatePictureInPictureSupport();
   updateExperimentSourceControls();
-  constrainAndRenderWidget();
+  if (state.mainFaceEnabled && state.mainFaceNeedsInitialCenter) centerMainAffectPair();
+  else constrainAndRenderWidget();
+  state.mainFaceNeedsInitialCenter = false;
   initializeEvents();
   updateRemoteBroadcastUi();
   updateSettingsBroadcastUi();

@@ -34,7 +34,7 @@ Continuous mode moves while a direction is held. Step mode changes the target by
 
 ### Synchronized Face + Flubber
 
-The GitHub Pages app includes a top-level **Synchronized Face + Flubber** accordion. It shows an abstract procedural face on the left and the canonical Flubber on the right, with both receiving the same current valence, current arousal, and animation phase on every rendered frame. The face interpolates a project-authored 3×3 anchor map for mouth, eyes, and brows; it is a coordinate visualization, not emotion recognition, diagnosis, or a claim that one facial expression uniquely represents an affective state.
+The GitHub Pages app keeps a projected-3D affect face on the main stage to the left of the canonical Flubber. The top-level **Synchronized Face + Flubber** accordion enables, disables, and centers that presentation; closing the accordion does not remove the face. The phone controller shows the same foreground pair. Both receive the exact same current valence, current arousal, and animation phase on every rendered frame. The face deforms a project-authored head mesh from a project-authored 3×3 mouth/eye/brow anchor map, with a local SVG compatibility fallback. It is a coordinate visualization, not emotion recognition, diagnosis, face tracking, or a claim that one facial expression uniquely represents an affective state.
 
 The desktop settings window provides the same paired presentation from one Rust-authoritative snapshot. Its separate always-on-top overlay intentionally remains Flubber-only.
 
@@ -150,7 +150,7 @@ This is intentionally transient and is not stored in the portable settings JSON.
 
 **Affect Tracker Desktop** uses the bundle identifier `io.github.georgefejer91.affecttracker`. It contains two local windows:
 
-- A normal settings window with the procedural face left and canonical Flubber right, plus live coordinates, physical-input mappings, an interactive color-space picker, overlay appearance, and LSL configuration.
+- A normal settings window with the projected-3D face left and canonical Flubber right (plus SVG compatibility fallback), live coordinates, physical-input mappings, an interactive color-space picker, overlay appearance, and LSL configuration.
 - A transparent overlay that floats above other applications. It is click-through while locked and draggable only in explicit edit mode.
 
 Rust owns authoritative affect coordinates, smoothing, timestamps, settings, global raw-input monitoring, tray lifecycle, and LSL publication. The desktop WebViews contain presentation only and communicate through narrow typed commands. One immutable snapshot supplies `currentX`, `currentY`, and `phase` to both settings-window renderers, keeping facial deformation and Flubber pulse/rate synchronized without making rendering the research clock. Closing the settings window quits the process and removes the overlay; the tray menu also provides an explicit Quit action.

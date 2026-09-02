@@ -1,5 +1,6 @@
 import { buildFlubberPath, createProfiles, createProjectionOffsets } from "../../site/src/math.js";
 import { createFaceRenderer } from "../../site/src/face.js";
+import { createFace3dRenderer } from "../../site/src/face-3d.js";
 
 const profiles = createProfiles();
 
@@ -34,12 +35,15 @@ export function createFlubberRenderer(root) {
 }
 
 export function createSynchronizedAffectRenderer(root) {
-  const renderFace = createFaceRenderer(root.querySelector(".face-preview"));
+  const faceRoot = root.querySelector(".face-preview");
+  const renderFaceFallback = createFaceRenderer(faceRoot.querySelector("[data-face-3d-fallback]"));
+  const renderFace = createFace3dRenderer(faceRoot, { fallbackRenderer: renderFaceFallback });
   const renderFlubber = createFlubberRenderer(root.querySelector(".flubber-preview"));
 
   return (snapshot, reducedMotion = false) => {
     const flubber = renderFlubber(snapshot, reducedMotion);
     const face = renderFace(snapshot, reducedMotion, flubber.color);
+    root.dataset.face3dMode = renderFace.mode;
     root.dataset.renderSequence = String(snapshot.sequence ?? "");
     root.setAttribute(
       "aria-label",

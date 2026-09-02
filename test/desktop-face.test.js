@@ -92,6 +92,9 @@ test("desktop pairs face left and Flubber right from one current-state snapshot"
   const renderSource = readFileSync(new URL("../desktop/src/render.js", import.meta.url), "utf8");
   const settingsSource = readFileSync(new URL("../desktop/src/settings.js", import.meta.url), "utf8");
   assert.ok(html.indexOf('class="face-preview"') < html.indexOf('class="flubber-preview"'));
+  assert.ok(html.indexOf('class="face-3d-canvas"') < html.indexOf('class="flubber-preview"'));
+  assert.match(html, /class="face-3d-fallback" data-face-3d-fallback hidden/);
+  assert.match(renderSource, /from "\.\.\/\.\.\/site\/src\/face-3d\.js"/);
   assert.match(renderSource, /renderFlubber\(snapshot, reducedMotion\)/);
   assert.match(renderSource, /renderFace\(snapshot, reducedMotion, flubber\.color\)/);
   assert.doesNotMatch(renderSource, /targetX|targetY/);
@@ -100,18 +103,36 @@ test("desktop pairs face left and Flubber right from one current-state snapshot"
   assert.match(html, /not emotion recognition, diagnosis/);
 });
 
-test("GitHub Pages exposes a top-level synchronized face and Flubber accordion", () => {
+test("GitHub Pages keeps the affect face on the main stage and its enable control in the accordion", () => {
   const html = readFileSync(new URL("../site/index.html", import.meta.url), "utf8");
   const appSource = readFileSync(new URL("../site/src/app.js", import.meta.url), "utf8");
   const protocols = readFileSync(new URL("../site/src/accordion-protocols.js", import.meta.url), "utf8");
   assert.match(html, /id="face-flubber-panel"[^>]*data-module-protocol="face"/);
   assert.match(html, /Synchronized Face \+ Flubber/);
-  assert.ok(html.indexOf('id="web-affect-face"') < html.indexOf('class="web-affect-flubber"'));
+  assert.ok(html.indexOf('id="main-affect-face"') < html.indexOf('id="affect-widget"'));
+  assert.match(html, /id="main-affect-face-canvas"/);
+  assert.match(html, /id="main-affect-face-fallback"[^>]*data-face-3d-fallback/);
+  assert.match(html, /id="mobile-main-affect-face"/);
+  assert.match(html, /id="main-face-enabled" type="checkbox" checked/);
+  assert.match(html, /id="main-face-center-button"/);
+  assert.doesNotMatch(html, /id="web-synchronized-affect-preview"/);
   assert.match(html, /not emotion recognition, diagnosis/);
   assert.match(protocols, /faceFlubberPanelOpen/);
+  assert.match(protocols, /domainModule: "face-3d\.js"/);
   assert.match(appSource, /const affectFrame = Object\.freeze\(/);
   assert.match(appSource, /renderSynchronizedAffectPreview\(affectFrame, rendered\)/);
-  assert.match(appSource, /renderWebAffectFace\(snapshot, reducedMotionQuery\.matches, flubber\.color\)/);
+  assert.match(appSource, /\[elements\.mainAffectFace, renderMainAffectFace\]/);
+  assert.match(appSource, /\[elements\.mobileMainAffectFace, renderMobileAffectFace\]/);
+  assert.match(appSource, /renderer\(snapshot, reducedMotionQuery\.matches, flubber\.color\)/);
+  assert.match(appSource, /const desiredX = flubberPosition\.x - distance/);
+  assert.doesNotMatch(appSource, /rightCandidate/);
+  assert.match(appSource, /if \(state\.mainFaceEnabled\) centerMainAffectPair\(\)/);
+  assert.match(appSource, /mainFaceEnabled: state\.mainFaceEnabled/);
+  const portableSettingsSlice = appSource.slice(
+    appSource.indexOf("function settingsFromState"),
+    appSource.indexOf("function recordEvent"),
+  );
+  assert.doesNotMatch(portableSettingsSlice, /mainFaceEnabled/);
   assert.doesNotMatch(appSource.slice(
     appSource.indexOf("function renderSynchronizedAffectPreview"),
     appSource.indexOf("function updateCoordinateDisplay"),
