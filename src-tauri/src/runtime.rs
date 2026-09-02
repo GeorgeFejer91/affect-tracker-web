@@ -1,4 +1,7 @@
-use crate::domain::{Action, AffectEngine, AffectSnapshot, FeatureAction, SnapshotContext};
+use crate::domain::{
+    Action, AffectEngine, AffectMatrixCell, AffectSnapshot, AffectTraversalMode, FeatureAction,
+    SnapshotContext,
+};
 use crate::error::CommandError;
 use crate::lsl_service::LslService;
 use crate::settings::{self, Settings};
@@ -189,6 +192,46 @@ impl Runtime {
             .unwrap_or_else(|poisoned| poisoned.into_inner())
             .set_target(x, y);
         self.push_marker(&format!("{source}:set_target:{x:.4}:{y:.4}"));
+    }
+
+    pub fn set_traversal_mode(&self, mode: AffectTraversalMode, source: &str) {
+        self.engine
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .set_traversal_mode(mode);
+        let label = match mode {
+            AffectTraversalMode::Continuous => "continuous",
+            AffectTraversalMode::Matrix => "matrix",
+        };
+        self.push_marker(&format!("{source}:traversal_mode:{label}"));
+    }
+
+    pub fn traverse_matrix(
+        &self,
+        target: AffectMatrixCell,
+        steps_per_second: f32,
+        source: &str,
+    ) -> bool {
+        let started = self
+            .engine
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .start_matrix_traversal(target, steps_per_second);
+        if started {
+            self.push_marker(&format!(
+                "{source}:matrix_target:{}:{}:{steps_per_second:.2}",
+                target.column, target.row
+            ));
+        }
+        started
+    }
+
+    pub fn stop_matrix_traversal(&self, source: &str) {
+        self.engine
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .stop_matrix_traversal();
+        self.push_marker(&format!("{source}:matrix_stopped"));
     }
 
     pub fn toggle_pause(&self, source: &str) {

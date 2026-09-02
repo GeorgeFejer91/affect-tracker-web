@@ -5,6 +5,12 @@ export const ACCORDION_PROTOCOLS = Object.freeze({
     domainModule: "portable-settings.js",
     responsibilities: Object.freeze(["manual-input", "appearance", "portable-settings", "local-export"]),
   }),
+  face: Object.freeze({
+    stateKey: "faceFlubberPanelOpen",
+    panelId: "face-flubber-panel",
+    domainModule: "face.js",
+    responsibilities: Object.freeze(["face-expression-mapping", "synchronized-affect-preview"]),
+  }),
   experiment: Object.freeze({
     stateKey: "experimentPanelOpen",
     panelId: "experiment-panel",

@@ -1,5 +1,6 @@
 import { nativeApi } from "./native.js";
-import { createFlubberRenderer } from "./render.js";
+import { createSynchronizedAffectRenderer } from "./render.js";
+import { createAffectMatrixGrid, matrixCoordinate } from "./matrix.js";
 import { createDesktopPartyController } from "./party.js";
 import { affectPaletteColor } from "../../site/src/math.js";
 import {
@@ -33,15 +34,33 @@ const elements = {
   importFile: document.querySelector("#settings-import-file"),
   importButton: document.querySelector("#settings-import-button"),
   exportButton: document.querySelector("#settings-export-button"),
+  synchronizedPreview: document.querySelector("#synchronized-affect-preview"),
+  continuousTraversal: document.querySelector("#continuous-traversal-button"),
+  matrixTraversal: document.querySelector("#matrix-traversal-button"),
+  matrixControls: document.querySelector("#matrix-traversal-controls"),
+  matrixGrid: document.querySelector("#affect-matrix-grid"),
+  matrixRate: document.querySelector("#matrix-step-rate"),
+  matrixStop: document.querySelector("#matrix-stop-button"),
+  matrixStatus: document.querySelector("#matrix-status"),
 };
 
-const renderFlubber = createFlubberRenderer(document.querySelector(".flubber-preview"));
+const renderAffectPair = createSynchronizedAffectRenderer(elements.synchronizedPreview);
 const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
 let settings;
 let latestSnapshot;
 let captureInput;
 let featurePointerId;
 let partyController;
+
+const matrixGrid = createAffectMatrixGrid(elements.matrixGrid, {
+  onSelect: ({ column, row }) => {
+    if (!elements.matrixRate.reportValidity()) return;
+    invokeWithFeedback(
+      () => nativeApi.traverseAffectMatrix(column, row, Number(elements.matrixRate.value)),
+      `Traversing to matrix column ${column + 1}, row ${row + 1}.`,
+    );
+  },
+});
 
 function finishCapture(value) {
   if (!captureInput) return;
@@ -103,6 +122,7 @@ function updateFeatureSpace(snapshot, palette = snapshot.palette) {
 }
 
 function chooseFeatureCoordinate(event) {
+  if (latestSnapshot?.traversalMode === "matrix") return;
   const bounds = elements.featureMap.getBoundingClientRect();
   const x = Math.max(-1, Math.min(1, ((event.clientX - bounds.left) / bounds.width) * 2 - 1));
   const y = Math.max(-1, Math.min(1, 1 - ((event.clientY - bounds.top) / bounds.height) * 2));
@@ -143,7 +163,9 @@ function renderSnapshot(snapshot) {
     disorderScale: Number(document.querySelector("#disorder-scale").value),
     baseShape: document.querySelector("#base-shape").value,
   } : {};
-  renderFlubber({ ...snapshot, ...visualPreview, palette, overlayOpacity }, reducedMotion.matches);
+  const renderedSnapshot = Object.freeze({ ...snapshot, ...visualPreview, palette, overlayOpacity });
+  renderAffectPair(renderedSnapshot, reducedMotion.matches);
+  matrixGrid.render(snapshot, palette);
   updateFeatureSpace(snapshot, palette);
   elements.valence.textContent = formatCoordinate(snapshot.currentX);
   elements.arousal.textContent = formatCoordinate(snapshot.currentY);
@@ -153,6 +175,26 @@ function renderSnapshot(snapshot) {
   elements.lslStatus.textContent = snapshot.lslMessage;
   elements.lslStatus.classList.toggle("is-ok", snapshot.lslState === "running");
   elements.lslStatus.classList.toggle("is-error", snapshot.lslState === "error");
+
+  const matrixMode = snapshot.traversalMode === "matrix";
+  elements.continuousTraversal.setAttribute("aria-pressed", String(!matrixMode));
+  elements.matrixTraversal.setAttribute("aria-pressed", String(matrixMode));
+  elements.matrixControls.hidden = !matrixMode;
+  elements.featureMap.setAttribute("aria-disabled", String(matrixMode));
+  elements.featureMap.tabIndex = matrixMode ? -1 : 0;
+  for (const button of document.querySelectorAll("[data-action]")) button.disabled = matrixMode;
+  elements.matrixStop.disabled = !snapshot.matrixTraversing;
+  if (matrixMode) {
+    const current = snapshot.matrixCurrent;
+    const target = snapshot.matrixTarget;
+    if (snapshot.matrixTraversing && current && target) {
+      elements.matrixStatus.textContent = `State ${current.column + 1}, ${current.row + 1} → ${target.column + 1}, ${target.row + 1} at ${snapshot.matrixStepsPerSecond.toFixed(1)} states per second.`;
+    } else if (current) {
+      elements.matrixStatus.textContent = `Holding matrix state ${current.column + 1}, ${current.row + 1}: valence ${formatCoordinate(matrixCoordinate(current.column))}, arousal ${formatCoordinate(matrixCoordinate(current.row))}.`;
+    } else {
+      elements.matrixStatus.textContent = "Neutral is the exact central matrix state at valence 0 and arousal 0.";
+    }
+  }
 }
 
 function createBindingInputs(bindings) {
@@ -345,6 +387,18 @@ async function initialize() {
   elements.pause.addEventListener("click", () => invokeWithFeedback(nativeApi.togglePause));
   elements.overlayVisible.addEventListener("click", () => invokeWithFeedback(() => nativeApi.setOverlayVisible(!latestSnapshot.overlayVisible)));
   elements.overlayEdit.addEventListener("click", () => invokeWithFeedback(() => nativeApi.setOverlayEditing(!latestSnapshot.overlayEditing)));
+  elements.continuousTraversal.addEventListener("click", () => invokeWithFeedback(
+    () => nativeApi.setTraversalMode("continuous"),
+    "Continuous smoothed traversal enabled.",
+  ));
+  elements.matrixTraversal.addEventListener("click", () => invokeWithFeedback(
+    () => nativeApi.setTraversalMode("matrix"),
+    "11 by 11 matrix traversal enabled. Choose any state in the grid.",
+  ));
+  elements.matrixStop.addEventListener("click", () => invokeWithFeedback(
+    nativeApi.stopMatrixTraversal,
+    "Matrix traversal stopped at the current state.",
+  ));
   elements.exportButton.addEventListener("click", async () => {
     const saved = await invokeWithFeedback(saveForm, "Settings saved and exported.");
     fillForm(saved);
@@ -375,6 +429,7 @@ async function initialize() {
   elements.featureMap.addEventListener("pointerup", finishFeatureSelection);
   elements.featureMap.addEventListener("pointercancel", finishFeatureSelection);
   elements.featureMap.addEventListener("keydown", (event) => {
+    if (latestSnapshot?.traversalMode === "matrix") return;
     const direction = { ArrowLeft: [-0.05, 0], ArrowRight: [0.05, 0], ArrowUp: [0, 0.05], ArrowDown: [0, -0.05] }[event.key];
     if (!direction) return;
     event.preventDefault();

@@ -16,8 +16,8 @@ The Git repository root is the central project folder. Do not create a second in
 
 Maintain one research-quality 2D valence/arousal tracker with three coordinated delivery forms:
 
-1. a static, self-contained GitHub Pages application for online studies, local CSV acquisition, portable customization, video experiments, and an experimental Meta Quest WebXR selectable video library; and
-2. a cross-platform Tauri v2 desktop companion with a Rust authority layer, transparent always-on-top overlay, global physical-input capture, and always-on local LSL streams; and
+1. a static, self-contained GitHub Pages application for online studies, local CSV acquisition, portable customization, a synchronized procedural Face + Flubber accordion, video experiments, and an experimental Meta Quest WebXR selectable video library; and
+2. a cross-platform Tauri v2 desktop companion with a Rust authority layer, synchronized face/Flubber settings preview, transient continuous/11×11 traversal, transparent always-on-top Flubber overlay, global physical-input capture, and always-on local LSL streams; and
 3. a native Meta Quest Spatial SDK APK with local spatial video, compositor passthrough, Touch or explicit Polar H10 affect input, and same-LAN LSL.
 
 The web, desktop, and Quest applications must feel like the same instrument. Shared affect semantics, rendering mathematics, portable settings, terminology, accessibility, and privacy rules should remain aligned unless this directory records an explicit platform exception.
@@ -51,7 +51,8 @@ The web, desktop, and Quest applications must feel like the same instrument. Sha
 - `site/src/mobile.js`: browser-only narrow touch-capable viewport detection, pure grab-existing-marker coordinate helpers for the one-time smartphone Affect-controller discovery, and pure local Party camera projection/inversion helpers; responsive presentation remains in `site/styles.css`.
 - `site/screen-calibration/`: self-contained browser-only Screen Calibration product module, including its controller, coin/currency authority, geometry/record contract, and local visual assets.
 - `site/src/theme-bootstrap.js`, `site/src/retro-theme.js`, and `site/assets/retro-ui/`: browser-local pre-paint Windows 95 skin restoration, selective low-volume system-event cue routing, and pinned local Kenney CC0 audio. Routine interaction remains silent; the theme never enters portable settings or forks product behavior.
-- `site/src/accordion-protocols.js`: canonical registry for the six top-level web modules, their distinct responsibilities, mutually exclusive open state, and cross-module Touch/Trackpad activation rule.
+- `site/src/face.js`: project-authored procedural face anchor map, piecewise bilinear interpolation, finite geometry, and shared web/desktop renderer. It visualizes affect coordinates and makes no recognition or diagnostic claim.
+- `site/src/accordion-protocols.js`: canonical registry for the seven top-level web modules, including Synchronized Face + Flubber, their distinct responsibilities, mutually exclusive open state, and cross-module Touch/Trackpad activation rule.
 - `site/src/ground-control.js`: browser-neutral Ground Control authority for named portable-settings snapshots, validated public discovery, and the static-settings VDO.Ninja channel. Live X/Y remains delegated to `flubber-remote.js`.
 - `site/src/flubber-collaboration.js`: browser-neutral Ground Control role gate, isolated reciprocal Universe session, symmetric full-scale saturated coordinate combination, bounded explicit multi-receiver FLUBBER party orchestration, and the validated reciprocal aggregate Party-scene envelope.
 - `desktop/src/party.js` and `desktop/src/party-core.js`: Tauri settings-WebView Party host/broadcaster presentation, explicit lifecycle, Rust-snapshot projection, deterministic guest placement, and returned-scene acceptance. They reuse the browser-neutral transport/protocol modules and cannot command native affect state.

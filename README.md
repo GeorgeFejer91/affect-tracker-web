@@ -2,11 +2,11 @@
 
 Three matched Affect Tracker delivery forms inspired by [AffectTracker](https://github.com/afourcade/AffectTracker):
 
-- A static, self-contained online application hosted on GitHub Pages for browser studies, with no CDN or server backend.
-- An offline Tauri v2/Rust desktop companion with click-to-capture global key/mouse/wheel bindings, a click-through always-on-top overlay, and always-on local Lab Streaming Layer output.
+- A static, self-contained online application hosted only on GitHub Pages for browser studies, including a synchronized procedural Face + Flubber view, with no CDN or server backend.
+- An offline Tauri v2/Rust desktop companion with a synchronized procedural face/Flubber preview, click-to-capture global key/mouse/wheel bindings, a click-through always-on-top overlay, and always-on local Lab Streaming Layer output.
 - A native Meta Quest Spatial SDK video player under [`vr/`](./vr/) that loads a local video/session manifest, renders a transparent movable Flubber, accepts Touch-controller input, and publishes same-LAN LSL.
 
-All forms use the same valence/arousal mappings. Web and desktop share the JavaScript renderer directly; Quest uses a native allocation-bounded port checked against JavaScript golden vectors.
+All forms use the same valence/arousal mappings. Web and desktop share the JavaScript Flubber and procedural-face renderers directly; Quest uses a native allocation-bounded Flubber port checked against JavaScript golden vectors.
 
 Live site: <https://GeorgeFejer91.github.io/affect-tracker-web/>
 
@@ -31,6 +31,12 @@ Every AI agent must read [`AGENTS.md`](./AGENTS.md) and every file in [`for-ai/`
 | Drag the shape | Move the widget without changing affect |
 
 Continuous mode moves while a direction is held. Step mode changes the target by `0.1` per press. The on-screen direction pad follows the selected mode.
+
+### Synchronized Face + Flubber
+
+The GitHub Pages app includes a top-level **Synchronized Face + Flubber** accordion. It shows an abstract procedural face on the left and the canonical Flubber on the right, with both receiving the same current valence, current arousal, and animation phase on every rendered frame. The face interpolates a project-authored 3×3 anchor map for mouth, eyes, and brows; it is a coordinate visualization, not emotion recognition, diagnosis, or a claim that one facial expression uniquely represents an affective state.
+
+The desktop settings window provides the same paired presentation from one Rust-authoritative snapshot. Its separate always-on-top overlay intentionally remains Flubber-only.
 
 ### Experimental Touch/Trackpad control
 
@@ -76,7 +82,7 @@ The room is public and source labels are anonymous, not authenticated. Anybody w
 
 ### Smartphone web viewer
 
-The GitHub Pages application has a touch-first phone layout; no native smartphone app is required. On the first visit from a narrow touch-capable device, **Touch Lab** opens automatically but tracking remains off until the participant explicitly enables it. The phone viewer provides four compact tabs, safe-area/notch support, dynamic viewport height, a live Flubber preview beside the 2D valence–arousal map, and a large non-scrolling swipe pad. Secondary response, calibration, privacy, and display controls remain available in a collapsed options section. Portrait phones up to 600 CSS px wide and coarse-pointer phone landscape viewports up to 500 CSS px tall receive the compact layout.
+The GitHub Pages application has a touch-first phone layout; no native smartphone app is required. On the first visit from a narrow touch-capable device, **Touch Lab** opens automatically but tracking remains off until the participant explicitly enables it. The phone viewer provides compact protocol tabs, safe-area/notch support, dynamic viewport height, a live Flubber preview beside the 2D valence–arousal map, and a large non-scrolling swipe pad. Secondary response, calibration, privacy, and display controls remain available in a collapsed options section. Portrait phones up to 600 CSS px wide and coarse-pointer phone landscape viewports up to 500 CSS px tall receive the compact layout.
 
 Direct finger input uses primary W3C Pointer Events and pointer capture. The active swipe pad has `touch-action: none`, while surrounding settings remain vertically scrollable. Coalesced points are used when the browser supplies them and ordinary dispatched points remain the Safari-compatible fallback. Additional simultaneous touches are ignored. Phone layout changes presentation and discovery only; it uses the same `touch-trace-v10` signal algorithm, privacy boundary, adaptive calibration, and experiment CSV schema as larger browsers. The movement canvas uniformly fits the page-wide path without changing its aspect ratio or smoothing its segments. V10 measures turn coherence over 0.02-diagonal chords, reserves adjacent vectors for explicit reversals, requires partial path closure before winding becomes strong, and uses ≥60° dominant corners; this prevents ordinary mouse micro-jitter from saturating the angular/random command while retaining V/W, backtracking, and ellipse fixtures.
 
@@ -110,7 +116,7 @@ The Experiment panel also offers optional physical screen calibration through on
 
 The bottom-right **Windows 95** toggle applies an optional browser-local retro skin without changing tracker state, settings JSON, experiments, CSV, or input behavior. It restyles the complete main application—including panels, forms, calibration, and input dialogs—as a square-edged Windows 95/Netscape/SPSS-style interface and adds temporary classic status windows. Four locally packaged Kenney UI Audio cues under CC0 are reserved for classic system-style events such as enabling/disabling the skin, opening an important prompt, completing an operation, or reporting an error; ordinary buttons, field edits, movement, and countdowns stay silent. The app includes no Microsoft fonts, sounds, or binary assets and makes no runtime asset request outside the repository. Switching back restores the modern skin immediately, and the choice persists only in that browser.
 
-The top-left interface uses four mutually exclusive accordion toggles: **Affect Tracker Settings**, **Experiment**, **Touch/Trackpad Playground**, and **Polar Stream**. Experiment sessions use an append-only chunked CSV writer so raw pointer points and 20 Hz samples never roll over with the normal 10,000-record buffer. Buffering pauses active-time sampling, partial trials are marked with a stop reason, and a failed export can be retried from the Experiment panel.
+The top-left interface uses seven mutually exclusive accordion toggles: **Affect Tracker Settings**, **Synchronized Face + Flubber**, **Experiment**, **Screen Calibration**, **Touch/Trackpad Playground**, **Polar Stream**, and **Ground Control**. Experiment sessions use an append-only chunked CSV writer so raw pointer points and 20 Hz samples never roll over with the normal 10,000-record buffer. Buffering pauses active-time sampling, partial trials are marked with a stop reason, and a failed export can be retried from the Experiment panel.
 
 Touch experiments distinguish `pointer_raw`, `touch_metric`, `sample`, and `event` rows. Extended columns retain observed pointer coordinates, filtered speed, cross-stroke speed-continuity state, circle/angular scores, winding, radial variation, heading entropy, dominant-corner count, direction-reversal evidence, cursor visibility, feedback behavior, gate identity/duration/commit, live rates and accumulated live deltas, per-gate calibration counts, adaptive bounds, confidence, normalized touch targets, displayed affect state, wall time, active playback time, and player time so researchers can reconstruct or replace the online normalization. Trials configured over 30 minutes show a local file-size warning without blocking playback.
 
@@ -144,10 +150,12 @@ This is intentionally transient and is not stored in the portable settings JSON.
 
 **Affect Tracker Desktop** uses the bundle identifier `io.github.georgefejer91.affecttracker`. It contains two local windows:
 
-- A normal settings window for live coordinates, physical-input mappings, an interactive color-space picker, overlay appearance, and LSL configuration.
+- A normal settings window with the procedural face left and canonical Flubber right, plus live coordinates, physical-input mappings, an interactive color-space picker, overlay appearance, and LSL configuration.
 - A transparent overlay that floats above other applications. It is click-through while locked and draggable only in explicit edit mode.
 
-Rust owns authoritative affect coordinates, smoothing, timestamps, settings, global raw-input monitoring, tray lifecycle, and LSL publication. The desktop WebViews contain presentation only and communicate through narrow typed commands. Closing the settings window quits the process and removes the overlay; the tray menu also provides an explicit Quit action.
+Rust owns authoritative affect coordinates, smoothing, timestamps, settings, global raw-input monitoring, tray lifecycle, and LSL publication. The desktop WebViews contain presentation only and communicate through narrow typed commands. One immutable snapshot supplies `currentX`, `currentY`, and `phase` to both settings-window renderers, keeping facial deformation and Flubber pulse/rate synchronized without making rendering the research clock. Closing the settings window quits the process and removes the overlay; the tray menu also provides an explicit Quit action.
+
+The settings window offers a transient **Continuous** traversal and an **11×11 matrix** traversal. The matrix spans both axes from `-1` to `+1` in `0.2` increments, including exact neutral at center cell `(5,5)`. Selecting any of its 121 cells follows the shortest 8-connected route, taking diagonal steps while both axes differ and cardinal steps afterward, at a configurable `0.5–10` states per second. Stop holds the current node; Reset returns to exact neutral. The traversal mode, target cell, path, and rate are session state rather than portable settings. LSL continues publishing the same eight current/target channels, so matrix motion changes values but not the stream schema.
 
 The four default affect bindings are the plain arrow keys. Click any binding field and then press a key, click a mouse button, or scroll to assign that physical control. Bindings remain active while another application is focused; duplicate or invalid assignments are rejected. macOS requires Accessibility permission for global input monitoring. The Linux package currently supports global capture under X11; Wayland compositors may block it.
 
@@ -215,7 +223,7 @@ The suite covers the affect mappings, all four normalized base envelopes, determ
 
 ## Deployment
 
-Pushes to `main` run the tests and deploy only the contents of `site/` through GitHub Actions and GitHub Pages. In the repository settings, Pages must use **GitHub Actions** as its source.
+Pushes to `main` run the tests and deploy only the contents of `site/` through the existing GitHub Actions workflow to GitHub Pages. GitHub Pages is the sole web host; no secondary hosting workflow is part of this project. In the repository settings, Pages must use **GitHub Actions** as its source.
 
 The separate desktop workflow builds the WebViews and runs Rust formatting, checks, tests, and clippy on Windows, macOS, and Linux. Release tags package the unsigned installers on their matching operating systems.
 

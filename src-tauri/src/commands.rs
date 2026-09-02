@@ -1,4 +1,7 @@
-use crate::domain::{Action, AffectSnapshot};
+use crate::domain::{
+    Action, AffectMatrixCell, AffectSnapshot, AffectTraversalMode, MAX_MATRIX_STEPS_PER_SECOND,
+    MIN_MATRIX_STEPS_PER_SECOND,
+};
 use crate::error::CommandError;
 use crate::runtime::Runtime;
 use crate::settings::Settings;
@@ -163,6 +166,59 @@ pub fn set_affect_target(
 ) -> Result<AffectSnapshot, CommandError> {
     settings_window_only(&window)?;
     state.set_target(x, y, "feature-space");
+    Ok(state.snapshot())
+}
+
+#[tauri::command]
+pub fn set_traversal_mode(
+    window: WebviewWindow,
+    state: State<'_, Arc<Runtime>>,
+    mode: AffectTraversalMode,
+) -> Result<AffectSnapshot, CommandError> {
+    settings_window_only(&window)?;
+    state.set_traversal_mode(mode, "panel");
+    Ok(state.snapshot())
+}
+
+#[tauri::command]
+pub fn traverse_affect_matrix(
+    window: WebviewWindow,
+    state: State<'_, Arc<Runtime>>,
+    column: u8,
+    row: u8,
+    steps_per_second: f32,
+) -> Result<AffectSnapshot, CommandError> {
+    settings_window_only(&window)?;
+    let Some(target) = AffectMatrixCell::new(column, row) else {
+        return Err(CommandError::new(
+            "invalid_matrix_cell",
+            "Matrix column and row must each be between 0 and 10.",
+        ));
+    };
+    if !steps_per_second.is_finite()
+        || !(MIN_MATRIX_STEPS_PER_SECOND..=MAX_MATRIX_STEPS_PER_SECOND).contains(&steps_per_second)
+    {
+        return Err(CommandError::new(
+            "invalid_matrix_rate",
+            "Matrix traversal rate must be between 0.5 and 10 states per second.",
+        ));
+    }
+    if !state.traverse_matrix(target, steps_per_second, "panel") {
+        return Err(CommandError::new(
+            "invalid_matrix_rate",
+            "Matrix traversal rate must be finite and in the supported range.",
+        ));
+    }
+    Ok(state.snapshot())
+}
+
+#[tauri::command]
+pub fn stop_matrix_traversal(
+    window: WebviewWindow,
+    state: State<'_, Arc<Runtime>>,
+) -> Result<AffectSnapshot, CommandError> {
+    settings_window_only(&window)?;
+    state.stop_matrix_traversal("panel");
     Ok(state.snapshot())
 }
 

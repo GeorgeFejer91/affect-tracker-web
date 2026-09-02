@@ -27,13 +27,36 @@
           <div><p class="eyebrow">Live state</p><h2 id="live-title">Affect preview</h2></div>
           <div class="coordinates"><output id="valence-output">+0.000</output><span>valence</span><output id="arousal-output">+0.000</output><span>arousal</span></div>
         </div>
-        <div class="preview-layout">
-          <div class="flubber-preview" aria-label="Current affect visualization">
-            <svg viewBox="-1.62 -1.62 3.24 3.24" aria-hidden="true">
-              <path class="shape-halo"></path><path class="shape-base"></path><path class="shape-outline"></path>
-            </svg>
-          </div>
-          <div>
+        <div id="synchronized-affect-preview" class="synchronized-affect-preview" role="img" aria-label="Procedural affect display at neutral; face left, Flubber right.">
+          <figure class="affect-figure">
+            <div class="face-preview" aria-hidden="true">
+              <svg viewBox="-1.1 -1.1 2.2 2.2">
+                <circle class="face-halo" cx="0" cy="0" r="0.91"></circle>
+                <circle class="face-head" cx="0" cy="0" r="0.82"></circle>
+                <path class="face-brow face-brow-left"></path>
+                <path class="face-brow face-brow-right"></path>
+                <ellipse class="face-eye face-eye-left" cx="-0.34" cy="-0.13" rx="0.12" ry="0.0775"></ellipse>
+                <ellipse class="face-eye face-eye-right" cx="0.34" cy="-0.13" rx="0.12" ry="0.0775"></ellipse>
+                <circle class="face-pupil" cx="-0.34" cy="-0.13" r="0.035"></circle>
+                <circle class="face-pupil" cx="0.34" cy="-0.13" r="0.035"></circle>
+                <path class="face-nose" d="M 0 -0.03 L -0.045 0.19 L 0.055 0.19"></path>
+                <path class="face-mouth" d="M -0.42 0.36 Q 0 0.36 0.42 0.36 Q 0 0.36 -0.42 0.36 Z"></path>
+              </svg>
+            </div>
+            <figcaption>Canonical face</figcaption>
+          </figure>
+          <figure class="affect-figure">
+            <div class="flubber-preview" aria-hidden="true">
+              <svg viewBox="-1.62 -1.62 3.24 3.24">
+                <path class="shape-halo"></path><path class="shape-base"></path><path class="shape-outline"></path>
+              </svg>
+            </div>
+            <figcaption>Flubber</figcaption>
+          </figure>
+        </div>
+        <p class="face-disclosure">The abstract face is a canonical visualization of the selected coordinates—not emotion recognition, diagnosis, or a claim that one face uniquely represents an affective state.</p>
+        <div class="preview-controls">
+          <div class="preview-actions">
             <div class="direction-pad" aria-label="Nudge affect coordinates">
               <button data-action="increaseArousal" class="up" aria-label="Increase arousal">↑</button>
               <button data-action="decreaseValence" class="left" aria-label="Decrease valence">←</button>
@@ -45,6 +68,28 @@
               <button id="pause-button">Pause motion</button>
               <button id="overlay-visible-button">Show overlay</button>
               <button id="overlay-edit-button">Enable overlay dragging</button>
+            </div>
+          </div>
+          <div class="traversal-panel" aria-labelledby="traversal-title">
+            <h3 id="traversal-title">Affect-space traversal</h3>
+            <div class="traversal-mode-buttons" role="group" aria-label="Traversal mode">
+              <button id="continuous-traversal-button" type="button" aria-pressed="true">Continuous</button>
+              <button id="matrix-traversal-button" type="button" aria-pressed="false">11 × 11 matrix</button>
+            </div>
+            <p class="field-help">Continuous mode uses the normal smoothed trajectory. Matrix mode visits exact lattice states and permits diagonal transitions.</p>
+            <div id="matrix-traversal-controls" class="matrix-traversal-controls" hidden>
+              <div class="matrix-toolbar">
+                <label>States per second<input id="matrix-step-rate" type="number" min="0.5" max="10" step="0.5" value="5"></label>
+                <button id="matrix-stop-button" type="button">Stop at current state</button>
+              </div>
+              <p id="matrix-status" class="matrix-status" role="status" aria-live="polite">Neutral is the exact central matrix state at valence 0 and arousal 0.</p>
+              <div class="affect-matrix-shell">
+                <span class="matrix-axis matrix-axis-up">High arousal</span>
+                <span class="matrix-axis matrix-axis-down">Low arousal</span>
+                <span class="matrix-axis matrix-axis-left">Negative valence</span>
+                <span class="matrix-axis matrix-axis-right">Positive valence</span>
+                <div id="affect-matrix-grid" class="affect-matrix-grid" role="grid" aria-label="121-state valence–arousal matrix" aria-rowcount="11" aria-colcount="11"></div>
+              </div>
             </div>
           </div>
         </div>

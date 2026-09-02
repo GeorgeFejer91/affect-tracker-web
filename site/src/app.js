@@ -7,6 +7,7 @@ import {
   createProjectionOffsets,
   smoothToward,
 } from "./math.js?v=shape-1";
+import { createFaceRenderer } from "./face.js?v=face-1";
 import {
   applyStep,
   constrainWidgetPosition,
@@ -144,6 +145,15 @@ const elements = {
   mobileCoordinatePoint: document.querySelector("#mobile-coordinate-point"),
   mobileOpenSettings: document.querySelector("#mobile-open-settings"),
   mobileCloseSettings: document.querySelector("#mobile-close-settings"),
+  faceFlubberPanel: document.querySelector("#face-flubber-panel"),
+  faceFlubberPanelToggle: document.querySelector("#face-flubber-panel-toggle"),
+  faceFlubberToggleSymbol: document.querySelector("#face-flubber-toggle-symbol"),
+  synchronizedAffectPreview: document.querySelector("#web-synchronized-affect-preview"),
+  webAffectFace: document.querySelector("#web-affect-face"),
+  webAffectFlubber: document.querySelector(".web-affect-flubber"),
+  webAffectFlubberPaths: [...document.querySelectorAll("#web-affect-flubber-halo, #web-affect-flubber-base, #web-affect-flubber-outline")],
+  faceFlubberValenceOutput: document.querySelector("#face-flubber-valence-output"),
+  faceFlubberArousalOutput: document.querySelector("#face-flubber-arousal-output"),
   experimentPanel: document.querySelector("#experiment-panel"),
   experimentPanelToggle: document.querySelector("#experiment-panel-toggle"),
   experimentToggleSymbol: document.querySelector("#experiment-toggle-symbol"),
@@ -353,6 +363,7 @@ function readPreferences(bundledSettings) {
       widgetX: Number.isFinite(parsed.widgetX) ? parsed.widgetX : settings.overlay.x + settings.overlay.size / 2,
       widgetY: Number.isFinite(parsed.widgetY) ? parsed.widgetY : settings.overlay.y + settings.overlay.size / 2,
       panelOpen: typeof parsed.panelOpen === "boolean" ? parsed.panelOpen : !parsed.seenIntro,
+      faceFlubberPanelOpen: typeof parsed.faceFlubberPanelOpen === "boolean" ? parsed.faceFlubberPanelOpen : false,
       experimentPanelOpen: typeof parsed.experimentPanelOpen === "boolean" ? parsed.experimentPanelOpen : false,
       screenCalibrationPanelOpen: typeof parsed.screenCalibrationPanelOpen === "boolean" ? parsed.screenCalibrationPanelOpen : false,
       touchPlaygroundPanelOpen: typeof parsed.touchPlaygroundPanelOpen === "boolean" ? parsed.touchPlaygroundPanelOpen : false,
@@ -376,6 +387,7 @@ function readPreferences(bundledSettings) {
       widgetX: bundledSettings.overlay.x + bundledSettings.overlay.size / 2,
       widgetY: bundledSettings.overlay.y + bundledSettings.overlay.size / 2,
       panelOpen: true,
+      faceFlubberPanelOpen: false,
       experimentPanelOpen: false,
       screenCalibrationPanelOpen: false,
       touchPlaygroundPanelOpen: false,
@@ -430,6 +442,7 @@ const state = {
   widgetVisible: preferences.settings.overlay.visible,
   widgetDragEnabled: true,
   panelOpen: preferences.panelOpen,
+  faceFlubberPanelOpen: preferences.faceFlubberPanelOpen,
   experimentPanelOpen: preferences.experimentPanelOpen,
   screenCalibrationPanelOpen: preferences.screenCalibrationPanelOpen,
   touchPlaygroundPanelOpen: preferences.touchPlaygroundPanelOpen,
@@ -459,6 +472,7 @@ const state = {
 Object.assign(state, normalizeAccordionState(state));
 if (smartphoneTouchViewport && !state.mobileTouchIntroSeen) {
   state.panelOpen = true;
+  state.faceFlubberPanelOpen = false;
   state.experimentPanelOpen = false;
   state.screenCalibrationPanelOpen = false;
   state.touchPlaygroundPanelOpen = false;
@@ -593,6 +607,7 @@ let activeTracePointerId;
 let lastLoggedGateCommitSequence = 0;
 let retroToastTimer;
 const reducedMotionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+const renderWebAffectFace = createFaceRenderer(elements.webAffectFace);
 const retroSoundboard = createRetroSoundboard();
 
 function savePreferences() {
@@ -607,6 +622,7 @@ function savePreferences() {
     widgetX: savedX,
     widgetY: savedY,
     panelOpen: state.panelOpen,
+    faceFlubberPanelOpen: state.faceFlubberPanelOpen,
     experimentPanelOpen: state.experimentPanelOpen,
     screenCalibrationPanelOpen: state.screenCalibrationPanelOpen,
     touchPlaygroundPanelOpen: state.touchPlaygroundPanelOpen,
@@ -814,6 +830,12 @@ function updatePanelState() {
   elements.toggleSymbol.textContent = state.panelOpen ? "−" : "+";
 }
 
+function updateFaceFlubberPanelState() {
+  elements.faceFlubberPanel.classList.toggle("is-collapsed", !state.faceFlubberPanelOpen);
+  elements.faceFlubberPanelToggle.setAttribute("aria-expanded", String(state.faceFlubberPanelOpen));
+  elements.faceFlubberToggleSymbol.textContent = state.faceFlubberPanelOpen ? "−" : "+";
+}
+
 function updateExperimentPanelState() {
   elements.experimentPanel.classList.toggle("is-collapsed", !state.experimentPanelOpen);
   elements.experimentPanelToggle.setAttribute("aria-expanded", String(state.experimentPanelOpen));
@@ -846,6 +868,7 @@ function updateGroundControlPanelState() {
 
 function updateAccordionPanelStates() {
   updatePanelState();
+  updateFaceFlubberPanelState();
   updateExperimentPanelState();
   updateScreenCalibrationPanelState();
   updateTouchPlaygroundPanelState();
@@ -2248,6 +2271,21 @@ function applyPortableSettings(value, applyPosition = true) {
 
 function formatCoordinate(value) {
   return `${value >= 0 ? "+" : ""}${value.toFixed(3)}`;
+}
+
+function renderSynchronizedAffectPreview(snapshot, flubber) {
+  renderWebAffectFace(snapshot, reducedMotionQuery.matches, flubber.color);
+  for (const path of elements.webAffectFlubberPaths) path.setAttribute("d", flubber.path);
+  elements.webAffectFlubber.style.setProperty("--affect-color", flubber.color);
+  const flubberSvg = elements.webAffectFlubber.querySelector("svg");
+  flubberSvg.style.opacity = String(snapshot.overlayOpacity);
+  elements.synchronizedAffectPreview.dataset.renderPhase = snapshot.phase.toFixed(6);
+  elements.synchronizedAffectPreview.setAttribute(
+    "aria-label",
+    `Procedural affect display: valence ${snapshot.currentX.toFixed(3)}, arousal ${snapshot.currentY.toFixed(3)}; face left, Flubber right.`,
+  );
+  elements.faceFlubberValenceOutput.value = formatCoordinate(snapshot.currentX);
+  elements.faceFlubberArousalOutput.value = formatCoordinate(snapshot.currentY);
 }
 
 function updateCoordinateDisplay() {
@@ -4084,6 +4122,9 @@ function initializeEvents() {
   elements.panelToggle.addEventListener("click", () => {
     toggleTopLevelProtocol("settings");
   });
+  elements.faceFlubberPanelToggle.addEventListener("click", () => {
+    toggleTopLevelProtocol("face");
+  });
   elements.experimentPanelToggle.addEventListener("click", () => {
     toggleTopLevelProtocol("experiment");
   });
@@ -4753,18 +4794,29 @@ function animationFrame(timestamp) {
   }
 
   const partyRender = activePartyRenderSettings();
-  const rendered = buildFlubberPath({
-    profiles,
-    offsets: partyRender.offsets,
-    x: state.currentX,
-    y: state.currentY,
+  const affectFrame = Object.freeze({
+    currentX: state.currentX,
+    currentY: state.currentY,
     phase: partyRender.phase,
     palette: partyRender.palette,
     amplitudeScale: partyRender.amplitudeScale,
     disorderScale: partyRender.disorderScale,
     baseShape: partyRender.baseShape,
+    overlayOpacity: partyRender.opacity,
+  });
+  const rendered = buildFlubberPath({
+    profiles,
+    offsets: partyRender.offsets,
+    x: affectFrame.currentX,
+    y: affectFrame.currentY,
+    phase: affectFrame.phase,
+    palette: affectFrame.palette,
+    amplitudeScale: affectFrame.amplitudeScale,
+    disorderScale: affectFrame.disorderScale,
+    baseShape: affectFrame.baseShape,
     reducedMotion: reducedMotionQuery.matches,
   });
+  renderSynchronizedAffectPreview(affectFrame, rendered);
   elements.basePath.setAttribute("d", rendered.path);
   elements.outlinePath.setAttribute("d", rendered.path);
   elements.haloPath.setAttribute("d", rendered.path);

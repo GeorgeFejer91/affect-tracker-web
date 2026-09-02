@@ -1,4 +1,5 @@
 import { buildFlubberPath, createProfiles, createProjectionOffsets } from "../../site/src/math.js";
+import { createFaceRenderer } from "../../site/src/face.js";
 
 const profiles = createProfiles();
 
@@ -29,5 +30,21 @@ export function createFlubberRenderer(root) {
     const svg = paths[0]?.ownerSVGElement;
     if (svg) svg.style.opacity = String(snapshot.overlayOpacity ?? 1);
     return rendered;
+  };
+}
+
+export function createSynchronizedAffectRenderer(root) {
+  const renderFace = createFaceRenderer(root.querySelector(".face-preview"));
+  const renderFlubber = createFlubberRenderer(root.querySelector(".flubber-preview"));
+
+  return (snapshot, reducedMotion = false) => {
+    const flubber = renderFlubber(snapshot, reducedMotion);
+    const face = renderFace(snapshot, reducedMotion, flubber.color);
+    root.dataset.renderSequence = String(snapshot.sequence ?? "");
+    root.setAttribute(
+      "aria-label",
+      `Procedural affect display: valence ${snapshot.currentX.toFixed(3)}, arousal ${snapshot.currentY.toFixed(3)}; face left, Flubber right.`,
+    );
+    return Object.freeze({ face, flubber, sequence: snapshot.sequence });
   };
 }

@@ -44,7 +44,7 @@ test("the phone layout uses safe areas and a split Flubber/direct-coordinate con
   assert.match(css, /height: 100dvh/);
   assert.match(css, /env\(safe-area-inset-top/);
   assert.match(css, /grid-template-rows: repeat\(2, minmax\(0, 1fr\)\)/);
-  assert.match(css, /grid-template-columns: repeat\(6, minmax\(0, 1fr\)\)/);
+  assert.match(css, /grid-template-columns: repeat\(7, minmax\(0, 1fr\)\)/);
   assert.match(css, /\.mobile-coordinate-space \{[\s\S]*touch-action: none/);
   assert.match(css, /\.mobile-direct-flubber \{[\s\S]*position: absolute[\s\S]*touch-action: none/);
   assert.match(css, /touch-action: none/);

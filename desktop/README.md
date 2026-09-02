@@ -1,11 +1,22 @@
 # Affect Tracker Desktop
 
-This directory contains the local WebView source for the Tauri v2 companion. The authoritative native application lives in [`../src-tauri`](../src-tauri), and both desktop windows import the canonical shape renderer from [`../site/src/math.js`](../site/src/math.js) during the Vite build.
+This directory contains the local WebView source for the Tauri v2 companion. The authoritative native application lives in [`../src-tauri`](../src-tauri). The desktop imports the canonical Flubber renderer from [`../site/src/math.js`](../site/src/math.js) and the shared procedural-face renderer from [`../site/src/face.js`](../site/src/face.js) during the Vite build.
 
 ## Windows
 
-- `settings`: ordinary configuration and live-preview window.
-- `overlay`: transparent, borderless, always-on-top affect visualization. It ignores pointer events while locked and receives pointer events only in explicit edit-position mode.
+- `settings`: ordinary configuration window with a synchronized live preview: procedural face left, canonical Flubber right.
+- `overlay`: transparent, borderless, always-on-top Flubber-only visualization. It ignores pointer events while locked and receives pointer events only in explicit edit-position mode.
+
+## Synchronized affect preview and traversal
+
+Rust is the only desktop authority for affect state. Each compact snapshot supplies the same `currentX`, `currentY`, and `phase` to both settings-window renderers, so facial deformation and the Flubber's shape, pulse, and rate of change move together. The face uses piecewise bilinear interpolation over a project-authored 3×3 map of mouth, eye, and brow parameters. It is an abstract canonical visualization, not emotion recognition, diagnosis, or an empirically validated claim that one expression uniquely identifies an affective state. Reduced motion removes secondary facial pulse without changing affect input or the selected coordinates.
+
+Two session traversal modes are available:
+
+- **Continuous** retains the Rust engine's existing target smoothing.
+- **11×11 matrix** exposes 121 exact states from `-1` to `+1` on both axes in `0.2` increments, including neutral at center cell `(5,5)`. A selected target follows the shortest 8-connected path: both indices change together while a diagonal step is possible, followed by cardinal steps if one axis arrives first. The rate is bounded to `0.5–10` states per second, Stop holds the current state, and Reset returns to exact neutral.
+
+Mode, rate, current/target cells, and queued path are transient Rust state. They do not extend portable settings version 1. Native snapshots expose their presentation status, but the regular LSL outlet keeps its existing eight-channel order and publishes the actual current/target coordinates in either mode.
 
 ## FLUBBER Party
 

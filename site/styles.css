@@ -555,7 +555,7 @@ body.is-experiment-running .flubber-party-stage { display: none; }
   backdrop-filter: blur(14px);
 }
 
-.panel-stack .panel-content { max-height: calc(100vh - 23rem); }
+.panel-stack .panel-content { max-height: calc(100vh - 26.5rem); }
 
 .panel-toggle {
   display: flex;
@@ -583,6 +583,41 @@ body.is-experiment-running .flubber-party-stage { display: none; }
   gap: 0.5rem;
   text-align: left;
 }
+
+.face-flubber-module > header { margin-bottom: 0.75rem; }
+.face-flubber-module h3 { margin: 0.2rem 0 0.4rem; }
+.face-flubber-module header p,
+.face-flubber-disclosure { color: rgb(255 255 255 / 64%); font-size: 0.73rem; line-height: 1.48; }
+.face-flubber-kicker { color: #91e3ff; font-size: 0.62rem; font-weight: 760; letter-spacing: 0.1em; text-transform: uppercase; }
+.web-synchronized-affect-preview {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.75rem;
+  border: 1px solid rgb(120 215 255 / 24%);
+  border-radius: 0.7rem;
+  background: rgb(120 215 255 / 4%);
+}
+.web-synchronized-affect-preview figure { display: grid; min-width: 0; justify-items: center; gap: 0.35rem; margin: 0; }
+.web-synchronized-affect-preview figcaption { color: rgb(255 255 255 / 58%); font-size: 0.57rem; font-weight: 750; letter-spacing: 0.06em; text-transform: uppercase; }
+.web-affect-face,
+.web-affect-flubber { width: 100%; max-width: 8.5rem; aspect-ratio: 1; }
+.web-affect-face svg,
+.web-affect-flubber svg { display: block; width: 100%; height: 100%; overflow: visible; transform-origin: center; }
+.web-affect-flubber .shape-halo { filter: none; }
+.web-affect-face .face-halo { fill: var(--affect-color); fill-opacity: 0.13; stroke: var(--affect-color); stroke-opacity: 0.28; stroke-width: 0.045; }
+.web-affect-face .face-head { fill: var(--affect-color); fill-opacity: 0.17; stroke: rgb(255 255 255 / 78%); stroke-width: 0.035; }
+.web-affect-face :is(.face-brow, .face-nose) { fill: none; stroke: rgb(255 255 255 / 82%); stroke-linecap: round; stroke-linejoin: round; }
+.web-affect-face .face-brow { stroke-width: 0.055; }
+.web-affect-face .face-nose { stroke-width: 0.03; stroke-opacity: 0.55; }
+.web-affect-face .face-eye { fill: #f8fbff; stroke: rgb(255 255 255 / 88%); stroke-width: 0.025; }
+.web-affect-face .face-pupil { fill: #071015; }
+.web-affect-face .face-mouth { fill: var(--affect-color); fill-opacity: 0.52; stroke: rgb(255 255 255 / 92%); stroke-width: 0.035; stroke-linejoin: round; }
+.face-flubber-values { display: grid; grid-template-columns: 1fr 1fr; gap: 0.45rem; margin-top: 0.65rem; }
+.face-flubber-values span { display: grid; gap: 0.15rem; padding: 0.45rem; border: 1px solid rgb(255 255 255 / 10%); border-radius: 0.45rem; color: rgb(255 255 255 / 58%); font-size: 0.62rem; }
+.face-flubber-values output { color: #fff; font: 700 0.72rem ui-monospace, SFMono-Regular, Consolas, monospace; }
+.face-flubber-disclosure { margin-bottom: 0; }
 
 .polar-stream-logo {
   width: 1.45rem;
@@ -1734,7 +1769,7 @@ kbd {
     right: calc(env(safe-area-inset-right, 0px) + 0.5rem);
     left: calc(env(safe-area-inset-left, 0px) + 0.5rem);
     width: auto;
-    grid-template-columns: repeat(6, minmax(0, 1fr));
+    grid-template-columns: repeat(7, minmax(0, 1fr));
     gap: 0.35rem;
   }
 

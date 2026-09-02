@@ -69,11 +69,11 @@ test("Polar assignments stay browser-local and defer to touch tracking", async (
   assert.doesNotMatch(portable, /polarMappings|polarStream/i);
 });
 
-test("all six top-level panels collapse their alternatives", async () => {
+test("all seven top-level panels collapse their alternatives", async () => {
   const app = await readSiteFile("src/app.js");
   const protocols = await readSiteFile("src/accordion-protocols.js");
 
-  for (const id of ["settings", "experiment", "calibration", "touch", "polar", "ground"]) {
+  for (const id of ["settings", "face", "experiment", "calibration", "touch", "polar", "ground"]) {
     assert.match(app, new RegExp(`toggleTopLevelProtocol\\("${id}"\\)`));
     assert.match(protocols, new RegExp(`\\b${id}: Object\\.freeze`));
   }

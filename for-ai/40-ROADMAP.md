@@ -4,7 +4,9 @@
 
 - Two-window Tauri shell and tray lifecycle.
 - Shared SVG renderer.
+- Shared project-authored procedural-face renderer with a GitHub Pages **Synchronized Face + Flubber** accordion and a desktop settings pair, both driven from one current valence/arousal/phase frame and explicitly non-diagnostic.
 - Rust affect engine and typed IPC.
+- Transient desktop Continuous/11×11 matrix traversal with an exact neutral center, shortest 8-connected paths, bounded `0.5–10` states/second, and unchanged portable-settings/LSL schemas.
 - Click-to-capture global key, mouse-button, and wheel bindings with arrow-key defaults.
 - Optional advanced bindings for bounded animation speed, pulse amplitude, shape disorder, transparency, and overlay size adjustments.
 - Configurable Circle, Heart, Triangle, and Square base envelopes shared by web, desktop, WebXR, and native Quest, with Circle as the legacy default and Polar-reactive Heart presentation.
@@ -19,6 +21,7 @@
 - In progress: native Quest Spatial SDK delivery under `vr/`, strict local video/session loading, transparent controller-movable Flubber, Media3 spatial playback, and same-LAN LSL. Host tests precede the required four-headset qualification matrix.
 
 - Delivered: preloaded GitHub Pages video experiment with optional YouTube URL/start/finish configuration, countdown, protected playback, precise local CSV, and automatic export.
+- Delivered: a static GitHub Pages **Synchronized Face + Flubber** accordion and matching desktop settings preview, placing a project-authored abstract face left and the canonical Flubber right, synchronized from the same displayed coordinates and animation phase, with reduced-motion handling and explicit no-recognition/no-diagnosis language. The desktop overlay remains Flubber-only.
 - Delivered: an independent sixth Screen Calibration accordion in `site/screen-calibration/`, with optional fullscreen physical calibration v2, one compact launcher, and module-local assets; ten BIS shortcuts plus a searchable SVG flag-labelled country/currency hierarchy that disappears after selection; compact shared-currency country selection; a 217-entry static multi-denomination coin catalog across 37 currencies and 61 countries with official diameter/outer-span provenance and round/polygonal/scalloped shape guidance; mouse/trackpad/pen/touch square drawing and constrained SVG adjustment; display-change invalidation; v1 read compatibility; browser-local persistence; and validated read-only protocol/version/country context consumed by Experiment CSV.
 - Delivered: a reversible bottom-right Windows 95 skin for the main browser app, retaining one functional DOM while restyling panels, forms, calibration, dialogs, and status feedback with a Netscape/SPSS-era presentation; browser-local persistence; pre-paint restoration; and four pinned local Kenney CC0 system-event cues used selectively, with routine interaction silent and no Microsoft asset or runtime dependency.
 - Delivered as an experimental browser-headset slice: a Meta Quest WebXR selectable library with the flat Great Dictator study and eight exact-frame CEAP-360VR one-minute full-sphere excerpts, canonical Flubber rendering, stimulus-aware CSV, right-stick affect control, X reset, Y whole-session pause, local download, an explicit per-run HTTPS webhook, and a native-launcher link to the hosted page. Physical Quest sphere/orientation/controller/download/webhook qualification remains required before research use.
