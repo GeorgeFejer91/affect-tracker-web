@@ -3,6 +3,7 @@ import { createSynchronizedAffectRenderer } from "./render.js";
 import { createAffectMatrixGrid, matrixCoordinate } from "./matrix.js";
 import { createDesktopPartyController } from "./party.js";
 import { affectPaletteColor } from "../../site/src/math.js";
+import { faceEngineDefinition } from "../../site/src/face-engines.js";
 import {
   BUILTIN_FACE_PHOTO_PACK_CATALOG,
   FACE_PHOTO_PACK_PUBLIC_DISCLOSURE,
@@ -176,7 +177,7 @@ function resolveDesktopFacePhotoPackAtlasUrl(value) {
 }
 
 function updateFacePhotoPackControl() {
-  const photoSelected = renderAffectPair.faceMode === "photo-atlas";
+  const photoSelected = faceEngineDefinition(renderAffectPair.faceMode).kind === "photo";
   const pack = facePhotoPackDefinition(facePhotoPackId, facePhotoPackCatalog);
   elements.facePhotoPackField.hidden = !photoSelected;
   elements.facePhotoPack.disabled = !photoSelected;

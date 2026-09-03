@@ -91,7 +91,7 @@ test("shared phase animates the face while reduced motion remains phase independ
   assert.deepEqual(reducedStart, reducedPeak);
 });
 
-test("desktop exposes the complete five-mode face stack before the right-side Flubber", () => {
+test("desktop exposes the complete six-mode face stack before the right-side Flubber", () => {
   const html = readFileSync(new URL("../desktop/index.html", import.meta.url), "utf8");
   const css = readFileSync(new URL("../desktop/styles.css", import.meta.url), "utf8");
   const preview = html.match(
@@ -122,7 +122,7 @@ test("desktop exposes the complete five-mode face stack before the right-side Fl
     options,
     FACE_ENGINE_MODES.map(({ id, label }) => ({ id, label })),
   );
-  assert.equal(options.length, 5);
+  assert.equal(options.length, 6);
   assert.equal(options[0].id, DEFAULT_FACE_ENGINE_MODE);
   assert.match(html, /does not access a camera, recognize faces, diagnose emotion/);
 });

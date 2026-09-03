@@ -89,7 +89,7 @@ already authoritative `{ currentX, currentY, phase }` snapshot to
 `projectPortableBlockToXrPanel`. The returned face and Flubber projections share
 that exact frozen snapshot object; the adapter never clamps or recomputes it.
 The renderer uses the canonical vector face and canonical Flubber, not the main
-tracker's five selectable face engines. It must preserve the established
+tracker's six selectable face engines. It must preserve the established
 reduced-motion and accessibility semantics and label the comparison as
 presentation-only and non-diagnostic.
 

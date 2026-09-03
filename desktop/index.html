@@ -59,15 +59,16 @@
             <figcaption>Flubber</figcaption>
           </figure>
         </div>
-        <p class="face-disclosure">Each local solution receives the exact displayed valence/arousal snapshot used by Flubber. Photoatlas portrait presets are synthetic, creator-chosen, and non-exhaustive; their styling labels do not establish gender identity, sex, pronouns, race, ethnicity, ancestry, or validated affect. AFFEC supplies aggregate perceived-rating locations, and MediaPipe was used once during asset preparation for blendshape coefficients. The app does not access a camera, recognize faces, diagnose emotion, or claim that one expression uniquely represents an affective state.</p>
+        <p class="face-disclosure">Each local solution receives the exact displayed valence/arousal snapshot used by Flubber. Photoatlas portrait presets are synthetic, creator-chosen, and non-exhaustive; their styling labels do not establish gender identity, sex, pronouns, race, ethnicity, ancestry, or validated affect. AFFEC supplies aggregate perceived-rating locations only; its Photoatlas correspondences and transfer are project-authored and the portraits are not perceptually validated. MediaPipe was used once during asset preparation for blendshape coefficients. The app does not access a camera, recognize faces, diagnose emotion, or claim that one expression uniquely represents an affective state.</p>
         <div class="face-presentation-controls">
           <label class="face-solution-control" for="desktop-face-engine">Face solution
             <select id="desktop-face-engine">
               <option value="affec-empirical">AFFEC empirical 3D</option>
+              <option value="photo-affec">AFFEC-guided Photoatlas</option>
               <option value="mediapipe-atlas">MediaPipe-rigged atlas 3D</option>
               <option value="facs-continuous">Continuous FACS-style 3D</option>
               <option value="matrix-anchors">21 × 21 matrix-anchor 3D</option>
-              <option value="photo-atlas">Photoreal atlas blend</option>
+              <option value="photo-atlas">Direct-grid Photoatlas</option>
             </select>
           </label>
           <label id="desktop-face-photo-pack-field" class="face-solution-control" for="desktop-face-photo-pack" hidden>Portrait preset

@@ -1,5 +1,5 @@
 import { createFaceRenderer } from "./face.js";
-import { createFacePhotoRenderer } from "./face-photo.js?v=dense21-warp-packs-1";
+import { createFacePhotoRenderer } from "./face-photo.js?v=dense21-warp-packs-affec-guided-2";
 import { createFaceModelRenderer } from "./face-model.js?v=matrix21-1-friendly-eyes-1";
 
 const mode = (id, label, shortLabel, description, kind, profile = null) => Object.freeze({
@@ -16,9 +16,17 @@ export const FACE_ENGINE_MODES = Object.freeze([
     "affec-empirical",
     "AFFEC empirical 3D",
     "AFFEC empirical 3D",
-    "Uses all 5,807 valid perceived valence/arousal trials in AFFEC to place six expression prototypes, then blends the local CC0 morph face continuously.",
+    "Uses six aggregate perceived valence/arousal category locations derived from all 5,807 valid AFFEC observations to place project-authored morph prototypes, then blends the local CC0 face continuously.",
     "model",
     "affec-empirical",
+  ),
+  mode(
+    "photo-affec",
+    "AFFEC-guided Photoatlas",
+    "AFFEC-guided atlas",
+    "Uses aggregate locations from all 5,807 valid AFFEC perceived valence/arousal observations to guide six project-authored portrait correspondences, then samples the selected local 21 × 21 atlas continuously. The portraits and transfer surface are not validated expressions.",
+    "photo",
+    "affec-guided",
   ),
   mode(
     "mediapipe-atlas",
@@ -46,10 +54,11 @@ export const FACE_ENGINE_MODES = Object.freeze([
   ),
   mode(
     "photo-atlas",
-    "Photoreal atlas blend",
-    "Photoreal atlas",
-    "Blends the four nearest cells of a project-owned 21 × 21 landmark-warped atlas for dense, continuous photoreal transitions without runtime machine learning.",
+    "Direct-grid Photoatlas",
+    "Direct Photoatlas",
+    "Maps the displayed coordinate directly to the four nearest cells of the selected project-owned 21 × 21 landmark-warped atlas for a geometric comparison without empirical remapping.",
     "photo",
+    "geometric-grid",
   ),
 ]);
 
@@ -88,7 +97,7 @@ function setNodeVisible(node, visible) {
 }
 
 /**
- * Coordinate the five selectable strategies and the fixed local fallback chain:
+ * Coordinate the selectable strategies and the fixed local fallback chain:
  * detailed 3D -> photoreal atlas -> canonical SVG.
  */
 export function createFaceEngineRenderer(root, options = {}) {
@@ -101,6 +110,7 @@ export function createFaceEngineRenderer(root, options = {}) {
   let destroyed = false;
   let photoRenderer;
   let modelRenderer;
+  const initialDefinition = faceEngineDefinition(selectedMode);
 
   const inspectEffectiveMode = () => {
     const definition = faceEngineDefinition(selectedMode);
@@ -129,11 +139,12 @@ export function createFaceEngineRenderer(root, options = {}) {
   photoRenderer = options.photoRenderer ?? createFacePhotoRenderer(root, {
     atlasUrl: options.photoAtlasUrl,
     fallbackRenderer: vectorRenderer,
+    profile: initialDefinition.kind === "photo" ? initialDefinition.profile : undefined,
     onModeChange: childModeChanged,
   });
   modelRenderer = options.modelRenderer ?? createFaceModelRenderer(root, {
     fallbackRenderer: photoRenderer,
-    profile: faceEngineDefinition(selectedMode).profile ?? undefined,
+    profile: initialDefinition.kind === "model" ? initialDefinition.profile : undefined,
     onModeChange: childModeChanged,
   });
 
@@ -145,8 +156,10 @@ export function createFaceEngineRenderer(root, options = {}) {
     }
     const definition = faceEngineDefinition(selectedMode);
     if (definition.kind === "photo") {
+      if (photoRenderer.profile !== definition.profile) photoRenderer.setProfile?.(definition.profile);
       lastResult = photoRenderer(snapshot, reducedMotion, presentationColor);
     } else {
+      if (photoRenderer.profile !== "geometric-grid") photoRenderer.setProfile?.("geometric-grid");
       if (modelRenderer.profile !== definition.profile) modelRenderer.setProfile(definition.profile);
       lastResult = modelRenderer(snapshot, reducedMotion, presentationColor);
     }
@@ -164,7 +177,12 @@ export function createFaceEngineRenderer(root, options = {}) {
     const nextMode = normalizeFaceEngineMode(value);
     selectedMode = nextMode;
     const definition = faceEngineDefinition(nextMode);
-    if (definition.profile && modelRenderer.profile !== definition.profile) {
+    if (definition.kind === "photo") {
+      if (photoRenderer.profile !== definition.profile) photoRenderer.setProfile?.(definition.profile);
+    } else if (photoRenderer.profile !== "geometric-grid") {
+      photoRenderer.setProfile?.("geometric-grid");
+    }
+    if (definition.kind === "model" && definition.profile && modelRenderer.profile !== definition.profile) {
       modelRenderer.setProfile(definition.profile);
     }
     updatePresentation();

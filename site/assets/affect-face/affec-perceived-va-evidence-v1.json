@@ -1,0 +1,193 @@
+{
+  "schema": "affect-tracker-affec-perceived-va-evidence",
+  "version": 1,
+  "id": "affec-perceived-va-evidence-v1",
+  "evidenceClass": "dataset-derived-aggregate",
+  "source": {
+    "datasetId": "AFFEC",
+    "title": "AFFEC Multimodal Dataset",
+    "version": "0.1",
+    "doi": "10.5281/zenodo.14794876",
+    "record": "https://zenodo.org/records/14794876",
+    "archive": {
+      "name": "core.zip",
+      "bytes": 5645457,
+      "md5": "7157e9bedacf58f42692688fb20b57b1",
+      "sha256": "f5b71a3360a21e05d01f92172ea52bbcc6bb4a763f181da10b8e63af2faf7e99"
+    },
+    "licensePolicy": "CC BY 4.0 per the Zenodo record; the devkit currently describes dataset files as CC0, so this project follows the more conservative attribution path."
+  },
+  "coordinateSystem": {
+    "id": "affec-perceived-va-9-point",
+    "axes": {
+      "x": "perceived valence",
+      "y": "perceived arousal"
+    },
+    "sourceRange": [
+      1,
+      9
+    ],
+    "neutral": 5,
+    "runtimeRange": [
+      -1,
+      1
+    ],
+    "transform": "(rating - 5) / 4"
+  },
+  "aggregation": {
+    "behaviorTableCount": 273,
+    "validObservationCount": 5807,
+    "groupBy": "trial_type",
+    "ratingFields": [
+      "p_emotion_v",
+      "p_emotion_a"
+    ],
+    "inclusionRule": "both perceived ratings are numeric and within [1, 9]",
+    "statistics": "arithmetic mean and sample standard deviation",
+    "privacy": "Only category aggregates are emitted; participant identifiers, demographics, stimulus paths, and trial rows are excluded."
+  },
+  "anchors": [
+    {
+      "id": "affec-perceived-angry-v0.1",
+      "sourceCategory": "angry",
+      "n": 920,
+      "sourceMean": {
+        "valence": 2.886957,
+        "arousal": 6.513043
+      },
+      "sourceSampleSd": {
+        "valence": 1.197678,
+        "arousal": 1.688418
+      },
+      "normalizedMean": {
+        "x": -0.52826087,
+        "y": 0.37826087
+      },
+      "normalizedSampleSd": {
+        "x": 0.29941949,
+        "y": 0.42210445
+      }
+    },
+    {
+      "id": "affec-perceived-disgust-v0.1",
+      "sourceCategory": "disgust",
+      "n": 923,
+      "sourceMean": {
+        "valence": 3.049837,
+        "arousal": 5.393283
+      },
+      "sourceSampleSd": {
+        "valence": 1.19276,
+        "arousal": 1.70753
+      },
+      "normalizedMean": {
+        "x": -0.48754063,
+        "y": 0.09832069
+      },
+      "normalizedSampleSd": {
+        "x": 0.29818998,
+        "y": 0.42688258
+      }
+    },
+    {
+      "id": "affec-perceived-fear-v0.1",
+      "sourceCategory": "fear",
+      "n": 992,
+      "sourceMean": {
+        "valence": 3.15625,
+        "arousal": 6.024194
+      },
+      "sourceSampleSd": {
+        "valence": 1.088784,
+        "arousal": 1.800162
+      },
+      "normalizedMean": {
+        "x": -0.4609375,
+        "y": 0.25604839
+      },
+      "normalizedSampleSd": {
+        "x": 0.27219597,
+        "y": 0.4500406
+      }
+    },
+    {
+      "id": "affec-perceived-happy-v0.1",
+      "sourceCategory": "happy",
+      "n": 994,
+      "sourceMean": {
+        "valence": 7.411469,
+        "arousal": 6.064386
+      },
+      "sourceSampleSd": {
+        "valence": 1.280699,
+        "arousal": 1.80351
+      },
+      "normalizedMean": {
+        "x": 0.6028672,
+        "y": 0.26609658
+      },
+      "normalizedSampleSd": {
+        "x": 0.32017481,
+        "y": 0.45087746
+      }
+    },
+    {
+      "id": "affec-perceived-neutral-v0.1",
+      "sourceCategory": "neutral",
+      "n": 986,
+      "sourceMean": {
+        "valence": 4.511156,
+        "arousal": 3.281947
+      },
+      "sourceSampleSd": {
+        "valence": 0.917056,
+        "arousal": 1.722829
+      },
+      "normalizedMean": {
+        "x": -0.12221095,
+        "y": -0.42951318
+      },
+      "normalizedSampleSd": {
+        "x": 0.22926406,
+        "y": 0.43070732
+      }
+    },
+    {
+      "id": "affec-perceived-sad-v0.1",
+      "sourceCategory": "sad",
+      "n": 992,
+      "sourceMean": {
+        "valence": 3.245968,
+        "arousal": 4.525202
+      },
+      "sourceSampleSd": {
+        "valence": 1.214603,
+        "arousal": 1.963689
+      },
+      "normalizedMean": {
+        "x": -0.43850806,
+        "y": -0.1186996
+      },
+      "normalizedSampleSd": {
+        "x": 0.30365083,
+        "y": 0.49092226
+      }
+    }
+  ],
+  "derivation": {
+    "script": "scripts/build-affec-perceived-va-calibration.py",
+    "scriptSha256": "3e56b86ce9a4952209e7b3e9de918c83971b00f31433f976885aa129b7f77b58"
+  },
+  "claimScope": {
+    "supports": [
+      "aggregate-perceived-category-location"
+    ],
+    "doesNotSupport": [
+      "portrait-expression-validity",
+      "individual-affect-inference",
+      "emotion-recognition",
+      "demographic-inference",
+      "diagnosis"
+    ]
+  }
+}

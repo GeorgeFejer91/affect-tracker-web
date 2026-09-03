@@ -36,13 +36,28 @@ Source license and credits:
 - https://github.com/ibrews/VitruvianGodot/blob/bdecdcd537b4031fdd0fb299b7e4f93f084fffa0/LICENSE
 - https://github.com/ibrews/VitruvianGodot/blob/bdecdcd537b4031fdd0fb299b7e4f93f084fffa0/NOTICE.md
 
-## AFFEC empirical aggregate calibration
+## AFFEC aggregate evidence and authored bindings
 
-`site/src/face-affec.js` contains project-computed counts, means, and standard
-deviations for AFFEC's perceived-emotion valence/arousal fields across all
-5,807 valid trials in AFFEC Multimodal Dataset core v0.1. Ratings were
-normalized from the published 1–9 scale with `(rating - 5) / 4`. The category
-prototype morphs and continuous RBF interpolation are project-authored.
+`affec-perceived-va-evidence-v1.json` contains project-computed counts, means,
+and sample standard deviations for AFFEC's perceived-emotion valence/arousal
+fields across all 5,807 valid observations in AFFEC Multimodal Dataset core
+v0.1. Ratings were normalized from the published 1–9 scale with
+`(rating - 5) / 4`. The artifact contains dataset-derived aggregates only.
+`scripts/build-affec-perceived-va-calibration.py` reproduces it from the exact
+official `core.zip`: 5,645,457 bytes, MD5
+`7157e9bedacf58f42692688fb20b57b1`, SHA-256
+`f5b71a3360a21e05d01f92172ea52bbcc6bb4a763f181da10b8e63af2faf7e99`.
+
+`affec-photoatlas-authoring-binding-v1.json` separately classifies the six
+category-to-portrait correspondences, Gaussian transfer, sharpening, and
+gates as project-authored. The runtime uses those compiled constants without
+fetching either provenance artifact. It keeps tracker `currentX/currentY`
+unchanged and uses separate `atlasX/atlasY` only to sample the selected local
+atlas. AFFEC supports the aggregate perceived category locations; it does not
+validate the portrait mapping, transfer surface, nine source anchors, 441
+derived cells, selected fictional identity, emotion recognition, demographic
+inference, or diagnosis. The separate Direct-grid Photoatlas remains available
+as an authored comparison.
 
 Source: [AFFEC Zenodo record 14794876](https://zenodo.org/records/14794876)
 and the [AFFEC devkit repository](https://github.com/itubrainlab/AFFEC).
@@ -51,8 +66,9 @@ accompanying repository currently describes the dataset files as **CC0**. This
 project follows the more conservative
 [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) attribution path for
 the redistributed aggregate statistics and identifies the transformation
-above. No AFFEC image, audio, video, participant record, or trial-level row is
-shipped or loaded by the application.
+above. No AFFEC image, audio, video, participant identifier, demographic
+field, stimulus path, or trial-level row is shipped or loaded by the
+application.
 
 ## MediaPipe build-time coefficient extraction
 

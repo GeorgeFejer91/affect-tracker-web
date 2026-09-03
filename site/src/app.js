@@ -11,7 +11,7 @@ import {
   createFaceEngineRenderer,
   faceEngineDefinition,
   normalizeFaceEngineMode,
-} from "./face-engines.js?v=face-engines-2-matrix21-1-friendly-eyes-1-photo-packs-1";
+} from "./face-engines.js?v=face-engines-2-matrix21-1-friendly-eyes-1-photo-packs-1-affec-guided-3";
 import {
   facePhotoPackDefinition,
   facePhotoPackCompactLabel,
@@ -936,7 +936,9 @@ function updateMainFaceRendererStatus(selectedMode = state.faceEngineMode, effec
   const suffix = effective === "model"
     ? " · detailed local 3D"
     : effective === "photo"
-      ? " · photoreal fallback"
+      ? definition.kind === "photo"
+        ? " · selected local atlas"
+        : " · photoreal fallback"
       : " · vector fallback";
   const packSuffix = definition.kind === "photo"
     ? ` · ${facePhotoPackPublicLabel(pack, facePhotoPackCatalog)}`
@@ -964,7 +966,7 @@ function initializeFacePhotoPackControls() {
 }
 
 function updateFacePhotoPackControls() {
-  const photoSelected = state.faceEngineMode === "photo-atlas";
+  const photoSelected = faceEngineDefinition(state.faceEngineMode).kind === "photo";
   const pack = facePhotoPackDefinition(state.facePhotoPackId, facePhotoPackCatalog);
   elements.mobileFaceControls.classList.toggle("has-photo-pack", photoSelected);
   elements.mainFacePhotoPackField.hidden = !photoSelected;
@@ -1195,7 +1197,7 @@ function placeMobileDirectController() {
   }
   elements.mobileFaceControls.hidden = !faceHostsController;
   elements.mobileFacePhotoPackField.hidden = !faceHostsController
-    || state.faceEngineMode !== "photo-atlas";
+    || faceEngineDefinition(state.faceEngineMode).kind !== "photo";
   elements.mobileOpenSettings.textContent = faceHostsController ? "Face options" : "Settings";
   elements.mobileOpenSettings.setAttribute(
     "aria-label",
@@ -2634,7 +2636,9 @@ function renderSynchronizedAffectPreview(snapshot, flubber) {
     const faceKind = effectiveMode === "model"
       ? `${definition.label} affect face`
       : effectiveMode === "photo"
-        ? `${definition.label} using the photoreal fallback`
+        ? definition.kind === "photo"
+          ? `${definition.label} using the selected local atlas`
+          : `${definition.label} using the photoreal fallback`
         : `${definition.label} using the canonical vector fallback`;
     root.dataset.faceRendererError = renderer.lastError?.message ?? "";
     root.dataset.faceEffectiveMode = effectiveMode;

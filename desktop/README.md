@@ -1,6 +1,6 @@
 # Affect Tracker Desktop
 
-This directory contains the local WebView source for the Tauri v2 companion. The authoritative native application lives in [`../src-tauri`](../src-tauri). During the Vite build, the desktop imports the canonical Flubber renderer from [`../site/src/math.js`](../site/src/math.js) and the same five-mode face coordinator used by GitHub Pages from [`../site/src/face-engines.js`](../site/src/face-engines.js). Detailed modes use the bundled Vitruvian GLB and Three.js renderer, then fall back locally through the project-owned photo atlas to [`../site/src/face.js`](../site/src/face.js).
+This directory contains the local WebView source for the Tauri v2 companion. The authoritative native application lives in [`../src-tauri`](../src-tauri). During the Vite build, the desktop imports the canonical Flubber renderer from [`../site/src/math.js`](../site/src/math.js) and the same six-mode face coordinator used by GitHub Pages from [`../site/src/face-engines.js`](../site/src/face-engines.js). Detailed modes use the bundled Vitruvian GLB and Three.js renderer, then fall back locally through the project-owned photo atlas to [`../site/src/face.js`](../site/src/face.js).
 
 ## Windows
 

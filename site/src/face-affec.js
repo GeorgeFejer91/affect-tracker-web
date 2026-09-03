@@ -1,4 +1,5 @@
 const clamp01 = (value) => Math.max(0, Math.min(1, Number.isFinite(value) ? value : 0));
+const clampAffect = (value) => Math.max(-1, Math.min(1, Number.isFinite(value) ? value : 0));
 
 const freezePrototype = (values) => Object.freeze(values);
 
@@ -17,15 +18,54 @@ export const AFFEC_EMPIRICAL_CENTROIDS = Object.freeze([
 ]);
 
 export const AFFEC_EMPIRICAL_METADATA = Object.freeze({
-  id: "affec-perceived-va-centroids-v1",
+  id: "affec-perceived-va-evidence-v1",
   source: "AFFEC Multimodal Dataset v0.1",
   record: "https://zenodo.org/records/14794876",
   derivedAt: "2026-09-03",
   validTrialCount: 5807,
   ratingFields: Object.freeze(["p_emotion_v", "p_emotion_a"]),
   normalization: "(rating - 5) / 4",
+  archiveFile: "core.zip",
+  archiveBytes: 5645457,
+  archiveMd5: "7157e9bedacf58f42692688fb20b57b1",
+  archiveSha256: "f5b71a3360a21e05d01f92172ea52bbcc6bb4a763f181da10b8e63af2faf7e99",
+  evidenceAsset: "../assets/affect-face/affec-perceived-va-evidence-v1.json",
+  evidenceSha256: "88bfb18e1c6ca376c2b5374a44fedc33e33022987667752ae7b0986b4113368e",
   archiveLicensePolicy: "Attributed as CC BY 4.0 per the Zenodo record; the devkit describes dataset files as CC0.",
 });
+
+/**
+ * Project-authored correspondences between AFFEC's six category labels and
+ * the owned 3 x 3 portrait sheet. The empirical data locate the categories in
+ * perceived valence/arousal space; they do not validate these synthetic faces.
+ */
+export const AFFEC_PHOTO_PROTOTYPE_COORDINATES = Object.freeze([
+  Object.freeze({ emotion: "angry", atlasX: -1, atlasY: 1 }),
+  Object.freeze({ emotion: "disgust", atlasX: -1, atlasY: 0 }),
+  Object.freeze({ emotion: "fear", atlasX: 0, atlasY: 1 }),
+  Object.freeze({ emotion: "happy", atlasX: 1, atlasY: 1 }),
+  Object.freeze({ emotion: "neutral", atlasX: 0, atlasY: 0 }),
+  Object.freeze({ emotion: "sad", atlasX: -1, atlasY: -1 }),
+]);
+
+export const AFFEC_PHOTO_MAPPING_METADATA = Object.freeze({
+  id: "affec-photoatlas-authoring-binding-v1",
+  classification: "project-authored-transfer",
+  calibration: AFFEC_EMPIRICAL_METADATA.id,
+  evidenceAsset: AFFEC_EMPIRICAL_METADATA.evidenceAsset,
+  bindingAsset: "../assets/affect-face/affec-photoatlas-authoring-binding-v1.json",
+  bindingSha256: "3b36eea83aebe6aa8a6566b2f359d5bd9ba831508373983fbc2fb2a51c73159a",
+  kernel: "anisotropic Gaussian using category sample standard deviations",
+  minimumNormalizedSpread: 0.18,
+  prototypeWeightPower: 3,
+  maximumEmpiricalBlend: 0.72,
+  claimStatus: "empirically-guided",
+  evidenceBoundary: "AFFEC validates aggregate perceived category locations only; prototype correspondences, transfer surface, portrait anchors, dense cells, and appearance are project-authored and not validated emotion recognition or diagnosis.",
+});
+
+const PHOTO_PROTOTYPE_BY_EMOTION = new Map(
+  AFFEC_PHOTO_PROTOTYPE_COORDINATES.map((entry) => [entry.emotion, entry]),
+);
 
 const PROTOTYPES = Object.freeze({
   angry: freezePrototype({
@@ -74,6 +114,70 @@ const smoothMagnitude = (value) => {
   const magnitude = clamp01(value);
   return magnitude * magnitude * (3 - 2 * magnitude);
 };
+
+/**
+ * Map the unchanged tracker coordinate into the owned Photoatlas authoring
+ * space. Six smooth AFFEC category kernels vote for their project-authored
+ * portrait prototypes. A confidence and distance-from-neutral gate limits the
+ * empirical deformation, so unsupported corners retain the direct grid and
+ * neutral remains exactly neutral. The returned tracker coordinates are kept
+ * separately to make the one-authority boundary inspectable.
+ */
+export function mapAffecPhotoAtlasCoordinates(snapshot = {}) {
+  const currentX = clampAffect(snapshot.currentX);
+  const currentY = clampAffect(snapshot.currentY);
+  const intensity = smoothMagnitude(Math.max(Math.abs(currentX), Math.abs(currentY)));
+  if (intensity === 0) {
+    return Object.freeze({
+      currentX,
+      currentY,
+      atlasX: 0,
+      atlasY: 0,
+      empiricalBlend: 0,
+      maximumKernel: 0,
+    });
+  }
+
+  let total = 0;
+  let prototypeX = 0;
+  let prototypeY = 0;
+  let maximumKernel = 0;
+  for (const centroid of AFFEC_EMPIRICAL_CENTROIDS) {
+    const centerX = (centroid.meanValence - 5) / 4;
+    const centerY = (centroid.meanArousal - 5) / 4;
+    const spreadX = Math.max(
+      AFFEC_PHOTO_MAPPING_METADATA.minimumNormalizedSpread,
+      centroid.sdValence / 4,
+    );
+    const spreadY = Math.max(
+      AFFEC_PHOTO_MAPPING_METADATA.minimumNormalizedSpread,
+      centroid.sdArousal / 4,
+    );
+    const dx = (currentX - centerX) / spreadX;
+    const dy = (currentY - centerY) / spreadY;
+    const kernel = Math.exp(-0.5 * (dx * dx + dy * dy));
+    const weight = kernel ** AFFEC_PHOTO_MAPPING_METADATA.prototypeWeightPower;
+    const prototype = PHOTO_PROTOTYPE_BY_EMOTION.get(centroid.emotion);
+    prototypeX += weight * prototype.atlasX;
+    prototypeY += weight * prototype.atlasY;
+    total += weight;
+    maximumKernel = Math.max(maximumKernel, kernel);
+  }
+
+  const empiricalBlend = AFFEC_PHOTO_MAPPING_METADATA.maximumEmpiricalBlend
+    * smoothMagnitude(maximumKernel)
+    * intensity;
+  const targetX = total > 0 ? prototypeX / total : currentX;
+  const targetY = total > 0 ? prototypeY / total : currentY;
+  return Object.freeze({
+    currentX,
+    currentY,
+    atlasX: clampAffect(currentX + (targetX - currentX) * empiricalBlend),
+    atlasY: clampAffect(currentY + (targetY - currentY) * empiricalBlend),
+    empiricalBlend,
+    maximumKernel,
+  });
+}
 
 /**
  * Blend AFFEC's empirical category locations with artist-authored Vitruvian

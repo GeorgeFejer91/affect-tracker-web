@@ -5,11 +5,13 @@ import test from "node:test";
 import {
   FACE_PHOTO_ATLAS_URL,
   FACE_PHOTO_GRID_SIZE,
+  FACE_PHOTO_PROFILES,
   buildFacePhotoState,
   computeFacePhotoBlend,
   computeFacePhotoLayout,
   createFacePhotoRenderer,
   normalizeFacePhotoFrame,
+  normalizeFacePhotoProfile,
   resolveFacePhotoAtlasUrl,
 } from "../site/src/face-photo.js";
 
@@ -123,6 +125,9 @@ test("photo atlas URL is module-relative and frame normalization uses only displ
     /\/site\/assets\/affect-face\/affect-face-atlas-v3\.webp$/,
   );
   assert.equal(FACE_PHOTO_GRID_SIZE, 21);
+  assert.deepEqual(FACE_PHOTO_PROFILES, ["geometric-grid", "affec-guided"]);
+  assert.equal(normalizeFacePhotoProfile("affec-guided"), "affec-guided");
+  assert.equal(normalizeFacePhotoProfile("unknown"), "geometric-grid");
   assert.equal(resolveFacePhotoAtlasUrl(), FACE_PHOTO_ATLAS_URL);
   assert.equal(
     resolveFacePhotoAtlasUrl("../assets/custom-atlas.webp"),
@@ -142,6 +147,45 @@ test("photo atlas URL is module-relative and frame normalization uses only displ
     ),
     { currentX: 1, currentY: -1, overlayOpacity: 1, reducedMotion: true },
   );
+});
+
+test("AFFEC photo profile preserves tracker coordinates while sampling its empirical atlas field", () => {
+  const snapshot = { currentX: 0.60286725, currentY: 0.2660965 };
+  const direct = computeFacePhotoBlend(snapshot);
+  const empirical = computeFacePhotoBlend(snapshot, "affec-guided");
+  assert.equal(empirical.currentX, snapshot.currentX);
+  assert.equal(empirical.currentY, snapshot.currentY);
+  assert.equal(empirical.profile, "affec-guided");
+  assert.ok(empirical.atlasX > direct.atlasX);
+  assert.ok(empirical.atlasY > direct.atlasY);
+  assert.ok(empirical.empiricalBlend > 0.4);
+  assert.ok(empirical.tiles.length >= 1 && empirical.tiles.length <= 4);
+  assert.ok(Math.abs(empirical.tiles.reduce((sum, tile) => sum + tile.weight, 0) - 1) < 1e-12);
+});
+
+test("ready renderer hot-switches the AFFEC-guided sampling profile without changing state", () => {
+  const fixture = createRendererFixture();
+  const image = createImageMock();
+  const renderer = createFacePhotoRenderer(fixture.root, {
+    imageFactory: () => image,
+    maxDevicePixelRatio: 1,
+    profile: "affec-guided",
+  });
+  const snapshot = Object.freeze({ currentX: 0.60286725, currentY: 0.2660965 });
+  renderer(snapshot);
+  image.succeed();
+  const guided = renderer(snapshot);
+  assert.equal(renderer.profile, "affec-guided");
+  assert.equal(fixture.root.dataset.facePhotoProfile, "affec-guided");
+  assert.equal(guided.currentX, snapshot.currentX);
+  assert.equal(guided.currentY, snapshot.currentY);
+  assert.ok(guided.atlasX > guided.currentX);
+
+  assert.equal(renderer.setProfile("geometric-grid"), "geometric-grid");
+  const direct = renderer(snapshot);
+  assert.equal(fixture.root.dataset.facePhotoProfile, "geometric-grid");
+  assert.equal(direct.atlasX, snapshot.currentX);
+  assert.equal(direct.atlasY, snapshot.currentY);
 });
 
 test("dense atlas metadata locks the owned source, generated output, and mobile budget", () => {

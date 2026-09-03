@@ -27,10 +27,11 @@ function fixture() {
       return null;
     },
   };
-  const calls = { model: [], photo: [], vector: [], profiles: [], photoAtlases: [] };
+  const calls = { model: [], photo: [], vector: [], profiles: [], photoAtlases: [], photoProfiles: [] };
   let modelMode = "model";
   let photoMode = "photo";
   let photoAtlasUrl = "atlas-default.webp";
+  let photoProfile = "geometric-grid";
   let profile = "affec-empirical";
   const vectorRenderer = (...args) => { calls.vector.push(args); return { vector: true }; };
   const photoRenderer = (...args) => {
@@ -42,12 +43,18 @@ function fixture() {
   Object.defineProperties(photoRenderer, {
     mode: { get: () => photoMode },
     atlasUrl: { get: () => photoAtlasUrl },
+    profile: { get: () => photoProfile },
     lastError: { get: () => null },
   });
   photoRenderer.setAtlasUrl = (value) => {
     photoAtlasUrl = value;
     calls.photoAtlases.push(value);
     return photoAtlasUrl;
+  };
+  photoRenderer.setProfile = (value) => {
+    photoProfile = value;
+    calls.photoProfiles.push(value);
+    return photoProfile;
   };
   photoRenderer.resize = () => {};
   photoRenderer.destroy = () => {};
@@ -77,10 +84,11 @@ function fixture() {
   };
 }
 
-test("catalog exposes exactly five testable offline face solutions", () => {
+test("catalog exposes the testable offline face solutions and two Photoatlas mappings", () => {
   assert.equal(DEFAULT_FACE_ENGINE_MODE, "affec-empirical");
   assert.deepEqual(FACE_ENGINE_MODES.map(({ id }) => id), [
     "affec-empirical",
+    "photo-affec",
     "mediapipe-atlas",
     "facs-continuous",
     "matrix-anchors",
@@ -93,6 +101,12 @@ test("catalog exposes exactly five testable offline face solutions", () => {
   assert.match(matrix.description, /441-state/);
   assert.match(matrix.description, /diagonal/);
   assert.equal(faceEngineDefinition("photo-atlas").kind, "photo");
+  assert.equal(faceEngineDefinition("photo-atlas").profile, "geometric-grid");
+  assert.equal(faceEngineDefinition("photo-affec").kind, "photo");
+  assert.equal(faceEngineDefinition("photo-affec").profile, "affec-guided");
+  assert.match(faceEngineDefinition("photo-affec").description, /5,807/);
+  assert.match(faceEngineDefinition("photo-affec").description, /not validated expressions/);
+  assert.doesNotMatch(faceEngineDefinition("photo-affec").label, /calibrated|validated/i);
 });
 
 test("effective-mode resolution follows model to photo to vector fallbacks", () => {
@@ -100,6 +114,19 @@ test("effective-mode resolution follows model to photo to vector fallbacks", () 
   assert.equal(resolveFaceEffectiveMode({ mode: "photo" }), "photo");
   assert.equal(resolveFaceEffectiveMode({ mode: "fallback", result: { mode: "photo" } }), "photo");
   assert.equal(resolveFaceEffectiveMode({ mode: "fallback", result: { vector: true } }), "vector");
+});
+
+test("a persisted Photoatlas mode initializes the real fallback stack with compatible profiles", () => {
+  const f = fixture();
+  const renderer = createFaceEngineRenderer(f.root, {
+    mode: "photo-atlas",
+    vectorRenderer: f.vectorRenderer,
+  });
+  assert.equal(renderer.mode, "photo-atlas");
+  assert.equal(renderer.definition.profile, "geometric-grid");
+  assert.equal(renderer.photoRenderer.profile, "geometric-grid");
+  assert.equal(renderer.modelRenderer.profile, "affec-empirical");
+  renderer.destroy();
 });
 
 test("selector hot-switches all model profiles without duplicating render state", () => {
@@ -145,7 +172,7 @@ test("photo selection bypasses the model and vector remains the final fallback",
     modelRenderer: f.modelRenderer,
   });
   const snapshot = { currentX: -0.2, currentY: 0.6 };
-  renderer.setMode("photo-atlas");
+  renderer.setMode("photo-affec");
   const photo = renderer(snapshot);
   assert.equal(photo.effectiveMode, "photo");
   assert.equal(f.calls.model.length, 0);
@@ -153,6 +180,11 @@ test("photo selection bypasses the model and vector remains the final fallback",
   assert.equal(f.nodes.model.hidden, true);
   assert.equal(f.nodes.photo.hidden, false);
   assert.equal(f.nodes.vector.hidden, true);
+  assert.deepEqual(f.calls.photoProfiles, ["affec-guided"]);
+
+  renderer.setMode("photo-atlas");
+  renderer(snapshot);
+  assert.deepEqual(f.calls.photoProfiles, ["affec-guided", "geometric-grid"]);
 
   f.setPhotoMode("fallback");
   const vector = renderer(snapshot);
