@@ -4,6 +4,10 @@ import {
   normalizeFace3dFrame,
   resolveFace3dPalette,
 } from "./face-3d.js";
+import {
+  AFFECT_MATRIX_SIZE,
+  affectMatrixCoordinate,
+} from "./affect-matrix.js?v=matrix21-1";
 
 const TAU = Math.PI * 2;
 const HEAD_LATITUDES = 48;
@@ -14,6 +18,8 @@ const HEAD_RADIUS_X = 0.68;
 const HEAD_RADIUS_Y = 0.94;
 const HEAD_RADIUS_Z = 0.65;
 const DEFAULT_CANVAS_SIZE = 360;
+export const FACE_WEBGL_MATRIX_SIZE = AFFECT_MATRIX_SIZE;
+export const FACE_WEBGL_MATRIX_STEP = 2 / (FACE_WEBGL_MATRIX_SIZE - 1);
 
 const clamp = (value, minimum = -1, maximum = 1) =>
   Math.max(minimum, Math.min(maximum, Number.isFinite(value) ? value : 0));
@@ -171,13 +177,13 @@ const UNIT_SPHERE = createClosedUvMesh(
 );
 
 function matrixCoordinate(index) {
-  return Number((-1 + index * 0.2).toFixed(10));
+  return affectMatrixCoordinate(index);
 }
 
 function createMatrixStateCache() {
   const states = [];
-  for (let row = 0; row < 11; row += 1) {
-    for (let column = 0; column < 11; column += 1) {
+  for (let row = 0; row < FACE_WEBGL_MATRIX_SIZE; row += 1) {
+    for (let column = 0; column < FACE_WEBGL_MATRIX_SIZE; column += 1) {
       const x = matrixCoordinate(column);
       const y = matrixCoordinate(row);
       states.push(Object.freeze({
@@ -193,14 +199,15 @@ function createMatrixStateCache() {
   return Object.freeze(states);
 }
 
-/** Runtime-only cache: 121 small expression records, never an image/mesh atlas. */
+/** Runtime-only cache: 441 small expression records, never an image/mesh atlas. */
 export const FACE_WEBGL_MATRIX_STATES = createMatrixStateCache();
 
 function cachedMatrixState(x, y) {
-  const column = Math.round((x + 1) * 5);
-  const row = Math.round((y + 1) * 5);
-  if (column < 0 || column > 10 || row < 0 || row > 10) return null;
-  const candidate = FACE_WEBGL_MATRIX_STATES[row * 11 + column];
+  const scale = (FACE_WEBGL_MATRIX_SIZE - 1) / 2;
+  const column = Math.round((x + 1) * scale);
+  const row = Math.round((y + 1) * scale);
+  if (column < 0 || column >= FACE_WEBGL_MATRIX_SIZE || row < 0 || row >= FACE_WEBGL_MATRIX_SIZE) return null;
+  const candidate = FACE_WEBGL_MATRIX_STATES[row * FACE_WEBGL_MATRIX_SIZE + column];
   return Math.abs(candidate.x - x) <= 1e-9 && Math.abs(candidate.y - y) <= 1e-9
     ? candidate
     : null;

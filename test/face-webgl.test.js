@@ -4,6 +4,8 @@ import test from "node:test";
 import { interpolateFaceExpression } from "../site/src/face.js";
 import {
   FACE_WEBGL_MATRIX_STATES,
+  FACE_WEBGL_MATRIX_SIZE,
+  FACE_WEBGL_MATRIX_STEP,
   FACE_WEBGL_METRICS,
   buildFaceWebglComponents,
   buildFaceWebglGeometry,
@@ -15,24 +17,26 @@ const approximately = (actual, expected, tolerance = 1e-7) => {
   assert.ok(Math.abs(actual - expected) <= tolerance, `${actual} should be near ${expected}`);
 };
 
-test("WebGL face exposes a dense static mesh and compact 11 by 11 state cache", () => {
-  assert.equal(FACE_WEBGL_MATRIX_STATES.length, 121);
-  assert.equal(FACE_WEBGL_METRICS.matrixStateCount, 121);
+test("WebGL face exposes a dense static mesh and compact 21 by 21 state cache", () => {
+  assert.equal(FACE_WEBGL_MATRIX_SIZE, 21);
+  assert.equal(FACE_WEBGL_MATRIX_STEP, 0.1);
+  assert.equal(FACE_WEBGL_MATRIX_STATES.length, 441);
+  assert.equal(FACE_WEBGL_METRICS.matrixStateCount, 441);
   assert.ok(FACE_WEBGL_METRICS.headVertices >= 3_000);
   assert.ok(FACE_WEBGL_METRICS.headTriangles >= 6_000);
   assert.ok(FACE_WEBGL_METRICS.staticGpuBufferBytes < 150_000);
   assert.equal(FACE_WEBGL_METRICS.perFrameBufferUpdates, 0);
 
-  const centre = FACE_WEBGL_MATRIX_STATES[5 * 11 + 5];
+  const centre = FACE_WEBGL_MATRIX_STATES[10 * 21 + 10];
   assert.equal(centre.x, 0);
   assert.equal(centre.y, 0);
-  assert.equal(centre.row, 5);
-  assert.equal(centre.column, 5);
+  assert.equal(centre.row, 10);
+  assert.equal(centre.column, 10);
   assert.equal(centre.expression.mouthCurve, 0);
   assert.equal(centre.expression.mouthOpen, 0);
   for (const state of FACE_WEBGL_MATRIX_STATES) {
-    assert.equal(state.x, Number((-1 + state.column * 0.2).toFixed(10)));
-    assert.equal(state.y, Number((-1 + state.row * 0.2).toFixed(10)));
+    assert.equal(state.x, Number((-1 + state.column * 0.1).toFixed(10)));
+    assert.equal(state.y, Number((-1 + state.row * 0.1).toFixed(10)));
   }
 });
 

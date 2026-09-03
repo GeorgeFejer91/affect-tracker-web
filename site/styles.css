@@ -657,6 +657,22 @@ body.is-experiment-running .flubber-party-stage { display: none; }
 .face-engine-field { display: grid; gap: 0.3rem; color: rgb(255 255 255 / 68%); font-size: 0.7rem; font-weight: 650; }
 .face-engine-field select { width: 100%; min-height: 2.35rem; padding: 0.35rem 0.45rem; border: 1px solid rgb(255 255 255 / 18%); border-radius: 0.45rem; background: #15181b; color: #fff; }
 .face-engine-help { min-height: 2.8em; margin: -0.2rem 0 0; color: rgb(255 255 255 / 55%); font-size: 0.66rem; line-height: 1.4; }
+.main-matrix-controls {
+  display: grid;
+  gap: 0.55rem;
+  padding: 0.65rem;
+  border: 1px solid rgb(120 215 255 / 24%);
+  border-radius: 0.55rem;
+  background: rgb(120 215 255 / 5%);
+}
+.main-matrix-controls[hidden] { display: none; }
+.main-matrix-controls > label { display: grid; gap: 0.35rem; color: rgb(255 255 255 / 68%); font-size: 0.7rem; font-weight: 650; }
+.main-matrix-controls > label > span:last-child { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 0.55rem; }
+.main-matrix-controls input[type="range"] { width: 100%; min-width: 0; }
+.main-matrix-controls output { color: #d9f5ff; font: 650 0.66rem ui-monospace, SFMono-Regular, Consolas, monospace; }
+.main-matrix-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 0.45rem; }
+.main-matrix-actions button { min-height: 2.35rem; }
+.main-matrix-status { display: block; min-height: 1.2em; }
 #main-face-center-button { width: 100%; min-height: 2.45rem; }
 .main-face-renderer-status { margin: 0; color: rgb(255 255 255 / 58%); font-size: 0.66rem; }
 .main-face-renderer-status output { color: #d9f5ff; }
@@ -2095,6 +2111,10 @@ kbd {
   body.is-smartphone-layout .face-engine-field select {
     font-size: 1rem;
   }
+
+  body.is-smartphone-layout .main-matrix-actions button {
+    min-height: 2.75rem;
+  }
 }
 
 body.is-smartphone-layout #control-panel:not(.is-mobile-settings-open) .panel-content {
@@ -2328,6 +2348,14 @@ body.is-smartphone-layout.is-main-face-visible .mobile-direct-flubber { width: m
   pointer-events: none;
 }
 
+.mobile-coordinate-space.is-matrix-transition::before {
+  background:
+    repeating-linear-gradient(to right, transparent 0 calc(5% - 0.5px), rgb(255 255 255 / 13%) calc(5% - 0.5px) 5%),
+    repeating-linear-gradient(to bottom, transparent 0 calc(5% - 0.5px), rgb(255 255 255 / 13%) calc(5% - 0.5px) 5%),
+    linear-gradient(to right, transparent calc(50% - 1px), rgb(255 255 255 / 50%) calc(50% - 1px) calc(50% + 1px), transparent calc(50% + 1px)),
+    linear-gradient(to bottom, transparent calc(50% - 1px), rgb(255 255 255 / 50%) calc(50% - 1px) calc(50% + 1px), transparent calc(50% + 1px));
+}
+
 .mobile-coordinate-axis {
   position: absolute;
   z-index: 2;
@@ -2357,6 +2385,23 @@ body.is-smartphone-layout.is-main-face-visible .mobile-direct-flubber { width: m
   transform: translate(-50%, -50%);
   pointer-events: none;
 }
+
+.mobile-coordinate-target {
+  position: absolute;
+  z-index: 3;
+  left: 50%;
+  top: 50%;
+  width: 1.45rem;
+  height: 1.45rem;
+  border: 2px dashed rgb(255 255 255 / 88%);
+  transform: translate(-50%, -50%) rotate(45deg);
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 70%), 0 0 0.8rem rgb(120 215 255 / 45%);
+  pointer-events: none;
+}
+
+.mobile-coordinate-target[hidden] { display: none; }
+
+.mobile-coordinate-point { z-index: 4; }
 
 .mobile-coordinate-point::before {
   content: "";

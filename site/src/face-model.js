@@ -3,6 +3,11 @@ import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { MeshoptDecoder } from "three/addons/libs/meshopt_decoder.module.js";
 import { buildAffecEmpiricalWeights } from "./face-affec.js";
 import { buildMediapipeAtlasWeights } from "./face-mediapipe-calibration.js";
+import {
+  AFFECT_MATRIX_SIZE,
+  affectMatrixCellFromCoordinates,
+  affectMatrixCoordinate,
+} from "./affect-matrix.js?v=matrix21-1";
 
 const DEFAULT_CANVAS_SIZE = 320;
 const DEFAULT_VERTICAL_FOV = 28;
@@ -166,6 +171,44 @@ function buildMatrixAnchorWeights(currentX, currentY) {
   return result;
 }
 
+function finalizeMorphWeights(result) {
+  for (const name of FACE_MODEL_MORPH_NAMES) {
+    result[name] = clamp(result[name], 0, 1);
+  }
+  return Object.freeze(result);
+}
+
+function createFaceModelMatrixStates() {
+  const states = [];
+  for (let row = 0; row < AFFECT_MATRIX_SIZE; row += 1) {
+    for (let column = 0; column < AFFECT_MATRIX_SIZE; column += 1) {
+      const x = affectMatrixCoordinate(column);
+      const y = affectMatrixCoordinate(row);
+      states.push(Object.freeze({
+        row,
+        column,
+        x,
+        y,
+        weights: finalizeMorphWeights(buildMatrixAnchorWeights(x, y)),
+      }));
+    }
+  }
+  return Object.freeze(states);
+}
+
+/** Compact coefficient cache only; no image, texture, or duplicate mesh data. */
+export const FACE_MODEL_MATRIX_STATES = createFaceModelMatrixStates();
+
+export function resolveFaceModelMatrixState(snapshot = {}) {
+  const currentX = clamp(snapshot?.currentX, -1, 1);
+  const currentY = clamp(snapshot?.currentY, -1, 1);
+  const cell = affectMatrixCellFromCoordinates(currentX, currentY);
+  const state = FACE_MODEL_MATRIX_STATES[cell.row * AFFECT_MATRIX_SIZE + cell.column];
+  return Math.abs(state.x - currentX) <= 1e-9 && Math.abs(state.y - currentY) <= 1e-9
+    ? state
+    : null;
+}
+
 const smoothMagnitude = (value) => {
   const magnitude = clamp(Math.abs(value), 0, 1);
   return magnitude * magnitude * (3 - 2 * magnitude);
@@ -217,15 +260,13 @@ export function buildFaceModelWeights(snapshot = {}, options = {}) {
   } else if (profile === "mediapipe-atlas") {
     result = { ...emptyMorphWeights(), ...buildMediapipeAtlasWeights({ currentX, currentY }) };
   } else if (profile === "matrix-anchors") {
+    const cached = resolveFaceModelMatrixState({ currentX, currentY });
+    if (cached) return cached.weights;
     result = buildMatrixAnchorWeights(currentX, currentY);
   } else {
     result = buildContinuousWeights(currentX, currentY);
   }
-
-  for (const name of FACE_MODEL_MORPH_NAMES) {
-    result[name] = clamp(result[name], 0, 1);
-  }
-  return Object.freeze(result);
+  return finalizeMorphWeights(result);
 }
 
 function findCanvas(root) {
@@ -595,7 +636,11 @@ export function createFaceModelRenderer(root, options = {}) {
       return renderFallback(call.snapshot, call.reducedMotion, call.presentationColor);
     }
     if (resizeDirty) measure(true);
-    const weights = buildFaceModelWeights(call.snapshot, { profile: activeProfile });
+    const matrixState = activeProfile === "matrix-anchors"
+      ? resolveFaceModelMatrixState(call.snapshot)
+      : null;
+    const weights = matrixState?.weights
+      ?? buildFaceModelWeights(call.snapshot, { profile: activeProfile });
     const morphMeshCount = applyWeights(model, weights);
     webglRenderer.render(scene, camera);
     lastError = null;
@@ -604,6 +649,14 @@ export function createFaceModelRenderer(root, options = {}) {
       mode: "model",
       profile: activeProfile,
       weights,
+      matrixState: matrixState
+        ? Object.freeze({
+          row: matrixState.row,
+          column: matrixState.column,
+          x: matrixState.x,
+          y: matrixState.y,
+        })
+        : null,
       morphMeshCount,
       mappedMaterialCount: modelInfo.mappedMaterialCount,
       framing: frameInfo,

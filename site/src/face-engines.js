@@ -1,6 +1,6 @@
 import { createFaceRenderer } from "./face.js";
 import { createFacePhotoRenderer } from "./face-photo.js";
-import { createFaceModelRenderer } from "./face-model.js";
+import { createFaceModelRenderer } from "./face-model.js?v=matrix21-1";
 
 const mode = (id, label, shortLabel, description, kind, profile = null) => Object.freeze({
   id,
@@ -38,9 +38,9 @@ export const FACE_ENGINE_MODES = Object.freeze([
   ),
   mode(
     "matrix-anchors",
-    "11 × 11 morph matrix 3D",
-    "11 × 11 matrix 3D",
-    "Interpolates a nine-anchor expression surface while the existing matrix traversal visits any of 121 exact states, including diagonal paths.",
+    "21 × 21 matrix-anchor 3D",
+    "21 × 21 matrix 3D",
+    "Uses a compact 441-state face cache at exact 0.1 nodes. Select the 21 × 21 affect transition to move face and Flubber together along shortest diagonal paths.",
     "model",
     "matrix-anchors",
   ),

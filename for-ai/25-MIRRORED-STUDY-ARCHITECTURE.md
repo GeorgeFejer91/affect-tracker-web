@@ -247,9 +247,16 @@ One state machine drives all three primary runners.
 - Questionnaires commit completed responses, not keystrokes.
 - Unsupported media, storage, input, projection, or questionnaire capability
   fails preflight with an actionable reason.
-- Face rendering and 11×11 traversal semantics must use shared fixtures so
-  Pages and WebXR match the validated desktop meaning without creating a
-  second affect authority.
+- The portable `faceFlubberComparison` presentation must use shared fixtures
+  so Pages, desktop, and WebXR render the canonical vector face and Flubber
+  from one exact current-X/current-Y/phase snapshot without creating another
+  affect authority.
+- The main GitHub Pages tracker may separately offer a session-only,
+  browser-affect-owned 21×21/441-state traversal from Face options, with
+  shortest diagonal-then-cardinal routes and a `0.5–20` states/second rate.
+  It is not part of `StudyDefinitionV1`, WebXR, native Quest, portable settings,
+  or LSL. The Tauri desktop retains its distinct Rust-owned 11×11/121-state
+  traversal and `0.5–10` states/second contract.
 
 Desktop recording is an append-only `.partial.csv`, flushed at least once per
 second and at every block boundary, followed by a durable atomic finalize to

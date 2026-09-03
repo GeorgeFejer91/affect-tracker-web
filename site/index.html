@@ -15,7 +15,7 @@
         }
       }
     </script>
-    <link rel="stylesheet" href="./styles.css?v=face-engines-1-main-2-screen-calibration-rim-2-mobile-party-camera-1-collaboration-8-retro-2-phone-preview-1-face-tab-1">
+    <link rel="stylesheet" href="./styles.css?v=face-engines-1-main-2-screen-calibration-rim-2-mobile-party-camera-1-collaboration-8-retro-2-phone-preview-1-face-tab-1-matrix21-1">
   </head>
   <body>
     <main id="stage" aria-label="Interactive affect tracker">
@@ -179,6 +179,7 @@
                 <span class="mobile-coordinate-axis axis-arousal-negative">Arousal −</span>
                 <span class="mobile-coordinate-axis axis-valence-negative">Valence −</span>
                 <span class="mobile-coordinate-axis axis-valence-positive">Valence +</span>
+                <span id="mobile-coordinate-target" class="mobile-coordinate-target" aria-hidden="true" hidden></span>
                 <span id="mobile-coordinate-point" class="mobile-coordinate-point" aria-hidden="true"><span></span></span>
                 <p id="mobile-direct-help">Drag the existing point to a new position. Touching elsewhere does not move it.</p>
               </div>
@@ -418,18 +419,37 @@
                 <option value="affec-empirical">AFFEC empirical 3D</option>
                 <option value="mediapipe-atlas">MediaPipe-rigged atlas 3D</option>
                 <option value="facs-continuous">Continuous FACS-style 3D</option>
-                <option value="matrix-anchors">11 × 11 morph matrix 3D</option>
+                <option value="matrix-anchors">21 × 21 matrix-anchor 3D</option>
                 <option value="photo-atlas">Photoreal atlas blend</option>
               </select>
             </label>
             <p id="main-face-engine-help" class="face-engine-help">Uses all 5,807 valid perceived valence/arousal trials in AFFEC to place expression prototypes, then interpolates the local morph face.</p>
+            <label class="face-engine-field" for="main-affect-transition">
+              <span>Affect transition</span>
+              <select id="main-affect-transition" aria-describedby="main-affect-transition-help">
+                <option value="continuous">Smooth continuous</option>
+                <option value="matrix">21 × 21 step matrix</option>
+              </select>
+            </label>
+            <p id="main-affect-transition-help" class="face-engine-help">Smooth mode follows the exact live coordinate. Matrix mode uses the same phone grid to choose any of 441 centered states, then moves face and Flubber together by the shortest diagonal path.</p>
+            <div id="main-matrix-controls" class="main-matrix-controls" hidden>
+              <label for="main-matrix-rate">
+                <span>Matrix rate</span>
+                <span><input id="main-matrix-rate" type="range" min="0.5" max="20" step="0.5" value="10"><output id="main-matrix-rate-output" for="main-matrix-rate">10 states/s</output></span>
+              </label>
+              <div class="main-matrix-actions">
+                <button id="main-matrix-stop" type="button">Stop</button>
+                <button id="main-matrix-neutral" type="button">Go to neutral</button>
+              </div>
+              <output id="main-matrix-status" class="main-matrix-status" aria-live="polite">Cell 11, 11 · neutral</output>
+            </div>
             <button id="main-face-center-button" type="button">Center face + Flubber</button>
             <p class="main-face-renderer-status">Renderer: <output id="main-face-renderer-output">Loading selected local solution…</output></p>
             <div class="face-flubber-values" aria-live="off">
               <span>Valence <output id="face-flubber-valence-output">+0.000</output></span>
               <span>Arousal <output id="face-flubber-arousal-output">+0.000</output></span>
             </div>
-            <p id="face-flubber-disclosure" class="face-flubber-disclosure"><strong>Interpretation boundary:</strong> every solution visualizes the exact displayed valence/arousal coordinates used by Flubber. AFFEC supplies aggregate perceived-rating locations; MediaPipe was used once during asset preparation to extract blendshape coefficients. The app does not access a camera, recognize faces, diagnose emotion, or claim that one expression uniquely represents an affective state.</p>
+            <p id="face-flubber-disclosure" class="face-flubber-disclosure"><strong>Interpretation boundary:</strong> every solution receives the exact displayed valence/arousal coordinates used by Flubber. The optional 21 × 21 transition changes that shared coordinate itself, one exact state at a time; it does not infer emotion. AFFEC supplies aggregate perceived-rating locations; MediaPipe was used once during asset preparation to extract blendshape coefficients. The app does not access a camera, recognize faces, diagnose emotion, or claim that one expression uniquely represents an affective state.</p>
           </section>
         </div>
       </section>
@@ -927,6 +947,6 @@
     </main>
 
     <script src="./vendor/vdoninja/1.5.5/vdoninja-sdk.min.js"></script>
-    <script type="module" src="./src/app.js?v=face-engines-1-main-2-screen-calibration-module-4-mobile-party-camera-1-collaboration-9-retro-2-phone-preview-1-face-tab-1"></script>
+    <script type="module" src="./src/app.js?v=face-engines-1-main-2-screen-calibration-module-4-mobile-party-camera-1-collaboration-9-retro-2-phone-preview-1-face-tab-1-matrix21-1"></script>
   </body>
 </html>

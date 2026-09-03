@@ -11,7 +11,19 @@ import {
   createFaceEngineRenderer,
   faceEngineDefinition,
   normalizeFaceEngineMode,
-} from "./face-engines.js?v=face-engines-1";
+} from "./face-engines.js?v=face-engines-2-matrix21-1";
+import {
+  AFFECT_MATRIX_CENTER_INDEX,
+  AFFECT_MATRIX_SIZE,
+  DEFAULT_AFFECT_MATRIX_STATES_PER_SECOND,
+  advanceAffectMatrixTraversal,
+  affectMatrixCellFromCoordinates,
+  createAffectMatrixCell,
+  createAffectMatrixTraversal,
+  normalizeAffectMatrixRate,
+  startAffectMatrixTraversal,
+  stopAffectMatrixTraversal,
+} from "./affect-matrix.js?v=matrix21-1";
 import {
   applyStep,
   constrainWidgetPosition,
@@ -154,6 +166,8 @@ const elements = {
   mobileCoordinateSpace: document.querySelector("#mobile-coordinate-space"),
   mobileCoordinateCanvas: document.querySelector("#mobile-coordinate-canvas"),
   mobileCoordinatePoint: document.querySelector("#mobile-coordinate-point"),
+  mobileCoordinateTarget: document.querySelector("#mobile-coordinate-target"),
+  mobileDirectHelp: document.querySelector("#mobile-direct-help"),
   mobileOpenSettings: document.querySelector("#mobile-open-settings"),
   mobileCloseSettings: document.querySelector("#mobile-close-settings"),
   faceFlubberPanel: document.querySelector("#face-flubber-panel"),
@@ -164,6 +178,14 @@ const elements = {
   mainFaceEnabled: document.querySelector("#main-face-enabled"),
   mainFaceEngine: document.querySelector("#main-face-engine"),
   mainFaceEngineHelp: document.querySelector("#main-face-engine-help"),
+  mainAffectTransition: document.querySelector("#main-affect-transition"),
+  mainAffectTransitionHelp: document.querySelector("#main-affect-transition-help"),
+  mainMatrixControls: document.querySelector("#main-matrix-controls"),
+  mainMatrixRate: document.querySelector("#main-matrix-rate"),
+  mainMatrixRateOutput: document.querySelector("#main-matrix-rate-output"),
+  mainMatrixStop: document.querySelector("#main-matrix-stop"),
+  mainMatrixNeutral: document.querySelector("#main-matrix-neutral"),
+  mainMatrixStatus: document.querySelector("#main-matrix-status"),
   mainFaceCenterButton: document.querySelector("#main-face-center-button"),
   mainFaceRendererOutput: document.querySelector("#main-face-renderer-output"),
   faceFlubberValenceOutput: document.querySelector("#face-flubber-valence-output"),
@@ -479,6 +501,8 @@ const state = {
   faceFlubberPanelOpen: preferences.faceFlubberPanelOpen,
   mainFaceEnabled: preferences.mainFaceEnabled,
   faceEngineMode: preferences.faceEngineMode,
+  affectTransitionMode: "continuous",
+  matrixStatesPerSecond: DEFAULT_AFFECT_MATRIX_STATES_PER_SECOND,
   mainFaceNeedsInitialCenter: preferences.mainFaceNeedsInitialCenter,
   experimentPanelOpen: preferences.experimentPanelOpen,
   screenCalibrationPanelOpen: preferences.screenCalibrationPanelOpen,
@@ -618,6 +642,9 @@ let polarObservedSampleRate = 130;
 const profiles = createProfiles();
 let offsets = createProjectionOffsets(logger.sessionId, profiles.waveCount);
 let previousTimestamp;
+let affectMatrixTraversal = createAffectMatrixTraversal({
+  statesPerSecond: state.matrixStatesPerSecond,
+});
 let sampleAccumulator = 0;
 let dragOffsetX = 0;
 let dragOffsetY = 0;
@@ -889,6 +916,122 @@ function updateMainFaceRendererStatus(selectedMode = state.faceEngineMode, effec
   elements.mainFaceEngineHelp.textContent = definition.description;
 }
 
+function matrixTransitionSelected() {
+  return state.affectTransitionMode === "matrix";
+}
+
+function matrixTransitionCanOwnState() {
+  return !touchTrackingActive()
+    && !liveRemoteOwnsAxes()
+    && !universeLink.snapshot().enabled
+    && !polarAxisDriven("valence")
+    && !polarAxisDriven("arousal");
+}
+
+function applyMatrixTraversalCoordinates() {
+  state.currentX = affectMatrixTraversal.currentX;
+  state.currentY = affectMatrixTraversal.currentY;
+  state.targetX = affectMatrixTraversal.targetX;
+  state.targetY = affectMatrixTraversal.targetY;
+}
+
+function updateMatrixTransitionReadout() {
+  const matrix = matrixTransitionSelected();
+  elements.mobileCoordinateSpace.classList.toggle("is-matrix-transition", matrix);
+  elements.mobileCoordinateSpace.dataset.affectTransition = state.affectTransitionMode;
+  elements.mobileCoordinateTarget.hidden = !matrix || !affectMatrixTraversal.traversing;
+  if (matrix) {
+    elements.mobileCoordinateTarget.style.left = `${coordinateToFeaturePercent(state.targetX, 0)}%`;
+    elements.mobileCoordinateTarget.style.top = `${coordinateToFeaturePercent(-state.targetY, 0)}%`;
+  }
+  elements.mobileDirectHelp.textContent = matrix
+    ? "Tap or drag to any cell. Face and Flubber traverse the shortest diagonal path together."
+    : "Drag the existing point to a new position. Touching elsewhere does not move it.";
+  const current = affectMatrixTraversal.currentCell;
+  const target = affectMatrixTraversal.targetCell;
+  const route = affectMatrixTraversal.traversing
+    ? ` → ${target.column + 1}, ${target.row + 1} · ${affectMatrixTraversal.queuedPath.length} step${affectMatrixTraversal.queuedPath.length === 1 ? "" : "s"}`
+    : " · holding";
+  elements.mainMatrixStatus.value = `Cell ${current.column + 1}, ${current.row + 1}${route}`;
+  elements.mainMatrixStop.disabled = !matrix || !affectMatrixTraversal.traversing;
+}
+
+function updateAffectTransitionControls() {
+  const matrix = matrixTransitionSelected();
+  elements.mainAffectTransition.value = state.affectTransitionMode;
+  elements.mainMatrixControls.hidden = !matrix;
+  elements.mainMatrixRate.value = String(state.matrixStatesPerSecond);
+  elements.mainMatrixRateOutput.value = `${state.matrixStatesPerSecond.toFixed(1).replace(/\.0$/, "")} states/s`;
+  elements.mainAffectTransitionHelp.textContent = matrix
+    ? "Choose any cell on the 2D grid. The shared affect state takes diagonal steps first, so face and Flubber always render the same one of 441 centered states."
+    : "The shared affect coordinate moves smoothly; face and Flubber receive the same continuous state on every frame.";
+  updateMatrixTransitionReadout();
+}
+
+function startMatrixTraversalToCoordinates(x, y) {
+  const currentCell = affectMatrixCellFromCoordinates(state.currentX, state.currentY);
+  const targetCell = affectMatrixCellFromCoordinates(x, y);
+  affectMatrixTraversal = startAffectMatrixTraversal(
+    createAffectMatrixTraversal({
+      currentCell,
+      statesPerSecond: state.matrixStatesPerSecond,
+    }),
+    targetCell,
+  );
+  applyMatrixTraversalCoordinates();
+  updateMatrixTransitionReadout();
+  return targetCell;
+}
+
+function setAffectTransitionMode(mode, source = "face-options") {
+  if (mode !== "continuous" && mode !== "matrix") return false;
+  if (mode === "matrix" && !matrixTransitionCanOwnState()) {
+    elements.mainAffectTransition.value = state.affectTransitionMode;
+    announce("Stop Touch, Polar, incoming FLUBBER, or Universe control before starting the 21 by 21 matrix.");
+    return false;
+  }
+  if (mode === state.affectTransitionMode) return true;
+  state.affectTransitionMode = mode;
+  state.heldDirections.clear();
+  clearHeldButtonStyles();
+  if (mode === "matrix") {
+    startMatrixTraversalToCoordinates(state.targetX, state.targetY);
+  } else {
+    affectMatrixTraversal = stopAffectMatrixTraversal(affectMatrixTraversal);
+    applyMatrixTraversalCoordinates();
+  }
+  updateAffectTransitionControls();
+  updateCoordinateDisplay();
+  updateFeatureSpace();
+  recordEvent(source, "mode-change", "affect-transition", mode);
+  announce(mode === "matrix"
+    ? "21 by 21 matrix selected. Choose any target cell; face and Flubber will step there together."
+    : "Smooth continuous affect transition selected.");
+  return true;
+}
+
+function stopMatrixTraversal(source = "face-options") {
+  affectMatrixTraversal = stopAffectMatrixTraversal(affectMatrixTraversal);
+  applyMatrixTraversalCoordinates();
+  updateMatrixTransitionReadout();
+  updateCoordinateDisplay();
+  updateFeatureSpace();
+  recordEvent(source, "stop", "affect-matrix", `${state.currentX.toFixed(1)},${state.currentY.toFixed(1)}`);
+}
+
+function targetNeutralMatrixState(source = "face-options") {
+  if (!matrixTransitionSelected()) return;
+  affectMatrixTraversal = startAffectMatrixTraversal(
+    affectMatrixTraversal,
+    createAffectMatrixCell(AFFECT_MATRIX_CENTER_INDEX, AFFECT_MATRIX_CENTER_INDEX),
+    state.matrixStatesPerSecond,
+  );
+  applyMatrixTraversalCoordinates();
+  updateMatrixTransitionReadout();
+  recordEvent(source, "target", "affect-matrix-neutral", 0);
+  announce("Matrix target set to exact neutral. Face and Flubber are returning together.");
+}
+
 function updateFaceFlubberPanelState() {
   elements.faceFlubberPanel.classList.toggle("is-collapsed", !state.faceFlubberPanelOpen);
   elements.faceFlubberPanelToggle.setAttribute("aria-expanded", String(state.faceFlubberPanelOpen));
@@ -900,6 +1043,7 @@ function updateFaceFlubberPanelState() {
     || experiment.phase !== "idle"
     || Boolean(pictureInPictureWindow);
   updateMainFaceRendererStatus(state.faceEngineMode);
+  updateAffectTransitionControls();
 }
 
 function updateExperimentPanelState() {
@@ -2386,12 +2530,23 @@ function renderSynchronizedAffectPreview(snapshot, flubber) {
         : `${definition.label} using the canonical vector fallback`;
     root.dataset.faceRendererError = renderer.lastError?.message ?? "";
     root.dataset.faceEffectiveMode = effectiveMode;
+    root.dataset.affectTransition = state.affectTransitionMode;
+    const matrixCell = matrixTransitionSelected()
+      ? affectMatrixCellFromCoordinates(snapshot.currentX, snapshot.currentY)
+      : null;
+    if (matrixCell) {
+      root.dataset.affectMatrixColumn = String(matrixCell.column);
+      root.dataset.affectMatrixRow = String(matrixCell.row);
+    } else {
+      delete root.dataset.affectMatrixColumn;
+      delete root.dataset.affectMatrixRow;
+    }
     updateMainFaceRendererStatus(face.mode, effectiveMode);
     root.style.opacity = String(snapshot.overlayOpacity ?? 1);
     root.dataset.renderPhase = snapshot.phase.toFixed(6);
     root.setAttribute(
       "aria-label",
-      `${faceKind}: valence ${snapshot.currentX.toFixed(3)}, arousal ${snapshot.currentY.toFixed(3)}; synchronized with the Flubber to its right.`,
+      `${faceKind}: valence ${snapshot.currentX.toFixed(3)}, arousal ${snapshot.currentY.toFixed(3)}${matrixCell ? `; 21 by 21 matrix cell ${matrixCell.column + 1}, ${matrixCell.row + 1}` : ""}; synchronized with the Flubber to its right.`,
     );
   }
   elements.faceFlubberValenceOutput.value = formatCoordinate(snapshot.currentX);
@@ -2456,15 +2611,23 @@ function updateFeatureSpace() {
   );
   for (const input of elements.paletteInputs) input.value = state.palette[input.dataset.palette];
   elements.featureSpace.setAttribute("aria-valuetext", `Valence ${state.targetX.toFixed(2)}, arousal ${state.targetY.toFixed(2)}`);
+  const matrixValueText = matrixTransitionSelected()
+    ? `Current cell ${affectMatrixTraversal.currentCell.column + 1}, ${affectMatrixTraversal.currentCell.row + 1}, valence ${state.currentX.toFixed(2)}, arousal ${state.currentY.toFixed(2)}; target cell ${affectMatrixTraversal.targetCell.column + 1}, ${affectMatrixTraversal.targetCell.row + 1}; ${affectMatrixTraversal.queuedPath.length} steps remaining`
+    : `Valence ${state.targetX.toFixed(2)}, arousal ${state.targetY.toFixed(2)}`;
   elements.mobileCoordinateSpace.setAttribute(
     "aria-valuetext",
-    `Valence ${state.targetX.toFixed(2)}, arousal ${state.targetY.toFixed(2)}`,
+    matrixValueText,
   );
+  updateMatrixTransitionReadout();
 }
 
 function claimFeatureSpaceControl() {
   if (liveRemoteOwnsAxes()) {
     announce("Disconnect incoming live FLUBBER in Ground Control before choosing a local grid point.");
+    return false;
+  }
+  if (matrixTransitionSelected() && universeLink.snapshot().enabled) {
+    announce("Stop Universe synchronization before choosing a 21 by 21 matrix target.");
     return false;
   }
   const releasedAxes = [];
@@ -2483,14 +2646,25 @@ function claimFeatureSpaceControl() {
   return true;
 }
 
-function chooseFeatureCoordinate(event) {
-  const bounds = elements.featureSpace.getBoundingClientRect();
-  state.targetX = clamp(((event.clientX - bounds.left) / bounds.width) * 2 - 1, -1, 1);
-  state.targetY = clamp(1 - ((event.clientY - bounds.top) / bounds.height) * 2, -1, 1);
-  state.currentX = state.targetX;
-  state.currentY = state.targetY;
+function chooseAffectCoordinate(x, y) {
+  if (matrixTransitionSelected()) {
+    startMatrixTraversalToCoordinates(x, y);
+  } else {
+    state.targetX = clamp(x, -1, 1);
+    state.targetY = clamp(y, -1, 1);
+    state.currentX = state.targetX;
+    state.currentY = state.targetY;
+  }
   updateCoordinateDisplay();
   updateFeatureSpace();
+}
+
+function chooseFeatureCoordinate(event) {
+  const bounds = elements.featureSpace.getBoundingClientRect();
+  chooseAffectCoordinate(
+    ((event.clientX - bounds.left) / bounds.width) * 2 - 1,
+    1 - ((event.clientY - bounds.top) / bounds.height) * 2,
+  );
 }
 
 function chooseMobileCoordinate(event) {
@@ -2500,12 +2674,7 @@ function chooseMobileCoordinate(event) {
     bounds: elements.mobileCoordinateSpace.getBoundingClientRect(),
   });
   if (!coordinate) return;
-  state.targetX = coordinate.x;
-  state.targetY = coordinate.y;
-  state.currentX = state.targetX;
-  state.currentY = state.targetY;
-  updateCoordinateDisplay();
-  updateFeatureSpace();
+  chooseAffectCoordinate(coordinate.x, coordinate.y);
 }
 
 function chooseMobileFlubberPosition(event) {
@@ -3307,6 +3476,10 @@ function resetAffect(source = "keyboard") {
     announce("Experimental movement feedback and calibration returned to neutral.");
     return;
   }
+  if (matrixTransitionSelected() && matrixTransitionCanOwnState()) {
+    targetNeutralMatrixState(source);
+    return;
+  }
   if (manualAxisAvailable("valence")) state.targetX = 0;
   if (manualAxisAvailable("arousal")) state.targetY = 0;
   state.heldDirections.clear();
@@ -3371,6 +3544,27 @@ function setTouchFeedbackMode(mode, source = "playground") {
 
 function moveTarget(direction, source, amount = state.stepSize) {
   if (!manualAxisAvailable(directionAxis(direction))) return;
+  if (matrixTransitionSelected()) {
+    const delta = {
+      left: [-1, 0],
+      right: [1, 0],
+      up: [0, 1],
+      down: [0, -1],
+    }[direction];
+    const target = affectMatrixTraversal.targetCell;
+    affectMatrixTraversal = startAffectMatrixTraversal(
+      affectMatrixTraversal,
+      createAffectMatrixCell(
+        clamp(target.column + delta[0], 0, AFFECT_MATRIX_SIZE - 1),
+        clamp(target.row + delta[1], 0, AFFECT_MATRIX_SIZE - 1),
+      ),
+      state.matrixStatesPerSecond,
+    );
+    applyMatrixTraversalCoordinates();
+    updateMatrixTransitionReadout();
+    recordEvent(source, "step", direction, 0.1);
+    return;
+  }
   const next = applyStep(state.targetX, state.targetY, direction, amount);
   if (directionAxis(direction) === "valence") state.targetX = next.x;
   else state.targetY = next.y;
@@ -3378,7 +3572,7 @@ function moveTarget(direction, source, amount = state.stepSize) {
 }
 
 function updateContinuousInput(deltaSeconds) {
-  if (touchTrackingActive() || state.inputMode !== "continuous" || state.heldDirections.size === 0) return;
+  if (matrixTransitionSelected() || touchTrackingActive() || state.inputMode !== "continuous" || state.heldDirections.size === 0) return;
   const movement = continuousMovement(state.heldDirections, deltaSeconds, state.continuousSpeed);
   if (manualAxisAvailable("valence")) state.targetX = clamp(state.targetX + movement.x);
   if (manualAxisAvailable("arousal")) state.targetY = clamp(state.targetY + movement.y);
@@ -3442,7 +3636,7 @@ function applyBoundAction(action, pressed, source, impulse = false) {
       }
       return true;
     }
-    if (impulse || state.inputMode === "step") {
+    if (matrixTransitionSelected() || impulse || state.inputMode === "step") {
       if (pressed) moveTarget(direction, source);
     } else if (pressed) {
       if (!state.heldDirections.has(direction)) {
@@ -3504,6 +3698,15 @@ function handleWheel(event) {
   event.preventDefault();
   // Keep the original browser gesture as a fallback when no wheel direction is explicitly assigned.
   const amount = normalizeWheel(event.deltaY);
+  if (matrixTransitionSelected()) {
+    moveTarget(
+      event.shiftKey
+        ? (amount >= 0 ? "right" : "left")
+        : (amount >= 0 ? "up" : "down"),
+      "wheel",
+    );
+    return;
+  }
   if (event.shiftKey) state.targetX = clamp(state.targetX + amount);
   else state.targetY = clamp(state.targetY + amount);
   recordEvent("wheel", "move", event.shiftKey ? "valence" : "arousal", amount);
@@ -4039,6 +4242,12 @@ async function runExperimentCountdown() {
   state.currentY = 0;
   state.targetX = 0;
   state.targetY = 0;
+  if (matrixTransitionSelected()) {
+    affectMatrixTraversal = createAffectMatrixTraversal({
+      statesPerSecond: state.matrixStatesPerSecond,
+    });
+    applyMatrixTraversalCoordinates();
+  }
   state.heldDirections.clear();
   clearHeldButtonStyles();
   touchTrace.reset({ width: window.innerWidth, height: window.innerHeight });
@@ -4362,6 +4571,25 @@ function initializeEvents() {
     recordEvent("appearance", "main-face", "solution", state.faceEngineMode);
     announce(`${definition.label} selected. The face and Flubber remain synchronized to the same affect coordinates.`);
   });
+  elements.mainAffectTransition.addEventListener("change", () => {
+    setAffectTransitionMode(elements.mainAffectTransition.value);
+  });
+  elements.mainMatrixRate.addEventListener("input", () => {
+    state.matrixStatesPerSecond = normalizeAffectMatrixRate(Number(elements.mainMatrixRate.value));
+    affectMatrixTraversal = startAffectMatrixTraversal(
+      affectMatrixTraversal,
+      affectMatrixTraversal.targetCell,
+      state.matrixStatesPerSecond,
+    );
+    applyMatrixTraversalCoordinates();
+    updateAffectTransitionControls();
+  });
+  elements.mainMatrixRate.addEventListener("change", () => {
+    recordEvent("face-options", "rate-change", "affect-matrix", state.matrixStatesPerSecond);
+    announce(`Matrix traversal rate set to ${state.matrixStatesPerSecond} states per second.`);
+  });
+  elements.mainMatrixStop.addEventListener("click", () => stopMatrixTraversal());
+  elements.mainMatrixNeutral.addEventListener("click", () => targetNeutralMatrixState());
   elements.mainFaceEnabled.addEventListener("change", () => {
     state.mainFaceEnabled = elements.mainFaceEnabled.checked;
     if (state.mainFaceEnabled) centerMainAffectPair();
@@ -4837,7 +5065,7 @@ function initializeEvents() {
   elements.mobileCoordinateSpace.addEventListener("pointerdown", (event) => {
     if (event.isPrimary === false) return;
     const bounds = elements.mobileCoordinateSpace.getBoundingClientRect();
-    if (!startsOnCoordinateMarker({
+    if (!matrixTransitionSelected() && !startsOnCoordinateMarker({
       clientX: event.clientX,
       clientY: event.clientY,
       x: state.currentX,
@@ -4873,6 +5101,12 @@ function initializeEvents() {
     event.preventDefault();
     event.stopPropagation();
     if (!claimFeatureSpaceControl()) return;
+    if (matrixTransitionSelected()) {
+      moveTarget({ ArrowLeft: "left", ArrowRight: "right", ArrowUp: "up", ArrowDown: "down" }[event.key], `mobile-${event.key}`);
+      updateCoordinateDisplay();
+      updateFeatureSpace();
+      return;
+    }
     state.targetX = clamp(state.targetX + direction[0], -1, 1);
     state.targetY = clamp(state.targetY + direction[1], -1, 1);
     state.currentX = state.targetX;
@@ -4907,6 +5141,12 @@ function initializeEvents() {
     event.preventDefault();
     event.stopPropagation();
     if (!claimFeatureSpaceControl()) return;
+    if (matrixTransitionSelected()) {
+      moveTarget({ ArrowLeft: "left", ArrowRight: "right", ArrowUp: "up", ArrowDown: "down" }[event.key], event.key);
+      updateCoordinateDisplay();
+      updateFeatureSpace();
+      return;
+    }
     if (direction[0] !== 0) state.targetX = clamp(state.targetX + direction[0], -1, 1);
     if (direction[1] !== 0) state.targetY = clamp(state.targetY + direction[1], -1, 1);
     state.currentX = state.targetX;
@@ -4998,6 +5238,18 @@ function animationFrame(timestamp) {
   const incomingOwnsAxes = liveRemoteOwnsAxes(incoming);
   applyLiveRemoteViewportPosition(incoming);
   const universe = universeLink.snapshot();
+  const externalMatrixAuthority = incomingOwnsAxes
+    || universe.enabled
+    || touchTrackingActive()
+    || polarAxisDriven("valence")
+    || polarAxisDriven("arousal");
+  if (matrixTransitionSelected() && externalMatrixAuthority) {
+    state.affectTransitionMode = "continuous";
+    affectMatrixTraversal = stopAffectMatrixTraversal(affectMatrixTraversal);
+    updateAffectTransitionControls();
+    recordEvent("system", "mode-change", "affect-transition", "continuous-external-authority");
+    announce("Matrix traversal stopped because another input source took coordinate control.");
+  }
   if (touchTrackingActive() && !incomingOwnsAxes) {
     applyTouchTraceState(touchMetric);
   }
@@ -5034,6 +5286,9 @@ function animationFrame(timestamp) {
     // it directly lets participants stop on the exact visible grid position.
     state.currentX = state.targetX;
     state.currentY = state.targetY;
+  } else if (matrixTransitionSelected()) {
+    affectMatrixTraversal = advanceAffectMatrixTraversal(affectMatrixTraversal, deltaSeconds);
+    applyMatrixTraversalCoordinates();
   } else {
     state.currentX = smoothToward(state.currentX, state.targetX, state.response, deltaSeconds);
     state.currentY = smoothToward(state.currentY, state.targetY, state.response, deltaSeconds);

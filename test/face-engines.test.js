@@ -80,7 +80,11 @@ test("catalog exposes exactly five testable offline face solutions", () => {
     "photo-atlas",
   ]);
   assert.equal(normalizeFaceEngineMode("not-a-mode"), DEFAULT_FACE_ENGINE_MODE);
-  assert.equal(faceEngineDefinition("matrix-anchors").kind, "model");
+  const matrix = faceEngineDefinition("matrix-anchors");
+  assert.equal(matrix.kind, "model");
+  assert.match(matrix.label, /21 × 21/);
+  assert.match(matrix.description, /441-state/);
+  assert.match(matrix.description, /diagonal/);
   assert.equal(faceEngineDefinition("photo-atlas").kind, "photo");
 });
 

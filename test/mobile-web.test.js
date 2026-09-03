@@ -41,6 +41,29 @@ test("the active responsive mode is recomputed on resize and orientation changes
   assert.match(app, /screen\.orientation\?\.addEventListener\?\.\("change", \(\) => \{\s*updateSmartphoneLayout\(\)/);
 });
 
+test("the phone 21 by 21 transition advances canonical affect state before the shared frame", async () => {
+  const app = await readSiteFile("src/app.js");
+  const matrixBranch = app.slice(
+    app.indexOf("} else if (matrixTransitionSelected()) {", app.indexOf("function animationFrame")),
+    app.indexOf("const affectFrame = Object.freeze", app.indexOf("function animationFrame")),
+  );
+
+  assert.match(app, /from "\.\/affect-matrix\.js\?v=matrix21-1"/);
+  assert.match(app, /function startMatrixTraversalToCoordinates\(x, y\)/);
+  assert.match(app, /chooseAffectCoordinate\(coordinate\.x, coordinate\.y\)/);
+  assert.match(matrixBranch, /advanceAffectMatrixTraversal\(affectMatrixTraversal, deltaSeconds\)/);
+  assert.match(matrixBranch, /applyMatrixTraversalCoordinates\(\)/);
+  assert.match(app, /renderSynchronizedAffectPreview\(affectFrame, rendered\)/);
+  assert.match(app, /root\.dataset\.affectMatrixColumn/);
+  assert.match(app, /Current cell \$\{affectMatrixTraversal\.currentCell\.column \+ 1\}[\s\S]*steps remaining/);
+  assert.match(app, /face and Flubber will step there together/);
+  const savedPreferences = app.slice(
+    app.indexOf("function savePreferences"),
+    app.indexOf("function settingsFromState"),
+  );
+  assert.doesNotMatch(savedPreferences, /affectTransitionMode|matrixStatesPerSecond/);
+});
+
 test("the phone layout uses safe areas and a split Flubber/direct-coordinate controller", async () => {
   const html = await readSiteFile("index.html");
   const css = await readSiteFile("styles.css");
@@ -54,7 +77,13 @@ test("the phone layout uses safe areas and a split Flubber/direct-coordinate con
   assert.match(html, /id="mobile-direct-flubber"[\s\S]*role="img"[\s\S]*tabindex="0"/);
   assert.match(html, /Drag Flubber to move it on connected screens/);
   assert.match(html, /id="mobile-coordinate-space"[^>]*role="slider"/);
+  assert.match(html, /id="mobile-coordinate-target"/);
   assert.match(html, /Drag the existing point to a new position\. Touching elsewhere does not move it\./);
+  assert.match(html, /<option value="matrix-anchors">21 × 21 matrix-anchor 3D<\/option>/);
+  assert.match(html, /<option value="matrix">21 × 21 step matrix<\/option>/);
+  assert.match(html, /id="main-matrix-rate"[^>]*min="0\.5"[^>]*max="20"/);
+  assert.match(html, /id="main-matrix-stop"/);
+  assert.match(html, /id="main-matrix-neutral"/);
   assert.match(css, /@media \(max-width: 600px\), \(max-height: 500px\) and \(pointer: coarse\)/);
   assert.match(css, /height: 100dvh/);
   assert.match(css, /env\(safe-area-inset-top/);
@@ -62,6 +91,7 @@ test("the phone layout uses safe areas and a split Flubber/direct-coordinate con
   assert.match(css, /grid-template-columns: repeat\(7, minmax\(0, 1fr\)\)/);
   assert.match(css, /\.panel-toggle \{[\s\S]*min-width: 2\.75rem;[\s\S]*min-height: 3rem;/);
   assert.match(css, /\.mobile-coordinate-space \{[\s\S]*touch-action: none/);
+  assert.match(css, /\.mobile-coordinate-space\.is-matrix-transition::before[\s\S]*calc\(5% - 0\.5px\)/);
   assert.match(css, /\.mobile-direct-flubber \{[\s\S]*position: absolute[\s\S]*touch-action: none/);
   assert.match(css, /touch-action: none/);
   assert.match(css, /overscroll-behavior: contain/);
@@ -218,7 +248,7 @@ test("a first smartphone visit opens the direct Affect controller without enabli
   assert.doesNotMatch(app, /state\.inputSource = "touch-trace";[\s\S]{0,120}state\.mobileTouchIntroSeen = true/);
 });
 
-test("the phone coordinate marker must be grabbed before it can move", async () => {
+test("smooth phone input requires marker grab while matrix input accepts any target cell", async () => {
   const bounds = { left: 10, top: 20, width: 300, height: 400 };
   const marker = affectCoordinateToClientPoint({ x: 0.25, y: -0.5, bounds });
   assert.deepEqual(marker, { x: 197.5, y: 320 });
@@ -229,7 +259,7 @@ test("the phone coordinate marker must be grabbed before it can move", async () 
   assert.deepEqual(clientPointToAffectCoordinate({ clientX: -100, clientY: 900, bounds }), { x: -1, y: -1 });
 
   const app = await readSiteFile("src/app.js");
-  assert.match(app, /startsOnCoordinateMarker\(\{[\s\S]*Touching elsewhere does not move it\.[\s\S]*return;/);
+  assert.match(app, /!matrixTransitionSelected\(\) && !startsOnCoordinateMarker\(\{[\s\S]*Touching elsewhere does not move it\.[\s\S]*return;/);
   assert.match(app, /mobileCoordinateSpace\.setPointerCapture\(event\.pointerId\)/);
   assert.match(app, /event\.pointerId !== mobileCoordinatePointerId/);
 });

@@ -4,10 +4,12 @@ import test from "node:test";
 import * as THREE from "three";
 import {
   DEFAULT_FACE_MODEL_PROFILE,
+  FACE_MODEL_MATRIX_STATES,
   FACE_MODEL_MORPH_NAMES,
   FACE_MODEL_PROFILES,
   buildFaceModelWeights,
   createFaceModelRenderer,
+  resolveFaceModelMatrixState,
 } from "../site/src/face-model.js";
 
 const approximately = (actual, expected, tolerance = 1e-10) => {
@@ -115,18 +117,41 @@ test("continuous and matrix mappings are symmetric, finite, clamped, and current
   );
 });
 
-test("all 121 exact matrix coordinates use the selected continuous mapping without snapping", () => {
-  for (const profile of FACE_MODEL_PROFILES) {
-    for (let row = 0; row < 11; row += 1) {
-      for (let column = 0; column < 11; column += 1) {
-        const currentX = Number((-1 + column * 0.2).toFixed(10));
-        const currentY = Number((-1 + row * 0.2).toFixed(10));
-        assertFiniteWeights(buildFaceModelWeights({ currentX, currentY }, { profile }));
-      }
+test("matrix-anchor profile reuses all 441 exact face states while off-grid mappings stay continuous", () => {
+  assert.equal(FACE_MODEL_MATRIX_STATES.length, 441);
+  const centre = FACE_MODEL_MATRIX_STATES[10 * 21 + 10];
+  assert.deepEqual({ row: centre.row, column: centre.column, x: centre.x, y: centre.y }, {
+    row: 10,
+    column: 10,
+    x: 0,
+    y: 0,
+  });
+  assert.ok(Object.values(centre.weights).every((value) => value === 0));
+
+  for (let row = 0; row < 21; row += 1) {
+    for (let column = 0; column < 21; column += 1) {
+      const state = FACE_MODEL_MATRIX_STATES[row * 21 + column];
+      assert.equal(state.row, row);
+      assert.equal(state.column, column);
+      assert.equal(state.x, (column - 10) / 10);
+      assert.equal(state.y, (row - 10) / 10);
+      assertFiniteWeights(state.weights);
+      assert.equal(resolveFaceModelMatrixState({ currentX: state.x, currentY: state.y }), state);
+      assert.equal(
+        buildFaceModelWeights(
+          { currentX: state.x, currentY: state.y },
+          { profile: "matrix-anchors" },
+        ),
+        state.weights,
+      );
     }
+  }
+
+  assert.equal(resolveFaceModelMatrixState({ currentX: 0.313, currentY: -0.627 }), null);
+  for (const profile of FACE_MODEL_PROFILES) {
     assert.notDeepEqual(
-      buildFaceModelWeights({ currentX: 0.2, currentY: -0.4 }, { profile }),
-      buildFaceModelWeights({ currentX: 0.201, currentY: -0.399 }, { profile }),
+      buildFaceModelWeights({ currentX: 0.313, currentY: -0.627 }, { profile }),
+      buildFaceModelWeights({ currentX: 0.314, currentY: -0.626 }, { profile }),
     );
   }
 });
@@ -464,6 +489,18 @@ test("profile switching updates the same loaded model without another request", 
   const result = fixture.renderer({ ...snapshot, phase: 999 }, true, "#ff0000");
   assert.equal(result.profile, "matrix-anchors");
   assert.deepEqual(result.weights, anchored);
+  assert.equal(result.matrixState, null);
+  const exactMatrixResult = fixture.renderer(
+    { currentX: 0.3, currentY: -0.6, phase: 1000 },
+    true,
+    "#ff0000",
+  );
+  assert.deepEqual(exactMatrixResult.matrixState, {
+    row: 4,
+    column: 13,
+    x: 0.3,
+    y: -0.6,
+  });
   assert.throws(() => fixture.renderer.setProfile("other"), /Unknown detailed face profile/);
   fixture.renderer.destroy();
 });
