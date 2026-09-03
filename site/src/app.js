@@ -169,6 +169,8 @@ const elements = {
   mobileCoordinateTarget: document.querySelector("#mobile-coordinate-target"),
   mobileDirectHelp: document.querySelector("#mobile-direct-help"),
   mobileOpenSettings: document.querySelector("#mobile-open-settings"),
+  mobileFaceEngineField: document.querySelector("#mobile-face-engine-field"),
+  mobileFaceEngine: document.querySelector("#mobile-face-engine"),
   mobileCloseSettings: document.querySelector("#mobile-close-settings"),
   faceFlubberPanel: document.querySelector("#face-flubber-panel"),
   mobileFaceControllerAnchor: document.querySelector("#mobile-face-controller-anchor"),
@@ -916,6 +918,24 @@ function updateMainFaceRendererStatus(selectedMode = state.faceEngineMode, effec
   elements.mainFaceEngineHelp.textContent = definition.description;
 }
 
+function selectMainFaceEngine(mode, source = "face-options") {
+  const nextMode = normalizeFaceEngineMode(mode);
+  if (nextMode === state.faceEngineMode) {
+    elements.mainFaceEngine.value = nextMode;
+    elements.mobileFaceEngine.value = nextMode;
+    return false;
+  }
+  state.faceEngineMode = nextMode;
+  renderMainAffectFace.setMode(nextMode);
+  renderMobileAffectFace.setMode(nextMode);
+  updateFaceFlubberPanelState();
+  savePreferences();
+  const definition = faceEngineDefinition(nextMode);
+  recordEvent(source, "main-face", "solution", nextMode);
+  announce(`${definition.label} selected. The face and Flubber remain synchronized to the same affect coordinates.`);
+  return true;
+}
+
 function matrixTransitionSelected() {
   return state.affectTransitionMode === "matrix";
 }
@@ -1038,6 +1058,8 @@ function updateFaceFlubberPanelState() {
   elements.faceFlubberToggleSymbol.textContent = state.faceFlubberPanelOpen ? "−" : "+";
   elements.mainFaceEnabled.checked = state.mainFaceEnabled;
   elements.mainFaceEngine.value = state.faceEngineMode;
+  elements.mobileFaceEngine.value = state.faceEngineMode;
+  elements.mobileFaceEngine.disabled = !state.mainFaceEnabled;
   elements.mainFaceCenterButton.disabled = !state.mainFaceEnabled
     || !state.widgetVisible
     || experiment.phase !== "idle"
@@ -1088,6 +1110,7 @@ function placeMobileDirectController() {
   if (!state.faceFlubberPanelOpen || !smartphoneLayoutActive) {
     elements.faceFlubberPanel.classList.remove("is-mobile-settings-open");
   }
+  elements.mobileFaceEngineField.hidden = !faceHostsController;
   elements.mobileOpenSettings.textContent = faceHostsController ? "Face options" : "Settings";
   elements.mobileOpenSettings.setAttribute(
     "aria-label",
@@ -4562,14 +4585,10 @@ function initializeEvents() {
     toggleTopLevelProtocol("face");
   });
   elements.mainFaceEngine.addEventListener("change", () => {
-    state.faceEngineMode = normalizeFaceEngineMode(elements.mainFaceEngine.value);
-    renderMainAffectFace.setMode(state.faceEngineMode);
-    renderMobileAffectFace.setMode(state.faceEngineMode);
-    updateFaceFlubberPanelState();
-    savePreferences();
-    const definition = faceEngineDefinition(state.faceEngineMode);
-    recordEvent("appearance", "main-face", "solution", state.faceEngineMode);
-    announce(`${definition.label} selected. The face and Flubber remain synchronized to the same affect coordinates.`);
+    selectMainFaceEngine(elements.mainFaceEngine.value, "face-options");
+  });
+  elements.mobileFaceEngine.addEventListener("change", () => {
+    selectMainFaceEngine(elements.mobileFaceEngine.value, "phone-face-switcher");
   });
   elements.mainAffectTransition.addEventListener("change", () => {
     setAffectTransitionMode(elements.mainAffectTransition.value);

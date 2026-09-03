@@ -2194,12 +2194,15 @@ body.is-smartphone-layout .mobile-direct-controller {
 }
 
 .mobile-controller-header {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  justify-content: space-between;
   width: 100%;
-  gap: 0.75rem;
+  gap: 0.5rem;
 }
+
+.mobile-controller-header > div { grid-area: 1 / 1; }
+.mobile-controller-header > button { grid-area: 1 / 2; }
 
 .mobile-controller-header h2 {
   margin: 0.05rem 0 0;
@@ -2218,6 +2221,64 @@ body.is-smartphone-layout .mobile-direct-controller {
   min-width: 5.4rem;
   min-height: 2.75rem;
   padding: 0.45rem 0.65rem;
+}
+
+.mobile-face-engine-field {
+  grid-area: 2 / 1 / 3 / -1;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  min-width: 0;
+  gap: 0.5rem;
+}
+
+.mobile-face-engine-field[hidden] { display: none; }
+
+.mobile-face-engine-label {
+  color: rgb(255 255 255 / 66%);
+  font-size: 0.68rem;
+  font-weight: 650;
+}
+
+.mobile-face-engine-field select {
+  width: 100%;
+  min-width: 0;
+  min-height: 2.75rem;
+  padding: 0.4rem 1.65rem 0.4rem 0.55rem;
+  overflow: hidden;
+  border: 1px solid rgb(255 255 255 / 18%);
+  border-radius: 0.45rem;
+  background: #15181b;
+  color: #fff;
+  font-family: inherit;
+  font-size: 0.72rem;
+  font-weight: 650;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mobile-face-engine-field select:focus-visible {
+  outline: 2px solid #78d7ff;
+  outline-offset: 2px;
+}
+
+.mobile-face-engine-field select:disabled {
+  color: rgb(255 255 255 / 44%);
+}
+
+@media (max-height: 500px) {
+  body.is-smartphone-layout .mobile-controller-header {
+    grid-template-columns: auto auto minmax(0, 1fr);
+  }
+
+  body.is-smartphone-layout .mobile-controller-header > div { grid-area: 1 / 1; }
+  body.is-smartphone-layout .mobile-controller-header > button { grid-area: 1 / 2; }
+  body.is-smartphone-layout .mobile-face-engine-field {
+    grid-area: 1 / 3;
+    width: min(14rem, 100%);
+    justify-self: end;
+  }
 }
 
 .mobile-direct-flubber {

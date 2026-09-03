@@ -18,6 +18,7 @@ import {
   startsOnCoordinateMarker,
   unprojectMobilePartyPoint,
 } from "../site/src/mobile.js";
+import { FACE_ENGINE_MODES } from "../site/src/face-engines.js";
 
 const readSiteFile = (name) => readFile(new URL(`../site/${name}`, import.meta.url), "utf8");
 
@@ -220,6 +221,48 @@ test("the phone Face tab hosts the one live controller before showing options", 
   assert.match(app, /mobileDirectController\.closest\("\.control-panel"\)/);
   assert.match(app, /mobileCloseFaceOptions\.addEventListener\("click"[\s\S]*remove\("is-mobile-settings-open"\)/);
   assert.doesNotMatch(app, /mobileDirectController\.cloneNode|cloneNode\([^)]*mobileDirectController/);
+});
+
+test("the live phone Face menu switches every canonical face through one state path", async () => {
+  const [html, app, css] = await Promise.all([
+    readSiteFile("index.html"),
+    readSiteFile("src/app.js"),
+    readSiteFile("styles.css"),
+  ]);
+  const selectBlock = (id) => html.match(new RegExp(`<select id="${id}"[\\s\\S]*?<\\/select>`))?.[0] ?? "";
+  const optionValues = (block) => [...block.matchAll(/<option value="([^"]+)"/g)].map((match) => match[1]);
+  const canonicalModes = FACE_ENGINE_MODES.map(({ id }) => id);
+  const quickSelect = selectBlock("mobile-face-engine");
+  const advancedSelect = selectBlock("main-face-engine");
+
+  assert.equal(html.match(/id="mobile-face-engine"/g)?.length, 1);
+  assert.deepEqual(optionValues(quickSelect), canonicalModes);
+  assert.deepEqual(optionValues(advancedSelect), canonicalModes);
+  assert.match(html, /class="mobile-face-engine-label">Face<\/span>/);
+  assert.match(quickSelect, /aria-label="Face appearance"/);
+  assert.match(quickSelect, /value="matrix-anchors">21 × 21 face anchors/);
+
+  const selectionPath = app.slice(
+    app.indexOf("function selectMainFaceEngine"),
+    app.indexOf("function matrixTransitionSelected"),
+  );
+  assert.match(selectionPath, /normalizeFaceEngineMode\(mode\)/);
+  assert.match(selectionPath, /state\.faceEngineMode = nextMode/);
+  assert.match(selectionPath, /renderMainAffectFace\.setMode\(nextMode\)/);
+  assert.match(selectionPath, /renderMobileAffectFace\.setMode\(nextMode\)/);
+  assert.match(selectionPath, /savePreferences\(\)/);
+  assert.match(selectionPath, /announce\(/);
+  assert.doesNotMatch(selectionPath, /currentX|currentY|targetX|targetY|affectTransitionMode/);
+  assert.match(app, /mainFaceEngine\.addEventListener\("change"[\s\S]*selectMainFaceEngine\(elements\.mainFaceEngine\.value, "face-options"\)/);
+  assert.match(app, /mobileFaceEngine\.addEventListener\("change"[\s\S]*selectMainFaceEngine\(elements\.mobileFaceEngine\.value, "phone-face-switcher"\)/);
+  assert.match(app, /mainFaceEngine\.value = state\.faceEngineMode;[\s\S]*mobileFaceEngine\.value = state\.faceEngineMode/);
+  assert.match(app, /mobileFaceEngine\.disabled = !state\.mainFaceEnabled/);
+  assert.match(app, /mobileFaceEngineField\.hidden = !faceHostsController/);
+
+  assert.match(css, /\.mobile-controller-header \{[\s\S]*grid-template-columns: minmax\(0, 1fr\) auto/);
+  assert.match(css, /\.mobile-face-engine-field \{[\s\S]*min-width: 0/);
+  assert.match(css, /\.mobile-face-engine-field select \{[\s\S]*min-height: 2\.75rem[\s\S]*text-overflow: ellipsis/);
+  assert.match(css, /@media \(max-height: 500px\)[\s\S]*\.mobile-face-engine-field \{[\s\S]*grid-area: 1 \/ 3/);
 });
 
 test("the upper phone Flubber is an independently grabbed normalized viewport control", async () => {
