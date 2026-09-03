@@ -39,7 +39,9 @@ impl RunSeedV1 {
             ));
         }
         let mut bytes = [0_u8; 16];
-        for (index, chunk) in self.0.as_bytes().chunks_exact(2).enumerate() {
+        for (index, output) in bytes.iter_mut().enumerate() {
+            let offset = index * 2;
+            let chunk = &self.0.as_bytes()[offset..offset + 2];
             let text = std::str::from_utf8(chunk).map_err(|_| {
                 CoreErrorV1::new(
                     CoreErrorCodeV1::InvalidValue,
@@ -47,7 +49,7 @@ impl RunSeedV1 {
                     "must be valid ASCII hexadecimal",
                 )
             })?;
-            bytes[index] = u8::from_str_radix(text, 16).map_err(|_| {
+            *output = u8::from_str_radix(text, 16).map_err(|_| {
                 CoreErrorV1::new(
                     CoreErrorCodeV1::InvalidValue,
                     "runConfiguration.randomSeed",
