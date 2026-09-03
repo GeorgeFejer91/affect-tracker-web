@@ -49,19 +49,55 @@ export function layoutMobileAffectPreviews({
   );
   const normalizedX = clampUnit(viewportX);
   const normalizedY = clampUnit(viewportY);
-  const desiredFlubberX = size / 2 + normalizedX * Math.max(0, availableWidth - size);
+  const flubberMinimumX = paired ? size * 1.5 + gap : size / 2;
   const flubberMaximumX = availableWidth - size / 2;
-  const flubberMinimumX = paired
-    ? Math.min(flubberMaximumX, size * 1.5 + gap)
-    : size / 2;
-  const flubberX = Math.max(flubberMinimumX, Math.min(flubberMaximumX, desiredFlubberX));
-  const centerY = size / 2 + normalizedY * Math.max(0, availableHeight - size);
+  const minimumY = size / 2;
+  const maximumY = availableHeight - size / 2;
+  const flubberX = flubberMinimumX
+    + normalizedX * Math.max(0, flubberMaximumX - flubberMinimumX);
+  const centerY = minimumY + normalizedY * Math.max(0, maximumY - minimumY);
   const flubber = Object.freeze({ x: flubberX, y: centerY, size });
   const face = paired
     ? Object.freeze({ x: flubberX - size - gap, y: centerY, size })
     : undefined;
+  const travel = Object.freeze({
+    flubberMinimumX,
+    flubberMaximumX,
+    minimumY,
+    maximumY,
+  });
 
-  return Object.freeze({ gap, flubber, face });
+  return Object.freeze({ gap, flubber, face, travel });
+}
+
+export function normalizeMobileAffectPreviewPosition({
+  width,
+  height,
+  flubberX,
+  flubberY,
+  faceVisible = false,
+  fallbackViewportX = 0.5,
+  fallbackViewportY = 0.5,
+} = {}) {
+  if (![flubberX, flubberY].every(Number.isFinite)) return undefined;
+  const layout = layoutMobileAffectPreviews({
+    width,
+    height,
+    viewportX: fallbackViewportX,
+    viewportY: fallbackViewportY,
+    faceVisible,
+  });
+  if (!layout) return undefined;
+  const horizontalSpan = layout.travel.flubberMaximumX - layout.travel.flubberMinimumX;
+  const verticalSpan = layout.travel.maximumY - layout.travel.minimumY;
+  return Object.freeze({
+    viewportX: horizontalSpan > 0
+      ? clampUnit((flubberX - layout.travel.flubberMinimumX) / horizontalSpan)
+      : clampUnit(fallbackViewportX),
+    viewportY: verticalSpan > 0
+      ? clampUnit((flubberY - layout.travel.minimumY) / verticalSpan)
+      : clampUnit(fallbackViewportY),
+  });
 }
 
 export function isSmartphoneTouchViewport({

@@ -10,6 +10,7 @@ import {
   MOBILE_PARTY_ZOOM_MAX,
   MOBILE_PARTY_ZOOM_MIN,
   MOBILE_PREVIEW_MIN_SIZE_PX,
+  normalizeMobileAffectPreviewPosition,
   normalizeMobilePartyCamera,
   projectMobilePartyPoint,
   SMARTPHONE_LANDSCAPE_MAX_HEIGHT,
@@ -46,6 +47,9 @@ test("the phone layout uses safe areas and a split Flubber/direct-coordinate con
 
   assert.match(html, /viewport-fit=cover/);
   assert.match(html, /id="mobile-direct-controller"/);
+  assert.equal(html.match(/id="mobile-direct-controller"/g)?.length, 1);
+  assert.match(html, /id="mobile-controller-home-anchor"[\s\S]*id="mobile-direct-controller"/);
+  assert.match(html, /id="mobile-face-controller-anchor"[\s\S]*id="mobile-close-face-options"/);
   assert.match(html, /id="mobile-direct-flubber"/);
   assert.match(html, /id="mobile-direct-flubber"[\s\S]*role="img"[\s\S]*tabindex="0"/);
   assert.match(html, /Drag Flubber to move it on connected screens/);
@@ -62,8 +66,11 @@ test("the phone layout uses safe areas and a split Flubber/direct-coordinate con
   assert.match(css, /touch-action: none/);
   assert.match(css, /overscroll-behavior: contain/);
   assert.match(css, /@media \(max-height: 500px\) and \(min-aspect-ratio: 4 \/ 3\)/);
+  assert.match(css, /@media \(min-width: 601px\) and \(max-height: 500px\)[\s\S]*body\.is-smartphone-layout \.panel-stack \.panel-content/);
   assert.match(css, /body\.is-smartphone-layout \.mobile-flubber-pane \{[\s\S]*grid-template-rows: auto minmax\(0, 1fr\)/);
   assert.match(css, /\.face-engine-field select,[\s\S]*#main-face-center-button \{[\s\S]*min-height: 2\.75rem/);
+  assert.match(css, /#face-flubber-panel\.has-mobile-direct-controller:not\(\.is-mobile-settings-open\)[\s\S]*\.face-flubber-module/);
+  assert.match(css, /#face-flubber-panel\.has-mobile-direct-controller\.is-mobile-settings-open #mobile-close-face-options/);
 });
 
 test("phone face and Flubber previews stay square, ordered, and contained", () => {
@@ -111,15 +118,91 @@ test("phone face and Flubber previews stay square, ordered, and contained", () =
   assert.equal(layoutMobileAffectPreviews({ width: 0, height: 200 }), undefined);
 });
 
+test("phone preview layout translates the pair proportionally and round-trips its normalized position", () => {
+  const previewAreas = [
+    { width: 318, height: 270 },
+    { width: 349, height: 302 },
+    { width: 812, height: 104 },
+    { width: 900, height: 124 },
+  ];
+  const positions = [0, 0.25, 0.5, 0.75, 1];
+
+  for (const area of previewAreas) {
+    for (const faceVisible of [false, true]) {
+      let previousX = -Infinity;
+      for (const viewportX of positions) {
+        for (const viewportY of positions) {
+          const layout = layoutMobileAffectPreviews({
+            ...area,
+            viewportX,
+            viewportY,
+            faceVisible,
+          });
+          const normalized = normalizeMobileAffectPreviewPosition({
+            ...area,
+            flubberX: layout.flubber.x,
+            flubberY: layout.flubber.y,
+            faceVisible,
+          });
+          assert.ok(Math.abs(normalized.viewportX - viewportX) < 1e-12);
+          assert.ok(Math.abs(normalized.viewportY - viewportY) < 1e-12);
+          if (viewportY === 0) {
+            assert.ok(layout.flubber.x >= previousX);
+            previousX = layout.flubber.x;
+          }
+        }
+      }
+    }
+
+    const pairedLeft = layoutMobileAffectPreviews({ ...area, viewportX: 0, faceVisible: true });
+    const pairedRight = layoutMobileAffectPreviews({ ...area, viewportX: 1, faceVisible: true });
+    assert.ok(Math.abs(pairedLeft.face.x - pairedLeft.face.size / 2) < 1e-9);
+    assert.ok(Math.abs(pairedRight.flubber.x + pairedRight.flubber.size / 2 - area.width) < 1e-9);
+    assert.ok(Math.abs(
+      (pairedRight.face.x - pairedLeft.face.x)
+        - (pairedRight.flubber.x - pairedLeft.flubber.x),
+    ) < 1e-9);
+  }
+
+  assert.deepEqual(normalizeMobileAffectPreviewPosition({
+    width: 320,
+    height: 200,
+    flubberX: -1_000,
+    flubberY: 1_000,
+  }), { viewportX: 0, viewportY: 1 });
+  assert.deepEqual(normalizeMobileAffectPreviewPosition({
+    width: 68,
+    height: 30,
+    flubberX: 1_000,
+    flubberY: -1_000,
+    faceVisible: true,
+    fallbackViewportX: 0.25,
+    fallbackViewportY: 0.75,
+  }), { viewportX: 0.25, viewportY: 0.75 });
+});
+
+test("the phone Face tab hosts the one live controller before showing options", async () => {
+  const app = await readSiteFile("src/app.js");
+
+  assert.match(app, /function placeMobileDirectController\(\)[\s\S]*smartphoneLayoutActive && state\.faceFlubberPanelOpen/);
+  assert.match(app, /targetAnchor\.after\(elements\.mobileDirectController\)/);
+  assert.match(app, /faceHostsController \? "Face options" : "Settings"/);
+  assert.match(app, /mobileDirectController\.closest\("\.control-panel"\)/);
+  assert.match(app, /mobileCloseFaceOptions\.addEventListener\("click"[\s\S]*remove\("is-mobile-settings-open"\)/);
+  assert.doesNotMatch(app, /mobileDirectController\.cloneNode|cloneNode\([^)]*mobileDirectController/);
+});
+
 test("the upper phone Flubber is an independently grabbed normalized viewport control", async () => {
   const app = await readSiteFile("src/app.js");
 
-  assert.match(app, /mobilePreviewCovered[\s\S]*is-mobile-settings-open[\s\S]*root\.hidden \|\| mobilePreviewCovered/);
+  assert.match(app, /mobileControllerPanel[\s\S]*is-collapsed[\s\S]*is-mobile-settings-open[\s\S]*root\.hidden \|\| mobilePreviewCovered/);
   assert.match(app, /mobileDirectFlubber\.addEventListener\("pointerdown"/);
   assert.match(app, /mobileDirectFlubber\.setPointerCapture\(event\.pointerId\)/);
   assert.match(app, /event\.pointerId !== mobileFlubberPointerId/);
   assert.match(app, /normalizeFlubberViewportPosition\(\{/);
+  assert.match(app, /normalizeMobileAffectPreviewPosition\(\{/);
   assert.match(app, /setWidgetFromNormalizedPosition\(normalized\)/);
+  assert.match(app, /mainAffectFaceShouldShow\(\)[\s\S]*!smartphoneLayoutActive[\s\S]*!sharedPartyParticipant/);
   assert.match(app, /mobileDirectFlubber\.addEventListener\("keydown"/);
   assert.match(app, /offerState\([\s\S]*viewportPosition\.viewportX,[\s\S]*viewportPosition\.viewportY/);
 });

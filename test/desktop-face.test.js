@@ -160,7 +160,7 @@ test("desktop renders every face mode and Flubber from one frozen current-state 
   assert.match(settingsSource, /if \(latestSnapshot\) renderSnapshot\(latestSnapshot\)/);
 });
 
-test("GitHub Pages keeps the affect face on the main stage and its enable control in the accordion", () => {
+test("GitHub Pages keeps the desktop face on the main stage and the phone preview in one shared controller", () => {
   const html = readFileSync(new URL("../site/index.html", import.meta.url), "utf8");
   const appSource = readFileSync(new URL("../site/src/app.js", import.meta.url), "utf8");
   const protocols = readFileSync(new URL("../site/src/accordion-protocols.js", import.meta.url), "utf8");
@@ -173,6 +173,7 @@ test("GitHub Pages keeps the affect face on the main stage and its enable contro
   assert.equal((html.match(/data-face-photo/g) ?? []).length, 2);
   assert.match(html, /id="main-affect-face-fallback"[^>]*data-face-3d-fallback/);
   assert.match(html, /id="mobile-main-affect-face"/);
+  assert.equal((html.match(/id="mobile-direct-controller"/g) ?? []).length, 1);
   assert.match(html, /id="main-face-enabled" type="checkbox" checked/);
   assert.match(html, /id="main-face-engine"/);
   assert.match(html, /id="main-face-center-button"/);

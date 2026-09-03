@@ -241,7 +241,7 @@ assignments. The saved Touch source becomes active while its accordion is open
 or an experiment is running; during that time it pauses Polar affect drive
 without disconnecting the H10. Collapsing Touch outside an experiment suspends
 pointer drive and reapplies the most recent finite assigned Polar metrics.
-Turning Touch off returns the saved source to manual. All six top-level
+Turning Touch off returns the saved source to manual. All seven top-level
 accordions are mutually exclusive protocol surfaces; opening or closing them
 never erases a Polar assignment or disconnects the H10.
 

@@ -24,6 +24,9 @@ test("the seven UI accordions expose distinct protocol boundaries", async () => 
   assert.deepEqual(Object.keys(ACCORDION_PROTOCOLS), ["settings", "face", "experiment", "calibration", "touch", "polar", "ground"]);
   const responsibilities = Object.values(ACCORDION_PROTOCOLS).flatMap((protocol) => protocol.responsibilities);
   assert.equal(new Set(responsibilities).size, responsibilities.length);
+  assert.ok(ACCORDION_PROTOCOLS.settings.responsibilities.includes("manual-input"));
+  assert.ok(ACCORDION_PROTOCOLS.face.responsibilities.includes("smartphone-affect-controller-host"));
+  assert.ok(!ACCORDION_PROTOCOLS.face.responsibilities.includes("manual-input"));
   assert.equal(new Set(Object.values(ACCORDION_PROTOCOLS).map(({ domainModule }) => domainModule)).size, 7);
   for (const [protocolId, protocol] of Object.entries(ACCORDION_PROTOCOLS)) {
     assert.match(html, new RegExp(`id="${protocol.panelId}"[^>]*data-module-protocol="${protocolId}"`));

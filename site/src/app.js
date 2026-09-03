@@ -46,12 +46,13 @@ import {
   layoutMobileAffectPreviews,
   MOBILE_PARTY_ZOOM_MAX,
   MOBILE_PARTY_ZOOM_MIN,
+  normalizeMobileAffectPreviewPosition,
   normalizeMobilePartyCamera,
   projectMobilePartyPoint,
   SMARTPHONE_LAYOUT_MAX_WIDTH,
   startsOnCoordinateMarker,
   unprojectMobilePartyPoint,
-} from "./mobile.js?v=mobile-preview-1";
+} from "./mobile.js?v=mobile-preview-2";
 import {
   ACCORDION_PROTOCOLS,
   normalizeAccordionState,
@@ -140,6 +141,7 @@ const elements = {
   panelToggle: document.querySelector("#panel-toggle"),
   panelContent: document.querySelector("#panel-content"),
   toggleSymbol: document.querySelector(".toggle-symbol"),
+  mobileControllerHomeAnchor: document.querySelector("#mobile-controller-home-anchor"),
   mobileDirectController: document.querySelector("#mobile-direct-controller"),
   mobileDirectTitle: document.querySelector("#mobile-direct-title"),
   mobileFlubberDragArea: document.querySelector("#mobile-flubber-drag-area"),
@@ -155,6 +157,8 @@ const elements = {
   mobileOpenSettings: document.querySelector("#mobile-open-settings"),
   mobileCloseSettings: document.querySelector("#mobile-close-settings"),
   faceFlubberPanel: document.querySelector("#face-flubber-panel"),
+  mobileFaceControllerAnchor: document.querySelector("#mobile-face-controller-anchor"),
+  mobileCloseFaceOptions: document.querySelector("#mobile-close-face-options"),
   faceFlubberPanelToggle: document.querySelector("#face-flubber-panel-toggle"),
   faceFlubberToggleSymbol: document.querySelector("#face-flubber-toggle-symbol"),
   mainFaceEnabled: document.querySelector("#main-face-enabled"),
@@ -928,6 +932,31 @@ function updateGroundControlPanelState() {
   elements.groundControlToggleSymbol.textContent = state.groundControlPanelOpen ? "−" : "+";
 }
 
+function placeMobileDirectController() {
+  const faceHostsController = smartphoneLayoutActive && state.faceFlubberPanelOpen;
+  const targetAnchor = faceHostsController
+    ? elements.mobileFaceControllerAnchor
+    : elements.mobileControllerHomeAnchor;
+  const moved = targetAnchor.nextElementSibling !== elements.mobileDirectController;
+  if (moved) targetAnchor.after(elements.mobileDirectController);
+  elements.faceFlubberPanel.classList.toggle("has-mobile-direct-controller", faceHostsController);
+  if (!state.panelOpen) elements.panel.classList.remove("is-mobile-settings-open");
+  if (!state.faceFlubberPanelOpen || !smartphoneLayoutActive) {
+    elements.faceFlubberPanel.classList.remove("is-mobile-settings-open");
+  }
+  elements.mobileOpenSettings.textContent = faceHostsController ? "Face options" : "Settings";
+  elements.mobileOpenSettings.setAttribute(
+    "aria-label",
+    faceHostsController ? "Open face options" : "Open Affect Tracker settings",
+  );
+  if (moved) {
+    requestAnimationFrame(() => {
+      renderMobileAffectFace.resize?.();
+      renderMobileFlubberPosition();
+    });
+  }
+}
+
 function updateAccordionPanelStates() {
   updatePanelState();
   updateFaceFlubberPanelState();
@@ -936,6 +965,7 @@ function updateAccordionPanelStates() {
   updateTouchPlaygroundPanelState();
   updatePolarPanelState();
   updateGroundControlPanelState();
+  placeMobileDirectController();
 }
 
 function toggleTopLevelProtocol(protocolId) {
@@ -2340,8 +2370,11 @@ function renderSynchronizedAffectPreview(snapshot, flubber) {
     [elements.mainAffectFace, renderMainAffectFace],
     [elements.mobileMainAffectFace, renderMobileAffectFace],
   ]) {
+    const mobileControllerPanel = elements.mobileDirectController.closest(".control-panel");
     const mobilePreviewCovered = root === elements.mobileMainAffectFace
-      && (!state.panelOpen || elements.panel.classList.contains("is-mobile-settings-open"));
+      && (!smartphoneLayoutActive
+        || mobileControllerPanel?.classList.contains("is-collapsed")
+        || mobileControllerPanel?.classList.contains("is-mobile-settings-open"));
     if (root.hidden || mobilePreviewCovered) continue;
     const face = renderer(snapshot, reducedMotionQuery.matches, flubber.color);
     const effectiveMode = face.effectiveMode;
@@ -2477,16 +2510,18 @@ function chooseMobileCoordinate(event) {
 
 function chooseMobileFlubberPosition(event) {
   const areaBounds = elements.mobileFlubberDragArea.getBoundingClientRect();
-  const flubberBounds = elements.mobileDirectFlubber.getBoundingClientRect();
-  const size = Math.min(flubberBounds.width, flubberBounds.height);
-  if (!areaBounds.width || !areaBounds.height || !size) return;
-  const normalized = normalizeFlubberViewportPosition({
-    x: event.clientX - areaBounds.left - mobileFlubberDragOffsetX,
-    y: event.clientY - areaBounds.top - mobileFlubberDragOffsetY,
-    size,
-    viewportWidth: areaBounds.width,
-    viewportHeight: areaBounds.height,
+  if (!areaBounds.width || !areaBounds.height) return;
+  const currentPosition = normalizedWidgetPosition();
+  const normalized = normalizeMobileAffectPreviewPosition({
+    width: areaBounds.width,
+    height: areaBounds.height,
+    flubberX: event.clientX - areaBounds.left - mobileFlubberDragOffsetX,
+    flubberY: event.clientY - areaBounds.top - mobileFlubberDragOffsetY,
+    faceVisible: !elements.mobileMainAffectFace.hidden,
+    fallbackViewportX: currentPosition.viewportX,
+    fallbackViewportY: currentPosition.viewportY,
   });
+  if (!normalized) return;
   setWidgetFromNormalizedPosition(normalized);
 }
 
@@ -2679,6 +2714,10 @@ function positionMainAffectFace(flubberPosition, pairLayout) {
 }
 
 function centerMainAffectPair() {
+  if (smartphoneLayoutActive) {
+    setWidgetFromNormalizedPosition({ viewportX: 0.5, viewportY: 0.5 });
+    return;
+  }
   const pairLayout = mainAffectPairLayout(state.widgetSize);
   state.widgetX = clamp(
     window.innerWidth / 2 + (pairLayout.faceSize + pairLayout.gap) / 2,
@@ -2716,7 +2755,10 @@ function constrainAndRenderWidget() {
   );
   state.widgetX = constrained.x;
   state.widgetY = constrained.y;
-  if (mainAffectFaceShouldShow() && !sharedPartyParticipant && cameraScale === 1) {
+  if (mainAffectFaceShouldShow()
+    && !smartphoneLayoutActive
+    && !sharedPartyParticipant
+    && cameraScale === 1) {
     const minimumX = pairLayout.inset + pairLayout.faceSize + pairLayout.gap + pairLayout.widgetSize / 2;
     const maximumX = window.innerWidth - pairLayout.inset - pairLayout.widgetSize / 2;
     state.widgetX = clamp(state.widgetX, minimumX, maximumX);
@@ -4282,6 +4324,7 @@ function initializeEvents() {
   window.addEventListener("wheel", handleWheel, { passive: false });
   window.addEventListener("resize", () => {
     updateSmartphoneLayout();
+    placeMobileDirectController();
     touchTrace.resize(window.innerWidth, window.innerHeight);
     activeTracePointerId = undefined;
     recordPhysicalInput("window", "resize", "viewport", `${window.innerWidth}x${window.innerHeight}`);
@@ -4296,6 +4339,7 @@ function initializeEvents() {
   });
   screen.orientation?.addEventListener?.("change", () => {
     updateSmartphoneLayout();
+    placeMobileDirectController();
     touchTrace.resize(window.innerWidth, window.innerHeight);
     activeTracePointerId = undefined;
     recordPhysicalInput("window", "orientation-change", "orientation", screen.orientation.type);
@@ -4326,14 +4370,14 @@ function initializeEvents() {
     savePreferences();
     recordEvent("appearance", "main-face", "visibility", state.mainFaceEnabled ? "shown" : "hidden");
     announce(state.mainFaceEnabled
-      ? "The affect face is shown to the left of Flubber on the main screen."
-      : "The affect face is hidden; Flubber remains on the main screen.");
+      ? "The affect face is shown to the left of Flubber in the live view."
+      : "The affect face is hidden; Flubber remains visible in the live view.");
   });
   elements.mainFaceCenterButton.addEventListener("click", () => {
     centerMainAffectPair();
     savePreferences();
     recordEvent("appearance", "main-face", "center-pair", 1);
-    announce("The 3D affect face and Flubber are centered as a pair on the main screen.");
+    announce("The selected affect face and Flubber are centered as a pair in the live view.");
   });
   elements.experimentPanelToggle.addEventListener("click", () => {
     toggleTopLevelProtocol("experiment");
@@ -4727,11 +4771,19 @@ function initializeEvents() {
     });
   }
   elements.mobileOpenSettings.addEventListener("click", () => {
-    elements.panel.classList.add("is-mobile-settings-open");
-    elements.mobileCloseSettings.focus();
+    const hostPanel = elements.mobileDirectController.closest(".control-panel");
+    hostPanel.classList.add("is-mobile-settings-open");
+    const closeButton = hostPanel === elements.faceFlubberPanel
+      ? elements.mobileCloseFaceOptions
+      : elements.mobileCloseSettings;
+    closeButton.focus();
   });
   elements.mobileCloseSettings.addEventListener("click", () => {
     elements.panel.classList.remove("is-mobile-settings-open");
+    elements.mobileCoordinateSpace.focus();
+  });
+  elements.mobileCloseFaceOptions.addEventListener("click", () => {
+    elements.faceFlubberPanel.classList.remove("is-mobile-settings-open");
     elements.mobileCoordinateSpace.focus();
   });
   elements.mobileDirectFlubber.addEventListener("pointerdown", (event) => {

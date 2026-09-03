@@ -9,7 +9,7 @@ export const ACCORDION_PROTOCOLS = Object.freeze({
     stateKey: "faceFlubberPanelOpen",
     panelId: "face-flubber-panel",
     domainModule: "face-engines.js",
-    responsibilities: Object.freeze(["empirical-affect-mapping", "face-solution-selection", "local-model-presentation", "atlas-fallback", "main-stage-synchronized-presentation", "presentation-visibility"]),
+    responsibilities: Object.freeze(["empirical-affect-mapping", "face-solution-selection", "local-model-presentation", "atlas-fallback", "main-stage-synchronized-presentation", "smartphone-affect-controller-host", "presentation-visibility"]),
   }),
   experiment: Object.freeze({
     stateKey: "experimentPanelOpen",

@@ -15,7 +15,7 @@
         }
       }
     </script>
-    <link rel="stylesheet" href="./styles.css?v=face-engines-1-main-2-screen-calibration-rim-2-mobile-party-camera-1-collaboration-8-retro-2-phone-preview-1">
+    <link rel="stylesheet" href="./styles.css?v=face-engines-1-main-2-screen-calibration-rim-2-mobile-party-camera-1-collaboration-8-retro-2-phone-preview-1-face-tab-1">
   </head>
   <body>
     <main id="stage" aria-label="Interactive affect tracker">
@@ -107,6 +107,7 @@
         </button>
 
         <div id="panel-content" class="panel-content">
+          <span id="mobile-controller-home-anchor" hidden></span>
           <section id="mobile-direct-controller" class="mobile-direct-controller" aria-labelledby="mobile-direct-title">
             <div class="mobile-flubber-pane">
               <header class="mobile-controller-header">
@@ -401,12 +402,14 @@
           <span id="face-flubber-toggle-symbol" class="toggle-symbol" aria-hidden="true">+</span>
         </button>
         <div id="face-flubber-panel-content" class="panel-content">
+          <span id="mobile-face-controller-anchor" hidden></span>
           <section class="face-flubber-module" aria-describedby="face-flubber-disclosure">
+            <button id="mobile-close-face-options" class="mobile-close-settings" type="button">Back to face controller</button>
             <label class="main-face-toggle" for="main-face-enabled">
               <input id="main-face-enabled" type="checkbox" checked>
               <span>
-                <strong>Show the affect face on the main screen</strong>
-                <span>The accordion controls visibility; the face itself stays beside the main Flubber after this panel is closed.</span>
+                <strong>Show the affect face beside Flubber</strong>
+                <span>On desktop it stays on the main stage. On phones, the Affect and Face tabs share the same live split controller.</span>
               </span>
             </label>
             <label class="face-engine-field" for="main-face-engine">
@@ -924,6 +927,6 @@
     </main>
 
     <script src="./vendor/vdoninja/1.5.5/vdoninja-sdk.min.js"></script>
-    <script type="module" src="./src/app.js?v=face-engines-1-main-2-screen-calibration-module-4-mobile-party-camera-1-collaboration-9-retro-2-phone-preview-1"></script>
+    <script type="module" src="./src/app.js?v=face-engines-1-main-2-screen-calibration-module-4-mobile-party-camera-1-collaboration-9-retro-2-phone-preview-1-face-tab-1"></script>
   </body>
 </html>
