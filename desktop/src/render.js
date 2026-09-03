@@ -1,6 +1,9 @@
 import { buildFlubberPath, createProfiles, createProjectionOffsets } from "../../site/src/math.js";
-import { createFaceRenderer } from "../../site/src/face.js";
-import { createFace3dRenderer } from "../../site/src/face-3d.js";
+import {
+  createFaceEngineRenderer,
+  faceEngineDefinition,
+  normalizeFaceEngineMode,
+} from "../../site/src/face-engines.js";
 
 const profiles = createProfiles();
 
@@ -34,21 +37,31 @@ export function createFlubberRenderer(root) {
   };
 }
 
-export function createSynchronizedAffectRenderer(root) {
+export function createSynchronizedAffectRenderer(root, options = {}) {
   const faceRoot = root.querySelector(".face-preview");
-  const renderFaceFallback = createFaceRenderer(faceRoot.querySelector("[data-face-3d-fallback]"));
-  const renderFace = createFace3dRenderer(faceRoot, { fallbackRenderer: renderFaceFallback });
+  const renderFace = createFaceEngineRenderer(faceRoot, {
+    mode: normalizeFaceEngineMode(options.faceMode),
+    onModeChange: options.onFaceModeChange,
+  });
   const renderFlubber = createFlubberRenderer(root.querySelector(".flubber-preview"));
 
-  return (snapshot, reducedMotion = false) => {
+  const render = (snapshot, reducedMotion = false) => {
     const flubber = renderFlubber(snapshot, reducedMotion);
     const face = renderFace(snapshot, reducedMotion, flubber.color);
-    root.dataset.face3dMode = renderFace.mode;
+    root.dataset.face3dMode = face.effectiveMode;
+    root.dataset.faceEngine = face.mode;
     root.dataset.renderSequence = String(snapshot.sequence ?? "");
+    const definition = faceEngineDefinition(face.mode);
     root.setAttribute(
       "aria-label",
-      `Procedural affect display: valence ${snapshot.currentX.toFixed(3)}, arousal ${snapshot.currentY.toFixed(3)}; face left, Flubber right.`,
+      `${definition.label} affect display: valence ${snapshot.currentX.toFixed(3)}, arousal ${snapshot.currentY.toFixed(3)}; face left, Flubber right.`,
     );
     return Object.freeze({ face, flubber, sequence: snapshot.sequence });
   };
+  render.setFaceMode = (mode) => renderFace.setMode(mode);
+  Object.defineProperties(render, {
+    faceMode: { enumerable: true, get: () => renderFace.mode },
+    faceEffectiveMode: { enumerable: true, get: () => renderFace.effectiveMode },
+  });
+  return render;
 }

@@ -6,6 +6,10 @@ import {
   buildFaceGeometry,
   interpolateFaceExpression,
 } from "../site/src/face.js";
+import {
+  DEFAULT_FACE_ENGINE_MODE,
+  FACE_ENGINE_MODES,
+} from "../site/src/face-engines.js";
 
 const approximately = (actual, expected, tolerance = 1e-9) => {
   assert.ok(Math.abs(actual - expected) <= tolerance, `${actual} should be near ${expected}`);
@@ -87,20 +91,73 @@ test("shared phase animates the face while reduced motion remains phase independ
   assert.deepEqual(reducedStart, reducedPeak);
 });
 
-test("desktop pairs face left and Flubber right from one current-state snapshot", () => {
+test("desktop exposes the complete five-mode face stack before the right-side Flubber", () => {
   const html = readFileSync(new URL("../desktop/index.html", import.meta.url), "utf8");
+  const css = readFileSync(new URL("../desktop/styles.css", import.meta.url), "utf8");
+  const preview = html.match(
+    /<div id="synchronized-affect-preview"[\s\S]*?<\/div>\s*<p class="face-disclosure">/,
+  )?.[0];
+  assert.ok(preview, "the synchronized desktop preview should be present");
+
+  assert.ok(preview.indexOf('class="face-preview"') < preview.indexOf('class="flubber-preview"'));
+  assert.ok(preview.indexOf('data-face-model') < preview.indexOf('data-face-photo'));
+  assert.ok(preview.indexOf('data-face-photo') < preview.indexOf('data-face-3d-fallback'));
+  assert.ok(preview.indexOf('data-face-3d-fallback') < preview.indexOf('class="flubber-preview"'));
+  assert.equal((preview.match(/data-face-model/g) ?? []).length, 1);
+  assert.equal((preview.match(/data-face-photo/g) ?? []).length, 1);
+  assert.equal((preview.match(/data-face-3d-fallback/g) ?? []).length, 1);
+  assert.match(preview, /<canvas class="face-model-canvas" data-face-model/);
+  assert.match(preview, /<canvas class="face-photo-canvas" data-face-photo/);
+  assert.match(preview, /class="face-3d-fallback" data-face-3d-fallback hidden[\s\S]*?<svg/);
+  assert.match(css, /\.face-preview \.face-model-canvas\s*\{\s*z-index:\s*3;/);
+  assert.match(css, /\.face-preview \.face-photo-canvas\s*\{\s*z-index:\s*2;/);
+  assert.match(css, /\.face-preview \.face-3d-fallback\s*\{\s*z-index:\s*1;/);
+  assert.match(css, /\.face-preview \.face-3d-fallback\[hidden\]\s*\{\s*display:\s*none;/);
+
+  const selector = html.match(/<select id="desktop-face-engine">([\s\S]*?)<\/select>/)?.[1];
+  assert.ok(selector, "the desktop face solution selector should be present");
+  const options = [...selector.matchAll(/<option value="([^"]+)">([^<]+)<\/option>/g)]
+    .map((match) => ({ id: match[1], label: match[2].trim() }));
+  assert.deepEqual(
+    options,
+    FACE_ENGINE_MODES.map(({ id, label }) => ({ id, label })),
+  );
+  assert.equal(options.length, 5);
+  assert.equal(options[0].id, DEFAULT_FACE_ENGINE_MODE);
+  assert.match(html, /no camera capture, face recognition, or emotion diagnosis/);
+});
+
+test("desktop renders every face mode and Flubber from one frozen current-state snapshot", () => {
   const renderSource = readFileSync(new URL("../desktop/src/render.js", import.meta.url), "utf8");
   const settingsSource = readFileSync(new URL("../desktop/src/settings.js", import.meta.url), "utf8");
-  assert.ok(html.indexOf('class="face-preview"') < html.indexOf('class="flubber-preview"'));
-  assert.ok(html.indexOf('class="face-3d-canvas"') < html.indexOf('class="flubber-preview"'));
-  assert.match(html, /class="face-3d-fallback" data-face-3d-fallback hidden/);
-  assert.match(renderSource, /from "\.\.\/\.\.\/site\/src\/face-3d\.js"/);
-  assert.match(renderSource, /renderFlubber\(snapshot, reducedMotion\)/);
-  assert.match(renderSource, /renderFace\(snapshot, reducedMotion, flubber\.color\)/);
-  assert.doesNotMatch(renderSource, /targetX|targetY/);
-  assert.match(settingsSource, /const renderedSnapshot = Object\.freeze\(/);
-  assert.match(settingsSource, /renderAffectPair\(renderedSnapshot, reducedMotion\.matches\)/);
-  assert.match(html, /not emotion recognition, diagnosis/);
+  const synchronizedRenderer = renderSource.slice(
+    renderSource.indexOf("export function createSynchronizedAffectRenderer"),
+  );
+
+  assert.match(renderSource, /from "\.\.\/\.\.\/site\/src\/face-engines\.js"/);
+  assert.match(renderSource, /createFaceEngineRenderer\(faceRoot/);
+  assert.match(
+    synchronizedRenderer,
+    /const flubber = renderFlubber\(snapshot, reducedMotion\);\s*const face = renderFace\(snapshot, reducedMotion, flubber\.color\);/,
+  );
+  assert.match(synchronizedRenderer, /root\.dataset\.renderSequence = String\(snapshot\.sequence \?\? ""\)/);
+  assert.match(
+    synchronizedRenderer,
+    /return Object\.freeze\(\{ face, flubber, sequence: snapshot\.sequence \}\)/,
+  );
+  assert.doesNotMatch(synchronizedRenderer, /targetX|targetY/);
+
+  assert.match(
+    settingsSource,
+    /createSynchronizedAffectRenderer\(elements\.synchronizedPreview, \{\s*faceMode: localStorage\.getItem\(DESKTOP_FACE_MODE_KEY\),\s*\}\)/,
+  );
+  assert.match(
+    settingsSource,
+    /const renderedSnapshot = Object\.freeze\(\{ \.\.\.snapshot, \.\.\.visualPreview, palette, overlayOpacity \}\);\s*renderAffectPair\(renderedSnapshot, reducedMotion\.matches\);/,
+  );
+  assert.match(settingsSource, /const selected = renderAffectPair\.setFaceMode\(elements\.faceEngine\.value\)/);
+  assert.match(settingsSource, /localStorage\.setItem\(DESKTOP_FACE_MODE_KEY, selected\)/);
+  assert.match(settingsSource, /if \(latestSnapshot\) renderSnapshot\(latestSnapshot\)/);
 });
 
 test("GitHub Pages keeps the affect face on the main stage and its enable control in the accordion", () => {
@@ -110,16 +167,22 @@ test("GitHub Pages keeps the affect face on the main stage and its enable contro
   assert.match(html, /id="face-flubber-panel"[^>]*data-module-protocol="face"/);
   assert.match(html, /Synchronized Face \+ Flubber/);
   assert.ok(html.indexOf('id="main-affect-face"') < html.indexOf('id="affect-widget"'));
-  assert.match(html, /id="main-affect-face-canvas"/);
+  assert.match(html, /id="main-affect-face-model"[^>]*data-face-model/);
+  assert.match(html, /id="main-affect-face-photo"[^>]*data-face-photo/);
+  assert.equal((html.match(/data-face-model/g) ?? []).length, 2);
+  assert.equal((html.match(/data-face-photo/g) ?? []).length, 2);
   assert.match(html, /id="main-affect-face-fallback"[^>]*data-face-3d-fallback/);
   assert.match(html, /id="mobile-main-affect-face"/);
   assert.match(html, /id="main-face-enabled" type="checkbox" checked/);
+  assert.match(html, /id="main-face-engine"/);
   assert.match(html, /id="main-face-center-button"/);
   assert.doesNotMatch(html, /id="web-synchronized-affect-preview"/);
-  assert.match(html, /not emotion recognition, diagnosis/);
+  assert.match(html, /does not access a camera, recognize faces, diagnose emotion/);
   assert.match(protocols, /faceFlubberPanelOpen/);
-  assert.match(protocols, /domainModule: "face-3d\.js"/);
+  assert.match(protocols, /domainModule: "face-engines\.js"/);
   assert.match(appSource, /const affectFrame = Object\.freeze\(/);
+  assert.match(appSource, /createFaceEngineRenderer\(elements\.mainAffectFace/);
+  assert.match(appSource, /createFaceEngineRenderer\(elements\.mobileMainAffectFace/);
   assert.match(appSource, /renderSynchronizedAffectPreview\(affectFrame, rendered\)/);
   assert.match(appSource, /\[elements\.mainAffectFace, renderMainAffectFace\]/);
   assert.match(appSource, /\[elements\.mobileMainAffectFace, renderMobileAffectFace\]/);

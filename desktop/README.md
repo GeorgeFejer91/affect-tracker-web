@@ -1,15 +1,15 @@
 # Affect Tracker Desktop
 
-This directory contains the local WebView source for the Tauri v2 companion. The authoritative native application lives in [`../src-tauri`](../src-tauri). The desktop imports the canonical Flubber renderer from [`../site/src/math.js`](../site/src/math.js), the shared projected-3D Canvas face from [`../site/src/face-3d.js`](../site/src/face-3d.js), and its SVG compatibility renderer from [`../site/src/face.js`](../site/src/face.js) during the Vite build.
+This directory contains the local WebView source for the Tauri v2 companion. The authoritative native application lives in [`../src-tauri`](../src-tauri). During the Vite build, the desktop imports the canonical Flubber renderer from [`../site/src/math.js`](../site/src/math.js) and the same five-mode face coordinator used by GitHub Pages from [`../site/src/face-engines.js`](../site/src/face-engines.js). Detailed modes use the bundled Vitruvian GLB and Three.js renderer, then fall back locally through the project-owned photo atlas to [`../site/src/face.js`](../site/src/face.js).
 
 ## Windows
 
-- `settings`: ordinary configuration window with a synchronized live preview: projected-3D face left, canonical Flubber right, with a local SVG compatibility fallback.
+- `settings`: ordinary configuration window with a synchronized live preview: selected local face mode left, canonical Flubber right, with photo-atlas and SVG compatibility fallbacks.
 - `overlay`: transparent, borderless, always-on-top Flubber-only visualization. It ignores pointer events while locked and receives pointer events only in explicit edit-position mode.
 
 ## Synchronized affect preview and traversal
 
-Rust is the only desktop authority for affect state. Each compact snapshot supplies the exact same `currentX`, `currentY`, and `phase` object to both settings-window renderers, so facial deformation and the Flubber's shape, pulse, and rate of change move together. The dependency-free Canvas renderer deforms and perspective-projects a project-authored head mesh using the same piecewise-bilinear 3×3 mouth, eye, and brow map as the SVG fallback. It is a visualization convention, not emotion recognition, diagnosis, face tracking, or an empirically validated claim that one expression uniquely identifies an affective state. Reduced motion removes secondary facial pulse without changing affect input or the selected coordinates.
+Rust is the only desktop authority for affect state. Each compact snapshot supplies the exact same `currentX`, `currentY`, and `phase` object to both settings-window renderers, so facial deformation and the Flubber's shape, pulse, and rate of change move together. The presentation selector offers AFFEC empirical 3D, MediaPipe-rigged atlas 3D, continuous FACS-style 3D, an 11 × 11 morph matrix, and a photoreal atlas blend. The first four deform the same locally packaged morph head; the final mode bilinearly blends a compact 3 × 3 project-owned synthetic atlas. No camera or recognition model runs in the app. These are non-diagnostic coordinate visualizations, and reduced motion never changes the selected coordinates.
 
 Two session traversal modes are available:
 

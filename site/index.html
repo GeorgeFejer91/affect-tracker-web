@@ -7,7 +7,15 @@
     <meta name="description" content="A draggable, browser-only 2D affect tracker inspired by AffectTracker.">
     <title>2D Affect Tracker</title>
     <script src="./src/theme-bootstrap.js?v=retro-2"></script>
-    <link rel="stylesheet" href="./styles.css?v=face-3d-main-1-screen-calibration-rim-2-mobile-party-camera-1-collaboration-8-retro-2">
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "./vendor/three/0.184.0/build/three.module.min.js",
+          "three/addons/": "./vendor/three/0.184.0/examples/jsm/"
+        }
+      }
+    </script>
+    <link rel="stylesheet" href="./styles.css?v=face-engines-1-main-2-screen-calibration-rim-2-mobile-party-camera-1-collaboration-8-retro-2">
   </head>
   <body>
     <main id="stage" aria-label="Interactive affect tracker">
@@ -15,10 +23,11 @@
         id="main-affect-face"
         class="main-affect-face"
         role="img"
-        aria-label="Procedural 3D affect face at neutral."
+        aria-label="Detailed affect face at neutral."
         hidden
       >
-        <canvas id="main-affect-face-canvas" width="640" height="640" aria-hidden="true"></canvas>
+        <canvas id="main-affect-face-model" class="face-model-canvas" data-face-model width="640" height="640" aria-hidden="true"></canvas>
+        <canvas id="main-affect-face-photo" class="face-photo-canvas" data-face-photo width="640" height="640" aria-hidden="true"></canvas>
         <div id="main-affect-face-fallback" class="main-affect-face-fallback" data-face-3d-fallback hidden aria-hidden="true">
           <svg viewBox="-1.1 -1.1 2.2 2.2" focusable="false">
             <circle class="face-halo" cx="0" cy="0" r="0.91"></circle>
@@ -112,10 +121,11 @@
                   id="mobile-main-affect-face"
                   class="mobile-main-affect-face"
                   role="img"
-                  aria-label="Procedural 3D affect face at neutral."
+                  aria-label="Detailed affect face at neutral."
                   hidden
                 >
-                  <canvas width="360" height="360" aria-hidden="true"></canvas>
+                  <canvas class="face-model-canvas" data-face-model width="360" height="360" aria-hidden="true"></canvas>
+                  <canvas class="face-photo-canvas" data-face-photo width="360" height="360" aria-hidden="true"></canvas>
                   <div class="main-affect-face-fallback" data-face-3d-fallback hidden aria-hidden="true">
                     <svg viewBox="-1.1 -1.1 2.2 2.2" focusable="false">
                       <circle class="face-halo" cx="0" cy="0" r="0.91"></circle>
@@ -399,13 +409,24 @@
                 <span>The accordion controls visibility; the face itself stays beside the main Flubber after this panel is closed.</span>
               </span>
             </label>
+            <label class="face-engine-field" for="main-face-engine">
+              <span>Face solution</span>
+              <select id="main-face-engine" aria-describedby="main-face-engine-help">
+                <option value="affec-empirical">AFFEC empirical 3D</option>
+                <option value="mediapipe-atlas">MediaPipe-rigged atlas 3D</option>
+                <option value="facs-continuous">Continuous FACS-style 3D</option>
+                <option value="matrix-anchors">11 × 11 morph matrix 3D</option>
+                <option value="photo-atlas">Photoreal atlas blend</option>
+              </select>
+            </label>
+            <p id="main-face-engine-help" class="face-engine-help">Uses all 5,807 valid perceived valence/arousal trials in AFFEC to place expression prototypes, then interpolates the local morph face.</p>
             <button id="main-face-center-button" type="button">Center face + Flubber</button>
-            <p class="main-face-renderer-status">Renderer: <output id="main-face-renderer-output">Checking 3D canvas…</output></p>
+            <p class="main-face-renderer-status">Renderer: <output id="main-face-renderer-output">Loading selected local solution…</output></p>
             <div class="face-flubber-values" aria-live="off">
               <span>Valence <output id="face-flubber-valence-output">+0.000</output></span>
               <span>Arousal <output id="face-flubber-arousal-output">+0.000</output></span>
             </div>
-            <p id="face-flubber-disclosure" class="face-flubber-disclosure"><strong>Interpretation boundary:</strong> this project-authored face visualizes the same coordinates and animation phase as Flubber. It is not emotion recognition, diagnosis, face tracking, or a claim that one expression uniquely represents an affective state.</p>
+            <p id="face-flubber-disclosure" class="face-flubber-disclosure"><strong>Interpretation boundary:</strong> every solution visualizes the exact displayed valence/arousal coordinates used by Flubber. AFFEC supplies aggregate perceived-rating locations; MediaPipe was used once during asset preparation to extract blendshape coefficients. The app does not access a camera, recognize faces, diagnose emotion, or claim that one expression uniquely represents an affective state.</p>
           </section>
         </div>
       </section>
@@ -900,6 +921,6 @@
     </main>
 
     <script src="./vendor/vdoninja/1.5.5/vdoninja-sdk.min.js"></script>
-    <script type="module" src="./src/app.js?v=face-3d-main-1-screen-calibration-module-4-mobile-party-camera-1-collaboration-9-retro-2"></script>
+    <script type="module" src="./src/app.js?v=face-engines-1-main-2-screen-calibration-module-4-mobile-party-camera-1-collaboration-9-retro-2"></script>
   </body>
 </html>

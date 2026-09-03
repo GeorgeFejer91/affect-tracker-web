@@ -117,7 +117,12 @@ button.is-held {
   width: 100%;
   height: 100%;
 }
+.main-affect-face canvas,
+.main-affect-face-fallback { position: absolute; inset: 0; }
 .main-affect-face canvas { background: transparent; }
+.main-affect-face .face-model-canvas { z-index: 3; }
+.main-affect-face .face-photo-canvas { z-index: 2; }
+.main-affect-face .main-affect-face-fallback { z-index: 1; }
 .main-affect-face-fallback[hidden] { display: none; }
 .main-affect-face-fallback svg { overflow: visible; transform-origin: center; }
 .main-affect-face-fallback .face-halo { fill: var(--affect-color); fill-opacity: 0.13; stroke: var(--affect-color); stroke-opacity: 0.28; stroke-width: 0.045; }
@@ -649,6 +654,9 @@ body.is-experiment-running .flubber-party-stage { display: none; }
 .main-face-toggle strong { font-size: 0.78rem; }
 .main-face-toggle span span,
 .face-flubber-disclosure { color: rgb(255 255 255 / 64%); font-size: 0.7rem; line-height: 1.45; }
+.face-engine-field { display: grid; gap: 0.3rem; color: rgb(255 255 255 / 68%); font-size: 0.7rem; font-weight: 650; }
+.face-engine-field select { width: 100%; min-height: 2.35rem; padding: 0.35rem 0.45rem; border: 1px solid rgb(255 255 255 / 18%); border-radius: 0.45rem; background: #15181b; color: #fff; }
+.face-engine-help { min-height: 2.8em; margin: -0.2rem 0 0; color: rgb(255 255 255 / 55%); font-size: 0.66rem; line-height: 1.4; }
 #main-face-center-button { width: 100%; min-height: 2.45rem; }
 .main-face-renderer-status { margin: 0; color: rgb(255 255 255 / 58%); font-size: 0.66rem; }
 .main-face-renderer-status output { color: #d9f5ff; }
@@ -2110,6 +2118,9 @@ body.is-smartphone-layout .mobile-direct-controller {
 .mobile-main-affect-face svg { display: block; width: 100%; height: 100%; }
 .mobile-main-affect-face canvas,
 .mobile-main-affect-face .main-affect-face-fallback { position: absolute; inset: 0; }
+.mobile-main-affect-face .face-model-canvas { z-index: 3; }
+.mobile-main-affect-face .face-photo-canvas { z-index: 2; }
+.mobile-main-affect-face .main-affect-face-fallback { z-index: 1; }
 .mobile-main-affect-face .main-affect-face-fallback[hidden] { display: none; }
 
 body.is-smartphone-layout .main-affect-face { display: none !important; }

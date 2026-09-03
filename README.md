@@ -34,9 +34,11 @@ Continuous mode moves while a direction is held. Step mode changes the target by
 
 ### Synchronized Face + Flubber
 
-The GitHub Pages app keeps a projected-3D affect face on the main stage to the left of the canonical Flubber. The top-level **Synchronized Face + Flubber** accordion enables, disables, and centers that presentation; closing the accordion does not remove the face. The phone controller shows the same foreground pair. Both receive the exact same current valence, current arousal, and animation phase on every rendered frame. The face deforms a project-authored head mesh from a project-authored 3×3 mouth/eye/brow anchor map, with a local SVG compatibility fallback. It is a coordinate visualization, not emotion recognition, diagnosis, face tracking, or a claim that one facial expression uniquely represents an affective state.
+The GitHub Pages app keeps an affect face on the main stage to the left of the canonical Flubber. The top-level **Synchronized Face + Flubber** accordion enables, disables, centers, and selects that presentation; closing the accordion does not remove the face. The phone controller uses the same selected browser mode, and the desktop settings window provides the same five choices from its Rust-authoritative snapshot. Every mode receives the exact same displayed valence, arousal, and animation-phase snapshot as its Flubber and owns no input or research clock.
 
-The desktop settings window provides the same paired presentation from one Rust-authoritative snapshot. Its separate always-on-top overlay intentionally remains Flubber-only.
+The selectable modes are **AFFEC empirical 3D**, **MediaPipe-rigged atlas 3D**, **Continuous FACS-style 3D**, **11 × 11 morph matrix 3D**, and **Photoreal atlas blend**. The detailed modes use locally vendored Three.js and checked-in GLB/textures, then degrade locally through the photo atlas to the canonical SVG face. The application downloads no face model at runtime, requests no camera, performs no face recognition, and makes no diagnostic or one-expression-per-state claim. Asset and data provenance are recorded in the [local face notice](./site/assets/affect-face/NOTICE.md) and [research ledger](./for-ai/70-RESEARCH-PROVENANCE.md).
+
+The separate always-on-top desktop overlay intentionally remains Flubber-only.
 
 ### Experimental Touch/Trackpad control
 
@@ -150,7 +152,7 @@ This is intentionally transient and is not stored in the portable settings JSON.
 
 **Affect Tracker Desktop** uses the bundle identifier `io.github.georgefejer91.affecttracker`. It contains two local windows:
 
-- A normal settings window with the projected-3D face left and canonical Flubber right (plus SVG compatibility fallback), live coordinates, physical-input mappings, an interactive color-space picker, overlay appearance, and LSL configuration.
+- A normal settings window with the selected local face engine left and canonical Flubber right (with local photo-atlas/vector fallback), live coordinates, physical-input mappings, an interactive color-space picker, overlay appearance, and LSL configuration.
 - A transparent overlay that floats above other applications. It is click-through while locked and draggable only in explicit edit mode.
 
 Rust owns authoritative affect coordinates, smoothing, timestamps, settings, global raw-input monitoring, tray lifecycle, and LSL publication. The desktop WebViews contain presentation only and communicate through narrow typed commands. One immutable snapshot supplies `currentX`, `currentY`, and `phase` to both settings-window renderers, keeping facial deformation and Flubber pulse/rate synchronized without making rendering the research clock. Closing the settings window quits the process and removes the overlay; the tray menu also provides an explicit Quit action.

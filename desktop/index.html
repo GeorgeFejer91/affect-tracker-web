@@ -27,10 +27,11 @@
           <div><p class="eyebrow">Live state</p><h2 id="live-title">Affect preview</h2></div>
           <div class="coordinates"><output id="valence-output">+0.000</output><span>valence</span><output id="arousal-output">+0.000</output><span>arousal</span></div>
         </div>
-        <div id="synchronized-affect-preview" class="synchronized-affect-preview" role="img" aria-label="Procedural affect display at neutral; face left, Flubber right.">
+        <div id="synchronized-affect-preview" class="synchronized-affect-preview" role="img" aria-label="Detailed affect display at neutral; face left, Flubber right.">
           <figure class="affect-figure">
             <div class="face-preview" aria-hidden="true">
-              <canvas class="face-3d-canvas" width="640" height="640"></canvas>
+              <canvas class="face-model-canvas" data-face-model width="640" height="640"></canvas>
+              <canvas class="face-photo-canvas" data-face-photo width="640" height="640"></canvas>
               <div class="face-3d-fallback" data-face-3d-fallback hidden>
                 <svg viewBox="-1.1 -1.1 2.2 2.2">
                   <circle class="face-halo" cx="0" cy="0" r="0.91"></circle>
@@ -57,7 +58,16 @@
             <figcaption>Flubber</figcaption>
           </figure>
         </div>
-        <p class="face-disclosure">The project-authored 3D face is a visualization of the selected coordinates—not emotion recognition, diagnosis, face tracking, or a claim that one face uniquely represents an affective state. A 2D compatibility view appears if Canvas is unavailable.</p>
+        <p class="face-disclosure">Each local solution receives the exact displayed valence/arousal snapshot used by Flubber. AFFEC supplies aggregate perceived-rating locations, and MediaPipe was used once during asset preparation for blendshape coefficients. The app performs no camera capture, face recognition, or emotion diagnosis.</p>
+        <label class="face-solution-control" for="desktop-face-engine">Face solution
+          <select id="desktop-face-engine">
+            <option value="affec-empirical">AFFEC empirical 3D</option>
+            <option value="mediapipe-atlas">MediaPipe-rigged atlas 3D</option>
+            <option value="facs-continuous">Continuous FACS-style 3D</option>
+            <option value="matrix-anchors">11 × 11 morph matrix 3D</option>
+            <option value="photo-atlas">Photoreal atlas blend</option>
+          </select>
+        </label>
         <div class="preview-controls">
           <div class="preview-actions">
             <div class="direction-pad" aria-label="Nudge affect coordinates">

@@ -7,8 +7,11 @@ import {
   createProjectionOffsets,
   smoothToward,
 } from "./math.js?v=shape-1";
-import { createFaceRenderer } from "./face.js?v=face-1";
-import { createFace3dRenderer } from "./face-3d.js?v=face-3d-1";
+import {
+  createFaceEngineRenderer,
+  faceEngineDefinition,
+  normalizeFaceEngineMode,
+} from "./face-engines.js?v=face-engines-1";
 import {
   applyStep,
   constrainWidgetPosition,
@@ -154,6 +157,8 @@ const elements = {
   faceFlubberPanelToggle: document.querySelector("#face-flubber-panel-toggle"),
   faceFlubberToggleSymbol: document.querySelector("#face-flubber-toggle-symbol"),
   mainFaceEnabled: document.querySelector("#main-face-enabled"),
+  mainFaceEngine: document.querySelector("#main-face-engine"),
+  mainFaceEngineHelp: document.querySelector("#main-face-engine-help"),
   mainFaceCenterButton: document.querySelector("#main-face-center-button"),
   mainFaceRendererOutput: document.querySelector("#main-face-renderer-output"),
   faceFlubberValenceOutput: document.querySelector("#face-flubber-valence-output"),
@@ -369,6 +374,7 @@ function readPreferences(bundledSettings) {
       panelOpen: typeof parsed.panelOpen === "boolean" ? parsed.panelOpen : !parsed.seenIntro,
       faceFlubberPanelOpen: typeof parsed.faceFlubberPanelOpen === "boolean" ? parsed.faceFlubberPanelOpen : false,
       mainFaceEnabled: parsed.mainFaceEnabled !== false,
+      faceEngineMode: normalizeFaceEngineMode(parsed.faceEngineMode),
       mainFaceNeedsInitialCenter: !Object.prototype.hasOwnProperty.call(parsed, "mainFaceEnabled"),
       experimentPanelOpen: typeof parsed.experimentPanelOpen === "boolean" ? parsed.experimentPanelOpen : false,
       screenCalibrationPanelOpen: typeof parsed.screenCalibrationPanelOpen === "boolean" ? parsed.screenCalibrationPanelOpen : false,
@@ -395,6 +401,7 @@ function readPreferences(bundledSettings) {
       panelOpen: true,
       faceFlubberPanelOpen: false,
       mainFaceEnabled: true,
+      faceEngineMode: normalizeFaceEngineMode(),
       mainFaceNeedsInitialCenter: true,
       experimentPanelOpen: false,
       screenCalibrationPanelOpen: false,
@@ -452,6 +459,7 @@ const state = {
   panelOpen: preferences.panelOpen,
   faceFlubberPanelOpen: preferences.faceFlubberPanelOpen,
   mainFaceEnabled: preferences.mainFaceEnabled,
+  faceEngineMode: preferences.faceEngineMode,
   mainFaceNeedsInitialCenter: preferences.mainFaceNeedsInitialCenter,
   experimentPanelOpen: preferences.experimentPanelOpen,
   screenCalibrationPanelOpen: preferences.screenCalibrationPanelOpen,
@@ -617,16 +625,12 @@ let activeTracePointerId;
 let lastLoggedGateCommitSequence = 0;
 let retroToastTimer;
 const reducedMotionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
-const renderMainAffectFaceFallback = createFaceRenderer(elements.mainAffectFaceFallback);
-const renderMainAffectFace = createFace3dRenderer(elements.mainAffectFace, {
-  fallbackRenderer: renderMainAffectFaceFallback,
+const renderMainAffectFace = createFaceEngineRenderer(elements.mainAffectFace, {
+  mode: state.faceEngineMode,
   onModeChange: updateMainFaceRendererStatus,
 });
-const renderMobileAffectFaceFallback = createFaceRenderer(
-  elements.mobileMainAffectFace.querySelector("[data-face-3d-fallback]"),
-);
-const renderMobileAffectFace = createFace3dRenderer(elements.mobileMainAffectFace, {
-  fallbackRenderer: renderMobileAffectFaceFallback,
+const renderMobileAffectFace = createFaceEngineRenderer(elements.mobileMainAffectFace, {
+  mode: state.faceEngineMode,
   onModeChange: updateMainFaceRendererStatus,
 });
 const retroSoundboard = createRetroSoundboard();
@@ -645,6 +649,7 @@ function savePreferences() {
     panelOpen: state.panelOpen,
     faceFlubberPanelOpen: state.faceFlubberPanelOpen,
     mainFaceEnabled: state.mainFaceEnabled,
+    faceEngineMode: state.faceEngineMode,
     experimentPanelOpen: state.experimentPanelOpen,
     screenCalibrationPanelOpen: state.screenCalibrationPanelOpen,
     touchPlaygroundPanelOpen: state.touchPlaygroundPanelOpen,
@@ -852,10 +857,17 @@ function updatePanelState() {
   elements.toggleSymbol.textContent = state.panelOpen ? "−" : "+";
 }
 
-function updateMainFaceRendererStatus(mode) {
-  elements.mainFaceRendererOutput.value = mode === "canvas"
-    ? "projected 3D canvas"
-    : "2D compatibility view";
+function updateMainFaceRendererStatus(selectedMode = state.faceEngineMode, effectiveMode) {
+  const definition = faceEngineDefinition(selectedMode);
+  const effective = effectiveMode
+    ?? (smartphoneLayoutActive ? renderMobileAffectFace.effectiveMode : renderMainAffectFace.effectiveMode);
+  const suffix = effective === "model"
+    ? " · detailed local 3D"
+    : effective === "photo"
+      ? " · photoreal fallback"
+      : " · vector fallback";
+  elements.mainFaceRendererOutput.value = `${definition.shortLabel}${suffix}`;
+  elements.mainFaceEngineHelp.textContent = definition.description;
 }
 
 function updateFaceFlubberPanelState() {
@@ -863,13 +875,12 @@ function updateFaceFlubberPanelState() {
   elements.faceFlubberPanelToggle.setAttribute("aria-expanded", String(state.faceFlubberPanelOpen));
   elements.faceFlubberToggleSymbol.textContent = state.faceFlubberPanelOpen ? "−" : "+";
   elements.mainFaceEnabled.checked = state.mainFaceEnabled;
+  elements.mainFaceEngine.value = state.faceEngineMode;
   elements.mainFaceCenterButton.disabled = !state.mainFaceEnabled
     || !state.widgetVisible
     || experiment.phase !== "idle"
     || Boolean(pictureInPictureWindow);
-  updateMainFaceRendererStatus(
-    smartphoneLayoutActive ? renderMobileAffectFace.mode : renderMainAffectFace.mode,
-  );
+  updateMainFaceRendererStatus(state.faceEngineMode);
 }
 
 function updateExperimentPanelState() {
@@ -2316,7 +2327,16 @@ function renderSynchronizedAffectPreview(snapshot, flubber) {
   ]) {
     if (root.hidden) continue;
     const face = renderer(snapshot, reducedMotionQuery.matches, flubber.color);
-    const faceKind = face.mode === "canvas-3d" ? "Procedural 3D affect face" : "Procedural affect face compatibility view";
+    const effectiveMode = face.effectiveMode;
+    const definition = faceEngineDefinition(face.mode);
+    const faceKind = effectiveMode === "model"
+      ? `${definition.label} affect face`
+      : effectiveMode === "photo"
+        ? `${definition.label} using the photoreal fallback`
+        : `${definition.label} using the canonical vector fallback`;
+    root.dataset.faceRendererError = renderer.lastError?.message ?? "";
+    root.dataset.faceEffectiveMode = effectiveMode;
+    updateMainFaceRendererStatus(face.mode, effectiveMode);
     root.style.opacity = String(snapshot.overlayOpacity ?? 1);
     root.dataset.renderPhase = snapshot.phase.toFixed(6);
     root.setAttribute(
@@ -4272,6 +4292,16 @@ function initializeEvents() {
   });
   elements.faceFlubberPanelToggle.addEventListener("click", () => {
     toggleTopLevelProtocol("face");
+  });
+  elements.mainFaceEngine.addEventListener("change", () => {
+    state.faceEngineMode = normalizeFaceEngineMode(elements.mainFaceEngine.value);
+    renderMainAffectFace.setMode(state.faceEngineMode);
+    renderMobileAffectFace.setMode(state.faceEngineMode);
+    updateFaceFlubberPanelState();
+    savePreferences();
+    const definition = faceEngineDefinition(state.faceEngineMode);
+    recordEvent("appearance", "main-face", "solution", state.faceEngineMode);
+    announce(`${definition.label} selected. The face and Flubber remain synchronized to the same affect coordinates.`);
   });
   elements.mainFaceEnabled.addEventListener("change", () => {
     state.mainFaceEnabled = elements.mainFaceEnabled.checked;

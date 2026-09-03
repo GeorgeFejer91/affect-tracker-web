@@ -44,6 +44,9 @@ h3 { margin: 1.25rem 0 0.4rem; font-size: 0.92rem; }
 .face-preview canvas,
 .face-preview .face-3d-fallback { position: absolute; inset: 0; }
 .face-preview canvas { background: transparent; }
+.face-preview .face-model-canvas { z-index: 3; }
+.face-preview .face-photo-canvas { z-index: 2; }
+.face-preview .face-3d-fallback { z-index: 1; }
 .face-preview .face-3d-fallback[hidden] { display: none; }
 .face-preview svg, .flubber-preview svg { overflow: visible; transform-origin: center; }
 .face-halo { fill: var(--affect-color); fill-opacity: 0.13; stroke: var(--affect-color); stroke-opacity: 0.28; stroke-width: 0.045; }
@@ -55,6 +58,8 @@ h3 { margin: 1.25rem 0 0.4rem; font-size: 0.92rem; }
 .face-pupil { fill: #071015; }
 .face-mouth { fill: var(--affect-color); fill-opacity: 0.52; stroke: rgb(255 255 255 / 92%); stroke-width: 0.035; stroke-linejoin: round; }
 .face-disclosure { max-width: 48rem; margin: 0.8rem auto 1.1rem; color: rgb(255 255 255 / 50%); font-size: 0.72rem; line-height: 1.45; text-align: center; }
+.face-solution-control { display: grid; grid-template-columns: auto minmax(14rem, 23rem); align-items: center; justify-content: center; gap: 0.65rem; margin: -0.35rem auto 1rem; color: rgb(255 255 255 / 68%); font-size: 0.75rem; font-weight: 700; }
+.face-solution-control select { min-height: 2.35rem; padding: 0.35rem 0.5rem; }
 .preview-controls { display: grid; grid-template-columns: minmax(14rem, 0.75fr) minmax(20rem, 1.25fr); align-items: start; gap: 1rem; padding-top: 1rem; border-top: 1px solid rgb(255 255 255 / 9%); }
 .preview-actions { align-self: center; }
 .traversal-panel { min-width: 0; padding: 0.8rem; border: 1px solid rgb(255 255 255 / 10%); border-radius: 0.75rem; background: rgb(255 255 255 / 2.5%); }

@@ -14,6 +14,8 @@ import {
   wheelDirection,
 } from "../../site/src/portable-settings.js";
 
+const DESKTOP_FACE_MODE_KEY = "affect-tracker-desktop/face-engine-v1";
+
 const elements = {
   form: document.querySelector("#settings-form"),
   bindingGrid: document.querySelector("#binding-grid"),
@@ -35,6 +37,7 @@ const elements = {
   importButton: document.querySelector("#settings-import-button"),
   exportButton: document.querySelector("#settings-export-button"),
   synchronizedPreview: document.querySelector("#synchronized-affect-preview"),
+  faceEngine: document.querySelector("#desktop-face-engine"),
   continuousTraversal: document.querySelector("#continuous-traversal-button"),
   matrixTraversal: document.querySelector("#matrix-traversal-button"),
   matrixControls: document.querySelector("#matrix-traversal-controls"),
@@ -44,7 +47,10 @@ const elements = {
   matrixStatus: document.querySelector("#matrix-status"),
 };
 
-const renderAffectPair = createSynchronizedAffectRenderer(elements.synchronizedPreview);
+const renderAffectPair = createSynchronizedAffectRenderer(elements.synchronizedPreview, {
+  faceMode: localStorage.getItem(DESKTOP_FACE_MODE_KEY),
+});
+elements.faceEngine.value = renderAffectPair.faceMode;
 const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
 let settings;
 let latestSnapshot;
@@ -357,6 +363,13 @@ async function initialize() {
   await nativeApi.onSnapshot(renderSnapshot);
 
   elements.form.addEventListener("input", () => { elements.dirtyStatus.textContent = "Unsaved changes"; });
+  elements.faceEngine.addEventListener("change", () => {
+    const selected = renderAffectPair.setFaceMode(elements.faceEngine.value);
+    elements.faceEngine.value = selected;
+    localStorage.setItem(DESKTOP_FACE_MODE_KEY, selected);
+    if (latestSnapshot) renderSnapshot(latestSnapshot);
+    announce(`${elements.faceEngine.selectedOptions[0].textContent} selected for the synchronized preview.`);
+  });
   elements.transparency.addEventListener("input", () => {
     elements.transparencyOutput.value = `${elements.transparency.value}%`;
     if (latestSnapshot) renderSnapshot(latestSnapshot);
