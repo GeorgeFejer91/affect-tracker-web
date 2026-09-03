@@ -76,17 +76,26 @@ expression atlas generated for this application. It depicts a fictional
 person and contains the nine source anchors retained for provenance and for
 the separate MediaPipe-blendshape calibration described above.
 
-`affect-face-atlas-v2.webp` is the 11 by 11 Canvas compatibility atlas used at
-runtime. Its 121 cells were generated locally from those nine unchanged
+`affect-face-atlas-v3.webp` is the 21 by 21 Canvas compatibility atlas used at
+runtime. Its 441 cells were generated locally from those nine unchanged
 anchors by `scripts/build-dense-photo-atlas.py`. During this offline-only
 asset step, MediaPipe Face Mesh 0.10.8 supplied corresponding semantic
 landmarks; the project script interpolated a target landmark mesh, applied
 piecewise affine warps, and combined the four neighboring cells in
 premultiplied alpha.
-The adjacent JSON records both asset hashes, tool versions, a 224 px cell
+The adjacent JSON records both asset hashes, tool versions, a 160 px cell
 size, and the mesh size. No dataset face, new identity, or independently
 labelled affect observation is introduced by these derived in-between cells.
 No MediaPipe code or model is included in or executed by the application.
+
+The earlier 11 by 11 v2 atlas remains checked in as a reproducibility and
+rollback artifact but is not requested by the current renderer.
+
+`affect-face-atlas-v3-qa.json` is reproduced by
+`scripts/verify-dense-photo-atlas.py`. It checks hashes, all 441 face
+detections, landmark agreement and neighbor continuity, mesh topology, and
+the nine source-anchor pixels. These are deterministic rendering checks only;
+they do not establish perceived or validated valence/arousal.
 
 Both atlases are project-owned, were not copied from a human photograph or a
 third-party face-expression dataset, and are distributed under this

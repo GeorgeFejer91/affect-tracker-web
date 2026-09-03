@@ -12,7 +12,7 @@ corresponding facial features. Each dense cell then:
 This creates useful geometric in-between frames without inventing new affect
 labels, running recognition in the app, or shipping a MediaPipe model.
 
-The checked-in v2 asset was built with Python 3.11, mediapipe 0.10.8,
+The checked-in v3 asset was built with Python 3.11, mediapipe 0.10.8,
 OpenCV 4.8.1, NumPy 1.26.4, SciPy 1.10.1, and Pillow 12.2.0.
 """
 
@@ -33,9 +33,9 @@ from scipy.spatial import Delaunay
 
 
 SOURCE_GRID_SIZE = 3
-DEFAULT_GRID_SIZE = 11
-DEFAULT_TILE_SIZE = 224
-DEFAULT_QUALITY = 84
+DEFAULT_GRID_SIZE = 21
+DEFAULT_TILE_SIZE = 160
+DEFAULT_QUALITY = 82
 
 # This compact semantic subset retains the oval, brows, eyes, nose, and outer
 # mouth while omitting the unstable inner-lip vertical pair 13/14. Delaunay on
@@ -342,13 +342,14 @@ def build_dense_atlas(
         exact=True,
     )
     metadata = {
-        "id": "affect-face-atlas-v2-landmark-warp",
+        "id": f"affect-face-atlas-v3-landmark-warp-{grid_size}x{grid_size}",
         "source": input_path.name,
         "sourceSha256": sha256(input_path),
         "output": output_path.name,
         "outputSha256": sha256(output_path),
         "sourceGridSize": SOURCE_GRID_SIZE,
         "gridSize": grid_size,
+        "nodeCount": grid_size * grid_size,
         "tileSize": tile_size,
         "quality": quality,
         "controlPointCount": int(len(neutral_controls)),
@@ -356,6 +357,8 @@ def build_dense_atlas(
         "topologySweepSize": 101,
         "minimumTriangleAreaPixels": round(minimum_triangle_area, 6),
         "method": "MediaPipe stable semantic landmarks plus piecewise-affine premultiplied landmark warp",
+        "runtimeInterpolation": "continuous bilinear blend between adjacent generated nodes",
+        "affectValidation": "derived from nine project-owned anchors; nodes are not independent validated affect observations",
         "versions": {
             "mediapipe": mp.__version__,
             "opencv": cv2.__version__,
@@ -378,7 +381,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--output",
         type=Path,
-        default=Path("site/assets/affect-face/affect-face-atlas-v2.webp"),
+        default=Path("site/assets/affect-face/affect-face-atlas-v3.webp"),
     )
     parser.add_argument("--metadata", type=Path, default=None)
     parser.add_argument("--grid-size", type=int, default=DEFAULT_GRID_SIZE)

@@ -10,4 +10,6 @@ site/.tmp-mediapipe/
 site/face-calibration-tmp.html
 src-tauri/gen/schemas/
 coverage/
+__pycache__/
+*.py[cod]
 *.log

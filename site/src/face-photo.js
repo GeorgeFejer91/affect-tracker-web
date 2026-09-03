@@ -1,4 +1,4 @@
-export const FACE_PHOTO_GRID_SIZE = 11;
+export const FACE_PHOTO_GRID_SIZE = 21;
 const DEFAULT_CANVAS_SIZE = 320;
 
 const clamp = (value, minimum, maximum, fallback = minimum) => {
@@ -9,7 +9,7 @@ const clamp = (value, minimum, maximum, fallback = minimum) => {
 const freezeTile = (column, row, weight) => Object.freeze({ column, row, weight });
 
 export const FACE_PHOTO_ATLAS_URL = new URL(
-  "../assets/affect-face/affect-face-atlas-v2.webp",
+  "../assets/affect-face/affect-face-atlas-v3.webp",
   import.meta.url,
 ).href;
 
@@ -49,8 +49,8 @@ function snapGridPosition(position) {
 }
 
 /**
- * Return exact bilinear atlas weights. The 11 x 11 columns run valence -1 to
- * +1 in 0.2 steps; rows run arousal +1 to -1. Runtime interpolation between
+ * Return exact bilinear atlas weights. The 21 x 21 columns run valence -1 to
+ * +1 in 0.1 steps; rows run arousal +1 to -1. Runtime interpolation between
  * adjacent cells remains continuous rather than snapping to those nodes.
  */
 export function computeFacePhotoBlend(snapshot = {}) {

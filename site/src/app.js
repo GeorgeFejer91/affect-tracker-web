@@ -11,7 +11,7 @@ import {
   createFaceEngineRenderer,
   faceEngineDefinition,
   normalizeFaceEngineMode,
-} from "./face-engines.js?v=face-engines-2-matrix21-1-friendly-eyes-1-photo-dense11-1";
+} from "./face-engines.js?v=face-engines-2-matrix21-1-friendly-eyes-1-photo-dense21-1";
 import {
   AFFECT_MATRIX_CENTER_INDEX,
   AFFECT_MATRIX_SIZE,
