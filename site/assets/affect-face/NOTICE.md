@@ -20,6 +20,12 @@ head was losslessly repacked with glTF Transform meshopt compression. The
 texture maps were resized and encoded as WebP for local, offline delivery.
 No Mixamo animation or other non-CC0 character asset is included.
 
+The checked-in texture bytes remain unmodified at runtime. The detailed
+renderer applies a project-authored, non-destructive material grade that
+neutralizes strong sclera/iris color casts, softens excessive red around the
+eye sockets, and lowers glossy reflections. It does not alter the morph head,
+expression coefficients, source files, or photo atlas.
+
 **License:** the included character-asset derivatives remain under
 [CC0 1.0 Universal](https://creativecommons.org/publicdomain/zero/1.0/).
 VitruvianGodot separately licenses its tools and shaders under MIT; none of

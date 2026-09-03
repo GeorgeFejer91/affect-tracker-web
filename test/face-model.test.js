@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import * as THREE from "three";
 import {
   DEFAULT_FACE_MODEL_PROFILE,
+  FACE_MODEL_FRIENDLY_STYLE,
   FACE_MODEL_MATRIX_STATES,
   FACE_MODEL_MORPH_NAMES,
   FACE_MODEL_PROFILES,
@@ -423,7 +425,8 @@ test("successful load applies local maps, natural materials, straight framing, a
     fixture.loaders.textures.get(fixture.renderer.textureUrls.skinRoughness),
   );
   assert.equal(skin.metalness, 0);
-  assert.equal(skin.roughness, 0.68);
+  assert.equal(skin.roughness, 0.88);
+  assert.equal(skin.specularIntensity, 0.12);
   assert.ok(skin.normalScale.x > 0 && skin.normalScale.x < 0.5);
 
   const roleExpectations = new Map([
@@ -443,14 +446,79 @@ test("successful load applies local maps, natural materials, straight framing, a
     ));
     assert.equal(mesh.material.metalness, 0);
   }
+  const gradedMaterials = [
+    ["VitSkin", "skin"],
+    ["VitSkin.001", "skin"],
+    ["VitIris", "iris"],
+    ["VitIris.001", "iris"],
+    ["VitSclera", "sclera"],
+    ["VitSclera.001", "sclera"],
+  ].map(([name, role]) => [
+    fixture.model.root.getObjectByName(name === "VitSkin" ? "cm_vitruvian" : `material-${name}`).material,
+    role,
+  ]);
+  const materialCacheKeys = new Map();
+  for (const [material, role] of gradedMaterials) {
+    assert.equal(material.userData.affectTrackerFriendlyStyle, FACE_MODEL_FRIENDLY_STYLE.id);
+    assert.equal(material.userData.affectTrackerMaterialRole, role);
+    assert.match(material.customProgramCacheKey(), /friendly-soft-v1/);
+    materialCacheKeys.set(role, material.customProgramCacheKey());
+    const shader = { fragmentShader: "#include <map_fragment>" };
+    material.onBeforeCompile(shader, {});
+    assert.doesNotMatch(shader.fragmentShader, /diffuseColor\.a\s*=/);
+    assert.match(shader.fragmentShader, new RegExp(
+      role === "skin"
+        ? "affectSkinCalmer"
+        : role === "iris"
+          ? "affectEyeFriendlyIris"
+          : "affectEyeClearSclera",
+    ));
+  }
+  assert.equal(new Set(materialCacheKeys.values()).size, 3);
+  const iris = fixture.model.root.getObjectByName("material-VitIris").material;
+  const sclera = fixture.model.root.getObjectByName("material-VitSclera").material;
+  assert.equal(iris.color.getHex(), 0xffffff);
+  assert.equal(iris.roughness, 0.65);
+  assert.equal(iris.envMapIntensity, 0.03);
+  assert.equal(iris.specularIntensity, 0.06);
+  assert.equal(iris.clearcoat, 0);
+  assert.ok(iris.clearcoatRoughness >= 0.8);
+  assert.equal(sclera.color.getHex(), 0xffffff);
+  assert.equal(sclera.roughness, 0.6);
+  assert.equal(sclera.envMapIntensity, 0.02);
+  assert.equal(sclera.specularIntensity, 0.04);
+  const smoothstep = (start, end, value) => {
+    const normalized = Math.max(0, Math.min(1, (value - start) / (end - start)));
+    return normalized * normalized * (3 - 2 * normalized);
+  };
+  const irisMask = (value) => smoothstep(
+    FACE_MODEL_FRIENDLY_STYLE.irisMaskStart,
+    FACE_MODEL_FRIENDLY_STYLE.irisMaskEnd,
+    value,
+  );
+  assert.ok(irisMask(0.003) < 0.01, "deep pupil blacks must remain ungraded");
+  assert.ok(irisMask(0.0418) > 0.99, "the measured median iris texel must be graded");
+  assert.ok(irisMask(0.0593) > 0.99, "the measured upper iris range must be graded");
+  assert.equal(
+    createHash("sha256")
+      .update(readFileSync(new URL("../site/assets/affect-face/iris.webp", import.meta.url)))
+      .digest("hex"),
+    "9dfc61eed590e2f504e63f66a8a2020acb5c3397f9bb4925778198690b161e2f",
+    "the measured linear-light thresholds are bound to the pinned iris texture",
+  );
   const cornea = fixture.model.root.getObjectByName("material-VitCornea2").material;
   assert.equal(cornea.transparent, true);
   assert.equal(cornea.depthWrite, false);
   assert.ok(cornea.opacity < 0.1);
-  assert.equal(
-    fixture.model.root.getObjectByName("material-VitTearline").material.transparent,
-    true,
-  );
+  const tearline = fixture.model.root.getObjectByName("material-VitTearline").material;
+  assert.equal(tearline.transparent, true);
+  assert.ok(tearline.opacity <= 0.025);
+  assert.ok(tearline.roughness >= 0.3);
+  assert.equal(tearline.color.getHex(), 0xd2beb9);
+  const caruncle = fixture.model.root.getObjectByName("material-VitCaruncle").material;
+  assert.equal(caruncle.color.getHex(), 0x918987);
+  assert.equal(caruncle.transparent, true);
+  assert.ok(caruncle.opacity <= 0.28);
   assert.equal(
     fixture.model.root.getObjectByName("material-VitEyeBack").material.map,
     null,
@@ -595,6 +663,9 @@ test("resize remains lazy and destroy releases renderer and presentation ownersh
 
 test("module uses bundled Three.js assets and contains no autonomous face clock", () => {
   const source = readFileSync(new URL("../site/src/face-model.js", import.meta.url), "utf8");
+  const engines = readFileSync(new URL("../site/src/face-engines.js", import.meta.url), "utf8");
+  const app = readFileSync(new URL("../site/src/app.js", import.meta.url), "utf8");
+  const index = readFileSync(new URL("../site/index.html", import.meta.url), "utf8");
   assert.match(source, /from "three"/);
   assert.match(source, /from "three\/addons\/loaders\/GLTFLoader\.js"/);
   assert.match(source, /from "three\/addons\/libs\/meshopt_decoder\.module\.js"/);
@@ -612,4 +683,8 @@ test("module uses bundled Three.js assets and contains no autonomous face clock"
   assert.doesNotMatch(source, /requestAnimationFrame|setInterval|setTimeout|Date\.now|performance\.now/);
   assert.doesNotMatch(source, /snapshot\?\.phase|snapshot\.phase|targetX|targetY/);
   assert.doesNotMatch(source, /getUserMedia|mediaDevices|requestDevice|https?:\/\//);
+  assert.match(index, /phone-face-switcher-1-friendly-eyes-1-photo-blend-1/);
+  assert.match(app, /face-engines-2-matrix21-1-friendly-eyes-1-photo-blend-1/);
+  assert.match(engines, /face-model\.js\?v=matrix21-1-friendly-eyes-1/);
+  assert.match(engines, /face-photo\.js\?v=normalized-blend-1/);
 });

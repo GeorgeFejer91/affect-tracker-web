@@ -26,6 +26,73 @@ export const FACE_MODEL_TEXTURE_URLS = Object.freeze({
   sclera: new URL("../assets/affect-face/sclera.webp", import.meta.url).href,
 });
 
+export const FACE_MODEL_FRIENDLY_STYLE = Object.freeze({
+  id: "friendly-soft-v1",
+  iris: "soft gray-green",
+  sclera: "clean neutral white",
+  skinRedStart: 0.015,
+  skinRedEnd: 0.12,
+  irisMaskStart: 0.005,
+  irisMaskEnd: 0.03,
+  irisDetailStart: 0.008,
+  irisDetailEnd: 0.09,
+  irisDarkLinear: Object.freeze([0.008, 0.018, 0.015]),
+  irisLightLinear: Object.freeze([0.075, 0.13, 0.105]),
+});
+
+const FRIENDLY_FACE_SHADER_GRADES = Object.freeze({
+  skin: `
+    float affectSkinRedExcess = max(
+      0.0,
+      diffuseColor.r - max(diffuseColor.g, diffuseColor.b)
+    );
+    float affectSkinRedMask = smoothstep(
+      ${FACE_MODEL_FRIENDLY_STYLE.skinRedStart},
+      ${FACE_MODEL_FRIENDLY_STYLE.skinRedEnd},
+      affectSkinRedExcess
+    );
+    vec3 affectSkinCalmer = diffuseColor.rgb + affectSkinRedExcess
+      * vec3(-0.50, 0.08, 0.06);
+    diffuseColor.rgb = mix(
+      diffuseColor.rgb,
+      affectSkinCalmer,
+      0.85 * affectSkinRedMask
+    );
+  `,
+  iris: `
+    float affectEyeLuma = dot(diffuseColor.rgb, vec3(0.2126, 0.7152, 0.0722));
+    float affectEyeIrisMask = smoothstep(
+      ${FACE_MODEL_FRIENDLY_STYLE.irisMaskStart},
+      ${FACE_MODEL_FRIENDLY_STYLE.irisMaskEnd},
+      affectEyeLuma
+    );
+    vec3 affectEyeFriendlyIris = mix(
+      vec3(${FACE_MODEL_FRIENDLY_STYLE.irisDarkLinear.join(", ")}),
+      vec3(${FACE_MODEL_FRIENDLY_STYLE.irisLightLinear.join(", ")}),
+      smoothstep(
+        ${FACE_MODEL_FRIENDLY_STYLE.irisDetailStart},
+        ${FACE_MODEL_FRIENDLY_STYLE.irisDetailEnd},
+        affectEyeLuma
+      )
+    );
+    diffuseColor.rgb = mix(
+      diffuseColor.rgb,
+      affectEyeFriendlyIris,
+      0.90 * affectEyeIrisMask
+    );
+  `,
+  sclera: `
+    float affectEyeLuma = dot(diffuseColor.rgb, vec3(0.2126, 0.7152, 0.0722));
+    vec3 affectEyeNeutralDetail = vec3(affectEyeLuma);
+    vec3 affectEyeClearSclera = mix(
+      affectEyeNeutralDetail,
+      vec3(0.90, 0.93, 0.93),
+      0.72
+    );
+    diffuseColor.rgb = mix(diffuseColor.rgb, affectEyeClearSclera, 0.92);
+  `,
+});
+
 export const FACE_MODEL_MORPH_NAMES = Object.freeze([
   "Jaw_Lower",
   "Mouth_Large_Opened",
@@ -311,6 +378,39 @@ function materialRole(name) {
   return null;
 }
 
+function applyFriendlyMaterialGrade(material, role) {
+  const grade = FRIENDLY_FACE_SHADER_GRADES[role];
+  if (!grade || material?.userData?.affectTrackerFriendlyStyle === FACE_MODEL_FRIENDLY_STYLE.id) {
+    return;
+  }
+  const previousHook = typeof material.onBeforeCompile === "function"
+    ? material.onBeforeCompile
+    : null;
+  const previousCacheKey = typeof material.customProgramCacheKey === "function"
+    ? material.customProgramCacheKey.bind(material)
+    : null;
+
+  material.onBeforeCompile = (shader, renderer) => {
+    previousHook?.call(material, shader, renderer);
+    const mapFragment = "#include <map_fragment>";
+    if (!shader?.fragmentShader?.includes(mapFragment)) return;
+    shader.fragmentShader = shader.fragmentShader.replace(
+      mapFragment,
+      `${mapFragment}\n${grade}`,
+    );
+  };
+  material.customProgramCacheKey = () => [
+    previousCacheKey?.() ?? "",
+    FACE_MODEL_FRIENDLY_STYLE.id,
+    role,
+  ].join(":");
+  material.userData = {
+    ...(material.userData ?? {}),
+    affectTrackerFriendlyStyle: FACE_MODEL_FRIENDLY_STYLE.id,
+    affectTrackerMaterialRole: role,
+  };
+}
+
 function prepareTexture(texture, isColor, renderer, dependencies) {
   if (!texture) throw new TypeError("A face texture did not load.");
   texture.flipY = false;
@@ -336,22 +436,27 @@ function configureMaterial(source, textures, dependencies) {
     material.map = textures.skinBase;
     material.normalMap = textures.skinNormal;
     material.roughnessMap = textures.skinRoughness;
-    material.roughness = 0.68;
-    material.envMapIntensity = 0.32;
-    material.normalScale?.set?.(0.38, 0.38);
+    material.roughness = 0.88;
+    material.envMapIntensity = 0.08;
+    if ("specularIntensity" in material) material.specularIntensity = 0.12;
+    material.normalScale?.set?.(0.28, 0.28);
     material.color?.set?.(0xffffff);
+    applyFriendlyMaterialGrade(material, role);
   } else if (role === "mouth") {
     material.map = textures.mouth;
-    material.roughness = 0.58;
-    material.envMapIntensity = 0.2;
+    material.roughness = 0.7;
+    material.envMapIntensity = 0.05;
+    if ("specularIntensity" in material) material.specularIntensity = 0.1;
     material.color?.set?.(0xffffff);
   } else if (role === "iris") {
     material.map = textures.iris;
-    material.roughness = 0.3;
-    material.envMapIntensity = 0.42;
-    if ("clearcoat" in material) material.clearcoat = 0.14;
-    if ("clearcoatRoughness" in material) material.clearcoatRoughness = 0.24;
+    material.roughness = 0.65;
+    material.envMapIntensity = 0.03;
+    if ("specularIntensity" in material) material.specularIntensity = 0.06;
+    if ("clearcoat" in material) material.clearcoat = 0;
+    if ("clearcoatRoughness" in material) material.clearcoatRoughness = 0.8;
     material.color?.set?.(0xffffff);
+    applyFriendlyMaterialGrade(material, role);
   } else if (role === "sclera") {
     material.map = textures.sclera;
     // The source texture's alpha channel is the cornea window. Keeping this
@@ -359,14 +464,17 @@ function configureMaterial(source, textures, dependencies) {
     material.transparent = true;
     material.alphaTest = 0.01;
     material.depthWrite = true;
-    material.roughness = 0.18;
-    material.envMapIntensity = 0.28;
-    material.color?.set?.(0xf5efed);
+    material.roughness = 0.6;
+    material.envMapIntensity = 0.02;
+    if ("specularIntensity" in material) material.specularIntensity = 0.04;
+    material.color?.set?.(0xffffff);
+    applyFriendlyMaterialGrade(material, role);
   } else if (role === "eye-back") {
     material.map = null;
     material.roughness = 0.72;
     material.envMapIntensity = 0.08;
-    material.color?.set?.(0x140f0d);
+    if ("specularIntensity" in material) material.specularIntensity = 0.05;
+    material.color?.set?.(0x111515);
   } else if (role === "cornea") {
     material.map = null;
     material.transparent = true;
@@ -383,19 +491,24 @@ function configureMaterial(source, textures, dependencies) {
     material.opacity = 0.04;
     material.depthWrite = false;
     material.roughness = 0.7;
-    material.color?.set?.(0x76584f);
+    material.color?.set?.(0x695e5b);
   } else if (role === "tearline") {
     material.map = null;
     material.transparent = true;
-    material.opacity = 0.12;
+    material.opacity = 0.025;
     material.depthWrite = false;
-    material.roughness = 0.08;
-    material.color?.set?.(0xffc6be);
+    material.roughness = 0.3;
+    if ("specularIntensity" in material) material.specularIntensity = 0.04;
+    material.color?.set?.(0xd2beb9);
   } else if (role === "caruncle") {
     material.map = null;
-    material.roughness = 0.56;
-    material.envMapIntensity = 0.14;
-    material.color?.set?.(0xc8837d);
+    material.transparent = true;
+    material.opacity = 0.28;
+    material.depthWrite = false;
+    material.roughness = 0.8;
+    material.envMapIntensity = 0.05;
+    if ("specularIntensity" in material) material.specularIntensity = 0.06;
+    material.color?.set?.(0x918987);
   }
 
   if (dependencies.FrontSide !== undefined) material.side = dependencies.FrontSide;
@@ -449,12 +562,12 @@ function createScene(dependencies) {
   const camera = new dependencies.PerspectiveCamera(DEFAULT_VERTICAL_FOV, 1, 0.01, 20);
   camera.up?.set?.(0, 1, 0);
 
-  const ambient = new dependencies.HemisphereLight(0xfff3e8, 0x20252d, 1.45);
-  const key = new dependencies.DirectionalLight(0xffe0c8, 2.25);
+  const ambient = new dependencies.HemisphereLight(0xfff8f1, 0x20252d, 1.6);
+  const key = new dependencies.DirectionalLight(0xffeee2, 1.35);
   key.position?.set?.(1.8, 2.3, 3.2);
-  const fill = new dependencies.DirectionalLight(0xdce8ff, 0.82);
+  const fill = new dependencies.DirectionalLight(0xe8f0f2, 1);
   fill.position?.set?.(-2.2, 1.15, 2.4);
-  const rim = new dependencies.DirectionalLight(0xfff6ed, 0.48);
+  const rim = new dependencies.DirectionalLight(0xffffff, 0.12);
   rim.position?.set?.(0.2, 2.1, -2.5);
   scene.add(ambient, key, fill, rim);
   return { scene, camera };
@@ -689,7 +802,7 @@ export function createFaceModelRenderer(root, options = {}) {
     }
     if (dependencies.ACESFilmicToneMapping !== undefined) {
       webglRenderer.toneMapping = dependencies.ACESFilmicToneMapping;
-      webglRenderer.toneMappingExposure = 1.02;
+      webglRenderer.toneMappingExposure = 0.92;
     }
     ({ scene, camera } = createScene(dependencies));
     measure(true);

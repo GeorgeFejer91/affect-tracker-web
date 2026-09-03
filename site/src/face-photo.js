@@ -316,7 +316,10 @@ export function createFacePhotoRenderer(root, options = {}) {
       context.clearRect(0, 0, cssWidth, cssHeight);
       context.save?.();
       try {
-        context.globalCompositeOperation = "source-over";
+        // Weighted additive compositing produces the intended premultiplied
+        // bilinear sum. Repeated source-over draws would make later atlas
+        // cells disproportionately strong and leave the result translucent.
+        context.globalCompositeOperation = "lighter";
         if ("imageSmoothingEnabled" in context) context.imageSmoothingEnabled = true;
         if ("imageSmoothingQuality" in context) context.imageSmoothingQuality = "high";
         let tileCount = 0;

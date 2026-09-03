@@ -254,7 +254,7 @@ test("renderer delegates exact calls while loading, then redraws the latest fram
   assert.deepEqual(modes, ["photo"]);
 });
 
-test("ready renderer crossfades the four source tiles with weighted alpha and no skin tint", () => {
+test("ready renderer bilinearly composites four source tiles without order bias or skin tint", () => {
   const fixture = createRendererFixture();
   const image = createImageMock();
   const renderer = createFacePhotoRenderer(fixture.root, {
@@ -287,10 +287,14 @@ test("ready renderer crossfades the four source tiles with weighted alpha and no
   );
   for (const draw of fixture.context.draws) {
     approximately(draw.alpha, 0.2);
-    assert.equal(draw.composite, "source-over");
+    assert.equal(draw.composite, "lighter");
     assert.equal(draw.smoothing, true);
     assert.equal(draw.quality, "high");
   }
+  approximately(
+    fixture.context.draws.reduce((sum, draw) => sum + draw.alpha, 0),
+    0.8,
+  );
   assert.equal(fixture.context.globalAlpha, 1);
 
   fixture.context.draws.length = 0;

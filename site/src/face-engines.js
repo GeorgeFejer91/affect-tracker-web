@@ -1,6 +1,6 @@
 import { createFaceRenderer } from "./face.js";
-import { createFacePhotoRenderer } from "./face-photo.js";
-import { createFaceModelRenderer } from "./face-model.js?v=matrix21-1";
+import { createFacePhotoRenderer } from "./face-photo.js?v=normalized-blend-1";
+import { createFaceModelRenderer } from "./face-model.js?v=matrix21-1-friendly-eyes-1";
 
 const mode = (id, label, shortLabel, description, kind, profile = null) => Object.freeze({
   id,
