@@ -43,6 +43,7 @@ import { pictureInPictureOptions, pictureInPictureSupported } from "./picture-in
 import {
   clientPointToAffectCoordinate,
   isSmartphoneTouchViewport,
+  layoutMobileAffectPreviews,
   MOBILE_PARTY_ZOOM_MAX,
   MOBILE_PARTY_ZOOM_MIN,
   normalizeMobilePartyCamera,
@@ -50,7 +51,7 @@ import {
   SMARTPHONE_LAYOUT_MAX_WIDTH,
   startsOnCoordinateMarker,
   unprojectMobilePartyPoint,
-} from "./mobile.js?v=mobile-party-camera-1";
+} from "./mobile.js?v=mobile-preview-1";
 import {
   ACCORDION_PROTOCOLS,
   normalizeAccordionState,
@@ -424,17 +425,31 @@ function readPreferences(bundledSettings) {
 
 const bundledSettings = await loadBundledSettings();
 const preferences = readPreferences(bundledSettings);
-const smartphoneTouchViewport = isSmartphoneTouchViewport({
-  width: window.innerWidth,
-  height: window.innerHeight,
-  coarsePointer: window.matchMedia("(pointer: coarse)").matches,
-  maxTouchPoints: navigator.maxTouchPoints,
-});
-const smartphoneLayoutActive = (Number.isFinite(window.innerWidth)
-  && window.innerWidth > 0
-  && window.innerWidth <= SMARTPHONE_LAYOUT_MAX_WIDTH)
-  || smartphoneTouchViewport;
-document.body.classList.toggle("is-smartphone-layout", smartphoneLayoutActive);
+function currentSmartphoneTouchViewport() {
+  return isSmartphoneTouchViewport({
+    width: window.innerWidth,
+    height: window.innerHeight,
+    coarsePointer: window.matchMedia("(pointer: coarse)").matches,
+    maxTouchPoints: navigator.maxTouchPoints,
+  });
+}
+
+function shouldUseSmartphoneLayout() {
+  return (Number.isFinite(window.innerWidth)
+    && window.innerWidth > 0
+    && window.innerWidth <= SMARTPHONE_LAYOUT_MAX_WIDTH)
+    || currentSmartphoneTouchViewport();
+}
+
+const smartphoneTouchViewport = currentSmartphoneTouchViewport();
+let smartphoneLayoutActive = shouldUseSmartphoneLayout();
+
+function updateSmartphoneLayout() {
+  smartphoneLayoutActive = shouldUseSmartphoneLayout();
+  document.body.classList.toggle("is-smartphone-layout", smartphoneLayoutActive);
+}
+
+updateSmartphoneLayout();
 const state = {
   currentX: 0,
   currentY: 0,
@@ -2325,7 +2340,9 @@ function renderSynchronizedAffectPreview(snapshot, flubber) {
     [elements.mainAffectFace, renderMainAffectFace],
     [elements.mobileMainAffectFace, renderMobileAffectFace],
   ]) {
-    if (root.hidden) continue;
+    const mobilePreviewCovered = root === elements.mobileMainAffectFace
+      && (!state.panelOpen || elements.panel.classList.contains("is-mobile-settings-open"));
+    if (root.hidden || mobilePreviewCovered) continue;
     const face = renderer(snapshot, reducedMotionQuery.matches, flubber.color);
     const effectiveMode = face.effectiveMode;
     const definition = faceEngineDefinition(face.mode);
@@ -2763,32 +2780,28 @@ function setWidgetFromNormalizedPosition(position) {
 
 function renderMobileFlubberPosition() {
   const areaBounds = elements.mobileFlubberDragArea?.getBoundingClientRect();
-  const flubberBounds = elements.mobileDirectFlubber?.getBoundingClientRect();
-  if (!areaBounds?.width || !areaBounds?.height || !flubberBounds?.width || !flubberBounds?.height) return;
+  if (!areaBounds?.width || !areaBounds?.height) return;
   const normalized = normalizedWidgetPosition();
-  const local = denormalizeFlubberViewportPosition({
-    ...normalized,
-    size: Math.min(flubberBounds.width, flubberBounds.height),
-    viewportWidth: areaBounds.width,
-    viewportHeight: areaBounds.height,
+  const layout = layoutMobileAffectPreviews({
+    width: areaBounds.width,
+    height: areaBounds.height,
+    viewportX: normalized.viewportX,
+    viewportY: normalized.viewportY,
+    faceVisible: !elements.mobileMainAffectFace.hidden,
   });
-  elements.mobileDirectFlubber.style.left = `${local.x}px`;
-  elements.mobileDirectFlubber.style.top = `${local.y}px`;
-  if (!elements.mobileMainAffectFace.hidden) {
-    const faceBounds = elements.mobileMainAffectFace.getBoundingClientRect();
-    const distance = (flubberBounds.width + faceBounds.width) / 2 + 8;
-    const faceX = clamp(
-      local.x - distance,
-      faceBounds.width / 2,
-      areaBounds.width - faceBounds.width / 2,
-    );
-    const faceY = clamp(
-      local.y,
-      faceBounds.height / 2,
-      areaBounds.height - faceBounds.height / 2,
-    );
-    elements.mobileMainAffectFace.style.left = `${faceX}px`;
-    elements.mobileMainAffectFace.style.top = `${faceY}px`;
+  if (!layout) return;
+
+  elements.mobileDirectFlubber.style.width = `${layout.flubber.size.toFixed(3)}px`;
+  elements.mobileDirectFlubber.style.left = `${layout.flubber.x}px`;
+  elements.mobileDirectFlubber.style.top = `${layout.flubber.y}px`;
+  if (layout.face) {
+    const faceSize = `${layout.face.size.toFixed(3)}px`;
+    const faceSizeChanged = elements.mobileMainAffectFace.style.width !== faceSize;
+    elements.mobileMainAffectFace.dataset.side = "left";
+    elements.mobileMainAffectFace.style.width = faceSize;
+    elements.mobileMainAffectFace.style.left = `${layout.face.x}px`;
+    elements.mobileMainAffectFace.style.top = `${layout.face.y}px`;
+    if (faceSizeChanged) renderMobileAffectFace.resize?.();
   }
 }
 
@@ -4268,6 +4281,7 @@ function initializeEvents() {
   window.addEventListener("mouseup", handleGlobalMouseUp);
   window.addEventListener("wheel", handleWheel, { passive: false });
   window.addEventListener("resize", () => {
+    updateSmartphoneLayout();
     touchTrace.resize(window.innerWidth, window.innerHeight);
     activeTracePointerId = undefined;
     recordPhysicalInput("window", "resize", "viewport", `${window.innerWidth}x${window.innerHeight}`);
@@ -4281,6 +4295,7 @@ function initializeEvents() {
     activeTracePointerId = undefined;
   });
   screen.orientation?.addEventListener?.("change", () => {
+    updateSmartphoneLayout();
     touchTrace.resize(window.innerWidth, window.innerHeight);
     activeTracePointerId = undefined;
     recordPhysicalInput("window", "orientation-change", "orientation", screen.orientation.type);

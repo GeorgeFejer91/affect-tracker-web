@@ -5,9 +5,11 @@ import {
   affectCoordinateToClientPoint,
   clientPointToAffectCoordinate,
   isSmartphoneTouchViewport,
+  layoutMobileAffectPreviews,
   MOBILE_COORDINATE_GRAB_RADIUS_PX,
   MOBILE_PARTY_ZOOM_MAX,
   MOBILE_PARTY_ZOOM_MIN,
+  MOBILE_PREVIEW_MIN_SIZE_PX,
   normalizeMobilePartyCamera,
   projectMobilePartyPoint,
   SMARTPHONE_LANDSCAPE_MAX_HEIGHT,
@@ -29,6 +31,15 @@ test("smartphone touch detection requires a narrow touch-capable viewport", () =
   assert.equal(isSmartphoneTouchViewport({ width: Number.NaN, maxTouchPoints: 5 }), false);
 });
 
+test("the active responsive mode is recomputed on resize and orientation changes", async () => {
+  const app = await readSiteFile("src/app.js");
+
+  assert.match(app, /let smartphoneLayoutActive = shouldUseSmartphoneLayout\(\)/);
+  assert.match(app, /function updateSmartphoneLayout\(\)[\s\S]*classList\.toggle\("is-smartphone-layout"/);
+  assert.match(app, /window\.addEventListener\("resize", \(\) => \{\s*updateSmartphoneLayout\(\)/);
+  assert.match(app, /screen\.orientation\?\.addEventListener\?\.\("change", \(\) => \{\s*updateSmartphoneLayout\(\)/);
+});
+
 test("the phone layout uses safe areas and a split Flubber/direct-coordinate controller", async () => {
   const html = await readSiteFile("index.html");
   const css = await readSiteFile("styles.css");
@@ -45,15 +56,65 @@ test("the phone layout uses safe areas and a split Flubber/direct-coordinate con
   assert.match(css, /env\(safe-area-inset-top/);
   assert.match(css, /grid-template-rows: repeat\(2, minmax\(0, 1fr\)\)/);
   assert.match(css, /grid-template-columns: repeat\(7, minmax\(0, 1fr\)\)/);
+  assert.match(css, /\.panel-toggle \{[\s\S]*min-width: 2\.75rem;[\s\S]*min-height: 3rem;/);
   assert.match(css, /\.mobile-coordinate-space \{[\s\S]*touch-action: none/);
   assert.match(css, /\.mobile-direct-flubber \{[\s\S]*position: absolute[\s\S]*touch-action: none/);
   assert.match(css, /touch-action: none/);
   assert.match(css, /overscroll-behavior: contain/);
+  assert.match(css, /@media \(max-height: 500px\) and \(min-aspect-ratio: 4 \/ 3\)/);
+  assert.match(css, /body\.is-smartphone-layout \.mobile-flubber-pane \{[\s\S]*grid-template-rows: auto minmax\(0, 1fr\)/);
+  assert.match(css, /\.face-engine-field select,[\s\S]*#main-face-center-button \{[\s\S]*min-height: 2\.75rem/);
+});
+
+test("phone face and Flubber previews stay square, ordered, and contained", () => {
+  const supportedPreviewAreas = [
+    { name: "360 by 800 portrait", width: 318, height: 270 },
+    { name: "390 by 844 portrait", width: 349, height: 302 },
+    { name: "844 by 390 landscape", width: 812, height: 104 },
+    { name: "932 by 430 landscape", width: 900, height: 124 },
+  ];
+
+  for (const area of supportedPreviewAreas) {
+    for (const viewportX of [0, 0.5, 1]) {
+      for (const viewportY of [0, 0.5, 1]) {
+        const layout = layoutMobileAffectPreviews({
+          width: area.width,
+          height: area.height,
+          viewportX,
+          viewportY,
+          faceVisible: true,
+        });
+        assert.ok(layout, area.name);
+        assert.ok(layout.face.size >= MOBILE_PREVIEW_MIN_SIZE_PX, area.name);
+        assert.equal(layout.face.size, layout.flubber.size, area.name);
+        assert.equal(layout.face.y, layout.flubber.y, area.name);
+        assert.ok(layout.face.x < layout.flubber.x, area.name);
+        assert.ok(
+          layout.face.x + layout.face.size / 2 + layout.gap
+            <= layout.flubber.x - layout.flubber.size / 2 + 1e-9,
+          area.name,
+        );
+        for (const preview of [layout.face, layout.flubber]) {
+          assert.ok(preview.x - preview.size / 2 >= -1e-9, area.name);
+          assert.ok(preview.x + preview.size / 2 <= area.width + 1e-9, area.name);
+          assert.ok(preview.y - preview.size / 2 >= -1e-9, area.name);
+          assert.ok(preview.y + preview.size / 2 <= area.height + 1e-9, area.name);
+        }
+      }
+    }
+  }
+
+  const left = layoutMobileAffectPreviews({ width: 320, height: 200, viewportX: 0, faceVisible: false });
+  const right = layoutMobileAffectPreviews({ width: 320, height: 200, viewportX: 1, faceVisible: false });
+  assert.equal(left.flubber.x - left.flubber.size / 2, 0);
+  assert.equal(right.flubber.x + right.flubber.size / 2, 320);
+  assert.equal(layoutMobileAffectPreviews({ width: 0, height: 200 }), undefined);
 });
 
 test("the upper phone Flubber is an independently grabbed normalized viewport control", async () => {
   const app = await readSiteFile("src/app.js");
 
+  assert.match(app, /mobilePreviewCovered[\s\S]*is-mobile-settings-open[\s\S]*root\.hidden \|\| mobilePreviewCovered/);
   assert.match(app, /mobileDirectFlubber\.addEventListener\("pointerdown"/);
   assert.match(app, /mobileDirectFlubber\.setPointerCapture\(event\.pointerId\)/);
   assert.match(app, /event\.pointerId !== mobileFlubberPointerId/);
