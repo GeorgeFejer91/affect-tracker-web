@@ -62,7 +62,7 @@ jobs:
       - name: Build desktop WebViews
         run: pnpm desktop:build
       - name: Set up Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@1.96.0
         with:
           components: rustfmt, clippy
       - name: Cache Rust artifacts

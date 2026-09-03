@@ -40,7 +40,7 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v6
       - name: Set up Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@1.96.0
         with:
           targets: wasm32-unknown-unknown
           components: rustfmt, clippy

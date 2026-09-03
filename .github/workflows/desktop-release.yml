@@ -58,7 +58,7 @@ jobs:
       - name: Test shared frontend
         run: pnpm test
       - name: Set up Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@1.96.0
       - name: Add universal macOS Rust targets
         if: runner.os == 'macOS'
         run: rustup target add aarch64-apple-darwin x86_64-apple-darwin
