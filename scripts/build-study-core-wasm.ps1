@@ -16,7 +16,7 @@ if ($bindgenVersion -ne "wasm-bindgen 0.2.127") {
   throw "Study core packaging requires wasm-bindgen 0.2.127; found '$bindgenVersion'."
 }
 
-& $cargoExecutable build --manifest-path $manifestPath --target wasm32-unknown-unknown --features wasm --release
+& $cargoExecutable build --locked --manifest-path $manifestPath --target wasm32-unknown-unknown --features wasm --release
 if ($LASTEXITCODE -ne 0) { throw "The study-core WASM build failed." }
 
 New-Item -ItemType Directory -Force -Path $outputPath | Out-Null

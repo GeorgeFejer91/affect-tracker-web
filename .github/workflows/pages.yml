@@ -44,6 +44,10 @@ jobs:
         with:
           targets: wasm32-unknown-unknown
           components: rustfmt, clippy
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
       - name: Cache Rust artifacts
         uses: Swatinem/rust-cache@v2
         with:
@@ -55,11 +59,32 @@ jobs:
           cargo clippy --locked --manifest-path crates/study-core/Cargo.toml --all-targets --all-features -- -D warnings
       - name: Install pinned wasm-bindgen CLI
         run: cargo install wasm-bindgen-cli --version 0.2.127 --locked
-      - name: Rebuild checked-in browser authority
+      - name: Rebuild browser authority
         run: |
           cargo build --locked --manifest-path crates/study-core/Cargo.toml --target wasm32-unknown-unknown --features wasm --release
           wasm-bindgen crates/study-core/target/wasm32-unknown-unknown/release/affect_tracker_study_core.wasm --target web --out-dir site/vendor/study-core --out-name affect_tracker_study_core
-          git diff --exit-code -- site/vendor/study-core
+      - name: Verify generated browser ABI and behavior
+        run: |
+          git diff --exit-code -- \
+            site/vendor/study-core/affect_tracker_study_core.js \
+            site/vendor/study-core/affect_tracker_study_core.d.ts \
+            site/vendor/study-core/affect_tracker_study_core_bg.wasm.d.ts
+          node --test \
+            test/study-core-wasm.test.js \
+            test/study-native-external-outcome.test.js \
+            test/study-session-abort-integration.test.js \
+            test/webxr-portable-integration.test.js
+      - name: Upload generated browser authority
+        uses: actions/upload-artifact@v4
+        with:
+          name: study-core-browser
+          path: |
+            site/vendor/study-core/affect_tracker_study_core.js
+            site/vendor/study-core/affect_tracker_study_core.d.ts
+            site/vendor/study-core/affect_tracker_study_core_bg.wasm
+            site/vendor/study-core/affect_tracker_study_core_bg.wasm.d.ts
+          if-no-files-found: error
+          retention-days: 1
 
   deploy:
     needs: [test, study-core]
@@ -73,6 +98,11 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
+      - name: Use validated browser authority
+        uses: actions/download-artifact@v4
+        with:
+          name: study-core-browser
+          path: site/vendor/study-core
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
       - name: Upload static site

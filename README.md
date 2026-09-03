@@ -187,7 +187,7 @@ The separate `AffectTrackerMarkers` stream carries irregular markers for every p
 
 ### Build the desktop companion
 
-Install Node.js 22, pnpm 11, rustup, the current Tauri v2 prerequisites for your OS, CMake, and a native C/C++ compiler. The checked-in `rust-toolchain.toml` pins Rust 1.96.0, including the WASM target used for byte-reproducible browser authority builds. Then run:
+Install Node.js 22, pnpm 11, rustup, the current Tauri v2 prerequisites for your OS, CMake, and a native C/C++ compiler. The checked-in `rust-toolchain.toml` pins Rust 1.96.0, including the WASM target used for browser authority builds. CI regenerates that package, verifies its ABI and behavioral fixtures, and deploys the validated artifact; cross-host WebAssembly binaries are not assumed to be byte-identical. Then run:
 
 ```sh
 pnpm install --frozen-lockfile
