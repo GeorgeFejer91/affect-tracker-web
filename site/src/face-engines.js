@@ -1,5 +1,5 @@
 import { createFaceRenderer } from "./face.js";
-import { createFacePhotoRenderer } from "./face-photo.js?v=normalized-blend-1";
+import { createFacePhotoRenderer } from "./face-photo.js?v=dense11-warp-1";
 import { createFaceModelRenderer } from "./face-model.js?v=matrix21-1-friendly-eyes-1";
 
 const mode = (id, label, shortLabel, description, kind, profile = null) => Object.freeze({
@@ -48,7 +48,7 @@ export const FACE_ENGINE_MODES = Object.freeze([
     "photo-atlas",
     "Photoreal atlas blend",
     "Photoreal atlas",
-    "Crossfades the four nearest cells of a compact project-owned 3 × 3 face atlas for the lowest-cost realistic presentation.",
+    "Blends the four nearest cells of a project-owned 11 × 11 landmark-warped atlas for sharp, continuous photoreal transitions without runtime machine learning.",
     "photo",
   ),
 ]);

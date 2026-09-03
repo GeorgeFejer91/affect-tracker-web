@@ -73,11 +73,23 @@ or executed by the published application.
 
 `affect-face-atlas-v1.webp` is a project-created synthetic digital-human
 expression atlas generated for this application. It depicts a fictional
-person and is used only as the local Canvas compatibility renderer when the
-detailed WebGL model is unavailable or still loading.
+person and contains the nine source anchors retained for provenance and for
+the separate MediaPipe-blendshape calibration described above.
 
-The atlas is project-owned, was not copied from a human photograph or a
-third-party face-expression dataset, and is distributed under this
+`affect-face-atlas-v2.webp` is the 11 by 11 Canvas compatibility atlas used at
+runtime. Its 121 cells were generated locally from those nine unchanged
+anchors by `scripts/build-dense-photo-atlas.py`. During this offline-only
+asset step, MediaPipe Face Mesh 0.10.8 supplied corresponding semantic
+landmarks; the project script interpolated a target landmark mesh, applied
+piecewise affine warps, and combined the four neighboring cells in
+premultiplied alpha.
+The adjacent JSON records both asset hashes, tool versions, a 224 px cell
+size, and the mesh size. No dataset face, new identity, or independently
+labelled affect observation is introduced by these derived in-between cells.
+No MediaPipe code or model is included in or executed by the application.
+
+Both atlases are project-owned, were not copied from a human photograph or a
+third-party face-expression dataset, and are distributed under this
 repository's [BSD 3-Clause License](../../../LICENSE).
 
 ## Local rendering libraries

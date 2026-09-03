@@ -1,4 +1,4 @@
-const GRID_SIZE = 3;
+export const FACE_PHOTO_GRID_SIZE = 11;
 const DEFAULT_CANVAS_SIZE = 320;
 
 const clamp = (value, minimum, maximum, fallback = minimum) => {
@@ -9,7 +9,7 @@ const clamp = (value, minimum, maximum, fallback = minimum) => {
 const freezeTile = (column, row, weight) => Object.freeze({ column, row, weight });
 
 export const FACE_PHOTO_ATLAS_URL = new URL(
-  "../assets/affect-face/affect-face-atlas-v1.webp",
+  "../assets/affect-face/affect-face-atlas-v2.webp",
   import.meta.url,
 ).href;
 
@@ -43,15 +43,22 @@ function axisBlend(position) {
   return Object.freeze({ first, second, firstWeight: 1 - secondWeight, secondWeight });
 }
 
+function snapGridPosition(position) {
+  const nearest = Math.round(position);
+  return Math.abs(position - nearest) <= 1e-10 ? nearest : position;
+}
+
 /**
- * Return exact bilinear atlas weights. Columns run valence -1, 0, +1 from
- * left to right. Rows run arousal +1, 0, -1 from top to bottom.
+ * Return exact bilinear atlas weights. The 11 x 11 columns run valence -1 to
+ * +1 in 0.2 steps; rows run arousal +1 to -1. Runtime interpolation between
+ * adjacent cells remains continuous rather than snapping to those nodes.
  */
 export function computeFacePhotoBlend(snapshot = {}) {
   const currentX = clamp(snapshot?.currentX, -1, 1, 0);
   const currentY = clamp(snapshot?.currentY, -1, 1, 0);
-  const columnPosition = currentX + 1;
-  const rowPosition = 1 - currentY;
+  const coordinateScale = (FACE_PHOTO_GRID_SIZE - 1) * 0.5;
+  const columnPosition = snapGridPosition((currentX + 1) * coordinateScale);
+  const rowPosition = snapGridPosition((1 - currentY) * coordinateScale);
   const columns = axisBlend(columnPosition);
   const rows = axisBlend(rowPosition);
   const tiles = [];
@@ -90,8 +97,8 @@ export function computeFacePhotoLayout(atlas = {}, viewport = {}) {
     throw new RangeError("The affect face viewport must have positive dimensions.");
   }
 
-  const cellWidth = atlasWidth / GRID_SIZE;
-  const cellHeight = atlasHeight / GRID_SIZE;
+  const cellWidth = atlasWidth / FACE_PHOTO_GRID_SIZE;
+  const cellHeight = atlasHeight / FACE_PHOTO_GRID_SIZE;
   const sourceSize = Math.min(cellWidth, cellHeight);
   const sourceInsetX = (cellWidth - sourceSize) * 0.5;
   const sourceInsetY = (cellHeight - sourceSize) * 0.5;
@@ -145,8 +152,9 @@ function errorFrom(value, fallbackMessage) {
 }
 
 function fillBlendScratch(currentX, currentY, scratch) {
-  const columnPosition = currentX + 1;
-  const rowPosition = 1 - currentY;
+  const coordinateScale = (FACE_PHOTO_GRID_SIZE - 1) * 0.5;
+  const columnPosition = snapGridPosition((currentX + 1) * coordinateScale);
+  const rowPosition = snapGridPosition((1 - currentY) * coordinateScale);
   const firstColumn = Math.floor(columnPosition);
   const secondColumn = Math.ceil(columnPosition);
   const firstRow = Math.floor(rowPosition);
@@ -369,12 +377,19 @@ export function createFacePhotoRenderer(root, options = {}) {
       fail(null, "The affect face atlas loaded without usable dimensions.");
       return;
     }
+    if (
+      dimensions.width % FACE_PHOTO_GRID_SIZE !== 0
+      || dimensions.height % FACE_PHOTO_GRID_SIZE !== 0
+    ) {
+      fail(null, `The affect face atlas dimensions must be divisible by ${FACE_PHOTO_GRID_SIZE}.`);
+      return;
+    }
     if (!acquireContext()) {
       fail(lastError, "A 2D canvas is unavailable for the affect face atlas.");
       return;
     }
-    sourceCellWidth = dimensions.width / GRID_SIZE;
-    sourceCellHeight = dimensions.height / GRID_SIZE;
+    sourceCellWidth = dimensions.width / FACE_PHOTO_GRID_SIZE;
+    sourceCellHeight = dimensions.height / FACE_PHOTO_GRID_SIZE;
     sourceSize = Math.min(sourceCellWidth, sourceCellHeight);
     sourceInsetX = (sourceCellWidth - sourceSize) * 0.5;
     sourceInsetY = (sourceCellHeight - sourceSize) * 0.5;
