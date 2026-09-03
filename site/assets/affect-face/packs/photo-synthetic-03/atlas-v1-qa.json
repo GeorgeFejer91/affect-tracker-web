@@ -1,0 +1,447 @@
+{
+  "schema": "affect-tracker-photo-atlas-pack-engineering-qa",
+  "version": 1,
+  "passed": true,
+  "evidenceBoundary": "Engineering QA of deterministic synthetic image preparation and atlas generation only. Landmark, topology, continuity, prompt provenance, and skin-tone descriptors do not establish perceived or validated affect, demographic identity, cultural authenticity, or representational adequacy.",
+  "pack": {
+    "id": "photo-synthetic-03",
+    "label": "Synthetic preset 04",
+    "presentationStyle": "androgynous-styling",
+    "regionalDesignInspirations": [
+      "south-asian"
+    ],
+    "skinToneAudit": {
+      "status": "unvalidated",
+      "descriptor": "medium-to-deep"
+    }
+  },
+  "asset": {
+    "source": "anchors-v1.png",
+    "sourceSha256": "2c7cc867ffd77863dc573aec684829709482f16d71622acd5620fa27a57e58f1",
+    "preparedSourceSha256": "b1becff1662f975baa65eb9511d207a3e4aa77d9ed12ca5640129e21a667592a",
+    "atlas": "atlas-v1.webp",
+    "atlasSha256": "47377aa246a41e913885ac3c3e3c81acafdb71e3f004833cbc5e6777ecc47fce",
+    "metadata": "atlas-v1.json",
+    "metadataSha256": "1c2558f257b9b910db9ef9264b8a387a18e1dcfebf36422d8c09b1264ed9f53d",
+    "denseBuilder": "build-dense-photo-atlas.py",
+    "denseBuilderSha256": "2479ed7bbe557a64c1bc48cf7fce4dc1cde705474d488d49663d9a777dd0f38c",
+    "packBuilder": "build-photo-atlas-pack.py",
+    "packBuilderSha256": "3e1be00bcef9b7a0f8407fd74c0ef58aa9096add34e31540be8614252d280541",
+    "packCommon": "photo_atlas_pack_common.py",
+    "packCommonSha256": "4ba957d2a56925a4d9f0fc711732c417ab3a27e9e241b466d356006062c4e2fe",
+    "coreVerifier": "verify-dense-photo-atlas.py",
+    "coreVerifierSha256": "40a1f7f23b88aad7ffed8aa2a62406d38e6ec521d8acf96a243ce22500e9dee5",
+    "packVerifier": "verify-photo-atlas-pack.py",
+    "packVerifierSha256": "bb4702ae53bcb844367ca308db35f619e43ed483334f0a32388aff86aad04057",
+    "gridSize": 21,
+    "tileSize": 160,
+    "quality": 88,
+    "detectedCellCount": 441
+  },
+  "sourcePreprocessing": {
+    "method": "cell-border-connected-rgb-black-matte-soft-alpha-v2",
+    "inputMode": "RGB",
+    "sourceGridSize": 3,
+    "backgroundConnectivity": 8,
+    "backgroundSeed": "each 3x3 cell border",
+    "intensityMetric": "maximum RGB channel",
+    "blackPoint": 8,
+    "opaquePoint": 24,
+    "alphaCurve": "smoothstep",
+    "edgeRgbPolicy": "preserve-source-straight-rgb",
+    "blackMatteDecontamination": false,
+    "transparentPixelCount": 647800,
+    "softPixelCount": 178769,
+    "softPixelMaximumRgb": 23,
+    "opaquePixelCount": 745947,
+    "preparedSha256": "b1becff1662f975baa65eb9511d207a3e4aa77d9ed12ca5640129e21a667592a",
+    "limitation": "Border-connected near-black foreground detail may be inseparable from a black matte and requires contact-sheet review."
+  },
+  "checks": {
+    "coreEngineeringQaPassed": true,
+    "sourceFilenameMatchesMetadata": true,
+    "sourceHashMatchesMetadata": true,
+    "preparedSourceHashMatchesMetadata": true,
+    "sourcePreprocessingReproducesExactly": true,
+    "softMatteRgbIsNotAmplified": true,
+    "atlasFilenameMatchesMetadata": true,
+    "atlasHashMatchesMetadata": true,
+    "denseBuilderHashMatchesMetadata": true,
+    "packBuilderHashMatchesMetadata": true,
+    "packCommonHashMatchesMetadata": true,
+    "toolFilenamesMatchMetadata": true,
+    "evidenceBoundariesRemainExplicit": true
+  },
+  "coreChecks": {
+    "sourceHashMatchesMetadata": true,
+    "atlasHashMatchesMetadata": true,
+    "sourceFilenameMatchesMetadata": true,
+    "atlasFilenameMatchesMetadata": true,
+    "toolVersionsMatchMetadata": true,
+    "gridIsOddAndCentered": true,
+    "allDenseCellsDetected": true,
+    "expectedTopologyHasNoFolds": true,
+    "observedLandmarkTopologyHasNoFolds": true,
+    "anchorsPreserveAlpha": true,
+    "anchorsPreserveRgb": true,
+    "landmarkAgreementWithinBounds": true,
+    "neighborContinuityWithinBounds": true,
+    "expectedAxisGeometryProgressIsMonotonic": true
+  },
+  "thresholds": {
+    "anchorMinimumRgbPsnrDb": 35.0,
+    "anchorMaximumAlphaError": 0,
+    "landmarkMedianErrorPixels": 1.0,
+    "landmarkP95ErrorPixels": 1.5,
+    "landmarkMaximumErrorPixels": 3.0,
+    "continuityP95ResidualPixels": 1.5,
+    "axisProgressMinimumIncrement": 0.05,
+    "axisProgressMaximumLinearError": 0.15
+  },
+  "metrics": {
+    "expectedTopologyMinimumTriangleAreaPixels": 3.593632,
+    "observedTopologyMinimumTriangleAreaPixels": 3.691738,
+    "observedFoldCount": 0,
+    "landmarkErrorPixels": {
+      "median": 0.531322,
+      "p95": 1.014032,
+      "maximum": 2.845845
+    },
+    "neighborLandmarkDeltaResidualPixels": {
+      "median": 0.154699,
+      "p95": 0.232447,
+      "maximum": 0.360348
+    },
+    "expectedAxisAnchorPathProgress": {
+      "seriesCount": 84,
+      "minimumIncrement": 0.099996,
+      "maximumLinearError": 5e-06,
+      "violationCount": 0,
+      "violations": []
+    },
+    "observedAxisAnchorPathProgress": {
+      "seriesCount": 84,
+      "minimumIncrement": 0.002562,
+      "maximumLinearError": 0.149349,
+      "violationCount": 34,
+      "violations": [
+        {
+          "axis": "valence",
+          "fixedIndex": 7,
+          "segment": "neutral-to-positive",
+          "step": 9,
+          "increment": 0.047368
+        },
+        {
+          "axis": "valence",
+          "fixedIndex": 10,
+          "segment": "negative-to-neutral",
+          "step": 3,
+          "increment": 0.045487
+        },
+        {
+          "axis": "valence",
+          "fixedIndex": 12,
+          "segment": "neutral-to-positive",
+          "step": 6,
+          "increment": 0.049366
+        },
+        {
+          "axis": "valence",
+          "fixedIndex": 13,
+          "segment": "neutral-to-positive",
+          "step": 5,
+          "increment": 0.047894
+        },
+        {
+          "axis": "valence",
+          "fixedIndex": 15,
+          "segment": "negative-to-neutral",
+          "step": 1,
+          "increment": 0.042402
+        },
+        {
+          "axis": "valence",
+          "fixedIndex": 17,
+          "segment": "negative-to-neutral",
+          "step": 3,
+          "increment": 0.002562
+        },
+        {
+          "axis": "valence",
+          "fixedIndex": 17,
+          "segment": "negative-to-neutral",
+          "step": 6,
+          "increment": 0.035604
+        },
+        {
+          "axis": "valence",
+          "fixedIndex": 18,
+          "segment": "negative-to-neutral",
+          "step": 1,
+          "increment": 0.03973
+        },
+        {
+          "axis": "valence",
+          "fixedIndex": 19,
+          "segment": "negative-to-neutral",
+          "step": 3,
+          "increment": 0.034145
+        },
+        {
+          "axis": "valence",
+          "fixedIndex": 19,
+          "segment": "negative-to-neutral",
+          "step": 8,
+          "increment": 0.045284
+        },
+        {
+          "axis": "valence",
+          "fixedIndex": 20,
+          "segment": "negative-to-neutral",
+          "step": 0,
+          "increment": 0.02858
+        },
+        {
+          "axis": "valence",
+          "fixedIndex": 20,
+          "segment": "negative-to-neutral",
+          "step": 1,
+          "increment": 0.022071
+        },
+        {
+          "axis": "valence",
+          "fixedIndex": 20,
+          "segment": "negative-to-neutral",
+          "step": 9,
+          "increment": 0.014269
+        },
+        {
+          "axis": "valence",
+          "fixedIndex": 20,
+          "segment": "neutral-to-positive",
+          "step": 6,
+          "increment": 0.041316
+        },
+        {
+          "axis": "arousal",
+          "fixedIndex": 0,
+          "segment": "positive-to-neutral",
+          "step": 0,
+          "increment": 0.017961
+        },
+        {
+          "axis": "arousal",
+          "fixedIndex": 1,
+          "segment": "neutral-to-negative",
+          "step": 5,
+          "increment": 0.03082
+        },
+        {
+          "axis": "arousal",
+          "fixedIndex": 3,
+          "segment": "neutral-to-negative",
+          "step": 9,
+          "increment": 0.046873
+        },
+        {
+          "axis": "arousal",
+          "fixedIndex": 4,
+          "segment": "neutral-to-negative",
+          "step": 4,
+          "increment": 0.017847
+        },
+        {
+          "axis": "arousal",
+          "fixedIndex": 5,
+          "segment": "neutral-to-negative",
+          "step": 9,
+          "increment": 0.032276
+        },
+        {
+          "axis": "arousal",
+          "fixedIndex": 6,
+          "segment": "neutral-to-negative",
+          "step": 7,
+          "increment": 0.029646
+        },
+        {
+          "axis": "arousal",
+          "fixedIndex": 8,
+          "segment": "neutral-to-negative",
+          "step": 2,
+          "increment": 0.03102
+        },
+        {
+          "axis": "arousal",
+          "fixedIndex": 8,
+          "segment": "neutral-to-negative",
+          "step": 9,
+          "increment": 0.040426
+        },
+        {
+          "axis": "arousal",
+          "fixedIndex": 10,
+          "segment": "neutral-to-negative",
+          "step": 9,
+          "increment": 0.02456
+        },
+        {
+          "axis": "arousal",
+          "fixedIndex": 11,
+          "segment": "neutral-to-negative",
+          "step": 1,
+          "increment": 0.014106
+        },
+        {
+          "axis": "arousal",
+          "fixedIndex": 12,
+          "segment": "neutral-to-negative",
+          "step": 0,
+          "increment": 0.037389
+        },
+        {
+          "axis": "arousal",
+          "fixedIndex": 13,
+          "segment": "neutral-to-negative",
+          "step": 7,
+          "increment": 0.030084
+        },
+        {
+          "axis": "arousal",
+          "fixedIndex": 14,
+          "segment": "neutral-to-negative",
+          "step": 6,
+          "increment": 0.007945
+        },
+        {
+          "axis": "arousal",
+          "fixedIndex": 15,
+          "segment": "neutral-to-negative",
+          "step": 9,
+          "increment": 0.045526
+        },
+        {
+          "axis": "arousal",
+          "fixedIndex": 16,
+          "segment": "neutral-to-negative",
+          "step": 9,
+          "increment": 0.01837
+        },
+        {
+          "axis": "arousal",
+          "fixedIndex": 17,
+          "segment": "neutral-to-negative",
+          "step": 8,
+          "increment": 0.049546
+        },
+        {
+          "axis": "arousal",
+          "fixedIndex": 18,
+          "segment": "neutral-to-negative",
+          "step": 2,
+          "increment": 0.043605
+        },
+        {
+          "axis": "arousal",
+          "fixedIndex": 18,
+          "segment": "neutral-to-negative",
+          "step": 6,
+          "increment": 0.024411
+        },
+        {
+          "axis": "arousal",
+          "fixedIndex": 18,
+          "segment": "neutral-to-negative",
+          "step": 8,
+          "increment": 0.037005
+        },
+        {
+          "axis": "arousal",
+          "fixedIndex": 20,
+          "segment": "neutral-to-negative",
+          "step": 8,
+          "increment": 0.038269
+        }
+      ]
+    },
+    "anchorPreservation": {
+      "minimumForegroundRgbPsnrDb": 37.327987,
+      "maximumAlphaError": 0,
+      "anchors": [
+        {
+          "sourceRow": 0,
+          "sourceColumn": 0,
+          "denseRow": 0,
+          "denseColumn": 0,
+          "maximumAlphaError": 0,
+          "foregroundRgbPsnrDb": 37.519633
+        },
+        {
+          "sourceRow": 0,
+          "sourceColumn": 1,
+          "denseRow": 0,
+          "denseColumn": 10,
+          "maximumAlphaError": 0,
+          "foregroundRgbPsnrDb": 37.430306
+        },
+        {
+          "sourceRow": 0,
+          "sourceColumn": 2,
+          "denseRow": 0,
+          "denseColumn": 20,
+          "maximumAlphaError": 0,
+          "foregroundRgbPsnrDb": 37.327987
+        },
+        {
+          "sourceRow": 1,
+          "sourceColumn": 0,
+          "denseRow": 10,
+          "denseColumn": 0,
+          "maximumAlphaError": 0,
+          "foregroundRgbPsnrDb": 37.451991
+        },
+        {
+          "sourceRow": 1,
+          "sourceColumn": 1,
+          "denseRow": 10,
+          "denseColumn": 10,
+          "maximumAlphaError": 0,
+          "foregroundRgbPsnrDb": 37.557025
+        },
+        {
+          "sourceRow": 1,
+          "sourceColumn": 2,
+          "denseRow": 10,
+          "denseColumn": 20,
+          "maximumAlphaError": 0,
+          "foregroundRgbPsnrDb": 37.640309
+        },
+        {
+          "sourceRow": 2,
+          "sourceColumn": 0,
+          "denseRow": 20,
+          "denseColumn": 0,
+          "maximumAlphaError": 0,
+          "foregroundRgbPsnrDb": 37.760218
+        },
+        {
+          "sourceRow": 2,
+          "sourceColumn": 1,
+          "denseRow": 20,
+          "denseColumn": 10,
+          "maximumAlphaError": 0,
+          "foregroundRgbPsnrDb": 37.735284
+        },
+        {
+          "sourceRow": 2,
+          "sourceColumn": 2,
+          "denseRow": 20,
+          "denseColumn": 20,
+          "maximumAlphaError": 0,
+          "foregroundRgbPsnrDb": 37.75292
+        }
+      ]
+    }
+  }
+}

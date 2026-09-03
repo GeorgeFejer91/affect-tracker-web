@@ -257,12 +257,53 @@ test("the live phone Face menu switches every canonical face through one state p
   assert.match(app, /mobileFaceEngine\.addEventListener\("change"[\s\S]*selectMainFaceEngine\(elements\.mobileFaceEngine\.value, "phone-face-switcher"\)/);
   assert.match(app, /mainFaceEngine\.value = state\.faceEngineMode;[\s\S]*mobileFaceEngine\.value = state\.faceEngineMode/);
   assert.match(app, /mobileFaceEngine\.disabled = !state\.mainFaceEnabled/);
-  assert.match(app, /mobileFaceEngineField\.hidden = !faceHostsController/);
+  assert.match(app, /mobileFaceControls\.hidden = !faceHostsController/);
 
   assert.match(css, /\.mobile-controller-header \{[\s\S]*grid-template-columns: minmax\(0, 1fr\) auto/);
+  assert.match(css, /\.mobile-face-controls \{[\s\S]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/);
   assert.match(css, /\.mobile-face-engine-field \{[\s\S]*min-width: 0/);
   assert.match(css, /\.mobile-face-engine-field select \{[\s\S]*min-height: 2\.75rem[\s\S]*text-overflow: ellipsis/);
-  assert.match(css, /@media \(max-height: 500px\)[\s\S]*\.mobile-face-engine-field \{[\s\S]*grid-area: 1 \/ 3/);
+  assert.match(css, /@media \(max-height: 500px\)[\s\S]*\.mobile-face-controls \{[\s\S]*grid-area: 1 \/ 3/);
+});
+
+test("the Photoatlas portrait preset is compact, synchronized, and explicitly non-demographic", async () => {
+  const [html, app, css] = await Promise.all([
+    readSiteFile("index.html"),
+    readSiteFile("src/app.js"),
+    readSiteFile("styles.css"),
+  ]);
+
+  assert.equal(html.match(/id="mobile-face-photo-pack"/g)?.length, 1);
+  assert.equal(html.match(/id="main-face-photo-pack"/g)?.length, 1);
+  assert.match(html, /class="mobile-controller-title"/);
+  assert.match(html, /id="mobile-face-photo-pack"[^>]*aria-label="Photoatlas portrait preset"/);
+  assert.match(html, /id="mobile-face-photo-pack-note"[^>]*>Synthetic, non-exhaustive styling only—not sex, gender identity, pronouns, race, ethnicity, ancestry, or validated affect\./);
+  assert.match(html, /id="main-face-photo-pack"[^>]*aria-describedby="main-face-photo-pack-help"/);
+  assert.match(html, /creator-chosen[\s\S]*non-exhaustive[\s\S]*gender identity[\s\S]*race, ethnicity, ancestry[\s\S]*validated affect/i);
+  assert.doesNotMatch(html, />\s*(African|Asian|European|Latin|Middle Eastern|Indigenous|Pacific Islander)/i);
+
+  const selectionPath = app.slice(
+    app.indexOf("function selectFacePhotoPack"),
+    app.indexOf("function selectMainFaceEngine"),
+  );
+  assert.match(selectionPath, /facePhotoPackDefinition\(value, facePhotoPackCatalog\)/);
+  assert.match(selectionPath, /state\.facePhotoPackId = pack\.id/);
+  assert.match(selectionPath, /renderMainAffectFace\.setPhotoAtlasUrl\(atlasUrl\)/);
+  assert.match(selectionPath, /renderMobileAffectFace\.setPhotoAtlasUrl\(atlasUrl\)/);
+  assert.match(selectionPath, /savePreferences\(\)/);
+  assert.match(selectionPath, /Only this local atlas will load/);
+  assert.doesNotMatch(selectionPath, /currentX|currentY|targetX|targetY|affectTransitionMode/);
+  assert.match(app, /facePhotoPackId: state\.facePhotoPackId/);
+  assert.match(app, /mainFacePhotoPack\.addEventListener\("change"[\s\S]*selectFacePhotoPack/);
+  assert.match(app, /mobileFacePhotoPack\.addEventListener\("change"[\s\S]*selectFacePhotoPack/);
+  assert.match(app, /mainFacePhotoPackField\.hidden = !photoSelected/);
+  assert.match(app, /mobileFacePhotoPackField\.hidden = !photoSelected/);
+  assert.match(app, /mobileFacePhotoPack\.replaceChildren\([\s\S]*createFacePhotoPackOption\(pack, true\)/);
+  assert.match(app, /facePhotoPackCompactLabel\(pack, facePhotoPackCatalog\)/);
+  assert.match(css, /\.mobile-face-controls \{[\s\S]*repeat\(2, minmax\(0, 1fr\)\)/);
+  assert.match(css, /\.mobile-face-photo-pack-note \{[\s\S]*grid-column: 1 \/ -1/);
+  assert.match(css, /\.mobile-controller-header > \.mobile-controller-title \{ grid-area: 1 \/ 1; \}/);
+  assert.doesNotMatch(css, /\.mobile-controller-header > div \{/);
 });
 
 test("the upper phone Flubber is an independently grabbed normalized viewport control", async () => {

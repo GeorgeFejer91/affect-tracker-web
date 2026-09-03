@@ -1,0 +1,531 @@
+{
+  "schema": "affect-tracker-photo-atlas-pack-engineering-qa",
+  "version": 1,
+  "passed": true,
+  "evidenceBoundary": "Engineering QA of deterministic synthetic image preparation and atlas generation only. Landmark, topology, continuity, prompt provenance, and skin-tone descriptors do not establish perceived or validated affect, demographic identity, cultural authenticity, or representational adequacy.",
+  "pack": {
+    "id": "photo-synthetic-06",
+    "label": "Synthetic preset 07",
+    "presentationStyle": "androgynous-styling",
+    "regionalDesignInspirations": [
+      "indigenous-americas"
+    ],
+    "skinToneAudit": {
+      "status": "unvalidated",
+      "descriptor": "medium-brown"
+    }
+  },
+  "asset": {
+    "source": "anchors-v1.png",
+    "sourceSha256": "cd46eda42f3c8f12baf5bbeab2b67d2faff0ca3a31f985e4b5b198610a9192bb",
+    "preparedSourceSha256": "94c298d2c0ea0277fd711d4dbdb43c117f9bdc0d27499ad4a7383a6d58ca474a",
+    "atlas": "atlas-v1.webp",
+    "atlasSha256": "be0d7f555008ed952bc566dc1d172625f85235cd46381a87c68bd81e6f35a53a",
+    "metadata": "atlas-v1.json",
+    "metadataSha256": "6333bf10f1ffcb8c1708816ae43372ddb9e7f040a7d0e80b245ddd5b901f43fb",
+    "denseBuilder": "build-dense-photo-atlas.py",
+    "denseBuilderSha256": "2479ed7bbe557a64c1bc48cf7fce4dc1cde705474d488d49663d9a777dd0f38c",
+    "packBuilder": "build-photo-atlas-pack.py",
+    "packBuilderSha256": "3e1be00bcef9b7a0f8407fd74c0ef58aa9096add34e31540be8614252d280541",
+    "packCommon": "photo_atlas_pack_common.py",
+    "packCommonSha256": "4ba957d2a56925a4d9f0fc711732c417ab3a27e9e241b466d356006062c4e2fe",
+    "coreVerifier": "verify-dense-photo-atlas.py",
+    "coreVerifierSha256": "40a1f7f23b88aad7ffed8aa2a62406d38e6ec521d8acf96a243ce22500e9dee5",
+    "packVerifier": "verify-photo-atlas-pack.py",
+    "packVerifierSha256": "bb4702ae53bcb844367ca308db35f619e43ed483334f0a32388aff86aad04057",
+    "gridSize": 21,
+    "tileSize": 160,
+    "quality": 88,
+    "detectedCellCount": 441
+  },
+  "sourcePreprocessing": {
+    "method": "cell-border-connected-rgb-black-matte-soft-alpha-v2",
+    "inputMode": "RGB",
+    "sourceGridSize": 3,
+    "backgroundConnectivity": 8,
+    "backgroundSeed": "each 3x3 cell border",
+    "intensityMetric": "maximum RGB channel",
+    "blackPoint": 8,
+    "opaquePoint": 24,
+    "alphaCurve": "smoothstep",
+    "edgeRgbPolicy": "preserve-source-straight-rgb",
+    "blackMatteDecontamination": false,
+    "transparentPixelCount": 650938,
+    "softPixelCount": 133448,
+    "softPixelMaximumRgb": 23,
+    "opaquePixelCount": 788130,
+    "preparedSha256": "94c298d2c0ea0277fd711d4dbdb43c117f9bdc0d27499ad4a7383a6d58ca474a",
+    "limitation": "Border-connected near-black foreground detail may be inseparable from a black matte and requires contact-sheet review."
+  },
+  "checks": {
+    "coreEngineeringQaPassed": true,
+    "sourceFilenameMatchesMetadata": true,
+    "sourceHashMatchesMetadata": true,
+    "preparedSourceHashMatchesMetadata": true,
+    "sourcePreprocessingReproducesExactly": true,
+    "softMatteRgbIsNotAmplified": true,
+    "atlasFilenameMatchesMetadata": true,
+    "atlasHashMatchesMetadata": true,
+    "denseBuilderHashMatchesMetadata": true,
+    "packBuilderHashMatchesMetadata": true,
+    "packCommonHashMatchesMetadata": true,
+    "toolFilenamesMatchMetadata": true,
+    "evidenceBoundariesRemainExplicit": true
+  },
+  "coreChecks": {
+    "sourceHashMatchesMetadata": true,
+    "atlasHashMatchesMetadata": true,
+    "sourceFilenameMatchesMetadata": true,
+    "atlasFilenameMatchesMetadata": true,
+    "toolVersionsMatchMetadata": true,
+    "gridIsOddAndCentered": true,
+    "allDenseCellsDetected": true,
+    "expectedTopologyHasNoFolds": true,
+    "observedLandmarkTopologyHasNoFolds": true,
+    "anchorsPreserveAlpha": true,
+    "anchorsPreserveRgb": true,
+    "landmarkAgreementWithinBounds": true,
+    "neighborContinuityWithinBounds": true,
+    "expectedAxisGeometryProgressIsMonotonic": true
+  },
+  "thresholds": {
+    "anchorMinimumRgbPsnrDb": 35.0,
+    "anchorMaximumAlphaError": 0,
+    "landmarkMedianErrorPixels": 1.0,
+    "landmarkP95ErrorPixels": 1.5,
+    "landmarkMaximumErrorPixels": 3.0,
+    "continuityP95ResidualPixels": 1.5,
+    "axisProgressMinimumIncrement": 0.05,
+    "axisProgressMaximumLinearError": 0.15
+  },
+  "metrics": {
+    "expectedTopologyMinimumTriangleAreaPixels": 3.80509,
+    "observedTopologyMinimumTriangleAreaPixels": 3.818323,
+    "observedFoldCount": 0,
+    "landmarkErrorPixels": {
+      "median": 0.459274,
+      "p95": 0.854578,
+      "maximum": 1.815815
+    },
+    "neighborLandmarkDeltaResidualPixels": {
+      "median": 0.14353,
+      "p95": 0.214039,
+      "maximum": 0.30414
+    },
+    "expectedAxisAnchorPathProgress": {
+      "seriesCount": 84,
+      "minimumIncrement": 0.099995,
+      "maximumLinearError": 5e-06,
+      "violationCount": 0,
+      "violations": []
+    },
+    "observedAxisAnchorPathProgress": {
+      "seriesCount": 84,
+      "minimumIncrement": -0.048338,
+      "maximumLinearError": 0.148338,
+      "violationCount": 46,
+      "violations": [
+        {
+          "axis": "valence",
+          "fixedIndex": 8,
+          "segment": "negative-to-neutral",
+          "step": 8,
+          "increment": 0.034508
+        },
+        {
+          "axis": "valence",
+          "fixedIndex": 9,
+          "segment": "negative-to-neutral",
+          "step": 9,
+          "increment": 0.025643
+        },
+        {
+          "axis": "valence",
+          "fixedIndex": 13,
+          "segment": "negative-to-neutral",
+          "step": 5,
+          "increment": 0.043402
+        },
+        {
+          "axis": "valence",
+          "fixedIndex": 13,
+          "segment": "negative-to-neutral",
+          "step": 8,
+          "increment": 0.011912
+        },
+        {
+          "axis": "valence",
+          "fixedIndex": 13,
+          "segment": "neutral-to-positive",
+          "step": 5,
+          "increment": 0.048627
+        },
+        {
+          "axis": "valence",
+          "fixedIndex": 15,
+          "segment": "negative-to-neutral",
+          "step": 5,
+          "increment": 0.047141
+        },
+        {
+          "axis": "valence",
+          "fixedIndex": 15,
+          "segment": "negative-to-neutral",
+          "step": 8,
+          "increment": -0.046844
+        },
+        {
+          "axis": "valence",
+          "fixedIndex": 17,
+          "segment": "negative-to-neutral",
+          "step": 4,
+          "increment": 0.027934
+        },
+        {
+          "axis": "valence",
+          "fixedIndex": 18,
+          "segment": "negative-to-neutral",
+          "step": 3,
+          "increment": 0.032277
+        },
+        {
+          "axis": "valence",
+          "fixedIndex": 18,
+          "segment": "negative-to-neutral",
+          "step": 8,
+          "increment": 0.048725
+        },
+        {
+          "axis": "valence",
+          "fixedIndex": 19,
+          "segment": "negative-to-neutral",
+          "step": 5,
+          "increment": 0.048576
+        },
+        {
+          "axis": "valence",
+          "fixedIndex": 19,
+          "segment": "negative-to-neutral",
+          "step": 9,
+          "increment": 0.002996
+        },
+        {
+          "axis": "valence",
+          "fixedIndex": 20,
+          "segment": "negative-to-neutral",
+          "step": 0,
+          "increment": 0.018688
+        },
+        {
+          "axis": "valence",
+          "fixedIndex": 20,
+          "segment": "negative-to-neutral",
+          "step": 8,
+          "increment": 0.033951
+        },
+        {
+          "axis": "arousal",
+          "fixedIndex": 0,
+          "segment": "positive-to-neutral",
+          "step": 1,
+          "increment": 0.044639
+        },
+        {
+          "axis": "arousal",
+          "fixedIndex": 1,
+          "segment": "positive-to-neutral",
+          "step": 6,
+          "increment": 0.007175
+        },
+        {
+          "axis": "arousal",
+          "fixedIndex": 1,
+          "segment": "positive-to-neutral",
+          "step": 7,
+          "increment": 0.048089
+        },
+        {
+          "axis": "arousal",
+          "fixedIndex": 2,
+          "segment": "positive-to-neutral",
+          "step": 5,
+          "increment": 0.047339
+        },
+        {
+          "axis": "arousal",
+          "fixedIndex": 2,
+          "segment": "positive-to-neutral",
+          "step": 7,
+          "increment": 0.045056
+        },
+        {
+          "axis": "arousal",
+          "fixedIndex": 3,
+          "segment": "positive-to-neutral",
+          "step": 1,
+          "increment": 0.042797
+        },
+        {
+          "axis": "arousal",
+          "fixedIndex": 3,
+          "segment": "neutral-to-negative",
+          "step": 8,
+          "increment": 0.007524
+        },
+        {
+          "axis": "arousal",
+          "fixedIndex": 4,
+          "segment": "neutral-to-negative",
+          "step": 0,
+          "increment": 0.044077
+        },
+        {
+          "axis": "arousal",
+          "fixedIndex": 4,
+          "segment": "neutral-to-negative",
+          "step": 7,
+          "increment": 0.021127
+        },
+        {
+          "axis": "arousal",
+          "fixedIndex": 5,
+          "segment": "neutral-to-negative",
+          "step": 2,
+          "increment": 0.028222
+        },
+        {
+          "axis": "arousal",
+          "fixedIndex": 7,
+          "segment": "neutral-to-negative",
+          "step": 5,
+          "increment": 0.027754
+        },
+        {
+          "axis": "arousal",
+          "fixedIndex": 8,
+          "segment": "neutral-to-negative",
+          "step": 1,
+          "increment": 0.040198
+        },
+        {
+          "axis": "arousal",
+          "fixedIndex": 10,
+          "segment": "neutral-to-negative",
+          "step": 3,
+          "increment": 0.043132
+        },
+        {
+          "axis": "arousal",
+          "fixedIndex": 11,
+          "segment": "neutral-to-negative",
+          "step": 1,
+          "increment": 0.028568
+        },
+        {
+          "axis": "arousal",
+          "fixedIndex": 11,
+          "segment": "neutral-to-negative",
+          "step": 3,
+          "increment": 0.021809
+        },
+        {
+          "axis": "arousal",
+          "fixedIndex": 11,
+          "segment": "neutral-to-negative",
+          "step": 5,
+          "increment": 0.029782
+        },
+        {
+          "axis": "arousal",
+          "fixedIndex": 11,
+          "segment": "neutral-to-negative",
+          "step": 8,
+          "increment": 0.011122
+        },
+        {
+          "axis": "arousal",
+          "fixedIndex": 12,
+          "segment": "neutral-to-negative",
+          "step": 6,
+          "increment": 0.044578
+        },
+        {
+          "axis": "arousal",
+          "fixedIndex": 13,
+          "segment": "neutral-to-negative",
+          "step": 3,
+          "increment": 0.038056
+        },
+        {
+          "axis": "arousal",
+          "fixedIndex": 13,
+          "segment": "neutral-to-negative",
+          "step": 4,
+          "increment": 0.034201
+        },
+        {
+          "axis": "arousal",
+          "fixedIndex": 14,
+          "segment": "neutral-to-negative",
+          "step": 6,
+          "increment": 0.038039
+        },
+        {
+          "axis": "arousal",
+          "fixedIndex": 15,
+          "segment": "neutral-to-negative",
+          "step": 1,
+          "increment": 0.036146
+        },
+        {
+          "axis": "arousal",
+          "fixedIndex": 15,
+          "segment": "neutral-to-negative",
+          "step": 6,
+          "increment": 0.035025
+        },
+        {
+          "axis": "arousal",
+          "fixedIndex": 17,
+          "segment": "neutral-to-negative",
+          "step": 1,
+          "increment": 0.025864
+        },
+        {
+          "axis": "arousal",
+          "fixedIndex": 18,
+          "segment": "neutral-to-negative",
+          "step": 4,
+          "increment": 0.039924
+        },
+        {
+          "axis": "arousal",
+          "fixedIndex": 18,
+          "segment": "neutral-to-negative",
+          "step": 7,
+          "increment": -0.001673
+        },
+        {
+          "axis": "arousal",
+          "fixedIndex": 19,
+          "segment": "neutral-to-negative",
+          "step": 0,
+          "increment": -0.048338
+        },
+        {
+          "axis": "arousal",
+          "fixedIndex": 19,
+          "segment": "neutral-to-negative",
+          "step": 4,
+          "increment": -0.005752
+        },
+        {
+          "axis": "arousal",
+          "fixedIndex": 20,
+          "segment": "neutral-to-negative",
+          "step": 0,
+          "increment": -0.008103
+        },
+        {
+          "axis": "arousal",
+          "fixedIndex": 20,
+          "segment": "neutral-to-negative",
+          "step": 2,
+          "increment": 0.027234
+        },
+        {
+          "axis": "arousal",
+          "fixedIndex": 20,
+          "segment": "neutral-to-negative",
+          "step": 5,
+          "increment": 0.017177
+        },
+        {
+          "axis": "arousal",
+          "fixedIndex": 20,
+          "segment": "neutral-to-negative",
+          "step": 8,
+          "increment": -0.011225
+        }
+      ]
+    },
+    "anchorPreservation": {
+      "minimumForegroundRgbPsnrDb": 37.002219,
+      "maximumAlphaError": 0,
+      "anchors": [
+        {
+          "sourceRow": 0,
+          "sourceColumn": 0,
+          "denseRow": 0,
+          "denseColumn": 0,
+          "maximumAlphaError": 0,
+          "foregroundRgbPsnrDb": 37.241959
+        },
+        {
+          "sourceRow": 0,
+          "sourceColumn": 1,
+          "denseRow": 0,
+          "denseColumn": 10,
+          "maximumAlphaError": 0,
+          "foregroundRgbPsnrDb": 37.123174
+        },
+        {
+          "sourceRow": 0,
+          "sourceColumn": 2,
+          "denseRow": 0,
+          "denseColumn": 20,
+          "maximumAlphaError": 0,
+          "foregroundRgbPsnrDb": 37.002219
+        },
+        {
+          "sourceRow": 1,
+          "sourceColumn": 0,
+          "denseRow": 10,
+          "denseColumn": 0,
+          "maximumAlphaError": 0,
+          "foregroundRgbPsnrDb": 37.155751
+        },
+        {
+          "sourceRow": 1,
+          "sourceColumn": 1,
+          "denseRow": 10,
+          "denseColumn": 10,
+          "maximumAlphaError": 0,
+          "foregroundRgbPsnrDb": 37.376893
+        },
+        {
+          "sourceRow": 1,
+          "sourceColumn": 2,
+          "denseRow": 10,
+          "denseColumn": 20,
+          "maximumAlphaError": 0,
+          "foregroundRgbPsnrDb": 37.28389
+        },
+        {
+          "sourceRow": 2,
+          "sourceColumn": 0,
+          "denseRow": 20,
+          "denseColumn": 0,
+          "maximumAlphaError": 0,
+          "foregroundRgbPsnrDb": 37.443725
+        },
+        {
+          "sourceRow": 2,
+          "sourceColumn": 1,
+          "denseRow": 20,
+          "denseColumn": 10,
+          "maximumAlphaError": 0,
+          "foregroundRgbPsnrDb": 37.565748
+        },
+        {
+          "sourceRow": 2,
+          "sourceColumn": 2,
+          "denseRow": 20,
+          "denseColumn": 20,
+          "maximumAlphaError": 0,
+          "foregroundRgbPsnrDb": 37.455731
+        }
+      ]
+    }
+  }
+}

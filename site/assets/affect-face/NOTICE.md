@@ -101,6 +101,45 @@ Both atlases are project-owned, were not copied from a human photograph or a
 third-party face-expression dataset, and are distributed under this
 repository's [BSD 3-Clause License](../../../LICENSE).
 
+## Separately packaged synthetic portrait presets
+
+`photo-atlas-packs-v1.json` is the closed-world catalog for the original
+portrait and seven optional, separately stored synthetic portrait presets.
+The browser loads only the selected local WebP, so adding presets does not add
+their bytes to the initial page or require a runtime model, camera, remote
+service, or CDN. Public labels remain the neutral `Original portrait` and
+`Synthetic preset 02` through `Synthetic preset 08` names.
+
+Each preset begins as a project-owned 3 by 3 fictional portrait sheet in
+`packs/<neutral-id>/anchors-v1.png`. Internal `presentationStyle`,
+`regionalDesignInspirations`, and `skinToneAudit` fields record creator-prompt
+provenance and an explicitly unvalidated audit descriptor. They are not a
+demographic taxonomy or a claim or inference about sex, gender identity,
+pronouns, race, ethnicity, ancestry, nationality, culture, or personal
+identity. They also do not make the anchors or interpolated nodes validated
+affect observations, emotion recognition, or diagnosis.
+
+The supplied PNG anchor sheets use an RGB black matte rather than source
+alpha. `scripts/build-photo-atlas-pack.py` deterministically derives soft
+alpha independently in each source cell: near-black pixels are candidates,
+only 8-connected components that reach that cell's border are treated as
+background, maximum RGB intensity is mapped through a smoothstep from 8 to 24,
+and partially transparent pixels preserve their straight source RGB. The
+algorithm deliberately does not divide RGB by inferred alpha, because doing so
+amplifies dark edge noise into colored or white fringes. Interior dark facial
+features stay opaque. Truly black foreground detail that touches a cell border
+can remain inseparable from the matte, so visual contact-sheet review is still
+required.
+
+The pack builder delegates its 21 by 21 landmark warp to the unchanged v3
+builder. Each colocated metadata and QA file binds the source, prepared source,
+derived atlas, exact tool hashes, generation record, engineering checks, and
+evidence boundaries. `scripts/verify-photo-atlas-pack.py` reproduces each pack;
+`scripts/verify-photo-atlas-catalog.py` additionally fails closed on unsafe
+paths, stale hashes, unavailable defaults, non-neutral public names, or QA that
+has not passed. These are deterministic rendering checks, not demographic,
+representational, or perceived-affect validation.
+
 ## Local rendering libraries
 
 The detailed renderer uses locally vendored

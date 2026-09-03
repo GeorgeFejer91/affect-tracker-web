@@ -124,7 +124,7 @@ test("desktop exposes the complete five-mode face stack before the right-side Fl
   );
   assert.equal(options.length, 5);
   assert.equal(options[0].id, DEFAULT_FACE_ENGINE_MODE);
-  assert.match(html, /no camera capture, face recognition, or emotion diagnosis/);
+  assert.match(html, /does not access a camera, recognize faces, diagnose emotion/);
 });
 
 test("desktop renders every face mode and Flubber from one frozen current-state snapshot", () => {
@@ -158,6 +158,47 @@ test("desktop renders every face mode and Flubber from one frozen current-state 
   assert.match(settingsSource, /const selected = renderAffectPair\.setFaceMode\(elements\.faceEngine\.value\)/);
   assert.match(settingsSource, /localStorage\.setItem\(DESKTOP_FACE_MODE_KEY, selected\)/);
   assert.match(settingsSource, /if \(latestSnapshot\) renderSnapshot\(latestSnapshot\)/);
+});
+
+test("desktop Photoatlas presets use the shared local catalog without changing affect state", () => {
+  const html = readFileSync(new URL("../desktop/index.html", import.meta.url), "utf8");
+  const css = readFileSync(new URL("../desktop/styles.css", import.meta.url), "utf8");
+  const renderSource = readFileSync(new URL("../desktop/src/render.js", import.meta.url), "utf8");
+  const settingsSource = readFileSync(new URL("../desktop/src/settings.js", import.meta.url), "utf8");
+
+  assert.match(html, /id="desktop-face-photo-pack-field"[^>]*hidden>Portrait preset/);
+  assert.match(html, /id="desktop-face-photo-pack"[^>]*aria-describedby="desktop-face-photo-pack-help"[^>]*disabled/);
+  assert.match(html, /synthetic, creator-chosen, and non-exhaustive[\s\S]*gender identity[\s\S]*race, ethnicity, ancestry[\s\S]*validated affect/i);
+  assert.match(html, /does not access a camera, recognize faces, diagnose emotion/);
+  assert.doesNotMatch(html, />\s*(African|Asian|European|Latin|Middle Eastern|Indigenous|Pacific Islander)/i);
+  assert.match(css, /\.face-solution-control\[hidden\][^\{]*\{\s*display:\s*none/);
+
+  assert.match(settingsSource, /from "\.\.\/\.\.\/site\/src\/face-photo-packs\.js"/);
+  assert.match(settingsSource, /const DESKTOP_FACE_PHOTO_PACK_KEY = "affect-tracker-desktop\/face-photo-pack-v1"/);
+  assert.match(settingsSource, /facePhotoPackCatalog = await loadFacePhotoPackCatalog\(\)/);
+  assert.match(settingsSource, /facePhotoPackCatalog\.packs\.map\(createFacePhotoPackOption\)/);
+  assert.match(settingsSource, /facePhotoPackPublicLabel\(pack, facePhotoPackCatalog\)/);
+  assert.match(settingsSource, /FACE_PHOTO_PACK_PUBLIC_DISCLOSURE/);
+  assert.match(settingsSource, /import\.meta\.glob\([\s\S]*site\/assets\/affect-face\/\*\*\/\*\.webp[\s\S]*query: "\?url"/);
+  assert.match(settingsSource, /BUNDLED_FACE_PHOTO_ATLAS_URLS\[assetPath\][\s\S]*resolveFacePhotoPackAtlasUrl/);
+  assert.match(settingsSource, /elements\.facePhotoPackField\.hidden = !photoSelected/);
+  assert.match(settingsSource, /elements\.facePhotoPack\.disabled = !photoSelected/);
+  assert.match(settingsSource, /elements\.facePhotoPackHelp\.hidden = !photoSelected/);
+
+  const selectionPath = settingsSource.slice(
+    settingsSource.indexOf("function selectFacePhotoPack"),
+    settingsSource.indexOf("async function initializeFacePhotoPackControl"),
+  );
+  assert.match(selectionPath, /facePhotoPackDefinition\(value, facePhotoPackCatalog\)/);
+  assert.match(selectionPath, /resolveDesktopFacePhotoPackAtlasUrl\(pack\.id\)/);
+  assert.match(selectionPath, /renderAffectPair\.setPhotoAtlasUrl\(atlasUrl\)/);
+  assert.match(selectionPath, /localStorage\.setItem\(DESKTOP_FACE_PHOTO_PACK_KEY, pack\.id\)/);
+  assert.match(selectionPath, /Only this local atlas will load/);
+  assert.doesNotMatch(selectionPath, /currentX|currentY|targetX|targetY|phase/);
+
+  assert.match(renderSource, /photoAtlasUrl: options\.photoAtlasUrl/);
+  assert.match(renderSource, /render\.setPhotoAtlasUrl = \(value\) => renderFace\.setPhotoAtlasUrl\(value\)/);
+  assert.match(settingsSource, /facePhotoPack\.addEventListener\("change"[\s\S]*selectFacePhotoPack\(elements\.facePhotoPack\.value\)/);
 });
 
 test("GitHub Pages keeps the desktop face on the main stage and the phone preview in one shared controller", () => {

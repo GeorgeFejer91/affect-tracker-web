@@ -1,0 +1,79 @@
+{
+  "schema": "affect-tracker-photo-atlas-pack",
+  "version": 1,
+  "id": "photo-synthetic-07",
+  "label": "Synthetic preset 08",
+  "presentationStyle": "masculine-coded",
+  "regionalDesignInspirations": [
+    "pacific-islander",
+    "polynesian"
+  ],
+  "skinToneAudit": {
+    "status": "unvalidated",
+    "descriptor": "deep-warm"
+  },
+  "source": "anchors-v1.png",
+  "sourceSha256": "82cf307e22b3e06e3294aeaf6d6547cf40ca1aa8c25670c73f0755f3954a2326",
+  "preparedSourceSha256": "2ecc6ebf8b6f5d2c8f70275fa562750dacf2b2a0ac33a4d4155687c9129e9f84",
+  "sourcePreprocessing": {
+    "method": "cell-border-connected-rgb-black-matte-soft-alpha-v2",
+    "inputMode": "RGB",
+    "sourceGridSize": 3,
+    "backgroundConnectivity": 8,
+    "backgroundSeed": "each 3x3 cell border",
+    "intensityMetric": "maximum RGB channel",
+    "blackPoint": 8,
+    "opaquePoint": 24,
+    "alphaCurve": "smoothstep",
+    "edgeRgbPolicy": "preserve-source-straight-rgb",
+    "blackMatteDecontamination": false,
+    "transparentPixelCount": 633541,
+    "softPixelCount": 72602,
+    "softPixelMaximumRgb": 23,
+    "opaquePixelCount": 866373,
+    "preparedSha256": "2ecc6ebf8b6f5d2c8f70275fa562750dacf2b2a0ac33a4d4155687c9129e9f84",
+    "limitation": "Border-connected near-black foreground detail may be inseparable from a black matte and requires contact-sheet review."
+  },
+  "output": "atlas-v1.webp",
+  "outputSha256": "decb67e4c9569c569c1c679d263c82cfebc78c7b574c8907c919082af148328c",
+  "sourceGridSize": 3,
+  "gridSize": 21,
+  "nodeCount": 441,
+  "tileSize": 160,
+  "quality": 88,
+  "controlPointCount": 58,
+  "triangleCount": 98,
+  "topologySweepSize": 101,
+  "minimumTriangleAreaPixels": 4.218715,
+  "method": "MediaPipe stable semantic landmarks plus piecewise-affine premultiplied landmark warp",
+  "runtimeInterpolation": "continuous bilinear blend between adjacent generated nodes",
+  "affectValidation": "Derived interpolation for presentation only; neither the nine anchors nor generated nodes are independently validated affect observations, emotion recognition, or diagnosis.",
+  "versions": {
+    "mediapipe": "0.10.8",
+    "opencv": "4.8.1",
+    "numpy": "1.26.4",
+    "scipy": "1.10.1",
+    "pillow": "12.2.0"
+  },
+  "tooling": {
+    "denseBuilder": "build-dense-photo-atlas.py",
+    "denseBuilderSha256": "2479ed7bbe557a64c1bc48cf7fce4dc1cde705474d488d49663d9a777dd0f38c",
+    "packBuilder": "build-photo-atlas-pack.py",
+    "packBuilderSha256": "3e1be00bcef9b7a0f8407fd74c0ef58aa9096add34e31540be8614252d280541",
+    "packCommon": "photo_atlas_pack_common.py",
+    "packCommonSha256": "4ba957d2a56925a4d9f0fc711732c417ab3a27e9e241b466d356006062c4e2fe"
+  },
+  "provenance": {
+    "identityType": "synthetic-fictional",
+    "sourceOwnership": "project-owned",
+    "demographicLabelType": "creator-prompt-inspiration-only",
+    "demographicLabelScope": "Creator-selected appearance-prompt inspiration only; not a claim or inference of sex, gender identity, pronouns, race, ethnicity, ancestry, nationality, culture, or personal identity.",
+    "consentBasis": "synthetic-source-with-no-real-person-identity-intended",
+    "license": "BSD-3-Clause",
+    "generatorName": "OpenAI image generation",
+    "generatorVersion": "service-managed model exact version unavailable",
+    "generatedOn": "2026-09-03",
+    "generationRecord": "Generated from a project-authored nine-cell affect-anchor brief; retained as a fictional synthetic source sheet.",
+    "affectValidation": "Derived interpolation for presentation only; neither the nine anchors nor generated nodes are independently validated affect observations, emotion recognition, or diagnosis."
+  }
+}

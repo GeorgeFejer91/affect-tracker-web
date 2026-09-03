@@ -683,8 +683,8 @@ test("module uses bundled Three.js assets and contains no autonomous face clock"
   assert.doesNotMatch(source, /requestAnimationFrame|setInterval|setTimeout|Date\.now|performance\.now/);
   assert.doesNotMatch(source, /snapshot\?\.phase|snapshot\.phase|targetX|targetY/);
   assert.doesNotMatch(source, /getUserMedia|mediaDevices|requestDevice|https?:\/\//);
-  assert.match(index, /phone-face-switcher-1-friendly-eyes-1-photo-dense21-1/);
-  assert.match(app, /face-engines-2-matrix21-1-friendly-eyes-1-photo-dense21-1/);
+  assert.match(index, /phone-face-switcher-1-friendly-eyes-1-photo-packs-2/);
+  assert.match(app, /face-engines-2-matrix21-1-friendly-eyes-1-photo-packs-1/);
   assert.match(engines, /face-model\.js\?v=matrix21-1-friendly-eyes-1/);
-  assert.match(engines, /face-photo\.js\?v=dense21-warp-1/);
+  assert.match(engines, /face-photo\.js\?v=dense21-warp-packs-1/);
 });

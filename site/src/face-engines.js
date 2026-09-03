@@ -1,5 +1,5 @@
 import { createFaceRenderer } from "./face.js";
-import { createFacePhotoRenderer } from "./face-photo.js?v=dense21-warp-1";
+import { createFacePhotoRenderer } from "./face-photo.js?v=dense21-warp-packs-1";
 import { createFaceModelRenderer } from "./face-model.js?v=matrix21-1-friendly-eyes-1";
 
 const mode = (id, label, shortLabel, description, kind, profile = null) => Object.freeze({
@@ -127,6 +127,7 @@ export function createFaceEngineRenderer(root, options = {}) {
 
   const childModeChanged = () => updatePresentation();
   photoRenderer = options.photoRenderer ?? createFacePhotoRenderer(root, {
+    atlasUrl: options.photoAtlasUrl,
     fallbackRenderer: vectorRenderer,
     onModeChange: childModeChanged,
   });
@@ -169,6 +170,11 @@ export function createFaceEngineRenderer(root, options = {}) {
     updatePresentation();
     return selectedMode;
   };
+  render.setPhotoAtlasUrl = (value) => {
+    const atlasUrl = photoRenderer.setAtlasUrl?.(value) ?? photoRenderer.atlasUrl;
+    updatePresentation();
+    return atlasUrl;
+  };
   render.resize = () => {
     modelRenderer.resize?.();
     photoRenderer.resize?.();
@@ -190,6 +196,7 @@ export function createFaceEngineRenderer(root, options = {}) {
     },
     modelRenderer: { enumerable: true, value: modelRenderer },
     photoRenderer: { enumerable: true, value: photoRenderer },
+    photoAtlasUrl: { enumerable: true, get: () => photoRenderer.atlasUrl },
   });
 
   updatePresentation();

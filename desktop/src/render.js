@@ -41,6 +41,7 @@ export function createSynchronizedAffectRenderer(root, options = {}) {
   const faceRoot = root.querySelector(".face-preview");
   const renderFace = createFaceEngineRenderer(faceRoot, {
     mode: normalizeFaceEngineMode(options.faceMode),
+    photoAtlasUrl: options.photoAtlasUrl,
     onModeChange: options.onFaceModeChange,
   });
   const renderFlubber = createFlubberRenderer(root.querySelector(".flubber-preview"));
@@ -59,9 +60,11 @@ export function createSynchronizedAffectRenderer(root, options = {}) {
     return Object.freeze({ face, flubber, sequence: snapshot.sequence });
   };
   render.setFaceMode = (mode) => renderFace.setMode(mode);
+  render.setPhotoAtlasUrl = (value) => renderFace.setPhotoAtlasUrl(value);
   Object.defineProperties(render, {
     faceMode: { enumerable: true, get: () => renderFace.mode },
     faceEffectiveMode: { enumerable: true, get: () => renderFace.effectiveMode },
+    photoAtlasUrl: { enumerable: true, get: () => renderFace.photoAtlasUrl },
   });
   return render;
 }

@@ -203,6 +203,7 @@ export function createFacePhotoRenderer(root, options = {}) {
   }
 
   let image = null;
+  let imageGeneration = 0;
   let context = null;
   let loadState = "idle";
   let activeMode = "fallback";
@@ -370,9 +371,14 @@ export function createFacePhotoRenderer(root, options = {}) {
     }
   };
 
-  const atlasLoaded = () => {
-    if (destroyed || loadState !== "loading") return;
-    const dimensions = imageDimensions(image);
+  const atlasLoaded = (candidate, generation) => {
+    if (
+      destroyed
+      || loadState !== "loading"
+      || candidate !== image
+      || generation !== imageGeneration
+    ) return;
+    const dimensions = imageDimensions(candidate);
     if (!(dimensions.width > 0) || !(dimensions.height > 0)) {
       fail(null, "The affect face atlas loaded without usable dimensions.");
       return;
@@ -401,8 +407,13 @@ export function createFacePhotoRenderer(root, options = {}) {
     }
   };
 
-  const atlasFailed = (event) => {
-    if (destroyed || loadState !== "loading") return;
+  const atlasFailed = (candidate, generation, event) => {
+    if (
+      destroyed
+      || loadState !== "loading"
+      || candidate !== image
+      || generation !== imageGeneration
+    ) return;
     fail(event?.error, "The local affect face atlas could not be loaded.");
   };
 
@@ -448,19 +459,28 @@ export function createFacePhotoRenderer(root, options = {}) {
       return;
     }
     try {
-      image = imageFactory(atlasUrl);
-      if (!image) throw new TypeError("The image factory returned no image.");
-      image.onload = atlasLoaded;
-      image.onerror = atlasFailed;
+      const generation = imageGeneration + 1;
+      const candidate = imageFactory(atlasUrl);
+      if (!candidate) throw new TypeError("The image factory returned no image.");
+      imageGeneration = generation;
+      image = candidate;
+      candidate.onload = () => atlasLoaded(candidate, generation);
+      candidate.onerror = (event) => atlasFailed(candidate, generation, event);
       try {
-        image.decoding = "async";
+        candidate.decoding = "async";
       } catch {
         // Some image adapters expose decoding as read-only.
       }
-      image.src = atlasUrl;
+      candidate.src = atlasUrl;
       queueMicrotask(() => {
-        if (loadState === "loading" && image?.complete && imageDimensions(image).width > 0) {
-          atlasLoaded();
+        if (
+          loadState === "loading"
+          && candidate === image
+          && generation === imageGeneration
+          && candidate.complete
+          && imageDimensions(candidate).width > 0
+        ) {
+          atlasLoaded(candidate, generation);
         }
       });
     } catch (error) {
@@ -482,9 +502,38 @@ export function createFacePhotoRenderer(root, options = {}) {
     resizeDirty = true;
     return canvas ? measure() : Object.freeze({ width: cssWidth, height: cssHeight, dpr: 1 });
   };
+  render.setAtlasUrl = (value) => {
+    if (destroyed) return atlasUrl;
+    let nextUrl;
+    try {
+      nextUrl = resolveFacePhotoAtlasUrl(value);
+    } catch {
+      return atlasUrl;
+    }
+    if (nextUrl === atlasUrl) return atlasUrl;
+
+    imageGeneration += 1;
+    if (image) {
+      image.onload = null;
+      image.onerror = null;
+    }
+    image = null;
+    atlasUrl = nextUrl;
+    loadState = "idle";
+    lastError = null;
+    sourceCellWidth = 0;
+    sourceCellHeight = 0;
+    sourceSize = 0;
+    sourceInsetX = 0;
+    sourceInsetY = 0;
+    context?.clearRect?.(0, 0, cssWidth, cssHeight);
+    setMode("fallback");
+    return atlasUrl;
+  };
   render.destroy = () => {
     if (destroyed) return;
     destroyed = true;
+    imageGeneration += 1;
     resizeObserver?.disconnect();
     globalThis.removeEventListener?.("resize", onResize);
     canvas?.removeEventListener?.("contextlost", onContextLost);

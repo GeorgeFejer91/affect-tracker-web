@@ -27,9 +27,10 @@ function fixture() {
       return null;
     },
   };
-  const calls = { model: [], photo: [], vector: [], profiles: [] };
+  const calls = { model: [], photo: [], vector: [], profiles: [], photoAtlases: [] };
   let modelMode = "model";
   let photoMode = "photo";
+  let photoAtlasUrl = "atlas-default.webp";
   let profile = "affec-empirical";
   const vectorRenderer = (...args) => { calls.vector.push(args); return { vector: true }; };
   const photoRenderer = (...args) => {
@@ -40,8 +41,14 @@ function fixture() {
   };
   Object.defineProperties(photoRenderer, {
     mode: { get: () => photoMode },
+    atlasUrl: { get: () => photoAtlasUrl },
     lastError: { get: () => null },
   });
+  photoRenderer.setAtlasUrl = (value) => {
+    photoAtlasUrl = value;
+    calls.photoAtlases.push(value);
+    return photoAtlasUrl;
+  };
   photoRenderer.resize = () => {};
   photoRenderer.destroy = () => {};
   const modelRenderer = (...args) => {
@@ -154,4 +161,25 @@ test("photo selection bypasses the model and vector remains the final fallback",
   assert.equal(f.nodes.model.hidden, true);
   assert.equal(f.nodes.photo.hidden, true);
   assert.equal(f.nodes.vector.hidden, false);
+});
+
+test("portrait pack changes update only the lazy photo adapter", () => {
+  const f = fixture();
+  const renderer = createFaceEngineRenderer(f.root, {
+    vectorRenderer: f.vectorRenderer,
+    photoRenderer: f.photoRenderer,
+    modelRenderer: f.modelRenderer,
+  });
+  const snapshot = Object.freeze({ currentX: 0.4, currentY: -0.6, phase: 2 });
+
+  assert.equal(renderer.setPhotoAtlasUrl("atlas-synthetic-02.webp"), "atlas-synthetic-02.webp");
+  assert.equal(renderer.photoAtlasUrl, "atlas-synthetic-02.webp");
+  assert.deepEqual(f.calls.photoAtlases, ["atlas-synthetic-02.webp"]);
+  assert.equal(f.calls.model.length, 0);
+  assert.equal(f.calls.photo.length, 0);
+  assert.equal(renderer.mode, DEFAULT_FACE_ENGINE_MODE);
+
+  renderer.setMode("photo-atlas");
+  renderer(snapshot);
+  assert.deepEqual(f.calls.photo[0], [snapshot, false, undefined]);
 });

@@ -451,6 +451,65 @@ test("load and draw failures remain local and delegate to the exact fallback", (
   }
 });
 
+test("switching portrait atlases is lazy and ignores the retired image lifecycle", () => {
+  const fixture = createRendererFixture();
+  const images = [createImageMock(), createImageMock()];
+  let imageFactoryCalls = 0;
+  const renderer = createFacePhotoRenderer(fixture.root, {
+    imageFactory: () => images[imageFactoryCalls++],
+    maxDevicePixelRatio: 1,
+  });
+
+  renderer({ currentX: 0, currentY: 0 });
+  assert.equal(imageFactoryCalls, 1);
+  images[0].succeed();
+  assert.equal(renderer.mode, "photo");
+
+  const nextUrl = renderer.setAtlasUrl("../assets/affect-face/affect-face-atlas-synthetic-01-21x21.webp");
+  assert.match(nextUrl, /affect-face-atlas-synthetic-01-21x21\.webp$/);
+  assert.equal(renderer.loadState, "idle");
+  assert.equal(renderer.mode, "fallback");
+  assert.equal(imageFactoryCalls, 1, "changing the selection must not preload another atlas");
+  assert.equal(images[0].onload, null);
+  assert.equal(images[0].onerror, null);
+
+  renderer({ currentX: 0.2, currentY: -0.4 });
+  assert.equal(imageFactoryCalls, 2);
+  assert.equal(images[1].src, nextUrl);
+  images[0].succeed();
+  assert.equal(renderer.loadState, "loading");
+  images[1].succeed();
+  assert.equal(renderer.loadState, "ready");
+  assert.equal(renderer.mode, "photo");
+});
+
+test("queued callbacks from an in-flight retired atlas cannot alter the replacement lifecycle", () => {
+  const fixture = createRendererFixture();
+  const images = [createImageMock(), createImageMock()];
+  let imageFactoryCalls = 0;
+  const renderer = createFacePhotoRenderer(fixture.root, {
+    imageFactory: () => images[imageFactoryCalls++],
+    maxDevicePixelRatio: 1,
+  });
+
+  renderer({ currentX: -0.1, currentY: 0.3 });
+  const retiredOnload = images[0].onload;
+  const retiredOnerror = images[0].onerror;
+  renderer.setAtlasUrl(`../assets/affect-face/packs/photo-synthetic-02/atlas-v1.webp?v=${"b".repeat(12)}`);
+
+  retiredOnload();
+  retiredOnerror({ error: new Error("late retired failure") });
+  assert.equal(renderer.loadState, "idle");
+  assert.equal(renderer.lastError, null);
+  assert.equal(renderer.mode, "fallback");
+
+  renderer({ currentX: 0.7, currentY: -0.8 });
+  assert.equal(imageFactoryCalls, 2);
+  images[1].succeed();
+  assert.equal(renderer.loadState, "ready");
+  assert.equal(renderer.mode, "photo");
+});
+
 test("resize updates the high-DPI object-contain viewport and destroy releases lifecycle hooks", () => {
   const fixture = createRendererFixture({ width: 320, height: 240 });
   const image = createImageMock();

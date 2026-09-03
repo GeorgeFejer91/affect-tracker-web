@@ -11,7 +11,16 @@ import {
   createFaceEngineRenderer,
   faceEngineDefinition,
   normalizeFaceEngineMode,
-} from "./face-engines.js?v=face-engines-2-matrix21-1-friendly-eyes-1-photo-dense21-1";
+} from "./face-engines.js?v=face-engines-2-matrix21-1-friendly-eyes-1-photo-packs-1";
+import {
+  facePhotoPackDefinition,
+  facePhotoPackCompactLabel,
+  facePhotoPackPublicLabel,
+  FACE_PHOTO_PACK_PUBLIC_DISCLOSURE,
+  loadFacePhotoPackCatalog,
+  normalizeFacePhotoPackId,
+  resolveFacePhotoPackAtlasUrl,
+} from "./face-photo-packs.js?v=portrait-packs-2";
 import {
   AFFECT_MATRIX_CENTER_INDEX,
   AFFECT_MATRIX_SIZE,
@@ -169,8 +178,10 @@ const elements = {
   mobileCoordinateTarget: document.querySelector("#mobile-coordinate-target"),
   mobileDirectHelp: document.querySelector("#mobile-direct-help"),
   mobileOpenSettings: document.querySelector("#mobile-open-settings"),
-  mobileFaceEngineField: document.querySelector("#mobile-face-engine-field"),
+  mobileFaceControls: document.querySelector("#mobile-face-controls"),
   mobileFaceEngine: document.querySelector("#mobile-face-engine"),
+  mobileFacePhotoPackField: document.querySelector("#mobile-face-photo-pack-field"),
+  mobileFacePhotoPack: document.querySelector("#mobile-face-photo-pack"),
   mobileCloseSettings: document.querySelector("#mobile-close-settings"),
   faceFlubberPanel: document.querySelector("#face-flubber-panel"),
   mobileFaceControllerAnchor: document.querySelector("#mobile-face-controller-anchor"),
@@ -180,6 +191,9 @@ const elements = {
   mainFaceEnabled: document.querySelector("#main-face-enabled"),
   mainFaceEngine: document.querySelector("#main-face-engine"),
   mainFaceEngineHelp: document.querySelector("#main-face-engine-help"),
+  mainFacePhotoPackField: document.querySelector("#main-face-photo-pack-field"),
+  mainFacePhotoPack: document.querySelector("#main-face-photo-pack"),
+  mainFacePhotoPackHelp: document.querySelector("#main-face-photo-pack-help"),
   mainAffectTransition: document.querySelector("#main-affect-transition"),
   mainAffectTransitionHelp: document.querySelector("#main-affect-transition-help"),
   mainMatrixControls: document.querySelector("#main-matrix-controls"),
@@ -380,7 +394,7 @@ async function loadBundledSettings() {
   }
 }
 
-function readPreferences(bundledSettings) {
+function readPreferences(bundledSettings, photoPackCatalog) {
   try {
     const parsed = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "null") ?? {};
     let settings;
@@ -404,6 +418,7 @@ function readPreferences(bundledSettings) {
       faceFlubberPanelOpen: typeof parsed.faceFlubberPanelOpen === "boolean" ? parsed.faceFlubberPanelOpen : false,
       mainFaceEnabled: parsed.mainFaceEnabled !== false,
       faceEngineMode: normalizeFaceEngineMode(parsed.faceEngineMode),
+      facePhotoPackId: normalizeFacePhotoPackId(parsed.facePhotoPackId, photoPackCatalog),
       mainFaceNeedsInitialCenter: !Object.prototype.hasOwnProperty.call(parsed, "mainFaceEnabled"),
       experimentPanelOpen: typeof parsed.experimentPanelOpen === "boolean" ? parsed.experimentPanelOpen : false,
       screenCalibrationPanelOpen: typeof parsed.screenCalibrationPanelOpen === "boolean" ? parsed.screenCalibrationPanelOpen : false,
@@ -431,6 +446,7 @@ function readPreferences(bundledSettings) {
       faceFlubberPanelOpen: false,
       mainFaceEnabled: true,
       faceEngineMode: normalizeFaceEngineMode(),
+      facePhotoPackId: normalizeFacePhotoPackId(undefined, photoPackCatalog),
       mainFaceNeedsInitialCenter: true,
       experimentPanelOpen: false,
       screenCalibrationPanelOpen: false,
@@ -451,8 +467,11 @@ function readPreferences(bundledSettings) {
   }
 }
 
-const bundledSettings = await loadBundledSettings();
-const preferences = readPreferences(bundledSettings);
+const [bundledSettings, facePhotoPackCatalog] = await Promise.all([
+  loadBundledSettings(),
+  loadFacePhotoPackCatalog(),
+]);
+const preferences = readPreferences(bundledSettings, facePhotoPackCatalog);
 function currentSmartphoneTouchViewport() {
   return isSmartphoneTouchViewport({
     width: window.innerWidth,
@@ -503,6 +522,7 @@ const state = {
   faceFlubberPanelOpen: preferences.faceFlubberPanelOpen,
   mainFaceEnabled: preferences.mainFaceEnabled,
   faceEngineMode: preferences.faceEngineMode,
+  facePhotoPackId: preferences.facePhotoPackId,
   affectTransitionMode: "continuous",
   matrixStatesPerSecond: DEFAULT_AFFECT_MATRIX_STATES_PER_SECOND,
   mainFaceNeedsInitialCenter: preferences.mainFaceNeedsInitialCenter,
@@ -675,10 +695,12 @@ let retroToastTimer;
 const reducedMotionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
 const renderMainAffectFace = createFaceEngineRenderer(elements.mainAffectFace, {
   mode: state.faceEngineMode,
+  photoAtlasUrl: resolveFacePhotoPackAtlasUrl(state.facePhotoPackId, facePhotoPackCatalog),
   onModeChange: updateMainFaceRendererStatus,
 });
 const renderMobileAffectFace = createFaceEngineRenderer(elements.mobileMainAffectFace, {
   mode: state.faceEngineMode,
+  photoAtlasUrl: resolveFacePhotoPackAtlasUrl(state.facePhotoPackId, facePhotoPackCatalog),
   onModeChange: updateMainFaceRendererStatus,
 });
 const retroSoundboard = createRetroSoundboard();
@@ -698,6 +720,7 @@ function savePreferences() {
     faceFlubberPanelOpen: state.faceFlubberPanelOpen,
     mainFaceEnabled: state.mainFaceEnabled,
     faceEngineMode: state.faceEngineMode,
+    facePhotoPackId: state.facePhotoPackId,
     experimentPanelOpen: state.experimentPanelOpen,
     screenCalibrationPanelOpen: state.screenCalibrationPanelOpen,
     touchPlaygroundPanelOpen: state.touchPlaygroundPanelOpen,
@@ -907,6 +930,7 @@ function updatePanelState() {
 
 function updateMainFaceRendererStatus(selectedMode = state.faceEngineMode, effectiveMode) {
   const definition = faceEngineDefinition(selectedMode);
+  const pack = facePhotoPackDefinition(state.facePhotoPackId, facePhotoPackCatalog);
   const effective = effectiveMode
     ?? (smartphoneLayoutActive ? renderMobileAffectFace.effectiveMode : renderMainAffectFace.effectiveMode);
   const suffix = effective === "model"
@@ -914,8 +938,63 @@ function updateMainFaceRendererStatus(selectedMode = state.faceEngineMode, effec
     : effective === "photo"
       ? " · photoreal fallback"
       : " · vector fallback";
-  elements.mainFaceRendererOutput.value = `${definition.shortLabel}${suffix}`;
+  const packSuffix = definition.kind === "photo"
+    ? ` · ${facePhotoPackPublicLabel(pack, facePhotoPackCatalog)}`
+    : "";
+  elements.mainFaceRendererOutput.value = `${definition.shortLabel}${suffix}${packSuffix}`;
   elements.mainFaceEngineHelp.textContent = definition.description;
+}
+
+function createFacePhotoPackOption(pack, compact = false) {
+  const option = document.createElement("option");
+  option.value = pack.id;
+  option.textContent = compact
+    ? facePhotoPackCompactLabel(pack, facePhotoPackCatalog)
+    : facePhotoPackPublicLabel(pack, facePhotoPackCatalog);
+  return option;
+}
+
+function initializeFacePhotoPackControls() {
+  elements.mainFacePhotoPack.replaceChildren(
+    ...facePhotoPackCatalog.packs.map((pack) => createFacePhotoPackOption(pack)),
+  );
+  elements.mobileFacePhotoPack.replaceChildren(
+    ...facePhotoPackCatalog.packs.map((pack) => createFacePhotoPackOption(pack, true)),
+  );
+}
+
+function updateFacePhotoPackControls() {
+  const photoSelected = state.faceEngineMode === "photo-atlas";
+  const pack = facePhotoPackDefinition(state.facePhotoPackId, facePhotoPackCatalog);
+  elements.mobileFaceControls.classList.toggle("has-photo-pack", photoSelected);
+  elements.mainFacePhotoPackField.hidden = !photoSelected;
+  elements.mainFacePhotoPackHelp.hidden = !photoSelected;
+  elements.mobileFacePhotoPackField.hidden = !photoSelected;
+  elements.mainFacePhotoPack.value = pack.id;
+  elements.mobileFacePhotoPack.value = pack.id;
+  elements.mainFacePhotoPackHelp.textContent = `${facePhotoPackPublicLabel(pack, facePhotoPackCatalog)}. ${FACE_PHOTO_PACK_PUBLIC_DISCLOSURE}`;
+  for (const root of [elements.mainAffectFace, elements.mobileMainAffectFace]) {
+    if (root?.dataset) root.dataset.facePhotoPack = pack.id;
+  }
+}
+
+function selectFacePhotoPack(value, source = "face-options") {
+  const pack = facePhotoPackDefinition(value, facePhotoPackCatalog);
+  if (pack.id === state.facePhotoPackId) {
+    updateFacePhotoPackControls();
+    return false;
+  }
+
+  state.facePhotoPackId = pack.id;
+  const atlasUrl = resolveFacePhotoPackAtlasUrl(pack.id, facePhotoPackCatalog);
+  renderMainAffectFace.setPhotoAtlasUrl(atlasUrl);
+  renderMobileAffectFace.setPhotoAtlasUrl(atlasUrl);
+  updateFacePhotoPackControls();
+  updateMainFaceRendererStatus();
+  savePreferences();
+  recordEvent(source, "main-face", "portrait-preset", pack.id);
+  announce(`${facePhotoPackPublicLabel(pack, facePhotoPackCatalog)} selected. Only this local atlas will load when the Photoatlas renderer needs it.`);
+  return true;
 }
 
 function selectMainFaceEngine(mode, source = "face-options") {
@@ -923,6 +1002,7 @@ function selectMainFaceEngine(mode, source = "face-options") {
   if (nextMode === state.faceEngineMode) {
     elements.mainFaceEngine.value = nextMode;
     elements.mobileFaceEngine.value = nextMode;
+    updateFacePhotoPackControls();
     return false;
   }
   state.faceEngineMode = nextMode;
@@ -1060,6 +1140,9 @@ function updateFaceFlubberPanelState() {
   elements.mainFaceEngine.value = state.faceEngineMode;
   elements.mobileFaceEngine.value = state.faceEngineMode;
   elements.mobileFaceEngine.disabled = !state.mainFaceEnabled;
+  elements.mainFacePhotoPack.disabled = !state.mainFaceEnabled;
+  elements.mobileFacePhotoPack.disabled = !state.mainFaceEnabled;
+  updateFacePhotoPackControls();
   elements.mainFaceCenterButton.disabled = !state.mainFaceEnabled
     || !state.widgetVisible
     || experiment.phase !== "idle"
@@ -1110,7 +1193,9 @@ function placeMobileDirectController() {
   if (!state.faceFlubberPanelOpen || !smartphoneLayoutActive) {
     elements.faceFlubberPanel.classList.remove("is-mobile-settings-open");
   }
-  elements.mobileFaceEngineField.hidden = !faceHostsController;
+  elements.mobileFaceControls.hidden = !faceHostsController;
+  elements.mobileFacePhotoPackField.hidden = !faceHostsController
+    || state.faceEngineMode !== "photo-atlas";
   elements.mobileOpenSettings.textContent = faceHostsController ? "Face options" : "Settings";
   elements.mobileOpenSettings.setAttribute(
     "aria-label",
@@ -4590,6 +4675,12 @@ function initializeEvents() {
   elements.mobileFaceEngine.addEventListener("change", () => {
     selectMainFaceEngine(elements.mobileFaceEngine.value, "phone-face-switcher");
   });
+  elements.mainFacePhotoPack.addEventListener("change", () => {
+    selectFacePhotoPack(elements.mainFacePhotoPack.value, "face-options");
+  });
+  elements.mobileFacePhotoPack.addEventListener("change", () => {
+    selectFacePhotoPack(elements.mobileFacePhotoPack.value, "phone-portrait-switcher");
+  });
   elements.mainAffectTransition.addEventListener("change", () => {
     setAffectTransitionMode(elements.mainAffectTransition.value);
   });
@@ -5392,6 +5483,7 @@ function animationFrame(timestamp) {
 
 function initialize() {
   applyRetroTheme();
+  initializeFacePhotoPackControls();
   updateAccordionPanelStates();
   initializePolarUi();
   updateModeControls();

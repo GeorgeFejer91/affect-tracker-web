@@ -4,6 +4,14 @@ import { createAffectMatrixGrid, matrixCoordinate } from "./matrix.js";
 import { createDesktopPartyController } from "./party.js";
 import { affectPaletteColor } from "../../site/src/math.js";
 import {
+  BUILTIN_FACE_PHOTO_PACK_CATALOG,
+  FACE_PHOTO_PACK_PUBLIC_DISCLOSURE,
+  facePhotoPackDefinition,
+  facePhotoPackPublicLabel,
+  loadFacePhotoPackCatalog,
+  resolveFacePhotoPackAtlasUrl,
+} from "../../site/src/face-photo-packs.js";
+import {
   ADVANCED_BINDING_LABELS,
   BINDING_LABELS,
   describeBinding,
@@ -14,7 +22,15 @@ import {
   wheelDirection,
 } from "../../site/src/portable-settings.js";
 
+// Vite turns these eager URL imports into a path-to-URL table. Image bytes are
+// still requested only when the shared photo renderer receives the selected URL.
+const BUNDLED_FACE_PHOTO_ATLAS_URLS = import.meta.glob(
+  "../../site/assets/affect-face/**/*.webp",
+  { eager: true, import: "default", query: "?url" },
+);
+
 const DESKTOP_FACE_MODE_KEY = "affect-tracker-desktop/face-engine-v1";
+const DESKTOP_FACE_PHOTO_PACK_KEY = "affect-tracker-desktop/face-photo-pack-v1";
 
 const elements = {
   form: document.querySelector("#settings-form"),
@@ -38,6 +54,9 @@ const elements = {
   exportButton: document.querySelector("#settings-export-button"),
   synchronizedPreview: document.querySelector("#synchronized-affect-preview"),
   faceEngine: document.querySelector("#desktop-face-engine"),
+  facePhotoPackField: document.querySelector("#desktop-face-photo-pack-field"),
+  facePhotoPack: document.querySelector("#desktop-face-photo-pack"),
+  facePhotoPackHelp: document.querySelector("#desktop-face-photo-pack-help"),
   continuousTraversal: document.querySelector("#continuous-traversal-button"),
   matrixTraversal: document.querySelector("#matrix-traversal-button"),
   matrixControls: document.querySelector("#matrix-traversal-controls"),
@@ -52,6 +71,8 @@ const renderAffectPair = createSynchronizedAffectRenderer(elements.synchronizedP
 });
 elements.faceEngine.value = renderAffectPair.faceMode;
 const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
+let facePhotoPackCatalog = BUILTIN_FACE_PHOTO_PACK_CATALOG;
+let facePhotoPackId = facePhotoPackCatalog.defaultPackId;
 let settings;
 let latestSnapshot;
 let captureInput;
@@ -138,6 +159,58 @@ function chooseFeatureCoordinate(event) {
 function announce(message) {
   elements.live.textContent = "";
   requestAnimationFrame(() => { elements.live.textContent = message; });
+}
+
+function createFacePhotoPackOption(pack) {
+  const option = document.createElement("option");
+  option.value = pack.id;
+  option.textContent = facePhotoPackPublicLabel(pack, facePhotoPackCatalog);
+  return option;
+}
+
+function resolveDesktopFacePhotoPackAtlasUrl(value) {
+  const pack = facePhotoPackDefinition(value, facePhotoPackCatalog);
+  const assetPath = `../../site/assets/affect-face/${pack.atlas}`;
+  return BUNDLED_FACE_PHOTO_ATLAS_URLS[assetPath]
+    ?? resolveFacePhotoPackAtlasUrl(pack.id, facePhotoPackCatalog);
+}
+
+function updateFacePhotoPackControl() {
+  const photoSelected = renderAffectPair.faceMode === "photo-atlas";
+  const pack = facePhotoPackDefinition(facePhotoPackId, facePhotoPackCatalog);
+  elements.facePhotoPackField.hidden = !photoSelected;
+  elements.facePhotoPack.disabled = !photoSelected;
+  elements.facePhotoPackHelp.hidden = !photoSelected;
+  elements.facePhotoPack.value = pack.id;
+  elements.facePhotoPackHelp.textContent = `${facePhotoPackPublicLabel(pack, facePhotoPackCatalog)}. ${FACE_PHOTO_PACK_PUBLIC_DISCLOSURE}`;
+  elements.synchronizedPreview.dataset.facePhotoPack = pack.id;
+}
+
+function selectFacePhotoPack(value) {
+  const pack = facePhotoPackDefinition(value, facePhotoPackCatalog);
+  facePhotoPackId = pack.id;
+  const atlasUrl = resolveDesktopFacePhotoPackAtlasUrl(pack.id);
+  renderAffectPair.setPhotoAtlasUrl(atlasUrl);
+  localStorage.setItem(DESKTOP_FACE_PHOTO_PACK_KEY, pack.id);
+  updateFacePhotoPackControl();
+  if (latestSnapshot) renderSnapshot(latestSnapshot);
+  announce(`${facePhotoPackPublicLabel(pack, facePhotoPackCatalog)} selected. Only this local atlas will load when the Photoatlas renderer needs it.`);
+}
+
+async function initializeFacePhotoPackControl() {
+  facePhotoPackCatalog = await loadFacePhotoPackCatalog();
+  elements.facePhotoPack.replaceChildren(
+    ...facePhotoPackCatalog.packs.map(createFacePhotoPackOption),
+  );
+  const pack = facePhotoPackDefinition(
+    localStorage.getItem(DESKTOP_FACE_PHOTO_PACK_KEY),
+    facePhotoPackCatalog,
+  );
+  facePhotoPackId = pack.id;
+  renderAffectPair.setPhotoAtlasUrl(
+    resolveDesktopFacePhotoPackAtlasUrl(pack.id),
+  );
+  updateFacePhotoPackControl();
 }
 
 function formatCoordinate(value) {
@@ -357,6 +430,7 @@ async function invokeWithFeedback(operation, successMessage) {
 }
 
 async function initialize() {
+  await initializeFacePhotoPackControl();
   partyController = createDesktopPartyController({ announce });
   fillForm(await nativeApi.getSettings());
   renderSnapshot(await nativeApi.getSnapshot());
@@ -372,8 +446,12 @@ async function initialize() {
     const selected = renderAffectPair.setFaceMode(elements.faceEngine.value);
     elements.faceEngine.value = selected;
     localStorage.setItem(DESKTOP_FACE_MODE_KEY, selected);
+    updateFacePhotoPackControl();
     if (latestSnapshot) renderSnapshot(latestSnapshot);
     announce(`${elements.faceEngine.selectedOptions[0].textContent} selected for the synchronized preview.`);
+  });
+  elements.facePhotoPack.addEventListener("change", () => {
+    selectFacePhotoPack(elements.facePhotoPack.value);
   });
   elements.transparency.addEventListener("input", () => {
     elements.transparencyOutput.value = `${elements.transparency.value}%`;
