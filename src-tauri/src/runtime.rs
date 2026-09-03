@@ -5,6 +5,9 @@ use crate::domain::{
 use crate::error::CommandError;
 use crate::lsl_service::LslService;
 use crate::settings::{self, Settings};
+use affect_tracker_study_core::{
+    RunEventPayloadV1, RunEventV1, CONTRACT_VERSION_V1, RUN_EVENT_SCHEMA_V1,
+};
 use std::collections::VecDeque;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -14,6 +17,8 @@ use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter};
 
 const MARKER_CAPACITY: usize = 1_024;
+const STUDY_MARKER_ID_MAX_BYTES: usize = 64;
+const STUDY_MARKER_MAX_BYTES: usize = 512;
 
 #[derive(Debug, Clone)]
 struct LslStatus {
@@ -328,11 +333,27 @@ impl Runtime {
         queue.push_back(marker.to_owned());
     }
 
+    /// Enqueues only the fixed, non-sensitive study lifecycle projection.
+    ///
+    /// The reducer's event payload remains authoritative in the durable study
+    /// record. This LSL projection deliberately excludes questionnaire answers,
+    /// affect values, reason text, health/stall codes, hashes, and other
+    /// caller-authored payload strings. Invalid event envelopes or identifiers
+    /// fail closed and produce no marker.
+    pub fn publish_study_lifecycle_markers(&self, events: &[RunEventV1]) -> usize {
+        let markers: Vec<String> = events.iter().filter_map(study_lifecycle_marker).collect();
+        let count = markers.len();
+        for marker in markers {
+            self.push_marker(&marker);
+        }
+        count
+    }
+
     pub fn push_input_marker(&self, device: &str, event: &str, control: &str, value: &str) {
         self.push_marker(&format!("input:{device}:{event}:{control}:{value}"));
     }
 
-    fn drain_markers(&self) -> Vec<String> {
+    pub(crate) fn drain_markers(&self) -> Vec<String> {
         self.markers
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
@@ -436,5 +457,263 @@ impl Runtime {
                 thread::sleep(Duration::from_millis(5));
             }
         });
+    }
+}
+
+fn study_lifecycle_marker(event: &RunEventV1) -> Option<String> {
+    if event.schema != RUN_EVENT_SCHEMA_V1
+        || event.version != CONTRACT_VERSION_V1
+        || event.authority_generation == 0
+        || event.revision == 0
+        || event.sequence == 0
+        || !is_study_marker_id(&event.run_id)
+        || !event.section_id.as_deref().is_none_or(is_study_marker_id)
+        || !event.trial_id.as_deref().is_none_or(is_study_marker_id)
+        || !event.block_id.as_deref().is_none_or(is_study_marker_id)
+    {
+        return None;
+    }
+
+    let (event_name, media_position_ms, requires_block) = match &event.payload {
+        RunEventPayloadV1::Prepared => ("prepared", None, false),
+        RunEventPayloadV1::Armed => ("armed", None, false),
+        RunEventPayloadV1::RunStarted => ("started", None, false),
+        RunEventPayloadV1::RunPaused { .. } => ("paused", None, false),
+        RunEventPayloadV1::RunResumed => ("resumed", None, false),
+        RunEventPayloadV1::BlockEntered => ("block_entered", None, true),
+        RunEventPayloadV1::BlockCompleted => ("block_completed", None, true),
+        RunEventPayloadV1::QuestionnaireSubmitted { .. } => ("questionnaire_submitted", None, true),
+        RunEventPayloadV1::MediaTimelineUpdated { anchor } => (
+            if anchor.playing {
+                "media_playing"
+            } else {
+                "media_paused"
+            },
+            Some(anchor.media_position_ms),
+            true,
+        ),
+        RunEventPayloadV1::RunReadyToFinalize => ("ready_to_finalize", None, false),
+        RunEventPayloadV1::RunStopped { .. } => ("stopped_early", None, false),
+        RunEventPayloadV1::RunFinalized => ("completed", None, false),
+        RunEventPayloadV1::RunAborted { .. } => ("aborted", None, false),
+        RunEventPayloadV1::SettingsApplied { .. }
+        | RunEventPayloadV1::AffectCalibrationSet { .. }
+        | RunEventPayloadV1::AffectReset { .. }
+        | RunEventPayloadV1::BlockRetried { .. }
+        | RunEventPayloadV1::TrialBranchDecided { .. }
+        | RunEventPayloadV1::TrialSkipped { .. }
+        | RunEventPayloadV1::AffectSampleRecorded { .. }
+        | RunEventPayloadV1::HealthUpdated { .. }
+        | RunEventPayloadV1::StallReported { .. }
+        | RunEventPayloadV1::StallCleared => return None,
+    };
+    if requires_block && event.block_id.is_none() {
+        return None;
+    }
+
+    let mut marker = format!(
+        "affect-tracker:study:v1:{event_name}:run={}:generation={}:revision={}:sequence={}",
+        event.run_id, event.authority_generation, event.revision, event.sequence
+    );
+    if let Some(section_id) = &event.section_id {
+        marker.push_str(":section=");
+        marker.push_str(section_id);
+    }
+    if let Some(trial_id) = &event.trial_id {
+        marker.push_str(":trial=");
+        marker.push_str(trial_id);
+    }
+    if let Some(block_id) = &event.block_id {
+        marker.push_str(":block=");
+        marker.push_str(block_id);
+    }
+    if let Some(position_ms) = media_position_ms {
+        marker.push_str(":position_ms=");
+        marker.push_str(&position_ms.to_string());
+    }
+    (marker.len() <= STUDY_MARKER_MAX_BYTES).then_some(marker)
+}
+
+fn is_study_marker_id(value: &str) -> bool {
+    if value.is_empty() || value.len() > STUDY_MARKER_ID_MAX_BYTES {
+        return false;
+    }
+    let mut bytes = value.bytes();
+    bytes
+        .next()
+        .is_some_and(|byte| byte.is_ascii_alphanumeric())
+        && bytes.all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-'))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use affect_tracker_study_core::{
+        MediaTimelineAnchorV1, QuestionnaireAnswerV1, TrialRunConditionV1,
+    };
+
+    fn event(sequence: u64, payload: RunEventPayloadV1) -> RunEventV1 {
+        RunEventV1 {
+            schema: RUN_EVENT_SCHEMA_V1.to_owned(),
+            version: CONTRACT_VERSION_V1,
+            sequence,
+            authority_generation: 7,
+            revision: sequence,
+            action_id: format!("action-{sequence}"),
+            run_id: "run-1".to_owned(),
+            section_id: Some("section-1".to_owned()),
+            trial_id: Some("trial-1".to_owned()),
+            block_id: Some("block-1".to_owned()),
+            monotonic_ms: sequence * 100,
+            wall_time_utc: "2026-01-02T03:04:05.000Z".to_owned(),
+            payload,
+        }
+    }
+
+    fn test_runtime() -> Arc<Runtime> {
+        Runtime::new(Settings::default(), PathBuf::from("unused-settings.json"))
+    }
+
+    #[test]
+    fn fixed_study_lifecycle_events_have_structured_markers() {
+        let runtime = test_runtime();
+        let payloads = vec![
+            RunEventPayloadV1::Prepared,
+            RunEventPayloadV1::Armed,
+            RunEventPayloadV1::RunStarted,
+            RunEventPayloadV1::RunPaused {
+                reason_code: "researcher-request".to_owned(),
+            },
+            RunEventPayloadV1::RunResumed,
+            RunEventPayloadV1::BlockEntered,
+            RunEventPayloadV1::BlockCompleted,
+            RunEventPayloadV1::MediaTimelineUpdated {
+                anchor: MediaTimelineAnchorV1 {
+                    media_position_ms: 250,
+                    observed_monotonic_ms: 700,
+                    playing: true,
+                    playback_rate: 1.0,
+                },
+            },
+            RunEventPayloadV1::MediaTimelineUpdated {
+                anchor: MediaTimelineAnchorV1 {
+                    media_position_ms: 750,
+                    observed_monotonic_ms: 800,
+                    playing: false,
+                    playback_rate: 1.0,
+                },
+            },
+            RunEventPayloadV1::RunReadyToFinalize,
+            RunEventPayloadV1::RunStopped {
+                reason_code: "researcher-request".to_owned(),
+            },
+            RunEventPayloadV1::RunFinalized,
+            RunEventPayloadV1::RunAborted {
+                reason_code: "researcher-request".to_owned(),
+            },
+        ];
+        let events: Vec<_> = payloads
+            .into_iter()
+            .enumerate()
+            .map(|(index, payload)| event(index as u64 + 1, payload))
+            .collect();
+
+        assert_eq!(runtime.publish_study_lifecycle_markers(&events), 13);
+        let markers = runtime.drain_markers();
+        let event_names: Vec<_> = markers
+            .iter()
+            .map(|marker| marker.split(':').nth(3).unwrap())
+            .collect();
+        assert_eq!(
+            event_names,
+            [
+                "prepared",
+                "armed",
+                "started",
+                "paused",
+                "resumed",
+                "block_entered",
+                "block_completed",
+                "media_playing",
+                "media_paused",
+                "ready_to_finalize",
+                "stopped_early",
+                "completed",
+                "aborted",
+            ]
+        );
+        assert_eq!(
+            markers[0],
+            "affect-tracker:study:v1:prepared:run=run-1:generation=7:revision=1:sequence=1:section=section-1:trial=trial-1:block=block-1"
+        );
+        assert!(markers[7].ends_with(":position_ms=250"));
+        assert!(markers[8].ends_with(":position_ms=750"));
+    }
+
+    #[test]
+    fn questionnaire_answers_and_arbitrary_payload_text_never_enter_markers() {
+        let runtime = test_runtime();
+        let events = vec![
+            event(
+                1,
+                RunEventPayloadV1::QuestionnaireSubmitted {
+                    questionnaire_id: "secret-questionnaire-id".to_owned(),
+                    answers: vec![QuestionnaireAnswerV1::SingleChoice {
+                        item_id: "secret-item-id".to_owned(),
+                        option_id: "secret-answer-value".to_owned(),
+                    }],
+                },
+            ),
+            event(
+                2,
+                RunEventPayloadV1::RunPaused {
+                    reason_code: "secret-pause-reason".to_owned(),
+                },
+            ),
+            event(
+                3,
+                RunEventPayloadV1::BlockRetried {
+                    reason_code: "secret-retry-reason".to_owned(),
+                },
+            ),
+            event(
+                4,
+                RunEventPayloadV1::TrialBranchDecided {
+                    condition: TrialRunConditionV1::Contains {
+                        questionnaire_block_id: "source-block".to_owned(),
+                        item_id: "source-item".to_owned(),
+                        option_id: "secret-condition-value".to_owned(),
+                    },
+                    observed_answer: QuestionnaireAnswerV1::SingleChoice {
+                        item_id: "source-item".to_owned(),
+                        option_id: "secret-observed-answer".to_owned(),
+                    },
+                    eligible: true,
+                },
+            ),
+            event(
+                5,
+                RunEventPayloadV1::RunAborted {
+                    reason_code: "secret-abort-reason".to_owned(),
+                },
+            ),
+        ];
+
+        assert_eq!(runtime.publish_study_lifecycle_markers(&events), 3);
+        let markers = runtime.drain_markers();
+        assert_eq!(markers.len(), 3);
+        assert!(markers[0].contains(":questionnaire_submitted:"));
+        assert!(markers[1].contains(":paused:"));
+        assert!(markers[2].contains(":aborted:"));
+        assert!(!markers.join("|").contains("secret"));
+    }
+
+    #[test]
+    fn malformed_event_identifiers_fail_closed() {
+        let runtime = test_runtime();
+        let mut malformed = event(1, RunEventPayloadV1::RunStarted);
+        malformed.run_id = "run:payload=leak".to_owned();
+        assert_eq!(runtime.publish_study_lifecycle_markers(&[malformed]), 0);
+        assert!(runtime.drain_markers().is_empty());
     }
 }

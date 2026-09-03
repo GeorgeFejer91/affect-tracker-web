@@ -3,6 +3,7 @@ import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 
 export const nativeApi = Object.freeze({
+  openStudyStudio: () => invoke("open_study_studio"),
   getSettings: () => invoke("get_settings"),
   saveSettings: (settings) => invoke("save_settings", { settings }),
   getSnapshot: () => invoke("get_snapshot"),

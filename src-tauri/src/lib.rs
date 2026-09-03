@@ -1,3 +1,4 @@
+mod asset_vault;
 mod commands;
 mod domain;
 mod error;
@@ -5,6 +6,7 @@ mod input_hook;
 mod lsl_service;
 mod runtime;
 mod settings;
+mod study_runtime;
 
 use commands::{apply_overlay_editing, apply_overlay_visibility, show_settings};
 use runtime::Runtime;
@@ -77,6 +79,14 @@ pub fn run() {
             let saved_settings = settings::load(&settings_path);
             let runtime = Runtime::new(saved_settings.clone(), settings_path);
             app.manage(Arc::clone(&runtime));
+            let study_assets_dir = app.path().app_data_dir()?.join("study-assets");
+            let asset_vault = asset_vault::AssetVault::open(study_assets_dir)
+                .map_err(|error| std::io::Error::other(error.message))?;
+            app.manage(Arc::clone(&asset_vault));
+            let study_records_dir = app.path().app_data_dir()?.join("study-records");
+            let study_runtime =
+                study_runtime::StudyRuntime::new(study_records_dir, Arc::clone(&asset_vault));
+            app.manage(Arc::clone(&study_runtime));
 
             let overlay =
                 WebviewWindowBuilder::new(app, "overlay", WebviewUrl::App("overlay.html".into()))
@@ -123,6 +133,15 @@ pub fn run() {
             }
         })
         .invoke_handler(tauri::generate_handler![
+            commands::open_study_studio,
+            commands::validate_study_json,
+            commands::publish_study_json,
+            commands::prepare_study_run,
+            commands::get_study_run_state,
+            commands::apply_study_action,
+            commands::import_study_asset,
+            commands::list_study_assets,
+            commands::remove_study_asset,
             commands::get_settings,
             commands::save_settings,
             commands::get_snapshot,

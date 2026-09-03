@@ -34,8 +34,35 @@ jobs:
       - name: Stress all Flubber base shapes
         run: pnpm stress:flubber-shapes
 
+  study-core:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+          components: rustfmt, clippy
+      - name: Cache Rust artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: crates/study-core
+      - name: Validate native study core
+        run: |
+          cargo fmt --manifest-path crates/study-core/Cargo.toml -- --check
+          cargo test --locked --manifest-path crates/study-core/Cargo.toml --all-features
+          cargo clippy --locked --manifest-path crates/study-core/Cargo.toml --all-targets --all-features -- -D warnings
+      - name: Install pinned wasm-bindgen CLI
+        run: cargo install wasm-bindgen-cli --version 0.2.127 --locked
+      - name: Rebuild checked-in browser authority
+        run: |
+          cargo build --locked --manifest-path crates/study-core/Cargo.toml --target wasm32-unknown-unknown --features wasm --release
+          wasm-bindgen crates/study-core/target/wasm32-unknown-unknown/release/affect_tracker_study_core.wasm --target web --out-dir site/vendor/study-core --out-name affect_tracker_study_core
+          git diff --exit-code -- site/vendor/study-core
+
   deploy:
-    needs: test
+    needs: [test, study-core]
     permissions:
       pages: write
       id-token: write

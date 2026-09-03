@@ -8,6 +8,7 @@
     "test": "node --test",
     "test:web": "node --test",
     "stress:flubber-shapes": "node scripts/stress-flubber-shapes.js",
+    "build:study-core-wasm": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-study-core-wasm.ps1",
     "serve": "python -m http.server 8000 --directory site",
     "desktop:dev": "vite --config desktop/vite.config.js",
     "desktop:build": "vite build --config desktop/vite.config.js",

@@ -71,7 +71,13 @@ jobs:
           workspaces: src-tauri
       - name: Check Rust formatting
         if: runner.os == 'Linux'
-        run: cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
+        run: |
+          cargo fmt --manifest-path crates/study-core/Cargo.toml -- --check
+          cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
+      - name: Test shared study core
+        run: cargo test --locked --manifest-path crates/study-core/Cargo.toml --all-features
+      - name: Lint shared study core
+        run: cargo clippy --locked --manifest-path crates/study-core/Cargo.toml --all-targets --all-features -- -D warnings
       - name: Check Rust
         run: cargo check --locked --manifest-path src-tauri/Cargo.toml
       - name: Test Rust

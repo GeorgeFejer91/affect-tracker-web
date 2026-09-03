@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <meta name="color-scheme" content="dark">
-    <meta name="description" content="Experimental Meta Quest WebXR affect-tracking video library.">
+    <meta name="description" content="Experimental Meta Quest WebXR single-stimulus and portable affect-study runner.">
     <title>Experimental WebXR Affect Study</title>
     <link rel="stylesheet" href="./webxr.css">
   </head>
@@ -22,11 +22,25 @@
       <section class="study-card" aria-labelledby="study-title">
         <p class="eyebrow"><span>Experimental</span> Meta Quest WebXR</p>
         <h1 id="study-title">Immersive affect study</h1>
-        <p>
+        <p id="study-introduction">
           Choose a repository-hosted stimulus, enter VR, and move the affect tracker with the right
           Touch thumbstick. Study records stay on the headset unless you enter a webhook below; the separate
           incoming-signal button exchanges only anonymous Flubber X/Y coordinates after you press it.
         </p>
+
+        <fieldset class="run-mode-options">
+          <legend>Run mode</legend>
+          <label for="run-mode-legacy">
+            <input id="run-mode-legacy" name="run-mode" type="radio" value="legacy" checked>
+            <span><strong>Single stimulus</strong><small>Existing experimental video and Flubber runner</small></span>
+          </label>
+          <label for="run-mode-portable">
+            <input id="run-mode-portable" name="run-mode" type="radio" value="portable">
+            <span><strong>Portable study</strong><small>Published StudyDefinitionV1, shared WASM authority, and durable journal</small></span>
+          </label>
+        </fieldset>
+
+        <section id="legacy-study-setup" aria-label="Single-stimulus setup">
 
         <label class="stimulus-field" for="stimulus-select">
           Study video
@@ -48,12 +62,85 @@
           </select>
         </label>
         <p id="presentation-note" class="privacy-note"></p>
+        </section>
 
-        <dl class="control-list">
+        <fieldset id="portable-study-setup" class="portable-study-setup" hidden>
+          <legend>Portable study setup <span>Content-addressed media</span></legend>
+          <label for="portable-study-file">
+            Published study JSON
+            <input id="portable-study-file" type="file" accept="application/json,.json">
+          </label>
+          <output id="portable-study-file-status" class="portable-file-status" aria-live="polite">
+            Select an immutable, published StudyDefinitionV1 JSON file.
+          </output>
+          <dl id="portable-study-summary" class="portable-study-summary" hidden>
+            <div><dt>Study</dt><dd><output id="portable-study-title">—</output></dd></div>
+            <div><dt>Revision</dt><dd><output id="portable-study-revision">—</output></dd></div>
+            <div><dt>Protocol hash</dt><dd><output id="portable-study-hash">—</output></dd></div>
+          </dl>
+
+          <label for="portable-media-files">
+            Local media files
+            <input id="portable-media-files" type="file" accept="video/*" multiple disabled>
+          </label>
+          <p class="privacy-note">
+            Files are read locally, SHA-256 checked, matched by content identity, and decoded once for
+            duration/codec preflight. Paths and file bytes are never put in the study definition or uploaded.
+          </p>
+          <ul id="portable-media-status" class="portable-validation-list" aria-live="polite"></ul>
+
+          <div class="portable-run-fields">
+            <label for="portable-participant-code">
+              Optional participant code
+              <input id="portable-participant-code" type="text" maxlength="128" autocomplete="off" spellcheck="false">
+            </label>
+            <label id="portable-random-seed-field" for="portable-random-seed" hidden>
+              128-bit run seed (32 hexadecimal characters)
+              <input id="portable-random-seed" type="text" inputmode="text" minlength="32" maxlength="32" pattern="[0-9A-Fa-f]{32}" autocomplete="off" spellcheck="false">
+            </label>
+            <label id="portable-counterbalance-field" for="portable-counterbalance-group" hidden>
+              Counterbalance group
+              <span><output id="portable-counterbalance-range">1</output></span>
+              <input id="portable-counterbalance-group" type="number" min="1" step="1" value="1">
+            </label>
+          </div>
+
+          <fieldset id="portable-calibration-fields" class="portable-calibration-fields" hidden>
+            <legend>Pre-run affect calibration</legend>
+            <label for="portable-calibration-x">
+              Valence <output id="portable-calibration-x-value">0.00</output>
+              <input id="portable-calibration-x" type="range" min="-1" max="1" step="0.01" value="0">
+            </label>
+            <label for="portable-calibration-y">
+              Arousal <output id="portable-calibration-y-value">0.00</output>
+              <input id="portable-calibration-y" type="range" min="-1" max="1" step="0.01" value="0">
+            </label>
+          </fieldset>
+
+          <section class="portable-validation" aria-labelledby="portable-validation-title">
+            <h2 id="portable-validation-title">Preflight</h2>
+            <output id="portable-preflight-status" aria-live="polite">Load a published study to run preflight.</output>
+            <ul id="portable-preflight-issues" class="portable-validation-list"></ul>
+          </section>
+          <p class="privacy-note">
+            Portable runs support immersive instruction, verified content-addressed video, questionnaire,
+            break, and completion blocks. YouTube remains Pages 2D-only, and unsupported media fails
+            preflight rather than being skipped. Protocol editing remains on the
+            <a href="./study.html">ordinary 2D study designer</a>.
+          </p>
+        </fieldset>
+
+        <dl id="legacy-controller-help" class="control-list">
           <div><dt>Right thumbstick</dt><dd>Valence left/right, arousal down/up</dd></div>
           <div><dt>X</dt><dd>Reset to neutral</dd></div>
           <div><dt>Y</dt><dd>Pause or resume the whole study</dd></div>
           <div><dt>Meta button</dt><dd>Use the system control to leave immersive mode</dd></div>
+        </dl>
+        <dl id="portable-controller-help" class="control-list" hidden>
+          <div><dt>Right thumbstick</dt><dd>Navigate panels; during rated video, report valence and arousal</dd></div>
+          <div><dt>Right trigger</dt><dd>Select, start/pause video, or continue after the clip completes</dd></div>
+          <div><dt>Left trigger</dt><dd>Return to the preceding panel page or pause active video</dd></div>
+          <div><dt>Meta button</dt><dd>Leave immersive mode and retain an explicitly partial record</dd></div>
         </dl>
 
         <fieldset id="webxr-polar-panel" class="polar-stream-options">
@@ -124,7 +211,7 @@
           </p>
         </fieldset>
 
-        <fieldset class="rigging-options">
+        <fieldset id="webxr-rigging-panel" class="rigging-options">
           <legend>Flubber placement</legend>
           <label class="toggle-field" for="controller-follow-enabled">
             <input id="controller-follow-enabled" type="checkbox">
@@ -160,7 +247,7 @@
           </p>
         </fieldset>
 
-        <label class="webhook-field" for="webhook-url">
+        <label id="webhook-field" class="webhook-field" for="webhook-url">
           Optional HTTPS webhook
           <input
             id="webhook-url"
@@ -180,18 +267,19 @@
         <div class="actions">
           <button id="start-vr" type="button">Enter VR and start</button>
           <button id="download-csv" type="button" hidden>Download last CSV</button>
+          <button id="download-manifest" type="button" hidden>Download result manifest</button>
           <a href="./">Back to Affect Tracker</a>
         </div>
 
         <p id="study-status" class="status" role="status" aria-live="polite">
           Checking this browser for immersive WebXR…
         </p>
-        <p class="requirements">
+        <p id="study-requirements" class="requirements">
           Requires Meta Quest Browser with WebXR. CEAP-360VR choices are one-minute, silent,
           noncommercial research stimuli shown on a full equirectangular sphere. The video, affect
           samples, and CSV processing stay in the browser unless the optional webhook is used.
         </p>
-        <p class="attribution">
+        <p id="stimulus-attribution" class="attribution">
           CEAP stimuli: Xue et al., <cite>CEAP-360VR: A Continuous Physiological and Behavioral
           Emotion Annotation Dataset for 360° Videos</cite>, CC BY-NC 4.0. See the
           <a href="./assets/ceap/NOTICE.md">media notice</a>.
@@ -200,6 +288,6 @@
     </main>
 
     <script src="./vendor/vdoninja/1.5.5/vdoninja-sdk.min.js"></script>
-    <script type="module" src="./src/webxr-study.js?v=collaboration-4"></script>
+    <script type="module" src="./src/webxr-study.js?v=collaboration-4-portable-study-2"></script>
   </body>
 </html>

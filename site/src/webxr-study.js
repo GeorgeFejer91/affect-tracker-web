@@ -5,7 +5,9 @@ import {
   createProfiles,
   createProjectionOffsets,
 } from "./math.js?v=shape-1";
+import { buildFaceGeometry } from "./face.js";
 import {
+  advanceWebXrAffect,
   advanceWebXrAffectWithPolar,
   applyWebXrRemoteCoordinates,
   controllerFacingModelMatrix,
@@ -31,17 +33,107 @@ import {
   polarWebBluetoothSupport,
 } from "./polar-stream.js?v=remote-13";
 import { createFlubberReceiver } from "./flubber-remote.js?v=collaboration-4";
+import { loadStudyCore } from "./study/core-adapter.js";
+import {
+  BrowserStudySession,
+  createRunConfiguration,
+  questionnaireForBlock,
+} from "./study/participant-runner.js";
+import {
+  applyEvidenceWriteSafetyFence,
+  DEFAULT_EVIDENCE_WRITE_DEADLINE_MS,
+  EvidenceWriteWatchdog,
+} from "./study/evidence-write-watchdog.js";
+import {
+  controllerIntentFromSnapshot,
+  createEquirectangularMediaVertices,
+  createXrPanelState,
+  evaluatePortableMediaObservation,
+  evaluatePortableWebXrRuntimePreflight,
+  matchingPortableAssetIds,
+  portableMediaPositionMs,
+  portableControllerSnapshot,
+  portableSampleSchedule,
+  portableStereoUvTransform,
+  portableStudyRunInputs,
+  projectPortableBlockToXrPanel,
+  reducePortableMediaControl,
+  reduceXrPanelController,
+  referencedContentAssets,
+  resolvePortableVideoBlock,
+  sha256PortableFile,
+  validatePortableDecodedMedia,
+  XR_PANEL_ADAPTER_CAPABILITIES,
+} from "./study-xr/index.js";
 
 const VIDEO_MODEL = modelMatrix(0, 1.55, -2.8, 2.4, 1.35);
 const SPHERE_MODEL = modelMatrix(0, 0, 0, 1, 1);
 const IMMERSIVE_FLUBBER_MODEL = modelMatrix(0, -0.72, -2.2, 0.62, 0.7);
 const FLUBBER_CANVAS_WIDTH = 512;
 const FLUBBER_CANVAS_HEIGHT = 576;
+const PORTABLE_PANEL_CANVAS_WIDTH = 1200;
+const PORTABLE_PANEL_CANVAS_HEIGHT = 720;
+const PORTABLE_PANEL_MODEL = modelMatrix(0, 0, -1.55, 1.2, 0.72);
+const PORTABLE_MEDIA_HUD_CANVAS_WIDTH = 1000;
+const PORTABLE_MEDIA_HUD_CANVAS_HEIGHT = 250;
+const PORTABLE_MEDIA_HUD_MODEL = modelMatrix(0, -0.72, -1.6, 0.92, 0.23);
+const PORTABLE_MEDIA_FLUBBER_MODEL = modelMatrix(0, -0.32, -1.85, 0.42, 0.48);
+const PORTABLE_TIMELINE_HEARTBEAT_MS = 1_000;
+const IDENTITY_TEXTURE_TRANSFORM = portableStereoUvTransform("mono");
+const MAX_PORTABLE_STUDY_BYTES = 2 * 1024 * 1024;
+const PORTABLE_CONTROLLER_WAIT_MS = 5_000;
+const PORTABLE_MEDIA_UNLOCK_TIMEOUT_MS = 3_000;
+const PORTABLE_MEDIA_PROBE_TIMEOUT_MS = 15_000;
 const COUNTDOWN_MS = 3_000;
+const STUDY_CORE_RUN_CAPABILITIES = new Set([
+  "affectInput",
+  "contentAddressedMedia",
+  "flatVideo",
+  "equirectangular180",
+  "equirectangular360",
+  "sideBySideStereo",
+  "topBottomStereo",
+  "questionnaires",
+  "faceFlubberComparison",
+  "youtubeEmbed",
+  "immersivePanels",
+  "durableJournal",
+  "lsl",
+]);
 
 const elements = {
   canvas: document.querySelector("#xr-canvas"),
   video: document.querySelector("#study-video"),
+  introduction: document.querySelector("#study-introduction"),
+  runModeLegacy: document.querySelector("#run-mode-legacy"),
+  runModePortable: document.querySelector("#run-mode-portable"),
+  legacyStudySetup: document.querySelector("#legacy-study-setup"),
+  portableStudySetup: document.querySelector("#portable-study-setup"),
+  legacyControllerHelp: document.querySelector("#legacy-controller-help"),
+  portableControllerHelp: document.querySelector("#portable-controller-help"),
+  portableStudyFile: document.querySelector("#portable-study-file"),
+  portableStudyFileStatus: document.querySelector("#portable-study-file-status"),
+  portableStudySummary: document.querySelector("#portable-study-summary"),
+  portableStudyTitle: document.querySelector("#portable-study-title"),
+  portableStudyRevision: document.querySelector("#portable-study-revision"),
+  portableStudyHash: document.querySelector("#portable-study-hash"),
+  portableMediaFiles: document.querySelector("#portable-media-files"),
+  portableMediaStatus: document.querySelector("#portable-media-status"),
+  portableParticipantCode: document.querySelector("#portable-participant-code"),
+  portableRandomSeedField: document.querySelector("#portable-random-seed-field"),
+  portableRandomSeed: document.querySelector("#portable-random-seed"),
+  portableCounterbalanceField: document.querySelector("#portable-counterbalance-field"),
+  portableCounterbalanceGroup: document.querySelector("#portable-counterbalance-group"),
+  portableCounterbalanceRange: document.querySelector("#portable-counterbalance-range"),
+  portableCalibrationFields: document.querySelector("#portable-calibration-fields"),
+  portableCalibrationX: document.querySelector("#portable-calibration-x"),
+  portableCalibrationY: document.querySelector("#portable-calibration-y"),
+  portableCalibrationXValue: document.querySelector("#portable-calibration-x-value"),
+  portableCalibrationYValue: document.querySelector("#portable-calibration-y-value"),
+  portablePreflightStatus: document.querySelector("#portable-preflight-status"),
+  portablePreflightIssues: document.querySelector("#portable-preflight-issues"),
+  requirements: document.querySelector("#study-requirements"),
+  stimulusAttribution: document.querySelector("#stimulus-attribution"),
   stimulus: document.querySelector("#stimulus-select"),
   stimulusName: document.querySelector("#stimulus-name"),
   stimulusDescription: document.querySelector("#stimulus-description"),
@@ -51,7 +143,10 @@ const elements = {
   passthroughVideoOption: document.querySelector("#passthrough-video-option"),
   presentationNote: document.querySelector("#presentation-note"),
   webhook: document.querySelector("#webhook-url"),
+  webhookField: document.querySelector("#webhook-field"),
+  webhookNote: document.querySelector("#webhook-note"),
   controllerFollow: document.querySelector("#controller-follow-enabled"),
+  riggingPanel: document.querySelector("#webxr-rigging-panel"),
   controllerFollowControls: document.querySelector("#controller-follow-controls"),
   controllerFollowHand: document.querySelector("#controller-follow-hand"),
   flubberSize: document.querySelector("#flubber-size"),
@@ -71,6 +166,7 @@ const elements = {
   polarXValue: document.querySelector("#webxr-polar-x-value"),
   polarYValue: document.querySelector("#webxr-polar-y-value"),
   remotePanel: document.querySelector("#webxr-remote-panel"),
+  polarPanel: document.querySelector("#webxr-polar-panel"),
   remoteStatus: document.querySelector("#webxr-remote-status"),
   remoteUse: document.querySelector("#webxr-remote-use"),
   remoteStop: document.querySelector("#webxr-remote-stop"),
@@ -83,10 +179,12 @@ const elements = {
   remoteMode: document.querySelector("#webxr-remote-mode"),
   start: document.querySelector("#start-vr"),
   download: document.querySelector("#download-csv"),
+  downloadManifest: document.querySelector("#download-manifest"),
   status: document.querySelector("#study-status"),
 };
 
 const state = {
+  runnerMode: "legacy",
   session: undefined,
   referenceSpace: undefined,
   viewerSpace: undefined,
@@ -133,6 +231,31 @@ const state = {
   remoteHudText: "",
   wakeLock: undefined,
   pendingRemoteEvents: [],
+  portable: {
+    core: undefined,
+    study: undefined,
+    assetBindings: new Map(),
+    studyLoadRevision: 0,
+    mediaLoadRevision: 0,
+    preflight: undefined,
+    runInputs: undefined,
+    browserSession: undefined,
+    currentBlock: undefined,
+    questionnaire: undefined,
+    panelState: undefined,
+    panelModel: undefined,
+    media: undefined,
+    blockEnteredAt: 0,
+    previousController: { x: 0, y: 0, select: false, back: false },
+    commandPending: false,
+    finishing: false,
+    sessionEnded: false,
+    errorMessage: "",
+    evidenceWriteDeadlineMs: DEFAULT_EVIDENCE_WRITE_DEADLINE_MS,
+    lastResult: undefined,
+    lastManifestFilename: "",
+    partialRetention: undefined,
+  },
 };
 
 const profiles = createProfiles();
@@ -145,6 +268,338 @@ let polarEcgWindow = [];
 function setStatus(message, error = false) {
   elements.status.textContent = message;
   elements.status.classList.toggle("is-error", error);
+}
+
+function setPortableFileStatus(message, kind = "") {
+  elements.portableStudyFileStatus.value = message;
+  elements.portableStudyFileStatus.classList.toggle("is-error", kind === "error");
+  elements.portableStudyFileStatus.classList.toggle("is-ready", kind === "ready");
+}
+
+function hasDurableBrowserJournal() {
+  return Boolean(globalThis.indexedDB?.open && globalThis.IDBKeyRange?.bound);
+}
+
+function observedPortableCapabilities() {
+  const capabilities = new Set(XR_PANEL_ADAPTER_CAPABILITIES);
+  if (state.vrSupported && navigator.xr) {
+    capabilities.add("controllerInput");
+    capabilities.add("affectInput");
+    capabilities.add("flatVideo");
+    capabilities.add("equirectangular180");
+    capabilities.add("equirectangular360");
+    capabilities.add("sideBySideStereo");
+    capabilities.add("topBottomStereo");
+  }
+  if (hasDurableBrowserJournal()) capabilities.add("durableJournal");
+  const referenced = referencedContentAssets(state.portable.study);
+  if (referenced.length > 0
+    && typeof globalThis.URL?.createObjectURL === "function"
+    && referenced.every(({ assetId }) => state.portable.assetBindings.has(assetId))) {
+    capabilities.add("contentAddressedMedia");
+  }
+  return [...capabilities];
+}
+
+function observedPortableMimeTypes() {
+  return [...new Set(referencedContentAssets(state.portable.study)
+    .map(({ mimeType }) => String(mimeType ?? "").trim().toLowerCase())
+    .filter((mimeType) => mimeType && elements.video.canPlayType(mimeType) !== ""))];
+}
+
+function portableInputIssues() {
+  const issues = [];
+  const inputs = state.portable.runInputs;
+  const seed = elements.portableRandomSeed.value.trim();
+  if (inputs?.needsRandomSeed && seed && !/^[0-9a-f]{32}$/i.test(seed)) {
+    issues.push({
+      code: "invalidRandomSeed",
+      path: "runConfiguration.randomSeed",
+      message: "The optional run seed must contain exactly 32 hexadecimal characters.",
+    });
+  }
+  if (inputs?.counterbalanceGroupCount) {
+    const group = Number(elements.portableCounterbalanceGroup.value);
+    if (!Number.isInteger(group) || group < 1 || group > inputs.counterbalanceGroupCount) {
+      issues.push({
+        code: "invalidCounterbalanceGroup",
+        path: "runConfiguration.counterbalanceGroup",
+        message: `Choose a counterbalance group from 1 through ${inputs.counterbalanceGroupCount}.`,
+      });
+    }
+  }
+  if (state.remote.enabled) {
+    issues.push({
+      code: "legacyRemoteActive",
+      path: "runtime.input",
+      message: "Stop the legacy incoming Flubber signal before starting a portable study.",
+    });
+  }
+  if (state.polarConnected || state.polarConnecting
+    || Object.values(state.polarMappings).some(({ metric }) => metric !== "manual")) {
+    issues.push({
+      code: "legacyPolarActive",
+      path: "runtime.input",
+      message: "Disconnect Polar Stream and return both legacy mappings to manual before starting a portable study.",
+    });
+  }
+  return issues;
+}
+
+function renderPortableMediaStatus() {
+  elements.portableMediaStatus.replaceChildren();
+  const assets = referencedContentAssets(state.portable.study);
+  for (const asset of assets) {
+    const verified = state.portable.assetBindings.has(asset.assetId);
+    const item = document.createElement("li");
+    item.className = verified ? "is-ready" : "is-error";
+    item.textContent = `${asset.assetId}: ${verified ? "SHA-256, byte length, duration, and first-frame decode verified" : "matching decodable local file required"}`;
+    elements.portableMediaStatus.append(item);
+  }
+  if (assets.length === 0 && state.portable.study) {
+    const item = document.createElement("li");
+    item.className = "is-ready";
+    item.textContent = "This study does not reference local media.";
+    elements.portableMediaStatus.append(item);
+  }
+}
+
+function renderPortablePreflight(report) {
+  elements.portablePreflightIssues.replaceChildren();
+  for (const issue of report?.issues ?? []) {
+    const item = document.createElement("li");
+    item.className = "is-error";
+    item.textContent = `${issue.message} (${issue.path})`;
+    elements.portablePreflightIssues.append(item);
+  }
+  const ready = Boolean(report?.ok);
+  elements.portablePreflightStatus.classList.toggle("is-ready", ready);
+  elements.portablePreflightStatus.classList.toggle("is-error", Boolean(report) && !ready);
+  elements.portablePreflightStatus.value = !report
+    ? "Load a published study to run preflight."
+    : ready
+      ? "Logical preflight passed. Controller presence is checked in XR before the authority starts."
+      : `${report.issues.length} blocking issue${report.issues.length === 1 ? "" : "s"}. Immersive mode will not start.`;
+}
+
+function refreshPortablePreflight() {
+  const study = state.portable.study;
+  if (!study) {
+    state.portable.preflight = undefined;
+    renderPortablePreflight(undefined);
+    if (state.runnerMode === "portable") elements.start.disabled = true;
+    return undefined;
+  }
+  const base = evaluatePortableWebXrRuntimePreflight(study, {
+    availableCapabilities: observedPortableCapabilities(),
+    verifiedAssetIds: new Set(state.portable.assetBindings.keys()),
+    requireVerifiedAssets: true,
+    supportedMimeTypes: observedPortableMimeTypes(),
+  });
+  const issues = [...base.issues, ...portableInputIssues()];
+  const report = Object.freeze({ ...base, ok: issues.length === 0, issues: Object.freeze(issues) });
+  state.portable.preflight = report;
+  renderPortablePreflight(report);
+  if (state.runnerMode === "portable") {
+    elements.start.disabled = Boolean(state.session) || !state.vrSupported || !report.ok;
+  }
+  return report;
+}
+
+function clearPortableStudy() {
+  state.portable.study = undefined;
+  state.portable.runInputs = undefined;
+  state.portable.assetBindings = new Map();
+  state.portable.preflight = undefined;
+  elements.portableStudySummary.hidden = true;
+  elements.portableMediaFiles.disabled = true;
+  elements.portableMediaFiles.value = "";
+  elements.portableParticipantCode.value = "";
+  elements.portableRandomSeed.value = "";
+  elements.portableCounterbalanceGroup.value = "1";
+  elements.portableCalibrationX.value = "0";
+  elements.portableCalibrationY.value = "0";
+  elements.portableCalibrationXValue.value = "0.00";
+  elements.portableCalibrationYValue.value = "0.00";
+  elements.portableRandomSeedField.hidden = true;
+  elements.portableCounterbalanceField.hidden = true;
+  elements.portableCalibrationFields.hidden = true;
+  renderPortableMediaStatus();
+  renderPortablePreflight(undefined);
+  if (state.runnerMode === "portable") elements.start.disabled = true;
+}
+
+function displayPortableStudy(study) {
+  const inputs = portableStudyRunInputs(study);
+  state.portable.runInputs = inputs;
+  elements.portableStudyTitle.value = study.title;
+  elements.portableStudyRevision.value = String(study.revision);
+  elements.portableStudyHash.value = study.protocolHash;
+  elements.portableStudySummary.hidden = false;
+  const assets = referencedContentAssets(study);
+  elements.portableMediaFiles.disabled = assets.length === 0;
+  elements.portableRandomSeedField.hidden = !inputs.needsRandomSeed;
+  elements.portableCounterbalanceField.hidden = !inputs.counterbalanceGroupCount;
+  elements.portableCalibrationFields.hidden = !inputs.needsCalibration;
+  if (inputs.counterbalanceGroupCount) {
+    elements.portableCounterbalanceGroup.max = String(inputs.counterbalanceGroupCount);
+    elements.portableCounterbalanceRange.value = `1–${inputs.counterbalanceGroupCount}`;
+  }
+  renderPortableMediaStatus();
+}
+
+function portableValidationMessage(validation) {
+  return (validation?.errors ?? []).slice(0, 4)
+    .map((issue) => `${issue.path ?? "study"}: ${issue.message ?? issue.code ?? "invalid value"}`)
+    .join("; ");
+}
+
+async function loadPortableStudyFile() {
+  if (state.session) return;
+  const loadRevision = ++state.portable.studyLoadRevision;
+  state.portable.mediaLoadRevision += 1;
+  const file = elements.portableStudyFile.files?.[0];
+  clearPortableStudy();
+  if (!file) {
+    setPortableFileStatus("Select an immutable, published StudyDefinitionV1 JSON file.");
+    return;
+  }
+  if (file.size > MAX_PORTABLE_STUDY_BYTES) {
+    setPortableFileStatus("Study JSON exceeds the 2 MiB safety limit.", "error");
+    return;
+  }
+  setPortableFileStatus("Loading the shared WASM authority and validating the protocol…");
+  try {
+    const parsed = JSON.parse(await file.text());
+    if (loadRevision !== state.portable.studyLoadRevision) return;
+    const core = state.portable.core ?? await loadStudyCore();
+    if (loadRevision !== state.portable.studyLoadRevision) return;
+    state.portable.core = core;
+    if (core.implementation !== "wasm" || !core.canRun) {
+      throw new Error(`The shared WASM study authority is unavailable${core.loadError?.message ? `: ${core.loadError.message}` : "."}`);
+    }
+    if (!/^[0-9a-f]{64}$/.test(parsed?.protocolHash ?? "")) {
+      throw new Error("Select a published definition containing a lowercase SHA-256 protocolHash.");
+    }
+    const validation = await core.validate(parsed);
+    if (loadRevision !== state.portable.studyLoadRevision) return;
+    if (!validation.valid) throw new Error(portableValidationMessage(validation) || "The study definition is invalid.");
+    const observedHash = await core.hash(parsed);
+    if (loadRevision !== state.portable.studyLoadRevision) return;
+    if (observedHash !== parsed.protocolHash) {
+      throw new Error("The published protocol hash does not match this study JSON.");
+    }
+    state.portable.study = parsed;
+    displayPortableStudy(parsed);
+    setPortableFileStatus(
+      `${parsed.title} revision ${parsed.revision} passed the native-equivalent WASM schema and protocol-hash checks.`,
+      "ready",
+    );
+    refreshPortablePreflight();
+  } catch (error) {
+    if (loadRevision !== state.portable.studyLoadRevision) return;
+    clearPortableStudy();
+    setPortableFileStatus(`Study could not be loaded: ${error?.message ?? String(error)}`, "error");
+  }
+}
+
+async function bindPortableMediaFiles() {
+  if (state.session || !state.portable.study) return;
+  const mediaLoadRevision = ++state.portable.mediaLoadRevision;
+  const assets = referencedContentAssets(state.portable.study);
+  const files = [...(elements.portableMediaFiles.files ?? [])];
+  state.portable.assetBindings = new Map();
+  renderPortableMediaStatus();
+  elements.portableMediaFiles.disabled = true;
+  setPortableFileStatus(`Hashing and decoding ${files.length} local media file${files.length === 1 ? "" : "s"}…`);
+  try {
+    for (const file of files) {
+      const sizeCandidates = assets.filter(({ byteLength }) => byteLength === file.size);
+      if (sizeCandidates.length === 0) continue;
+      const hash = await sha256PortableFile(file);
+      if (mediaLoadRevision !== state.portable.mediaLoadRevision) return;
+      const matchingIds = matchingPortableAssetIds(sizeCandidates, file, hash);
+      const matchingAssets = sizeCandidates.filter(({ assetId }) => matchingIds.includes(assetId));
+      if (matchingAssets.length > 0) await probePortableMediaFile(file, matchingAssets);
+      if (mediaLoadRevision !== state.portable.mediaLoadRevision) return;
+      for (const assetId of matchingIds) {
+        state.portable.assetBindings.set(assetId, file);
+      }
+    }
+    renderPortableMediaStatus();
+    const matched = state.portable.assetBindings.size;
+    setPortableFileStatus(
+      `${state.portable.study.title} remains validated. ${matched} of ${assets.length} referenced media asset${assets.length === 1 ? "" : "s"} verified.`,
+      matched === assets.length ? "ready" : "error",
+    );
+  } catch (error) {
+    if (mediaLoadRevision !== state.portable.mediaLoadRevision) return;
+    state.portable.assetBindings = new Map();
+    renderPortableMediaStatus();
+    setPortableFileStatus(`Media verification failed: ${error?.message ?? String(error)}`, "error");
+  } finally {
+    if (mediaLoadRevision !== state.portable.mediaLoadRevision) return;
+    elements.portableMediaFiles.disabled = assets.length === 0;
+    refreshPortablePreflight();
+  }
+}
+
+async function probePortableMediaFile(file, assets) {
+  for (const asset of assets) {
+    if (elements.video.canPlayType(asset.mimeType) === "") {
+      throw new Error(`This browser reports no playback support for ${asset.mimeType} (${asset.assetId}).`);
+    }
+  }
+  const probe = document.createElement("video");
+  const objectUrl = URL.createObjectURL(file);
+  probe.preload = "auto";
+  probe.muted = true;
+  probe.playsInline = true;
+  probe.disablePictureInPicture = true;
+  let timer;
+  try {
+    await new Promise((resolve, reject) => {
+      let settled = false;
+      const finish = (callback, value) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        callback(value);
+      };
+      const onDecodedFrame = () => {
+        const observedDurationMs = Number(probe.duration) * 1_000;
+        try {
+          for (const asset of assets) validatePortableDecodedMedia(asset, {
+            durationMs: observedDurationMs,
+            videoWidth: probe.videoWidth,
+            videoHeight: probe.videoHeight,
+          });
+        } catch (error) {
+          finish(reject, error);
+          return;
+        }
+        finish(resolve);
+      };
+      probe.addEventListener("loadeddata", onDecodedFrame, { once: true });
+      probe.addEventListener("canplay", onDecodedFrame, { once: true });
+      probe.addEventListener("error", () => finish(
+        reject,
+        new Error(`The browser could not decode this hash-matched file (media error ${probe.error?.code ?? "unknown"}).`),
+      ), { once: true });
+      timer = setTimeout(
+        () => finish(reject, new Error("Timed out while decoding the first frame of a hash-matched media file.")),
+        PORTABLE_MEDIA_PROBE_TIMEOUT_MS,
+      );
+      probe.src = objectUrl;
+      probe.load();
+    });
+  } finally {
+    clearTimeout(timer);
+    probe.pause();
+    probe.removeAttribute("src");
+    probe.load();
+    URL.revokeObjectURL(objectUrl);
+  }
 }
 
 function polarMetricById(metricId) {
@@ -578,6 +1033,27 @@ function downloadLastCsv() {
   setTimeout(() => URL.revokeObjectURL(url), 2_000);
 }
 
+function downloadTextFile(filename, contents, mimeType) {
+  const url = URL.createObjectURL(new Blob([contents], { type: mimeType }));
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.append(anchor);
+  anchor.click();
+  anchor.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 2_000);
+}
+
+function downloadLastManifest() {
+  const result = state.portable.lastResult;
+  if (!result?.manifest) return;
+  downloadTextFile(
+    state.portable.lastManifestFilename,
+    `${JSON.stringify(result.manifest, null, 2)}\n`,
+    "application/json;charset=utf-8",
+  );
+}
+
 async function forwardCsv(csv) {
   if (!state.webhookUrl) return "No webhook configured; CSV stayed on this headset.";
   const controller = new AbortController();
@@ -734,20 +1210,1109 @@ function updateStudy(now, deltaSeconds) {
   }
 }
 
+function setPortableControlsDisabled(disabled) {
+  for (const control of [
+    elements.runModeLegacy,
+    elements.runModePortable,
+    elements.portableStudyFile,
+    elements.portableMediaFiles,
+    elements.portableParticipantCode,
+    elements.portableRandomSeed,
+    elements.portableCounterbalanceGroup,
+    elements.portableCalibrationX,
+    elements.portableCalibrationY,
+  ]) {
+    control.disabled = disabled;
+  }
+  if (!disabled) {
+    elements.portableMediaFiles.disabled = referencedContentAssets(state.portable.study).length === 0;
+  }
+}
+
+function portableControllerAvailable(inputSources) {
+  return Array.from(inputSources ?? []).some((source) => source?.gamepad);
+}
+
+async function waitForPortableController(session, timeoutMs = PORTABLE_CONTROLLER_WAIT_MS) {
+  if (portableControllerAvailable(session.inputSources)) return;
+  await new Promise((resolve, reject) => {
+    let settled = false;
+    const finish = (callback, value) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      session.removeEventListener("inputsourceschange", onSources);
+      session.removeEventListener("end", onEnd);
+      callback(value);
+    };
+    const onSources = () => {
+      if (portableControllerAvailable(session.inputSources)) finish(resolve);
+    };
+    const onEnd = () => finish(reject, new Error("Immersive mode ended before a tracked controller became available."));
+    const timer = setTimeout(
+      () => finish(reject, new Error("No WebXR gamepad controller was observed. Wake a Touch controller and try again.")),
+      timeoutMs,
+    );
+    session.addEventListener("inputsourceschange", onSources);
+    session.addEventListener("end", onEnd, { once: true });
+  });
+}
+
+function storePortableResult(result, partial) {
+  state.portable.lastResult = result;
+  const suffix = partial ? "-partial" : "";
+  state.lastCsv = result.csv;
+  state.lastFilename = `affect-webxr-${result.manifest.runId}${suffix}.csv`;
+  state.portable.lastManifestFilename = `affect-webxr-${result.manifest.runId}${suffix}.manifest.json`;
+  elements.download.hidden = false;
+  elements.downloadManifest.hidden = false;
+  elements.start.textContent = "Run another study";
+  setStatus(
+    partial
+      ? "Portable study ended early. The partial authoritative CSV and result manifest are ready to export."
+      : "Portable study complete. Export the authoritative CSV and result manifest together.",
+  );
+}
+
+function portableAffectSnapshot() {
+  return {
+    currentX: state.currentX,
+    currentY: state.currentY,
+    phase: state.phaseRadians,
+  };
+}
+
+function isCurrentPortableMedia(media) {
+  return Boolean(
+    media
+    && !media.disposed
+    && state.portable.media === media
+    && state.portable.currentBlock?.blockId === media.descriptor.blockId,
+  );
+}
+
+function portableMediaObservation(media) {
+  const observedTime = Number(elements.video.currentTime);
+  return evaluatePortableMediaObservation(media.descriptor, {
+    currentTimeSeconds: Number.isFinite(observedTime)
+      ? observedTime
+      : media.descriptor.clip.startMs / 1_000,
+    paused: elements.video.paused,
+    ended: elements.video.ended,
+    seeking: elements.video.seeking,
+    readyState: elements.video.readyState,
+    stalled: media.stalled,
+  });
+}
+
+function clearPortableMediaSource(media) {
+  if (!media) return;
+  media.disposed = true;
+  media.active = false;
+  media.authorityPlaying = false;
+  media.nextSampleDueMs = null;
+  for (const [type, listener] of Object.entries(media.listeners ?? {})) {
+    elements.video.removeEventListener(type, listener);
+  }
+  if (media.videoFrameHandle !== undefined && typeof elements.video.cancelVideoFrameCallback === "function") {
+    elements.video.cancelVideoFrameCallback(media.videoFrameHandle);
+  }
+  clearTimeout(media.clipEndTimer);
+  elements.video.pause();
+  if (elements.video.getAttribute("src") === media.objectUrl) {
+    elements.video.removeAttribute("src");
+    elements.video.load();
+  }
+  URL.revokeObjectURL(media.objectUrl);
+  if (state.portable.media === media) state.portable.media = undefined;
+}
+
+function failPortableMedia(media, message) {
+  if (!isCurrentPortableMedia(media) || media.fatalError) return;
+  media.errorMessage = message;
+  media.fatalError = true;
+  media.active = false;
+  media.authorityPlaying = false;
+  media.nextSampleDueMs = null;
+  elements.video.pause();
+  setStatus(`Portable media stopped safely: ${message}`, true);
+  if (!state.portable.finishing) void stopPortableRun("portable-media-error");
+}
+
+function fencePortableEvidenceWrite(media, message) {
+  if (!isCurrentPortableMedia(media)) return;
+  media.evidenceWriteBlocked = true;
+  media.evidenceWriteResumeReady = false;
+  media.active = false;
+  media.authorityPlaying = false;
+  media.nextSampleDueMs = null;
+  media.timelineRequest = undefined;
+  media.stallRequest = undefined;
+  applyEvidenceWriteSafetyFence({
+    pauseLocalVideo: () => elements.video.pause(),
+    stopSampling: () => { media.nextSampleDueMs = null; },
+    stopTimeline: () => {
+      clearTimeout(media.clipEndTimer);
+      if (media.videoFrameHandle !== undefined
+        && typeof elements.video.cancelVideoFrameCallback === "function") {
+        elements.video.cancelVideoFrameCallback(media.videoFrameHandle);
+        media.videoFrameHandle = undefined;
+      }
+    },
+    disableControls: () => { media.evidenceWriteBlocked = true; },
+  });
+  media.errorMessage = message;
+  setStatus(`Portable evidence writing is fenced: ${message}`, true);
+}
+
+function guardPortableEvidenceWrite(media, operation) {
+  if (!isCurrentPortableMedia(media) || !media.evidenceWriteWatchdog) {
+    return Promise.reject(new Error("The portable evidence adapter is unavailable."));
+  }
+  return media.evidenceWriteWatchdog.run(operation);
+}
+
+function failPortableEvidence(media, message) {
+  if (!isCurrentPortableMedia(media) || media.evidenceWriteFailed) return;
+  fencePortableEvidenceWrite(media, message);
+  media.evidenceWriteFailed = true;
+  media.fatalError = true;
+  media.errorMessage = state.portable.browserSession?.pendingJournalCommand?.()
+    ? `Right trigger: End and retain partial evidence · ${message}`
+    : `End immersive mode; no outcome was staged · ${message}`;
+  setStatus(`Portable evidence could not be committed: ${message}`, true);
+}
+
+function resumePortableEvidenceAfterDelay(media) {
+  if (!isCurrentPortableMedia(media)
+    || !media.evidenceWriteResumeReady
+    || !media.evidenceWriteWatchdog?.acknowledge()) return false;
+  media.evidenceWriteBlocked = false;
+  media.evidenceWriteResumeReady = false;
+  media.errorMessage = "";
+  setStatus("The delayed portable evidence write settled. Resume was explicitly accepted; playback may restart.");
+  return true;
+}
+
+async function abandonPortableEvidence(media) {
+  if (!isCurrentPortableMedia(media) || media.controlPending) return;
+  media.controlPending = true;
+  try {
+    const retained = await state.portable.browserSession.abandonPendingJournalOutcome({
+      reasonCode: "webxr-evidence-write-unrecoverable",
+    });
+    state.portable.partialRetention = retained;
+    clearPortableMediaSource(media);
+    state.phase = "finished";
+    setStatus(
+      `Portable run retained as partial evidence. ${retained.stagedAction.commandType} is the uncommitted data-loss boundary; use Stored run evidence in the 2D study page to export committed events.`,
+      true,
+    );
+    if (state.session && !state.portable.sessionEnded) await state.session.end().catch(() => {});
+  } catch (error) {
+    if (isCurrentPortableMedia(media)) {
+      media.controlPending = false;
+      media.errorMessage = error?.message ?? String(error);
+      setStatus(`Portable partial retention failed: ${media.errorMessage}`, true);
+    }
+  }
+}
+
+function queuePortableTimeline(media, requestedPlaying, force = false) {
+  if (!isCurrentPortableMedia(media)
+    || !state.portable.browserSession
+    || media.fatalError
+    || media.evidenceWriteBlocked) return media?.timelinePromise ?? Promise.resolve();
+  if (!requestedPlaying) {
+    media.authorityPlaying = false;
+    media.nextSampleDueMs = null;
+  }
+  media.timelineRequest = { playing: requestedPlaying === true, force: force === true };
+  if (media.timelinePromise) return media.timelinePromise;
+
+  media.timelinePromise = (async () => {
+    while (media.timelineRequest
+      && isCurrentPortableMedia(media)
+      && !media.fatalError
+      && !media.evidenceWriteBlocked) {
+      const request = media.timelineRequest;
+      media.timelineRequest = undefined;
+      const observation = portableMediaObservation(media);
+      const authorityState = state.portable.browserSession.state();
+      const playing = request.playing && observation.active && authorityState.phase === "running";
+      const now = performance.now();
+      if (!request.force
+        && playing === media.authorityPlaying
+        && now - media.lastTimelineReportAt < PORTABLE_TIMELINE_HEARTBEAT_MS) continue;
+      await guardPortableEvidenceWrite(
+        media,
+        () => state.portable.browserSession.reportMedia(
+          observation.relativePositionMs,
+          playing,
+          elements.video.playbackRate || 1,
+        ),
+      );
+      if (!isCurrentPortableMedia(media) || media.evidenceWriteBlocked || media.fatalError) return;
+      media.authorityPlaying = playing;
+      media.lastTimelineReportAt = performance.now();
+      if (!playing) media.nextSampleDueMs = null;
+    }
+  })().catch((error) => {
+    if (isCurrentPortableMedia(media)) failPortableEvidence(
+      media,
+      `The authoritative media timeline could not be recorded: ${error?.message ?? String(error)}`,
+    );
+  }).finally(() => {
+    media.timelinePromise = undefined;
+    if (media.timelineRequest
+      && isCurrentPortableMedia(media)
+      && !media.fatalError
+      && !media.evidenceWriteBlocked) queuePortableTimeline(
+      media,
+      media.timelineRequest.playing,
+      media.timelineRequest.force,
+    );
+  });
+  return media.timelinePromise;
+}
+
+function queuePortableStall(media, stalled, code = "media-buffering", kind = "media") {
+  if (!isCurrentPortableMedia(media)
+    || !state.portable.browserSession
+    || media.fatalError
+    || media.evidenceWriteBlocked) return media?.stallPromise ?? Promise.resolve();
+  media.stallRequest = { stalled: stalled === true, code, kind };
+  if (media.stallPromise) return media.stallPromise;
+  media.stallPromise = (async () => {
+    while (media.stallRequest
+      && isCurrentPortableMedia(media)
+      && !media.fatalError
+      && !media.evidenceWriteBlocked) {
+      const request = media.stallRequest;
+      media.stallRequest = undefined;
+      if (request.stalled) {
+        await queuePortableTimeline(media, false, true);
+        if (!isCurrentPortableMedia(media)) return;
+        const authorityState = state.portable.browserSession.state();
+        if (!authorityState.stall) {
+          await guardPortableEvidenceWrite(
+            media,
+            () => state.portable.browserSession.dispatch({
+              type: "reportStall",
+              stall: { kind: request.kind, code: request.code },
+            }),
+          );
+        } else if (authorityState.stall.kind !== request.kind || authorityState.stall.code !== request.code) {
+          throw new Error(`Cannot replace active ${authorityState.stall.kind} stall ${authorityState.stall.code}.`);
+        }
+        media.authorityStall = { kind: request.kind, code: request.code };
+      } else {
+        const authorityState = state.portable.browserSession.state();
+        if (authorityState.stall
+          && media.authorityStall
+          && authorityState.stall.kind === media.authorityStall.kind
+          && authorityState.stall.code === media.authorityStall.code) {
+          await guardPortableEvidenceWrite(
+            media,
+            () => state.portable.browserSession.dispatch({ type: "clearStall" }),
+          );
+        } else if (authorityState.stall) {
+          throw new Error(`Cannot clear unowned ${authorityState.stall.kind} stall ${authorityState.stall.code}.`);
+        }
+        media.authorityStall = undefined;
+        if (portableMediaObservation(media).active) await queuePortableTimeline(media, true, true);
+      }
+    }
+  })().catch((error) => {
+    if (isCurrentPortableMedia(media)) failPortableEvidence(
+      media,
+      `The media stall state could not be recorded: ${error?.message ?? String(error)}`,
+    );
+  }).finally(() => {
+    media.stallPromise = undefined;
+    if (media.stallRequest
+      && isCurrentPortableMedia(media)
+      && !media.fatalError
+      && !media.evidenceWriteBlocked) queuePortableStall(
+      media,
+      media.stallRequest.stalled,
+      media.stallRequest.code,
+      media.stallRequest.kind,
+    );
+  });
+  return media.stallPromise;
+}
+
+function markPortableMediaComplete(media) {
+  if (!isCurrentPortableMedia(media) || media.segmentComplete) return;
+  media.segmentComplete = true;
+  media.active = false;
+  media.stalled = false;
+  media.nextSampleDueMs = null;
+  clearTimeout(media.clipEndTimer);
+  elements.video.pause();
+  const clipEndSeconds = media.descriptor.clip.endMs / 1_000;
+  if (Number.isFinite(elements.video.duration)) {
+    elements.video.currentTime = Math.min(clipEndSeconds, elements.video.duration);
+  }
+  void queuePortableTimeline(media, false, true);
+}
+
+function schedulePortableClipEnd(media) {
+  if (!isCurrentPortableMedia(media) || media.segmentComplete || elements.video.paused) return;
+  clearTimeout(media.clipEndTimer);
+  const remainingMs = Math.max(
+    0,
+    (media.descriptor.clip.endMs - elements.video.currentTime * 1_000) / (elements.video.playbackRate || 1),
+  );
+  media.clipEndTimer = setTimeout(() => {
+    if (!isCurrentPortableMedia(media) || elements.video.paused) return;
+    if (portableMediaObservation(media).segmentComplete) markPortableMediaComplete(media);
+    else schedulePortableClipEnd(media);
+  }, Math.max(1, Math.min(60_000, Math.ceil(remainingMs))));
+}
+
+function watchPortableMediaFrames(media) {
+  if (!isCurrentPortableMedia(media)
+    || media.segmentComplete
+    || media.videoFrameHandle !== undefined
+    || typeof elements.video.requestVideoFrameCallback !== "function") return;
+  media.videoFrameHandle = elements.video.requestVideoFrameCallback(() => {
+    media.videoFrameHandle = undefined;
+    if (!isCurrentPortableMedia(media)) return;
+    if (portableMediaObservation(media).segmentComplete) markPortableMediaComplete(media);
+    else watchPortableMediaFrames(media);
+  });
+}
+
+async function attemptPortableMediaPlay(media, { automatic = false } = {}) {
+  if (!isCurrentPortableMedia(media)
+    || !media.ready
+    || media.segmentComplete
+    || media.controlPending) return;
+  if (media.evidenceWriteBlocked) {
+    if (automatic || !resumePortableEvidenceAfterDelay(media)) return;
+  }
+  if (media.fatalError) return;
+  media.controlPending = true;
+  media.errorMessage = "";
+  try {
+    if (state.portable.browserSession.state().phase === "paused") {
+      await state.portable.browserSession.dispatch({ type: "resume" });
+    }
+    if (!isCurrentPortableMedia(media)) return;
+    const currentMs = (elements.video.currentTime || 0) * 1_000;
+    if (currentMs < media.descriptor.clip.startMs || currentMs >= media.descriptor.clip.endMs) {
+      elements.video.currentTime = media.descriptor.clip.startMs / 1_000;
+    }
+    await elements.video.play();
+    if (!isCurrentPortableMedia(media)) return;
+    media.userPaused = false;
+    media.activationRequired = false;
+    media.active = portableMediaObservation(media).active;
+    schedulePortableClipEnd(media);
+    if (media.stalled || media.authorityStall || media.stallPromise) {
+      media.stalled = false;
+      media.stallCode = "";
+      await queuePortableStall(media, false);
+    } else {
+      await queuePortableTimeline(media, true, true);
+    }
+  } catch (error) {
+    if (!isCurrentPortableMedia(media)) return;
+    if (error?.name === "NotAllowedError" && automatic) {
+      media.activationRequired = true;
+      media.errorMessage = "Press the right trigger to start this verified video.";
+    } else if (error?.name === "NotAllowedError") {
+      media.activationRequired = true;
+      media.errorMessage = "Playback permission was denied. Press the right trigger again.";
+    } else {
+      failPortableMedia(media, `Verified media playback failed: ${error?.message ?? String(error)}`);
+    }
+  } finally {
+    media.controlPending = false;
+  }
+}
+
+async function pausePortableMedia(media) {
+  if (!isCurrentPortableMedia(media) || media.controlPending) return;
+  media.controlPending = true;
+  media.userPaused = true;
+  media.active = false;
+  media.nextSampleDueMs = null;
+  elements.video.pause();
+  try {
+    await queuePortableTimeline(media, false, true);
+    if (!isCurrentPortableMedia(media)) return;
+    if (state.portable.browserSession.state().phase === "running") {
+      await state.portable.browserSession.dispatch({
+        type: "pause",
+        reasonCode: "participant-media-pause",
+      });
+    }
+  } catch (error) {
+    failPortableMedia(media, `The media pause could not be recorded: ${error?.message ?? String(error)}`);
+  } finally {
+    media.controlPending = false;
+  }
+}
+
+async function advancePortableMedia(media) {
+  if (!isCurrentPortableMedia(media) || !media.segmentComplete || media.controlPending) return;
+  media.controlPending = true;
+  try {
+    await queuePortableTimeline(media, false, true);
+    if (!isCurrentPortableMedia(media)) return;
+    if (state.portable.browserSession.state().phase === "paused") {
+      await state.portable.browserSession.dispatch({ type: "resume" });
+    }
+    if (!isCurrentPortableMedia(media)) return;
+    await state.portable.browserSession.advance();
+    clearPortableMediaSource(media);
+    syncPortablePanel();
+  } catch (error) {
+    if (isCurrentPortableMedia(media)) {
+      media.errorMessage = error?.message ?? String(error);
+      setStatus(`Portable video could not advance: ${media.errorMessage}`, true);
+    }
+  } finally {
+    media.controlPending = false;
+  }
+}
+
+function enterPortableVideoBlock(block, now) {
+  if (state.portable.media) clearPortableMediaSource(state.portable.media);
+  const { descriptor, file } = resolvePortableVideoBlock(
+    state.portable.study,
+    block,
+    state.portable.assetBindings,
+  );
+  const objectUrl = URL.createObjectURL(file);
+  const media = {
+    descriptor,
+    objectUrl,
+    ready: false,
+    active: false,
+    stalled: false,
+    stallCode: "",
+    segmentComplete: false,
+    userPaused: false,
+    activationRequired: false,
+    authorityPlaying: false,
+    authorityStall: undefined,
+    timelineRequest: undefined,
+    timelinePromise: undefined,
+    stallRequest: undefined,
+    stallPromise: undefined,
+    lastTimelineReportAt: 0,
+    nextSampleDueMs: null,
+    samplePending: false,
+    controlPending: false,
+    errorMessage: "",
+    fatalError: false,
+    evidenceWriteBlocked: false,
+    evidenceWriteResumeReady: false,
+    evidenceWriteFailed: false,
+    evidenceWriteWatchdog: undefined,
+    disposed: false,
+    videoFrameHandle: undefined,
+    clipEndTimer: undefined,
+    listeners: {},
+  };
+  media.evidenceWriteWatchdog = new EvidenceWriteWatchdog({
+    deadlineMs: state.portable.evidenceWriteDeadlineMs,
+    onDeadline: ({ deadlineMs }) => {
+      fencePortableEvidenceWrite(
+        media,
+        `A journal transaction exceeded ${deadlineMs} ms. It remains active and was not cancelled.`,
+      );
+    },
+    onQuiescent: ({ rejected }) => {
+      if (!isCurrentPortableMedia(media) || rejected || media.evidenceWriteFailed) return;
+      media.evidenceWriteResumeReady = true;
+      media.errorMessage = "Right trigger: Resume explicitly · delayed evidence write settled";
+      setStatus("The delayed portable evidence write settled. Playback remains fenced until the researcher resumes explicitly.", true);
+    },
+  });
+  state.portable.media = media;
+  state.portable.panelModel = undefined;
+  state.portable.panelState = undefined;
+  state.portable.questionnaire = undefined;
+  state.portable.blockEnteredAt = now;
+
+  const onLoadedMetadata = () => {
+    if (!isCurrentPortableMedia(media)) return;
+    const observedDurationMs = Number(elements.video.duration) * 1_000;
+    try {
+      validatePortableDecodedMedia(media.descriptor.asset, {
+        durationMs: observedDurationMs,
+        videoWidth: elements.video.videoWidth,
+        videoHeight: elements.video.videoHeight,
+      });
+    } catch {
+      failPortableMedia(
+        media,
+        `Decoded duration does not match the published ${media.descriptor.asset.durationMs} ms asset or its clip boundary.`,
+      );
+      return;
+    }
+    elements.video.currentTime = media.descriptor.clip.startMs / 1_000;
+    if (elements.video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
+      media.ready = true;
+      void attemptPortableMediaPlay(media, { automatic: true });
+    }
+  };
+  const onCanPlay = () => {
+    if (!isCurrentPortableMedia(media)
+      || media.segmentComplete
+      || media.fatalError
+      || media.evidenceWriteBlocked) return;
+    media.ready = true;
+    const mediaBufferStall = media.stallCode === "media-buffering"
+      || media.authorityStall?.kind === "media"
+      || media.stallRequest?.kind === "media";
+    if (mediaBufferStall) {
+      media.stalled = false;
+      media.stallCode = "";
+      void queuePortableStall(media, false);
+    }
+    if (!media.stalled
+      && !media.authorityStall
+      && !media.stallPromise
+      && !media.userPaused
+      && elements.video.paused) void attemptPortableMediaPlay(media, { automatic: true });
+    watchPortableMediaFrames(media);
+  };
+  const onPlaying = () => {
+    if (!isCurrentPortableMedia(media)) return;
+    if (media.fatalError || media.evidenceWriteBlocked) {
+      elements.video.pause();
+      return;
+    }
+    media.active = portableMediaObservation(media).active;
+    media.activationRequired = false;
+    media.errorMessage = "";
+    schedulePortableClipEnd(media);
+    if (media.stalled || media.authorityStall || media.stallPromise) {
+      media.stalled = false;
+      media.stallCode = "";
+      void queuePortableStall(media, false);
+    } else {
+      void queuePortableTimeline(media, true, true);
+    }
+  };
+  const onPause = () => {
+    if (!isCurrentPortableMedia(media)) return;
+    media.active = false;
+    media.nextSampleDueMs = null;
+    clearTimeout(media.clipEndTimer);
+    if (media.evidenceWriteBlocked || media.fatalError) return;
+    void queuePortableTimeline(media, false, true);
+  };
+  const onWaiting = () => {
+    if (!isCurrentPortableMedia(media) || media.userPaused || media.segmentComplete) return;
+    media.stalled = true;
+    media.stallCode = "media-buffering";
+    media.active = false;
+    media.authorityPlaying = false;
+    media.nextSampleDueMs = null;
+    clearTimeout(media.clipEndTimer);
+    void queuePortableStall(media, true, "media-buffering");
+  };
+  const onEnded = () => {
+    if (!isCurrentPortableMedia(media)) return;
+    const observation = portableMediaObservation(media);
+    if (observation.segmentComplete) markPortableMediaComplete(media);
+    else failPortableMedia(media, "The verified media ended before the published clip boundary.");
+  };
+  const onTimeUpdate = () => {
+    if (isCurrentPortableMedia(media) && portableMediaObservation(media).segmentComplete) {
+      markPortableMediaComplete(media);
+    }
+  };
+  const onError = () => {
+    if (!isCurrentPortableMedia(media)) return;
+    const code = elements.video.error?.code ? ` (media error ${elements.video.error.code})` : "";
+    failPortableMedia(media, `The browser could not decode the verified media${code}.`);
+  };
+  media.listeners = {
+    loadedmetadata: onLoadedMetadata,
+    canplay: onCanPlay,
+    playing: onPlaying,
+    pause: onPause,
+    waiting: onWaiting,
+    stalled: onWaiting,
+    ended: onEnded,
+    timeupdate: onTimeUpdate,
+    error: onError,
+  };
+  for (const [type, listener] of Object.entries(media.listeners)) {
+    elements.video.addEventListener(type, listener);
+  }
+  elements.video.onended = null;
+  elements.video.pause();
+  elements.video.loop = false;
+  elements.video.playbackRate = 1;
+  elements.video.preload = "auto";
+  elements.video.setAttribute("src", objectUrl);
+  elements.video.load();
+}
+
+function syncPortablePanel(now = performance.now()) {
+  const browserSession = state.portable.browserSession;
+  if (!browserSession) return;
+  const authorityState = browserSession.state();
+  const block = browserSession.currentBlock();
+  if (!block) {
+    if (state.portable.media) clearPortableMediaSource(state.portable.media);
+    state.portable.currentBlock = undefined;
+    state.portable.panelModel = undefined;
+    if (authorityState.phase === "awaitingFinalization" && !state.portable.finishing) {
+      void finishPortableRun();
+      return;
+    }
+    throw new Error("The WASM authority did not identify a current portable block.");
+  }
+  if (!["instruction", "video", "questionnaire", "break", "completion"].includes(block.type)) {
+    throw new Error(`Portable WebXR reached unsupported block ${block.blockId} (${block.type}); the run was stopped.`);
+  }
+  if (state.portable.currentBlock?.blockId !== block.blockId) {
+    if (state.portable.media) clearPortableMediaSource(state.portable.media);
+    const questionnaire = questionnaireForBlock(state.portable.study, block);
+    state.portable.currentBlock = block;
+    if (block.type === "video") {
+      enterPortableVideoBlock(block, now);
+      state.portable.errorMessage = "";
+      return;
+    }
+    state.portable.questionnaire = questionnaire;
+    state.portable.panelState = createXrPanelState({ block, questionnaire });
+    state.portable.blockEnteredAt = now;
+    state.portable.errorMessage = "";
+  }
+  if (block.type === "video") return;
+  const context = {
+    block,
+    questionnaire: state.portable.questionnaire,
+    state: state.portable.panelState,
+    affectSnapshot: portableAffectSnapshot(),
+    elapsedMs: Math.max(0, now - state.portable.blockEnteredAt),
+  };
+  state.portable.panelModel = projectPortableBlockToXrPanel(context);
+}
+
+async function applyPortablePanelEffect(effect) {
+  if (!effect || state.portable.commandPending || state.portable.finishing) return;
+  if (effect.blockId !== state.portable.currentBlock?.blockId) {
+    state.portable.errorMessage = "The requested action belonged to an earlier block and was not applied.";
+    return;
+  }
+  state.portable.commandPending = true;
+  state.portable.errorMessage = "";
+  try {
+    await state.portable.browserSession.dispatch(effect.command);
+    if (state.portable.finishing || state.portable.sessionEnded) return;
+    if (effect.command.type === "submitQuestionnaire") {
+      await state.portable.browserSession.advance();
+      if (state.portable.finishing || state.portable.sessionEnded) return;
+    }
+    const authorityState = state.portable.browserSession.state();
+    if (authorityState.phase === "awaitingFinalization") await finishPortableRun();
+    else syncPortablePanel();
+  } catch (error) {
+    state.portable.errorMessage = error?.message ?? String(error);
+    setStatus(`Portable study action failed: ${state.portable.errorMessage}`, true);
+  } finally {
+    state.portable.commandPending = false;
+  }
+}
+
+function updatePortableStudy(now, deltaSeconds) {
+  const frequency = affectParameters(state.currentX, state.currentY).frequency;
+  const speed = state.portable.study?.pinnedSettings?.visual?.animationSpeedMultiplier ?? 1;
+  state.phaseRadians = (state.phaseRadians + deltaSeconds * Math.PI * 2 * frequency * speed) % (Math.PI * 2);
+  try {
+    syncPortablePanel(now);
+    const current = portableControllerSnapshot(state.session?.inputSources);
+    const intent = controllerIntentFromSnapshot(state.portable.previousController, current);
+    state.portable.previousController = current;
+    if (!current.controllerPresent) {
+      state.portable.errorMessage = "Touch controller tracking is unavailable. Reconnect a controller to continue.";
+      const media = state.portable.media;
+      if (media && portableMediaObservation(media).active) {
+        media.stalled = true;
+        media.stallCode = "controller-tracking-lost";
+        media.active = false;
+        media.authorityPlaying = false;
+        media.nextSampleDueMs = null;
+        elements.video.pause();
+        void queuePortableStall(media, true, "controller-tracking-lost", "input");
+      }
+      return;
+    }
+    if (state.portable.errorMessage.startsWith("Touch controller tracking")) state.portable.errorMessage = "";
+    if (state.portable.currentBlock?.type === "video") {
+      const media = state.portable.media;
+      if (!media || !isCurrentPortableMedia(media)) {
+        throw new Error("The current portable video has no verified media runtime.");
+      }
+      if (media.stalled && media.stallCode === "controller-tracking-lost") {
+        media.stalled = false;
+        media.stallCode = "";
+        void queuePortableStall(media, false);
+      }
+      let observation = portableMediaObservation(media);
+      if (observation.segmentComplete) {
+        markPortableMediaComplete(media);
+        observation = portableMediaObservation(media);
+      }
+      media.active = observation.active;
+      if (media.active && media.descriptor.collectAffect) {
+        const next = advanceWebXrAffect(
+          state,
+          { x: current.x, y: -current.y },
+          deltaSeconds,
+        );
+        Object.assign(state, next);
+      }
+      if (media.active) {
+        if (media.stalled) {
+          media.stalled = false;
+          void queuePortableStall(media, false);
+        } else if (!media.stallPromise && !media.authorityStall && !media.timelinePromise && (
+          !media.authorityPlaying
+          || now - media.lastTimelineReportAt >= PORTABLE_TIMELINE_HEARTBEAT_MS
+        )) {
+          void queuePortableTimeline(media, true);
+        }
+      } else {
+        media.nextSampleDueMs = null;
+        if (media.authorityPlaying && !media.timelinePromise) void queuePortableTimeline(media, false, true);
+      }
+
+      if (media.descriptor.collectAffect && !media.evidenceWriteBlocked && !media.fatalError) {
+        const schedule = portableSampleSchedule({
+          nowMs: now,
+          nextDueMs: media.nextSampleDueMs,
+          sampleRateHz: state.portable.study.pinnedSettings.acquisition.sampleRateHz,
+          active: media.active,
+          authorityPlaying: media.authorityPlaying && !media.authorityStall && !media.stallPromise,
+          pending: media.samplePending,
+        });
+        media.nextSampleDueMs = schedule.nextDueMs;
+        if (schedule.due) {
+          media.samplePending = true;
+          const sample = {
+            currentValence: state.currentX,
+            currentArousal: state.currentY,
+            targetValence: state.targetX,
+            targetArousal: state.targetY,
+          };
+          void guardPortableEvidenceWrite(
+            media,
+            () => state.portable.browserSession.recordAffect(sample),
+          ).catch((error) => {
+            if (isCurrentPortableMedia(media)) failPortableEvidence(
+              media,
+              `An affect sample could not be committed: ${error?.message ?? String(error)}`,
+            );
+          }).finally(() => {
+            media.samplePending = false;
+          });
+        }
+      }
+
+      if (!intent || media.controlPending || state.portable.commandPending) return;
+      if (media.evidenceWriteFailed && intent.type === "activate") {
+        void abandonPortableEvidence(media);
+        return;
+      }
+      if (media.evidenceWriteBlocked && !media.evidenceWriteResumeReady) return;
+      const action = reducePortableMediaControl(media, intent);
+      if (action?.type === "play") void attemptPortableMediaPlay(media);
+      else if (action?.type === "pause") void pausePortableMedia(media);
+      else if (action?.type === "advance") void advancePortableMedia(media);
+      return;
+    }
+    if (!intent || state.portable.commandPending || !state.portable.currentBlock) return;
+    const reduced = reduceXrPanelController({
+      block: state.portable.currentBlock,
+      questionnaire: state.portable.questionnaire,
+      state: state.portable.panelState,
+      intent,
+      affectSnapshot: portableAffectSnapshot(),
+      elapsedMs: Math.max(0, now - state.portable.blockEnteredAt),
+    });
+    state.portable.panelState = reduced.state;
+    syncPortablePanel(now);
+    if (reduced.effect) void applyPortablePanelEffect(reduced.effect);
+  } catch (error) {
+    state.portable.errorMessage = error?.message ?? String(error);
+    setStatus(`Portable WebXR stopped safely: ${state.portable.errorMessage}`, true);
+    if (!state.portable.finishing) void stopPortableRun("portable-runtime-error");
+  }
+}
+
+async function stopPortableRun(reasonCode = "xr-session-ended") {
+  const browserSession = state.portable.browserSession;
+  if (!browserSession || state.portable.finishing || state.portable.lastResult) return;
+  state.portable.finishing = true;
+  try {
+    const media = state.portable.media;
+    if (media && isCurrentPortableMedia(media)) {
+      media.active = false;
+      elements.video.pause();
+      await queuePortableTimeline(media, false, true);
+      clearPortableMediaSource(media);
+    }
+    await browserSession.dispatchTail?.catch?.(() => {});
+    const completed = browserSession.state().phase === "awaitingFinalization";
+    const result = completed
+      ? await browserSession.finalize()
+      : await browserSession.stop(reasonCode);
+    storePortableResult(result, !completed);
+    state.phase = "finished";
+  } catch (error) {
+    const pending = browserSession.pendingJournalCommand?.();
+    setStatus(
+      pending
+        ? `The portable record cannot be finalized while accepted ${pending.type} evidence is uncommitted. Closing immersive mode retains the staged boundary and previously committed events as partial browser evidence.`
+        : `The partial portable record could not be finalized: ${error?.message ?? String(error)}`,
+      true,
+    );
+  } finally {
+    state.portable.finishing = false;
+    if (state.session && !state.portable.sessionEnded) await state.session.end().catch(() => {});
+  }
+}
+
+async function finishPortableRun() {
+  const browserSession = state.portable.browserSession;
+  if (!browserSession || state.portable.finishing || state.portable.lastResult) return;
+  state.portable.finishing = true;
+  try {
+    const media = state.portable.media;
+    if (media && isCurrentPortableMedia(media)) {
+      media.active = false;
+      elements.video.pause();
+      await queuePortableTimeline(media, false, true);
+      clearPortableMediaSource(media);
+    }
+    const result = await browserSession.finalize();
+    storePortableResult(result, false);
+    state.phase = "finished";
+  } catch (error) {
+    setStatus(`The portable result could not be finalized: ${error?.message ?? String(error)}`, true);
+  } finally {
+    state.portable.finishing = false;
+    if (state.session && !state.portable.sessionEnded) await state.session.end().catch(() => {});
+  }
+}
+
+async function handlePortableSessionEnd() {
+  state.portable.sessionEnded = true;
+  const media = state.portable.media;
+  if (media && isCurrentPortableMedia(media)) {
+    media.active = false;
+    elements.video.pause();
+    await queuePortableTimeline(media, false, true);
+    clearPortableMediaSource(media);
+  }
+  if (state.portable.browserSession
+    && !state.portable.lastResult
+    && !state.portable.partialRetention
+    && !state.portable.finishing) {
+    await state.portable.browserSession.dispatchTail?.catch?.(() => {});
+    if (state.portable.browserSession.state().phase === "awaitingFinalization") await finishPortableRun();
+    else await stopPortableRun("xr-session-ended");
+  }
+  await state.portable.browserSession?.close?.().catch(() => {});
+  state.portable.browserSession = undefined;
+  state.portable.currentBlock = undefined;
+  state.portable.questionnaire = undefined;
+  state.portable.panelState = undefined;
+  state.portable.panelModel = undefined;
+  state.portable.media = undefined;
+  state.session = undefined;
+  state.referenceSpace = undefined;
+  state.viewerSpace = undefined;
+  state.phase = "finished";
+  await releaseLowLatencyWakeLock();
+  setPortableControlsDisabled(false);
+  elements.start.disabled = !refreshPortablePreflight()?.ok;
+}
+
+function primePortableMediaPlayback() {
+  const firstAsset = referencedContentAssets(state.portable.study)[0];
+  const file = firstAsset ? state.portable.assetBindings.get(firstAsset.assetId) : undefined;
+  if (!file) return Promise.resolve();
+  const objectUrl = URL.createObjectURL(file);
+  elements.video.onended = null;
+  elements.video.pause();
+  elements.video.setAttribute("src", objectUrl);
+  elements.video.preload = "auto";
+  elements.video.load();
+  let timer;
+  const playbackAttempt = elements.video.play().catch(() => {});
+  const timeout = new Promise((resolve) => {
+    timer = setTimeout(resolve, PORTABLE_MEDIA_UNLOCK_TIMEOUT_MS);
+  });
+  return Promise.race([playbackAttempt, timeout]).finally(() => {
+    clearTimeout(timer);
+    elements.video.pause();
+    if (elements.video.getAttribute("src") === objectUrl) {
+      elements.video.removeAttribute("src");
+      elements.video.load();
+    }
+    URL.revokeObjectURL(objectUrl);
+  });
+}
+
+async function startPortableStudy() {
+  if (state.session) return;
+  const report = refreshPortablePreflight();
+  if (!state.portable.study || !state.portable.core || !report?.ok) {
+    setStatus("Portable study preflight must pass before immersive mode starts.", true);
+    elements.portableStudyFile.focus();
+    return;
+  }
+  elements.download.hidden = true;
+  elements.downloadManifest.hidden = true;
+  state.lastCsv = "";
+  state.portable.lastResult = undefined;
+  state.portable.partialRetention = undefined;
+  state.portable.lastManifestFilename = "";
+  state.portable.sessionEnded = false;
+  state.portable.errorMessage = "";
+  setPortableControlsDisabled(true);
+  elements.start.disabled = true;
+  setStatus("Requesting immersive VR for the portable study…");
+  let requestedSession;
+  try {
+    await acquireLowLatencyWakeLock();
+    const sessionPromise = navigator.xr.requestSession("immersive-vr", { requiredFeatures: ["local-floor"] });
+    const mediaUnlock = primePortableMediaPlayback();
+    requestedSession = await sessionPromise;
+    await mediaUnlock;
+    if (!renderer) renderer = createRenderer(elements.canvas, elements.video);
+    if (typeof renderer.gl.makeXRCompatible === "function") await renderer.gl.makeXRCompatible();
+    const layer = new XRWebGLLayer(requestedSession, renderer.gl, { alpha: false, antialias: true });
+    requestedSession.updateRenderState({ baseLayer: layer });
+    const [referenceSpace, viewerSpace] = await Promise.all([
+      requestedSession.requestReferenceSpace("local-floor"),
+      requestedSession.requestReferenceSpace("viewer"),
+    ]);
+    state.session = requestedSession;
+    state.referenceSpace = referenceSpace;
+    state.viewerSpace = viewerSpace;
+    setStatus("Immersive access granted. Checking for a tracked Touch controller before the run starts…");
+    await waitForPortableController(requestedSession);
+
+    const randomSeed = elements.portableRandomSeed.value.trim() || undefined;
+    const counterbalanceGroup = state.portable.runInputs?.counterbalanceGroupCount
+      ? Number(elements.portableCounterbalanceGroup.value)
+      : undefined;
+    const configuration = createRunConfiguration(state.portable.study, {
+      platform: "webXr",
+      participantCode: elements.portableParticipantCode.value.trim() || undefined,
+      randomSeed,
+      counterbalanceGroup,
+      capabilities: report.availableCapabilities.filter((capability) => STUDY_CORE_RUN_CAPABILITIES.has(capability)),
+      storageStatus: "ready",
+      inputStatus: "ready",
+      lslStatus: "unavailable",
+    });
+    const calibrationPoint = state.portable.runInputs?.needsCalibration
+      ? {
+          valence: Number(elements.portableCalibrationX.value),
+          arousal: Number(elements.portableCalibrationY.value),
+        }
+      : undefined;
+    const browserSession = new BrowserStudySession({
+      core: state.portable.core,
+      study: state.portable.study,
+      configuration,
+      assetBindings: state.portable.assetBindings,
+    });
+    state.portable.browserSession = browserSession;
+    state.sessionId = configuration.runId;
+    state.runStartedAt = performance.now();
+    state.previousFrameAt = 0;
+    state.currentX = calibrationPoint?.valence ?? 0;
+    state.currentY = calibrationPoint?.arousal ?? 0;
+    state.targetX = state.currentX;
+    state.targetY = state.currentY;
+    state.phaseRadians = 0;
+    state.phase = "running";
+    state.portable.previousController = { x: 0, y: 0, select: false, back: false };
+    state.portable.commandPending = false;
+    state.portable.finishing = false;
+    state.portable.media = undefined;
+    offsets = createProjectionOffsets(`${state.portable.study.studyId}-${configuration.runId}`, profiles.waveCount);
+    await browserSession.initialize({ calibrationPoint });
+    syncPortablePanel();
+    requestedSession.addEventListener("visibilitychange", () => {
+      const media = state.portable.media;
+      if (!media || !isCurrentPortableMedia(media)) return;
+      if (requestedSession.visibilityState !== "visible") {
+        if (media.evidenceWriteWatchdog?.snapshot().activeCount > 0) {
+          media.evidenceWriteWatchdog.alarmNow("xr-session-not-visible");
+          return;
+        }
+        if (!media.segmentComplete && (portableMediaObservation(media).active || media.authorityPlaying)) {
+          media.stalled = true;
+          media.stallCode = "xr-session-not-visible";
+          media.active = false;
+          media.authorityPlaying = false;
+          media.nextSampleDueMs = null;
+          elements.video.pause();
+          void queuePortableStall(media, true, "xr-session-not-visible", "platform");
+        }
+      } else if (media.stalled && media.stallCode === "xr-session-not-visible") {
+        media.stalled = false;
+        media.stallCode = "";
+        void queuePortableStall(media, false);
+      }
+    });
+    requestedSession.addEventListener("end", () => { void handlePortableSessionEnd(); }, { once: true });
+    requestedSession.requestAnimationFrame(renderFrame);
+    setStatus(`${state.portable.study.title} is running under the shared WASM authority. Use the Touch controls shown above.`);
+  } catch (error) {
+    if (state.portable.browserSession && !state.portable.lastResult) {
+      await stopPortableRun("portable-start-failed");
+    }
+    await requestedSession?.end().catch(() => {});
+    await state.portable.browserSession?.close?.().catch(() => {});
+    if (state.portable.media) clearPortableMediaSource(state.portable.media);
+    state.portable.browserSession = undefined;
+    state.session = undefined;
+    state.referenceSpace = undefined;
+    state.viewerSpace = undefined;
+    await releaseLowLatencyWakeLock();
+    setPortableControlsDisabled(false);
+    elements.start.disabled = !refreshPortablePreflight()?.ok;
+    setStatus(`Portable immersive mode could not start: ${error?.message ?? String(error)}`, true);
+  }
+}
+
 function renderFrame(now, frame) {
   const session = frame.session;
   const pose = frame.getViewerPose(state.referenceSpace);
   const viewerPose = frame.getViewerPose(state.viewerSpace);
   const deltaSeconds = state.previousFrameAt ? Math.min(0.05, (now - state.previousFrameAt) / 1_000) : 0;
   state.previousFrameAt = now;
-  updateStudy(now, deltaSeconds);
-  updateControllerRig(frame, pose);
+  if (state.runnerMode === "portable") updatePortableStudy(now, deltaSeconds);
+  else {
+    updateStudy(now, deltaSeconds);
+    updateControllerRig(frame, pose);
+  }
   if (pose) renderer.render(session, pose, viewerPose, state);
   if (state.phase !== "finished") session.requestAnimationFrame(renderFrame);
 }
 
 async function startStudy() {
   if (state.session) return;
+  if (state.runnerMode === "portable") return startPortableStudy();
   let webhookUrl;
   try {
     webhookUrl = normalizeWebhookUrl(elements.webhook.value);
@@ -774,6 +2339,8 @@ async function startStudy() {
   await acquireLowLatencyWakeLock();
 
   elements.start.disabled = true;
+  elements.runModeLegacy.disabled = true;
+  elements.runModePortable.disabled = true;
   elements.stimulus.disabled = true;
   elements.presentationMode.disabled = true;
   elements.controllerFollow.disabled = true;
@@ -788,6 +2355,7 @@ async function startStudy() {
   elements.remoteStop.disabled = true;
   for (const button of elements.remoteSources.querySelectorAll("button")) button.disabled = true;
   elements.download.hidden = true;
+  elements.downloadManifest.hidden = true;
   const presentationMode = elements.presentationMode.value;
   const passthrough = presentationMode !== "virtual";
   if (presentationMode === "passthrough-video" && state.stimulus.projection !== "flat") {
@@ -880,6 +2448,8 @@ async function startStudy() {
         elements.controllerFollowHand.disabled = !elements.controllerFollow.checked;
         elements.flubberSize.disabled = false;
         elements.flubberBaseShape.disabled = false;
+        elements.runModeLegacy.disabled = false;
+        elements.runModePortable.disabled = false;
         updatePolarConnectionUi(state.polarStatusMessage ?? (state.polarConnected ? "Polar H10 ECG is live at 130 Hz" : "Not connected"));
         updateRemoteUi();
         if (!state.finalizing) elements.start.disabled = false;
@@ -910,6 +2480,8 @@ async function startStudy() {
     elements.controllerFollowHand.disabled = !elements.controllerFollow.checked;
     elements.flubberSize.disabled = false;
     elements.flubberBaseShape.disabled = false;
+    elements.runModeLegacy.disabled = false;
+    elements.runModePortable.disabled = false;
     updatePolarConnectionUi(state.polarStatusMessage ?? (state.polarConnected ? "Polar H10 ECG is live at 130 Hz" : "Not connected"));
     updateRemoteUi();
     setStatus(
@@ -919,6 +2491,278 @@ async function startStudy() {
       true,
     );
   }
+}
+
+function drawCanvasLines(context, lines, x, y, lineHeight) {
+  for (const [index, line] of lines.entries()) context.fillText(line, x, y + index * lineHeight);
+}
+
+function portableProgressText(panel) {
+  const progress = panel.progress ?? {};
+  const parts = [];
+  if (Number.isInteger(progress.itemIndex)) parts.push(`Question ${progress.itemIndex + 1}/${progress.itemCount}`);
+  if (Number.isInteger(progress.pageIndex) && progress.pageCount > 1) {
+    parts.push(`Page ${progress.pageIndex + 1}/${progress.pageCount}`);
+  }
+  return parts.join(" · ");
+}
+
+function drawPortableFace(context, snapshot, centerX, centerY, radius) {
+  const geometry = buildFaceGeometry({
+    x: snapshot.currentX,
+    y: snapshot.currentY,
+    phase: snapshot.phase,
+    reducedMotion: matchMedia("(prefers-reduced-motion: reduce)").matches,
+  });
+  context.save();
+  context.translate(centerX, centerY);
+  context.scale(radius * geometry.headScale, radius * geometry.headScale);
+  context.fillStyle = "#f3c75f";
+  context.beginPath();
+  context.ellipse(0, 0, 0.82, 1, 0, 0, Math.PI * 2);
+  context.fill();
+  context.strokeStyle = "#2a230f";
+  context.lineWidth = 0.045;
+  context.lineCap = "round";
+  context.stroke(new Path2D(geometry.leftBrowPath));
+  context.stroke(new Path2D(geometry.rightBrowPath));
+  context.fillStyle = "#15130e";
+  context.beginPath();
+  context.ellipse(-0.34, -0.18, 0.075, geometry.eyeRy, 0, 0, Math.PI * 2);
+  context.ellipse(0.34, -0.18, 0.075, geometry.eyeRy, 0, 0, Math.PI * 2);
+  context.fill();
+  context.fill(new Path2D(geometry.mouthPath));
+  context.restore();
+}
+
+function drawPortableFlubber(context, snapshot, centerX, centerY, radius, study) {
+  const visual = study.portable.study?.pinnedSettings?.visual ?? {};
+  const rendered = buildFlubberPath({
+    profiles,
+    offsets,
+    x: snapshot.currentX,
+    y: snapshot.currentY,
+    phase: snapshot.phase,
+    baseShape: visual.baseShape ?? "circle",
+    palette: visual.palette,
+    amplitudeScale: visual.pulseAmplitudeMultiplier ?? 1,
+    disorderScale: visual.disorderMultiplier ?? 1,
+    reducedMotion: matchMedia("(prefers-reduced-motion: reduce)").matches,
+  });
+  context.save();
+  context.translate(centerX, centerY);
+  context.scale(radius, radius);
+  const path = new Path2D(rendered.path);
+  context.fillStyle = rendered.color;
+  context.fill(path);
+  context.strokeStyle = "rgba(255,255,255,0.92)";
+  context.lineWidth = 0.025;
+  context.stroke(path);
+  context.restore();
+}
+
+function drawPortableComparison(context, panel, study, contentBottom) {
+  const snapshot = panel.presentation.snapshot;
+  const centerY = Math.max(360, Math.min(445, contentBottom + 84));
+  const radius = contentBottom > 330 ? 78 : 92;
+  context.save();
+  context.globalAlpha = study.portable.study?.pinnedSettings?.visual?.opacity ?? 1;
+  drawPortableFace(context, snapshot, 400, centerY, radius);
+  drawPortableFlubber(context, snapshot, 800, centerY, radius, study);
+  context.restore();
+  context.fillStyle = "#9babbc";
+  context.font = "600 18px system-ui, sans-serif";
+  context.textAlign = "center";
+  context.fillText("FACE", 400, centerY + radius + 24);
+  context.fillText("FLUBBER", 800, centerY + radius + 24);
+  context.fillStyle = "#dbe5ef";
+  context.font = "600 17px system-ui, sans-serif";
+  context.fillText(
+    `Same snapshot · X ${snapshot.currentX.toFixed(2)} · Y ${snapshot.currentY.toFixed(2)} · presentation only, non-diagnostic`,
+    600,
+    centerY + radius + 50,
+  );
+}
+
+function drawPortableControl(context, control, x, y, width, height, focused, compact = false) {
+  const selected = control.selected === true;
+  context.fillStyle = focused ? "#183b4d" : selected ? "#173629" : "#101823";
+  context.fillRect(x, y, width, height);
+  context.strokeStyle = focused ? "#ffd166" : selected ? "#79e2bd" : "#435064";
+  context.lineWidth = focused ? 4 : 2;
+  context.strokeRect(x, y, width, height);
+  context.fillStyle = control.enabled === false ? "#6f7a88" : "#f4f7fb";
+  const fontSize = compact ? 18 : 21;
+  const lineHeight = compact ? 20 : 24;
+  context.font = focused ? `700 ${fontSize}px system-ui, sans-serif` : `600 ${fontSize}px system-ui, sans-serif`;
+  context.textAlign = "left";
+  const marker = control.kind === "choice" || control.kind === "acknowledgement"
+    ? selected ? "● " : "○ "
+    : selected ? "✓ " : "";
+  const lines = control.labelLines ?? [control.label];
+  drawCanvasLines(
+    context,
+    lines.map((line, index) => `${index === 0 ? marker : "   "}${line}`),
+    x + 18,
+    y + (compact ? 22 : 28),
+    lineHeight,
+  );
+}
+
+function paintPortablePanel(context, canvas, study) {
+  const panel = study.portable.panelModel;
+  context.clearRect(0, 0, canvas.width, canvas.height);
+  context.fillStyle = "#080d14";
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  context.strokeStyle = "#435064";
+  context.lineWidth = 4;
+  context.strokeRect(8, 8, canvas.width - 16, canvas.height - 16);
+  if (!panel) {
+    context.fillStyle = "#f4f7fb";
+    context.font = "700 36px system-ui, sans-serif";
+    context.textAlign = "center";
+    context.fillText("Preparing portable study…", canvas.width / 2, canvas.height / 2);
+    return;
+  }
+
+  context.textAlign = "left";
+  context.fillStyle = "#78d7ff";
+  context.font = "750 39px system-ui, sans-serif";
+  drawCanvasLines(context, panel.title.lines, 58, 64, 45);
+  const progress = portableProgressText(panel);
+  if (progress) {
+    context.fillStyle = "#9babbc";
+    context.font = "650 18px system-ui, sans-serif";
+    context.textAlign = "right";
+    context.fillText(progress, 1142, 58);
+  }
+
+  context.textAlign = "left";
+  context.fillStyle = "#dce5ef";
+  context.font = "500 24px system-ui, sans-serif";
+  const contentY = panel.title.lines.length > 1 ? 148 : 112;
+  const contentLineHeight = 29;
+  drawCanvasLines(context, panel.content.lines, 58, contentY, contentLineHeight);
+  const contentBottom = contentY + Math.max(1, panel.content.lines.length) * contentLineHeight;
+
+  if (panel.presentation.type === "faceFlubberComparison") {
+    drawPortableComparison(context, panel, study, contentBottom);
+  } else {
+    const answerControls = panel.controls.filter(({ row }) => row < 20);
+    let y = Math.max(245, contentBottom + 8);
+    for (const control of answerControls) {
+      const lineCount = Math.max(1, control.labelLines?.length ?? 1);
+      const height = Math.max(32, 10 + lineCount * 20);
+      drawPortableControl(context, control, 58, y, 1084, height, control.id === panel.focusId, true);
+      y += height + 5;
+      if (control.help && answerControls.length === 1) {
+        context.fillStyle = "#9babbc";
+        context.font = "500 16px system-ui, sans-serif";
+        context.fillText(control.help, 74, y + 15);
+      }
+    }
+  }
+
+  const navigation = panel.controls.filter(({ row }) => row >= 20);
+  const gap = 14;
+  const navWidth = navigation.length > 0 ? (1084 - gap * (navigation.length - 1)) / navigation.length : 0;
+  navigation.forEach((control, index) => {
+    drawPortableControl(
+      context,
+      control,
+      58 + index * (navWidth + gap),
+      652,
+      navWidth,
+      54,
+      control.id === panel.focusId,
+    );
+  });
+
+  if (panel.timing?.remainingMs > 0) {
+    context.fillStyle = "#ffd99a";
+    context.font = "650 18px system-ui, sans-serif";
+    context.textAlign = "right";
+    context.fillText(`Continue unlocks in ${Math.ceil(panel.timing.remainingMs / 1000)} s`, 1142, 640);
+  }
+  if (panel.response?.feedback?.message) {
+    context.fillStyle = "#ffaaa3";
+    context.font = "650 18px system-ui, sans-serif";
+    context.textAlign = "left";
+    context.fillText(panel.response.feedback.message, 58, 640);
+  }
+  if (study.portable.commandPending) {
+    context.fillStyle = "#9de5b3";
+    context.font = "650 18px system-ui, sans-serif";
+    context.textAlign = "right";
+    context.fillText("Committing to the local journal…", 1142, 640);
+  } else if (study.portable.errorMessage) {
+    context.fillStyle = "#ffaaa3";
+    context.font = "650 17px system-ui, sans-serif";
+    context.textAlign = "left";
+    const message = study.portable.errorMessage.length > 110
+      ? `${study.portable.errorMessage.slice(0, 107)}…`
+      : study.portable.errorMessage;
+    context.fillText(message, 58, 640);
+  }
+}
+
+function paintPortableMediaHud(context, canvas, study) {
+  const media = study.portable.media;
+  context.clearRect(0, 0, canvas.width, canvas.height);
+  context.fillStyle = "rgba(8, 13, 20, 0.94)";
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  context.strokeStyle = "#435064";
+  context.lineWidth = 4;
+  context.strokeRect(5, 5, canvas.width - 10, canvas.height - 10);
+  if (!media) return;
+  const positionMs = portableMediaPositionMs(
+    media.descriptor,
+    Number.isFinite(Number(elements.video.currentTime))
+      ? Number(elements.video.currentTime)
+      : media.descriptor.clip.startMs / 1_000,
+  );
+  const progress = Math.max(0, Math.min(1, positionMs / media.descriptor.clip.durationMs));
+  const status = media.errorMessage
+    || (media.segmentComplete
+      ? "Segment complete · right trigger: Continue"
+      : !media.ready
+        ? "Loading and seeking verified media…"
+        : media.controlPending
+          ? "Applying media control…"
+          : media.active
+            ? "Playing · right trigger or left trigger: Pause"
+            : "Paused · right trigger: Resume");
+
+  context.textAlign = "left";
+  context.fillStyle = "#78d7ff";
+  context.font = "750 31px system-ui, sans-serif";
+  context.fillText(`${media.descriptor.purpose.toUpperCase()} · ${media.descriptor.asset.assetId}`, 34, 48);
+  context.fillStyle = media.errorMessage ? "#ffaaa3" : "#e3ebf4";
+  context.font = "650 24px system-ui, sans-serif";
+  context.fillText(status.length > 78 ? `${status.slice(0, 75)}…` : status, 34, 90);
+  context.fillStyle = "#273241";
+  context.fillRect(34, 119, 932, 18);
+  context.fillStyle = media.segmentComplete ? "#79e2bd" : "#78d7ff";
+  context.fillRect(34, 119, Math.round(932 * progress), 18);
+  context.fillStyle = "#aeb9c7";
+  context.font = "600 21px system-ui, sans-serif";
+  const seconds = `${(positionMs / 1_000).toFixed(1)} / ${(media.descriptor.clip.durationMs / 1_000).toFixed(1)} s`;
+  context.fillText(seconds, 34, 175);
+  context.textAlign = "right";
+  context.fillText(
+    media.descriptor.collectAffect
+      ? `Affect · X ${study.currentX.toFixed(2)} · Y ${study.currentY.toFixed(2)} · samples only while playing`
+      : "Affect collection off for this block",
+    966,
+    175,
+  );
+  context.fillStyle = "#8f9baa";
+  context.font = "550 18px system-ui, sans-serif";
+  context.fillText(
+    `${media.descriptor.asset.projection} · ${media.descriptor.asset.stereoLayout} · local SHA-256 verified`,
+    966,
+    217,
+  );
 }
 
 function compileShader(gl, type, source) {
@@ -954,10 +2798,12 @@ function createRenderer(canvas, video) {
     attribute vec3 a_position;
     attribute vec2 a_tex_coord;
     uniform mat4 u_mvp;
+    uniform vec2 u_uv_scale;
+    uniform vec2 u_uv_offset;
     varying vec2 v_tex_coord;
     void main() {
       gl_Position = u_mvp * vec4(a_position, 1.0);
-      v_tex_coord = a_tex_coord;
+      v_tex_coord = a_tex_coord * u_uv_scale + u_uv_offset;
     }
   `);
   const fragmentShader = compileShader(gl, gl.FRAGMENT_SHADER, `
@@ -983,6 +2829,7 @@ function createRenderer(canvas, video) {
      0.5,  0.5, 0, 1, 1,
   ]);
   const sphereVertices = createEquirectSphereVertices();
+  const hemisphereVertices = createEquirectangularMediaVertices({ horizontalDegrees: 180 });
   const createGeometryBuffer = (vertices) => {
     const geometryBuffer = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, geometryBuffer);
@@ -991,16 +2838,29 @@ function createRenderer(canvas, video) {
   };
   const quadBuffer = createGeometryBuffer(quadVertices);
   const sphereBuffer = createGeometryBuffer(sphereVertices);
+  const hemisphereBuffer = createGeometryBuffer(hemisphereVertices);
   const sphereViewMatrices = [new Float32Array(16), new Float32Array(16)];
   const position = gl.getAttribLocation(program, "a_position");
   const texCoord = gl.getAttribLocation(program, "a_tex_coord");
   const mvp = gl.getUniformLocation(program, "u_mvp");
+  const uvScale = gl.getUniformLocation(program, "u_uv_scale");
+  const uvOffset = gl.getUniformLocation(program, "u_uv_offset");
   const videoTexture = createTexture(gl);
   const flubberTexture = createTexture(gl);
+  const portablePanelTexture = createTexture(gl);
+  const portableMediaHudTexture = createTexture(gl);
   const flubberCanvas = document.createElement("canvas");
   flubberCanvas.width = FLUBBER_CANVAS_WIDTH;
   flubberCanvas.height = FLUBBER_CANVAS_HEIGHT;
   const context = flubberCanvas.getContext("2d");
+  const portablePanelCanvas = document.createElement("canvas");
+  portablePanelCanvas.width = PORTABLE_PANEL_CANVAS_WIDTH;
+  portablePanelCanvas.height = PORTABLE_PANEL_CANVAS_HEIGHT;
+  const portablePanelContext = portablePanelCanvas.getContext("2d");
+  const portableMediaHudCanvas = document.createElement("canvas");
+  portableMediaHudCanvas.width = PORTABLE_MEDIA_HUD_CANVAS_WIDTH;
+  portableMediaHudCanvas.height = PORTABLE_MEDIA_HUD_CANVAS_HEIGHT;
+  const portableMediaHudContext = portableMediaHudCanvas.getContext("2d");
 
   function uploadVideo() {
     if (video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) return;
@@ -1013,13 +2873,20 @@ function createRenderer(canvas, video) {
     const countdown = study.phase === "countdown"
       ? Math.max(1, Math.ceil((study.countdownEndsAt - performance.now()) / 1_000))
       : undefined;
+    const portableVisual = study.runnerMode === "portable"
+      ? study.portable.study?.pinnedSettings?.visual ?? {}
+      : {};
     const rendered = buildFlubberPath({
       profiles,
       offsets,
       x: study.currentX,
       y: study.currentY,
       phase: study.phaseRadians,
-      baseShape: study.flubberBaseShape,
+      baseShape: portableVisual.baseShape ?? study.flubberBaseShape,
+      palette: portableVisual.palette,
+      amplitudeScale: portableVisual.pulseAmplitudeMultiplier ?? 1,
+      disorderScale: portableVisual.disorderMultiplier ?? 1,
+      reducedMotion: matchMedia("(prefers-reduced-motion: reduce)").matches,
     });
     context.clearRect(0, 0, flubberCanvas.width, flubberCanvas.height);
     if (study.remote.enabled) {
@@ -1053,7 +2920,11 @@ function createRenderer(canvas, video) {
     context.font = "600 19px system-ui, sans-serif";
     context.fillStyle = "rgba(220,230,240,0.92)";
     context.fillText(
-      study.paused ? "PAUSED — press Y to resume" : (study.remoteHudText || study.polarHudText || "Right stick: valence × arousal"),
+      study.runnerMode === "portable"
+        ? study.portable.media?.active
+          ? "Right stick: valence × arousal"
+          : "Affect sampling paused with media"
+        : study.paused ? "PAUSED — press Y to resume" : (study.remoteHudText || study.polarHudText || "Right stick: valence × arousal"),
       256,
       558,
     );
@@ -1071,6 +2942,20 @@ function createRenderer(canvas, video) {
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, flubberCanvas);
   }
 
+  function uploadPortablePanel(study) {
+    paintPortablePanel(portablePanelContext, portablePanelCanvas, study);
+    gl.bindTexture(gl.TEXTURE_2D, portablePanelTexture);
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, portablePanelCanvas);
+  }
+
+  function uploadPortableMediaHud(study) {
+    paintPortableMediaHud(portableMediaHudContext, portableMediaHudCanvas, study);
+    gl.bindTexture(gl.TEXTURE_2D, portableMediaHudTexture);
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, portableMediaHudCanvas);
+  }
+
   function bindGeometry(buffer) {
     gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
     gl.enableVertexAttribArray(position);
@@ -1079,10 +2964,21 @@ function createRenderer(canvas, video) {
     gl.vertexAttribPointer(texCoord, 2, gl.FLOAT, false, 20, 12);
   }
 
-  function draw(texture, projection, view, model, transparent, geometryBuffer, vertexCount) {
+  function draw(
+    texture,
+    projection,
+    view,
+    model,
+    transparent,
+    geometryBuffer,
+    vertexCount,
+    textureTransform = IDENTITY_TEXTURE_TRANSFORM,
+  ) {
     const viewModel = multiplyMatrices(view, model);
     const projectionViewModel = multiplyMatrices(projection, viewModel);
     gl.uniformMatrix4fv(mvp, false, projectionViewModel);
+    gl.uniform2fv(uvScale, textureTransform.scale);
+    gl.uniform2fv(uvOffset, textureTransform.offset);
     gl.bindTexture(gl.TEXTURE_2D, texture);
     if (transparent) {
       gl.enable(gl.BLEND);
@@ -1098,6 +2994,95 @@ function createRenderer(canvas, video) {
     gl,
     render(session, pose, viewerPose, study) {
       gl.bindFramebuffer(gl.FRAMEBUFFER, session.renderState.baseLayer.framebuffer);
+      if (study.runnerMode === "portable") {
+        gl.clearColor(0.008, 0.012, 0.02, 1);
+        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+        gl.useProgram(program);
+        const media = study.portable.media;
+        if (media) {
+          const hasVideoFrame = elements.video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA;
+          if (hasVideoFrame) uploadVideo();
+          if (media.descriptor.collectAffect) uploadFlubber(study);
+          uploadPortableMediaHud(study);
+          for (let viewIndex = 0; viewIndex < pose.views.length; viewIndex += 1) {
+            const view = pose.views[viewIndex];
+            const panelView = viewerPose?.views?.[viewIndex] ?? view;
+            const viewport = session.renderState.baseLayer.getViewport(view);
+            const textureTransform = portableStereoUvTransform(
+              media.descriptor.asset.stereoLayout,
+              view.eye || "none",
+            );
+            gl.viewport(viewport.x, viewport.y, viewport.width, viewport.height);
+            if (hasVideoFrame && media.descriptor.asset.projection === "flat") {
+              draw(
+                videoTexture,
+                view.projectionMatrix,
+                view.transform.inverse.matrix,
+                VIDEO_MODEL,
+                false,
+                quadBuffer,
+                6,
+                textureTransform,
+              );
+            } else if (hasVideoFrame) {
+              const immersiveBuffer = media.descriptor.asset.projection === "equirectangular180"
+                ? hemisphereBuffer
+                : sphereBuffer;
+              const immersiveVertices = media.descriptor.asset.projection === "equirectangular180"
+                ? hemisphereVertices
+                : sphereVertices;
+              draw(
+                videoTexture,
+                view.projectionMatrix,
+                matrixWithoutTranslation(view.transform.inverse.matrix, sphereViewMatrices[viewIndex]),
+                SPHERE_MODEL,
+                false,
+                immersiveBuffer,
+                immersiveVertices.length / 5,
+                textureTransform,
+              );
+            }
+            if (media.descriptor.collectAffect) {
+              draw(
+                flubberTexture,
+                panelView.projectionMatrix,
+                panelView.transform.inverse.matrix,
+                PORTABLE_MEDIA_FLUBBER_MODEL,
+                true,
+                quadBuffer,
+                6,
+              );
+            }
+            draw(
+              portableMediaHudTexture,
+              panelView.projectionMatrix,
+              panelView.transform.inverse.matrix,
+              PORTABLE_MEDIA_HUD_MODEL,
+              true,
+              quadBuffer,
+              6,
+            );
+          }
+          return;
+        }
+        uploadPortablePanel(study);
+        for (let viewIndex = 0; viewIndex < pose.views.length; viewIndex += 1) {
+          const view = pose.views[viewIndex];
+          const panelView = viewerPose?.views?.[viewIndex] ?? view;
+          const viewport = session.renderState.baseLayer.getViewport(view);
+          gl.viewport(viewport.x, viewport.y, viewport.width, viewport.height);
+          draw(
+            portablePanelTexture,
+            panelView.projectionMatrix,
+            panelView.transform.inverse.matrix,
+            PORTABLE_PANEL_MODEL,
+            false,
+            quadBuffer,
+            6,
+          );
+        }
+        return;
+      }
       const passthrough = study.presentationMode !== "virtual";
       const hasVideo = study.presentationMode !== "passthrough-flubber";
       gl.clearColor(0.008, 0.012, 0.02, passthrough ? 0 : 1);
@@ -1173,7 +3158,7 @@ async function initialize() {
     ]);
     state.vrSupported = vrSupported;
     state.arSupported = arSupported;
-    updatePresentationControls();
+    updateRunModeControls();
   } catch (error) {
     setStatus(`WebXR capability check failed: ${error?.message ?? String(error)}`, true);
   }
@@ -1181,6 +3166,7 @@ async function initialize() {
 
 elements.start.addEventListener("click", startStudy);
 elements.download.addEventListener("click", downloadLastCsv);
+elements.downloadManifest.addEventListener("click", downloadLastManifest);
 elements.stimulus.addEventListener("change", () => applyStimulus(webXrStimulusById(elements.stimulus.value)));
 function updateRiggingControls() {
   const enabled = elements.controllerFollow.checked;
@@ -1189,6 +3175,13 @@ function updateRiggingControls() {
   elements.flubberSizeOutput.value = Number(elements.flubberSize.value).toFixed(2);
 }
 function restoreControls() {
+  elements.runModeLegacy.disabled = false;
+  elements.runModePortable.disabled = false;
+  if (state.runnerMode === "portable") {
+    setPortableControlsDisabled(false);
+    elements.start.disabled = !refreshPortablePreflight()?.ok;
+    return;
+  }
   elements.start.disabled = false;
   elements.stimulus.disabled = elements.presentationMode.value === "passthrough-flubber";
   elements.presentationMode.disabled = false;
@@ -1199,7 +3192,47 @@ function restoreControls() {
   updatePolarConnectionUi(state.polarStatusMessage ?? (state.polarConnected ? "Polar H10 ECG is live at 130 Hz" : "Not connected"));
   updateRemoteUi();
 }
+function updateRunModeControls() {
+  if (state.session) return;
+  const portable = elements.runModePortable.checked;
+  state.runnerMode = portable ? "portable" : "legacy";
+  elements.legacyStudySetup.hidden = portable;
+  elements.portableStudySetup.hidden = !portable;
+  elements.legacyControllerHelp.hidden = portable;
+  elements.portableControllerHelp.hidden = !portable;
+  elements.polarPanel.hidden = portable;
+  elements.remotePanel.hidden = portable;
+  elements.riggingPanel.hidden = portable;
+  elements.webhookField.hidden = portable;
+  elements.webhookNote.hidden = portable;
+  elements.stimulusAttribution.hidden = portable;
+  elements.start.textContent = portable ? "Enter VR and run portable study" : "Enter VR and start";
+  elements.introduction.textContent = portable
+    ? "Load a published portable study before entering VR. The shared WASM authority owns block order, responses, lifecycle, and the durable local research record."
+    : "Choose a repository-hosted stimulus, enter VR, and move the affect tracker with the right Touch thumbstick. Study records stay on the headset unless you enter a webhook below; the separate incoming-signal button exchanges only anonymous Flubber X/Y coordinates after you press it.";
+  elements.requirements.textContent = portable
+    ? "Requires immersive WebXR, a tracked Touch controller, the shared WASM study authority, IndexedDB, and hash-verified local files for every content asset. Unsupported codecs, projections, stereo layouts, and YouTube fail before XR; physical Quest playback is not yet qualified."
+    : "Requires Meta Quest Browser with WebXR. CEAP-360VR choices are one-minute, silent, noncommercial research stimuli shown on a full equirectangular sphere. The video, affect samples, and CSV processing stay in the browser unless the optional webhook is used.";
+  if (portable) {
+    elements.video.pause();
+    const report = refreshPortablePreflight();
+    setStatus(
+      report?.ok
+        ? "Portable study is ready for immersive logical preflight. Physical controller presence is checked before the authority starts."
+        : state.portable.study
+          ? "Resolve the portable study preflight issues before entering VR."
+          : "Load a published StudyDefinitionV1 JSON file to prepare a portable run.",
+      Boolean(state.portable.study && !report?.ok),
+    );
+  } else {
+    updatePresentationControls();
+  }
+}
 function updatePresentationControls() {
+  if (state.runnerMode === "portable") {
+    refreshPortablePreflight();
+    return;
+  }
   const passthrough = elements.presentationMode.value !== "virtual";
   const flubberOnly = elements.presentationMode.value === "passthrough-flubber";
   const supported = passthrough ? state.arSupported : state.vrSupported;
@@ -1223,6 +3256,22 @@ function updatePresentationControls() {
       `This browser does not provide ${passthrough ? "immersive passthrough" : "immersive VR"}. Open the page in Meta Quest Browser.`,
     !supported,
   );
+}
+elements.runModeLegacy.addEventListener("change", updateRunModeControls);
+elements.runModePortable.addEventListener("change", updateRunModeControls);
+elements.portableStudyFile.addEventListener("change", () => { void loadPortableStudyFile(); });
+elements.portableMediaFiles.addEventListener("change", () => { void bindPortableMediaFiles(); });
+elements.portableRandomSeed.addEventListener("input", refreshPortablePreflight);
+elements.portableCounterbalanceGroup.addEventListener("input", refreshPortablePreflight);
+elements.portableParticipantCode.addEventListener("input", refreshPortablePreflight);
+for (const [input, output] of [
+  [elements.portableCalibrationX, elements.portableCalibrationXValue],
+  [elements.portableCalibrationY, elements.portableCalibrationYValue],
+]) {
+  input.addEventListener("input", () => {
+    output.value = Number(input.value).toFixed(2);
+    refreshPortablePreflight();
+  });
 }
 elements.controllerFollow.addEventListener("change", updateRiggingControls);
 elements.flubberSize.addEventListener("input", updateRiggingControls);

@@ -1,0 +1,95 @@
+.remote-controller {
+  width: min(760px, 100%);
+  min-height: 100dvh;
+  margin: 0 auto;
+  padding: 24px max(16px, env(safe-area-inset-right)) calc(32px + env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+}
+
+.remote-controller-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 24px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid var(--study-border);
+}
+
+.remote-controller-header h1 {
+  margin: 0 0 6px;
+  font-size: clamp(1.35rem, 4vw, 1.8rem);
+}
+
+.remote-controller-header p,
+.remote-section > p {
+  margin: 0;
+  color: var(--study-muted);
+}
+
+.remote-section {
+  padding: 20px 0;
+  border-bottom: 1px solid var(--study-border);
+}
+
+.remote-section h2 {
+  margin: 0 0 10px;
+  font-size: 1.05rem;
+}
+
+.remote-section .study-inline-actions {
+  margin-top: 16px;
+}
+
+.remote-status-table th {
+  width: 12rem;
+  font-weight: 650;
+}
+
+.remote-command-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.remote-command-grid button {
+  min-height: 48px;
+}
+
+.remote-limitations ul {
+  margin: 12px 0 0;
+  padding-left: 22px;
+}
+
+.remote-limitations li + li {
+  margin-top: 8px;
+}
+
+@media (max-width: 620px) {
+  .remote-controller {
+    padding-top: 18px;
+  }
+
+  .remote-controller-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .remote-controller-header .study-button {
+    align-self: flex-start;
+  }
+
+  .remote-command-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .remote-status-table th {
+    width: 9rem;
+  }
+}
+
+@media (max-width: 390px) {
+  .remote-command-grid {
+    grid-template-columns: 1fr;
+  }
+}

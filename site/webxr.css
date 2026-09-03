@@ -89,6 +89,192 @@ p {
   background: #273141;
 }
 
+[hidden] {
+  display: none !important;
+}
+
+.run-mode-options,
+.portable-study-setup {
+  margin: 26px 0;
+  padding: 16px;
+  border: 1px solid #273141;
+  border-radius: 14px;
+  background: #090d13;
+}
+
+.run-mode-options legend,
+.portable-study-setup > legend,
+.portable-calibration-fields legend {
+  padding: 0 7px;
+  color: #78d7ff;
+  font-weight: 750;
+}
+
+.run-mode-options {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.run-mode-options label {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 10px;
+  align-items: start;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid #334055;
+  border-radius: 10px;
+  background: #101620;
+  cursor: pointer;
+}
+
+.run-mode-options label:has(input:checked) {
+  border-color: #78d7ff;
+  background: #10222e;
+}
+
+.run-mode-options input {
+  width: 20px;
+  min-height: 20px;
+  margin: 2px 0 0;
+  padding: 0;
+}
+
+.run-mode-options span {
+  display: grid;
+  gap: 3px;
+}
+
+.run-mode-options small {
+  color: #9babbc;
+  font-weight: 500;
+  line-height: 1.35;
+}
+
+.portable-study-setup {
+  display: grid;
+  gap: 14px;
+}
+
+.portable-study-setup > legend span {
+  margin-left: 6px;
+  padding: 3px 7px;
+  border: 1px solid #ffd166;
+  border-radius: 999px;
+  color: #ffd166;
+  font-size: 0.68rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.portable-study-setup > label,
+.portable-run-fields label,
+.portable-calibration-fields label {
+  display: grid;
+  gap: 8px;
+  color: #f4f7fb;
+  font-weight: 700;
+}
+
+.portable-file-status,
+.portable-validation output {
+  display: block;
+  color: #b9c5d4;
+  line-height: 1.45;
+}
+
+.portable-file-status.is-error,
+.portable-validation output.is-error,
+.portable-validation-list .is-error {
+  color: #ffaaa3;
+}
+
+.portable-file-status.is-ready,
+.portable-validation output.is-ready,
+.portable-validation-list .is-ready {
+  color: #9de5b3;
+}
+
+.portable-study-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+}
+
+.portable-study-summary div {
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid #273141;
+  border-radius: 8px;
+  background: #05080d;
+}
+
+.portable-study-summary dt {
+  color: #9babbc;
+  font-size: 0.74rem;
+}
+
+.portable-study-summary dd {
+  margin-top: 5px;
+  color: #eaf8ff;
+  font: 700 0.78rem ui-monospace, SFMono-Regular, Consolas, monospace;
+  overflow-wrap: anywhere;
+}
+
+.portable-run-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.portable-run-fields label > span {
+  color: #9babbc;
+  font-weight: 500;
+}
+
+.portable-calibration-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin: 0;
+  padding: 14px;
+  border: 1px solid #334055;
+  border-radius: 10px;
+}
+
+.portable-calibration-fields output {
+  color: #9de5b3;
+  font: 700 0.8rem ui-monospace, SFMono-Regular, Consolas, monospace;
+}
+
+.portable-validation {
+  padding: 12px;
+  border-left: 3px solid #435064;
+  background: #080c12;
+}
+
+.portable-validation h2 {
+  margin: 0 0 6px;
+  color: #f4f7fb;
+  font-size: 0.95rem;
+}
+
+.portable-validation-list {
+  display: grid;
+  gap: 6px;
+  margin: 8px 0 0;
+  padding-left: 22px;
+  color: #b9c5d4;
+  font-size: 0.86rem;
+  line-height: 1.4;
+}
+
+.portable-validation-list:empty {
+  display: none;
+}
+
 .control-list div {
   display: grid;
   grid-template-columns: minmax(8rem, 0.65fr) 1.35fr;
@@ -490,5 +676,12 @@ a {
   .polar-xr-connector button,
   .remote-xr-connector button {
     width: 100%;
+  }
+
+  .run-mode-options,
+  .portable-study-summary,
+  .portable-run-fields,
+  .portable-calibration-fields {
+    grid-template-columns: 1fr;
   }
 }

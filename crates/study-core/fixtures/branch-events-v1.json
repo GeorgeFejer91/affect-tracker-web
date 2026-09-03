@@ -1,0 +1,50 @@
+[
+  {
+    "schema": "affect-tracker-run-event",
+    "version": 1,
+    "sequence": 19,
+    "authorityGeneration": 7,
+    "revision": 11,
+    "actionId": "branch-decision",
+    "runId": "run-fixture-001",
+    "sectionId": "williams",
+    "trialId": "condition-b",
+    "monotonicMs": 11,
+    "wallTimeUtc": "2026-09-03T12:00:11Z",
+    "payload": {
+      "type": "trialBranchDecided",
+      "condition": {
+        "operator": "equals",
+        "questionnaireBlockId": "preflight-form",
+        "itemId": "handedness",
+        "value": {
+          "type": "singleChoice",
+          "optionId": "right"
+        }
+      },
+      "observedAnswer": {
+        "type": "singleChoice",
+        "itemId": "handedness",
+        "optionId": "left"
+      },
+      "eligible": false
+    }
+  },
+  {
+    "schema": "affect-tracker-run-event",
+    "version": 1,
+    "sequence": 20,
+    "authorityGeneration": 7,
+    "revision": 11,
+    "actionId": "branch-decision",
+    "runId": "run-fixture-001",
+    "sectionId": "williams",
+    "trialId": "condition-b",
+    "monotonicMs": 11,
+    "wallTimeUtc": "2026-09-03T12:00:11Z",
+    "payload": {
+      "type": "trialSkipped",
+      "reason": "runIfFalse"
+    }
+  }
+]

@@ -1,18 +1,29 @@
-# Affect Tracker: Web + Desktop + VR
+# Affect Tracker: Pages + Desktop + WebXR + Native Quest
 
-Three matched Affect Tracker delivery forms inspired by [AffectTracker](https://github.com/afourcade/AffectTracker):
+The repository currently contains four Affect Tracker delivery surfaces inspired by [AffectTracker](https://github.com/afourcade/AffectTracker):
 
-- A static, self-contained online application hosted only on GitHub Pages for browser studies, including a synchronized procedural Face + Flubber view, with no CDN or server backend.
-- An offline Tauri v2/Rust desktop companion with a synchronized procedural face/Flubber preview, click-to-capture global key/mouse/wheel bindings, a click-through always-on-top overlay, and always-on local Lab Streaming Layer output.
-- A native Meta Quest Spatial SDK video player under [`vr/`](./vr/) that loads a local video/session manifest, renders a transparent movable Flubber, accepts Touch-controller input, and publishes same-LAN LSL.
+- A static, self-contained GitHub Pages 2D application for browser studies, including five selectable locally packaged Face + Flubber main-stage presentations with a canonical SVG fallback, with no CDN or project backend.
+- An offline Tauri v2/Rust desktop companion with the same selectable local face/Flubber preview and fallback, click-to-capture global key/mouse/wheel bindings, a click-through always-on-top overlay, and always-on local Lab Streaming Layer output.
+- An experimental hosted WebXR participant runner for Meta Quest Browser.
+- A specialized native Meta Quest Spatial SDK player under [`vr/`](./vr/) that loads a local video/session manifest, renders a transparent movable Flubber, accepts Touch-controller input, and publishes same-LAN LSL.
 
-All forms use the same valence/arousal mappings. Web and desktop share the JavaScript Flubber and procedural-face renderers directly; Quest uses a native allocation-bounded Flubber port checked against JavaScript golden vectors.
+All surfaces use the same valence/arousal mappings. Web and desktop share the JavaScript Flubber and face-engine adapters directly; native Quest uses an allocation-bounded Flubber port checked against JavaScript golden vectors.
 
 Live site: <https://GeorgeFejer91.github.io/affect-tracker-web/>
 
 Experimental Meta Quest WebXR study: <https://GeorgeFejer91.github.io/affect-tracker-web/webxr.html>
 
 Desktop source: [`desktop/`](./desktop/) and [`src-tauri/`](./src-tauri/)
+
+## Approved mirrored-study target
+
+Pages 2D, Tauri/Rust desktop, and WebXR are now the three primary study surfaces. The approved target is semantic—not pixel or hardware—correspondence: the same versioned study definition, Rust/WASM reducer, block progression, questionnaires, randomization, affect meaning, and result contract, with explicit platform adapters. The native Quest APK remains a specialized fourth surface and will be adapted later without blocking the first three-way release.
+
+An implementation-first vertical slice now exists, but it is not a three-surface release or qualification claim. The pure Rust `study-core` owns strict `StudyDefinitionV1` validation and publishing, canonical hashing, seeded/Williams ordering, constrained typed trial conditions, lifecycle reduction, events, and result contracts; the same core is checked in as browser WASM. The ordinary 2D Study Studio authors and publishes revisions through a compact Uncodixfy-led form interface. Its deliberately small OpenSesame/Qualtrics-inspired flow surface moves complete trial groups, offers fixed/seeded-shuffle/Williams section order, and permits one typed forward condition from an earlier required answer—without scripts, nested logic, backward jumps, scoring, or a central balancing service. The Pages participant runner uses the WASM authority, local content-digest bindings, portable questionnaires, and a bounded IndexedDB journal with retained partial/final evidence, isolated corrupt-record warnings, and explicit downloads. Tauri exposes the native Rust authority, an app-owned content-addressed asset vault, durable partial/final long-form CSV recording, strict result-manifest finalization, and a privacy-bounded LSL lifecycle projection. Preparing a native run freshly hashes and measures every required vault object and freezes that path-free verification snapshot for the final manifest. WebXR's separately selected **Portable Study** mode runs authority-driven instruction, questionnaire, break, completion, and hash-verified `contentAsset` video blocks, including flat/180°/360° and supported stereo layouts; the legacy single-stimulus mode remains available separately.
+
+The browser-to-desktop controller is presently a deliberately narrow QR quick-pair slice: one-time 192-bit fragment invitations, the pinned BRSP/1 and VDO.Ninja adapters, `study.observe`/`study.control`, returned native state, typed commands, and a 15-second lease. Its BRSP proof and scope gate still run in the bundled desktop WebView before Rust revalidates each typed action, so it is not the final security architecture. OPAQUE password-file and passwordless modes, Rust-owned authentication/grants/audit/dedupe, the remaining scopes and record export, a native picker/player and opaque-ID Range-serving path, trusted codec/duration/audio/projection/stereo probing, native partial-record recovery UI, packaged-platform qualification, and physical Quest WebXR qualification remain open. The vault currently accepts only allowlisted caller-supplied MIME/container declarations and records them honestly as `SuppliedUnprobed`; content verification is not media-capability verification. See the normative [mirrored-study architecture](./for-ai/25-MIRRORED-STUDY-ARCHITECTURE.md) and the evidence-based [roadmap](./for-ai/40-ROADMAP.md).
+
+The synchronized Face + Flubber comparison may be selected as presentation inside an instruction block across all three primary surfaces, including the immersive WebXR instruction panel. It remains presentation-only, consumes one exact current X/Y/phase frame, and is neither a separate study phase nor a stimulus or diagnostic model.
 
 ## Mandatory project brief for AI agents
 
@@ -36,7 +47,9 @@ Continuous mode moves while a direction is held. Step mode changes the target by
 
 The GitHub Pages app keeps an affect face on the main stage to the left of the canonical Flubber. The top-level **Synchronized Face + Flubber** accordion enables, disables, centers, and selects that presentation; closing the accordion does not remove the face. The phone controller uses the same selected browser mode, and the desktop settings window provides the same five choices from its Rust-authoritative snapshot. Every mode receives the exact same displayed valence, arousal, and animation-phase snapshot as its Flubber and owns no input or research clock.
 
-The selectable modes are **AFFEC empirical 3D**, **MediaPipe-rigged atlas 3D**, **Continuous FACS-style 3D**, **11 × 11 morph matrix 3D**, and **Photoreal atlas blend**. The detailed modes use locally vendored Three.js and checked-in GLB/textures, then degrade locally through the photo atlas to the canonical SVG face. The application downloads no face model at runtime, requests no camera, performs no face recognition, and makes no diagnostic or one-expression-per-state claim. Asset and data provenance are recorded in the [local face notice](./site/assets/affect-face/NOTICE.md) and [research ledger](./for-ai/70-RESEARCH-PROVENANCE.md).
+The selectable main-tracker modes are **AFFEC empirical 3D**, which uses aggregate perceived-rating locations from 5,807 valid AFFEC trials to blend project-authored expression prototypes on a locally packaged Vitruvian morph head; **MediaPipe-rigged atlas 3D**, which uses compact blendshape signals extracted once at build time from nine project-owned atlas cells; **Continuous FACS-style 3D**, a project-authored continuous morph mapping; **11 × 11 morph matrix 3D**, which interpolates project-authored anchors; and **Photoreal atlas blend**, a local project-created synthetic atlas. The detailed modes use locally vendored Three.js and checked-in GLB/textures, then degrade locally through the photo atlas to the canonical SVG face if detailed rendering is unavailable. The application downloads no face model at runtime, requests no camera, performs no face recognition, and makes no diagnostic or one-expression-per-state claim. Asset and data provenance are recorded in the [local face notice](./site/assets/affect-face/NOTICE.md) and [research ledger](./for-ai/70-RESEARCH-PROVENANCE.md).
+
+Those selectable main-tracker engines are not the portable-study presentation contract. A `faceFlubberComparison` instruction uses the canonical vector face and canonical Flubber across Pages, desktop, and immersive WebXR from one exact current-X/current-Y/phase snapshot. It remains presentation-only, non-diagnostic, and neither a study phase nor a stimulus.
 
 The separate always-on-top desktop overlay intentionally remains Flubber-only.
 
@@ -170,7 +183,7 @@ current_valence, current_arousal, target_valence, target_arousal,
 radius, angle_degrees, animation_active, input_active
 ```
 
-The separate `AffectTrackerMarkers` stream carries irregular markers for every physical key press/release, mouse-button press/release, wheel event, and semantic app action. It records physical identifiers (for example `ArrowUp` or `Left`), never composed characters or typed text. Both streams start automatically whenever the app runs and remain local to LSL; saved stream names, rate, and source ID are reused on later launches. The application does not upload study data to a web service.
+The separate `AffectTrackerMarkers` stream carries irregular markers for every physical key press/release, mouse-button press/release, wheel event, and permitted semantic app action. Native study actions add only a fixed lifecycle allowlist after the reducer outcome and its record batch have been durably accepted (and, for terminal actions, after finalization succeeds). The projection includes bounded run/block identity and media position where applicable, but never questionnaire answers, affect samples, health/stall text, abort reasons, or other caller-authored payload strings. Physical input markers record identifiers such as `ArrowUp` or `Left`, never composed characters or typed text. Both streams start automatically whenever the app runs and remain local to LSL; saved stream names, rate, and source ID are reused on later launches. The application does not upload study data to a web service.
 
 ### Build the desktop companion
 

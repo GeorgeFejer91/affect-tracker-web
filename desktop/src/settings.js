@@ -362,6 +362,11 @@ async function initialize() {
   renderSnapshot(await nativeApi.getSnapshot());
   await nativeApi.onSnapshot(renderSnapshot);
 
+  document.querySelector("#open-study-studio").addEventListener("click", () => invokeWithFeedback(
+    nativeApi.openStudyStudio,
+    "Study Studio opened.",
+  ));
+
   elements.form.addEventListener("input", () => { elements.dirtyStatus.textContent = "Unsaved changes"; });
   elements.faceEngine.addEventListener("change", () => {
     const selected = renderAffectPair.setFaceMode(elements.faceEngine.value);

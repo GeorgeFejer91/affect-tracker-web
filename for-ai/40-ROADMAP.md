@@ -1,10 +1,89 @@
 # Roadmap
 
+## Mirrored study program — approved target, not yet release-qualified
+
+The complete target and its staged-status rule are normative in
+[`25-MIRRORED-STUDY-ARCHITECTURE.md`](./25-MIRRORED-STUDY-ARCHITECTURE.md).
+Pages 2D, Tauri/Rust desktop, and WebXR are the three primary study surfaces;
+the native Quest APK is a specialized fourth form and does not gate their first
+release.
+
+- **Phase 1 — delivered as automated core evidence:** `crates/study-core`
+  implements strict `StudyDefinitionV1`, run/action/state/event and result-
+  manifest contracts, canonical publication hashes, seeded shuffle, Williams
+  rows with a manual condition, one constrained typed `runIf`, and one reducer
+  compiled natively and into checked-in WASM. Rust/WASM fixtures exercise the
+  same hashes, orders, branches, events, revisions, and manifest validation.
+- **Phase 2 — partial desktop vertical slice:** the desktop Study Studio selects
+  the native Rust authority; `study_runtime` owns one run and appends an
+  app-owned partial CSV before digest-bound CSV/result-manifest finalization. A
+  native content-addressed vault stages, hash/length-verifies, deduplicates, and
+  atomically catalogs imported bytes without projecting paths. Run preparation
+  freshly re-hashes and re-measures every required app-owned object, fails on a
+  missing/mismatched asset, and freezes the path-free observed/expected evidence
+  into the active run and final `ResultManifestV1`. Successful durable actions
+  emit only a fixed study-lifecycle LSL marker allowlist; questionnaire answers,
+  samples, health/stall detail, branches, and caller-authored reasons are
+  excluded. The current Studio player still uses WebView `File`/object-URL
+  bindings. A native picker/player, opaque-ID Range serving, trusted codec/
+  duration/audio/projection/stereo probing (`SuppliedUnprobed` is still allowed),
+  partial-record recovery UI, and packaged-platform qualification remain open.
+- **Phase 3 — delivered browser vertical slice, not qualified parity:** the
+  ordinary 2D Study Studio authors/autosaves/validates/publishes portable
+  revisions. Pages runs multi-block studies through the WASM authority, all
+  seven questionnaire types, current-browser content hashing/binding, seeded/
+  Williams ordering, constrained typed forward branching, long-form CSV/result
+  manifests, and IndexedDB journaling with retained partial/finalized evidence,
+  explicit two-file downloads, corrupt-record isolation, per-run Web Locks,
+  atomic discard checks, and a transactional 64 MiB event-evidence ceiling.
+  Media/sample writes have a configurable non-cancelling deadline watchdog:
+  overruns synchronously fence playback, sampling, and controls until explicit
+  researcher recovery. A permanently rejected accepted outcome can be retained
+  explicitly as partial evidence; its staged action remains the visible data-
+  loss boundary, ownership is released only after the real transaction settles,
+  and previously committed evidence remains recoverable.
+  The compact form/list/table UI follows pinned Uncodixfy guidance and borrows
+  only the minimum section/trial/branch interaction structure documented from
+  OpenSesame and Qualtrics. YouTube stays visibly Pages 2D-only. Real-browser
+  quota/crash/large-export and cross-surface result qualification remain open.
+- **Phase 4 — delivered WebXR code slice, physically unqualified:** the
+  separately selected Portable Study mode loads published JSON before XR,
+  requires WASM/IndexedDB/controller/media capabilities, renders authority-
+  driven instruction/questionnaire/break/completion panels, and plays hash-
+  verified local `contentAsset` clips in flat/180°/360° mono/SBS/top-bottom
+  layouts. Timeline and affect samples pass only through the authority while a
+  decoded frame is playing; unsupported capability and YouTube fail preflight.
+  The canonical vector Face + Flubber instruction uses one exact snapshot.
+  Portable media/sample journaling uses the same non-cancelling watchdog
+  semantics: deadline alarms fence the in-headset player without catch-up or
+  automatic resume, and rejected staged evidence has an explicit partial-retain
+  route rather than a fabricated result.
+  Quest 2/3/3S playback, controller, lifecycle, storage, recovery, legibility,
+  and performance receipts remain open.
+- **Phase 5 — partial QR-only controller slice:** the desktop Studio and hosted
+  companion expose explicit enable/stop/connect UI around a ten-minute,
+  single-use 192-bit fragment invitation, the exact vendored BRSP/1 and
+  VDO.Ninja adapters, returned state, typed observe/control commands, and one
+  15-second controller lease. Only `study.observe` and `study.control` are
+  granted. BRSP proof and scope enforcement are still WebView-owned before Rust
+  revalidates each typed action; therefore this is not the final security
+  boundary. OPAQUE password-file and passwordless modes, Rust-owned auth/
+  grants/audit/dedupe/revocation, remaining scopes, record/export lanes,
+  reconnect hardening, direct/TURN receipts, and adversarial qualification are
+  open.
+- **Phase 6 — open support matrix:** packaged Windows WebView2, macOS WKWebView,
+  Linux WebKitGTK or the explicit Chromium-helper fallback, and physical Quest
+  WebXR must be gated separately. Adapt the native Quest APK only afterward.
+
+Do not mark a phase delivered from schemas, mocks, a build, or architectural
+similarity alone. Update this section only with exact implementation and
+qualification evidence.
+
 ## V1 companion
 
 - Two-window Tauri shell and tray lifecycle.
 - Shared SVG renderer.
-- Five selectable locally packaged face modes—AFFEC empirical 3D, build-time MediaPipe-atlas-derived 3D, continuous project-authored morphs, matrix anchors, and a project-created photo atlas—with photo/vector fallback, GitHub Pages main-stage/phone pairs, a desktop settings pair, one current valence/arousal/phase snapshot, explicit provenance, and no runtime camera/recognition or diagnostic claim.
+- Five selectable locally packaged main-tracker face modes—AFFEC empirical 3D, build-time MediaPipe-atlas-derived 3D, continuous project-authored morph, matrix anchors, and project-created photo atlas—with local photo/vector fallback, a GitHub Pages main-stage/phone pair and desktop settings pair, one current valence/arousal/phase snapshot, explicit provenance, and no runtime camera/recognition or diagnostic claim.
 - Rust affect engine and typed IPC.
 - Transient desktop Continuous/11×11 matrix traversal with an exact neutral center, shortest 8-connected paths, bounded `0.5–10` states/second, and unchanged portable-settings/LSL schemas.
 - Click-to-capture global key, mouse-button, and wheel bindings with arrow-key defaults.
@@ -21,7 +100,7 @@
 - In progress: native Quest Spatial SDK delivery under `vr/`, strict local video/session loading, transparent controller-movable Flubber, Media3 spatial playback, and same-LAN LSL. Host tests precede the required four-headset qualification matrix.
 
 - Delivered: preloaded GitHub Pages video experiment with optional YouTube URL/start/finish configuration, countdown, protected playback, precise local CSV, and automatic export.
-- Delivered as a local main-tracker presentation slice: **Synchronized Face + Flubber** selects AFFEC empirical, MediaPipe-atlas-derived, continuous project-authored, matrix-anchor, or project-created photo-atlas modes on Pages and desktop. Detailed modes use pinned local Three.js plus checked-in Vitruvian GLB/textures and fall back through the photo atlas to the canonical vector face. Every mode receives the same immutable displayed-coordinate/phase snapshot as Flubber; selection remains local presentation state, the desktop overlay remains Flubber-only, and the UI discloses provenance plus the no-camera/no-recognition/no-diagnosis boundary.
+- Delivered as a local main-tracker presentation slice: the **Synchronized Face + Flubber** module selects AFFEC empirical, MediaPipe-atlas-derived, continuous project-authored, matrix-anchor, or project-created photo-atlas modes on Pages and desktop. The detailed modes use pinned local Three.js plus checked-in CC0-derived Vitruvian GLB/textures and fall back through the local photo atlas to the canonical vector face. Every mode receives the same immutable displayed-coordinate/phase snapshot as its Flubber; browser/desktop selection remains local presentation state, the desktop overlay remains Flubber-only, and the UI discloses source provenance plus the no-camera/no-recognition/no-diagnosis boundary. Automated tests do not establish empirical-expression validity or physical-platform qualification. The mirrored portable study deliberately uses only the canonical vector Face + Flubber comparison as an optional instruction presentation.
 - Delivered: an independent sixth Screen Calibration accordion in `site/screen-calibration/`, with optional fullscreen physical calibration v2, one compact launcher, and module-local assets; ten BIS shortcuts plus a searchable SVG flag-labelled country/currency hierarchy that disappears after selection; compact shared-currency country selection; a 217-entry static multi-denomination coin catalog across 37 currencies and 61 countries with official diameter/outer-span provenance and round/polygonal/scalloped shape guidance; mouse/trackpad/pen/touch square drawing and constrained SVG adjustment; display-change invalidation; v1 read compatibility; browser-local persistence; and validated read-only protocol/version/country context consumed by Experiment CSV.
 - Delivered: a reversible bottom-right Windows 95 skin for the main browser app, retaining one functional DOM while restyling panels, forms, calibration, dialogs, and status feedback with a Netscape/SPSS-era presentation; browser-local persistence; pre-paint restoration; and four pinned local Kenney CC0 system-event cues used selectively, with routine interaction silent and no Microsoft asset or runtime dependency.
 - Delivered as an experimental browser-headset slice: a Meta Quest WebXR selectable library with the flat Great Dictator study and eight exact-frame CEAP-360VR one-minute full-sphere excerpts, canonical Flubber rendering, stimulus-aware CSV, right-stick affect control, X reset, Y whole-session pause, local download, an explicit per-run HTTPS webhook, and a native-launcher link to the hosted page. Physical Quest sphere/orientation/controller/download/webhook qualification remains required before research use.
@@ -37,8 +116,7 @@
 - Validate the touch-trace feature experimentally before describing it as an affect estimator; tune priors/thresholds only from documented study evidence and retain reconstructable raw features.
 - Document iframe/module integration for researchers embedding the online tracker beside video stimuli.
 - Add a stable browser integration API only after its event and privacy contract is specified.
-- Add optional participant-local video selection without introducing uploads.
-- Align browser CSV and desktop local-export schemas if desktop CSV recording is added.
+- The mirrored-study program supersedes the former standalone follow-ups for participant-local video selection and optional desktop CSV alignment; those requirements now land only through the shared asset, event, CSV, and result-manifest contracts above.
 
 ## Later, only with explicit approval
 

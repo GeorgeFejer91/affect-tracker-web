@@ -272,8 +272,8 @@ function buildFeatureGeometry(frame, expression, weights, animatedJawOpen) {
     weights,
     animatedJawOpen,
   );
-  const gazeX = frame.currentX * 0.018;
-  const gazeY = frame.currentY * 0.008;
+  const gazeX = 0;
+  const gazeY = 0;
   const browOuterY = 0.405 + 0.076 * expression.browLift;
   const browInnerY = browOuterY + 0.074 * expression.innerBrowLift;
   const mouthWidth = 0.365 + 0.018 * Math.abs(expression.mouthCurve);
@@ -349,10 +349,9 @@ export function buildFace3dModel(
   const frame = normalizeFace3dFrame(snapshot, reducedMotion, presentationColor);
   const expression = interpolateFaceExpression(frame.currentX, frame.currentY);
   const weights = weightsFromExpression(expression);
-  const activation = (frame.currentY + 1) * 0.5;
   const pulse = frame.reducedMotion ? 0 : Math.sin(frame.phase);
-  const animatedJawOpen = clamp01(expression.mouthOpen * (1 + pulse * 0.06));
-  const headScale = 1 + 0.014 * activation * pulse;
+  const animatedJawOpen = clamp01(expression.mouthOpen * (1 + pulse * 0.012));
+  const headScale = 1;
   const vertices = new Float64Array(BASE_HEAD_MESH.vertices.length * 3);
 
   for (let index = 0; index < BASE_HEAD_MESH.vertices.length; index += 1) {
@@ -376,8 +375,8 @@ export function buildFace3dModel(
     animatedJawOpen,
     headScale,
     rotation: Object.freeze({
-      yaw: frame.currentX * 0.068,
-      pitch: -frame.currentY * 0.025,
+      yaw: 0,
+      pitch: 0,
     }),
     vertices,
     triangles: BASE_HEAD_MESH.triangles,
@@ -567,8 +566,8 @@ export function resolveFace3dPalette(presentationColor) {
 
   const mix = (first, second, amount) => first.map((channel, index) =>
     Math.round(channel + (second[index] - channel) * amount));
-  const neutralSkin = [207, 184, 164];
-  const skin = mix(neutralSkin, accent, 0.38);
+  const neutralSkin = [218, 207, 196];
+  const skin = mix(neutralSkin, accent, 0.12);
   return Object.freeze({
     accent: Object.freeze(accent),
     skin: Object.freeze(skin),
@@ -596,6 +595,87 @@ function polygon(context, points) {
   context.closePath();
 }
 
+function drawSmoothCanvasHead(context, silhouette, palette, width, height) {
+  if (
+    typeof context.createRadialGradient !== "function"
+    || typeof context.fillRect !== "function"
+    || typeof context.clip !== "function"
+  ) return false;
+
+  const xs = silhouette.map((point) => point.x);
+  const ys = silhouette.map((point) => point.y);
+  const left = Math.min(...xs);
+  const right = Math.max(...xs);
+  const top = Math.min(...ys);
+  const bottom = Math.max(...ys);
+  const headWidth = Math.max(1, right - left);
+  const headHeight = Math.max(1, bottom - top);
+  const centreX = (left + right) * 0.5;
+  const centreY = (top + bottom) * 0.5;
+
+  const base = context.createRadialGradient(
+    centreX - headWidth * 0.2,
+    top + headHeight * 0.23,
+    headWidth * 0.025,
+    centreX,
+    centreY,
+    headWidth * 0.66,
+  );
+  base.addColorStop(0, rgbString(shade(palette.skin, 1.16)));
+  base.addColorStop(0.46, rgbString(palette.skin));
+  base.addColorStop(0.78, rgbString(shade(palette.skin, 0.78)));
+  base.addColorStop(1, rgbString(shade(palette.skin, 0.54)));
+  polygon(context, silhouette);
+  context.fillStyle = base;
+  context.fill();
+
+  context.save();
+  polygon(context, silhouette);
+  context.clip();
+  for (const side of [-1, 1]) {
+    const cheek = context.createRadialGradient(
+      centreX + side * headWidth * 0.22,
+      centreY + headHeight * 0.08,
+      0,
+      centreX + side * headWidth * 0.22,
+      centreY + headHeight * 0.08,
+      headWidth * 0.3,
+    );
+    cheek.addColorStop(0, rgbString(shade(palette.skin, 1.12), 0.28));
+    cheek.addColorStop(1, rgbString(palette.skin, 0));
+    context.fillStyle = cheek;
+    context.fillRect(0, 0, width, height);
+  }
+
+  const noseLight = context.createRadialGradient(
+    centreX - headWidth * 0.035,
+    centreY - headHeight * 0.02,
+    0,
+    centreX,
+    centreY,
+    headWidth * 0.2,
+  );
+  noseLight.addColorStop(0, "rgba(255, 255, 255, 0.19)");
+  noseLight.addColorStop(1, "rgba(255, 255, 255, 0)");
+  context.fillStyle = noseLight;
+  context.fillRect(0, 0, width, height);
+
+  const lowerShade = context.createRadialGradient(
+    centreX,
+    bottom + headHeight * 0.04,
+    0,
+    centreX,
+    bottom,
+    headWidth * 0.58,
+  );
+  lowerShade.addColorStop(0, rgbString(palette.feature, 0.16));
+  lowerShade.addColorStop(1, rgbString(palette.feature, 0));
+  context.fillStyle = lowerShade;
+  context.fillRect(0, 0, width, height);
+  context.restore();
+  return true;
+}
+
 function drawEye(context, eye, palette, lineWidth) {
   const [left, top, right, bottom] = eye.outline;
   context.beginPath();
@@ -603,10 +683,10 @@ function drawEye(context, eye, palette, lineWidth) {
   context.quadraticCurveTo(top.x, top.y, right.x, right.y);
   context.quadraticCurveTo(bottom.x, bottom.y, left.x, left.y);
   context.closePath();
-  context.fillStyle = rgbString(palette.sclera, 0.96);
+  context.fillStyle = rgbString(palette.sclera, 0.94);
   context.fill();
-  context.strokeStyle = rgbString(palette.feature, 0.92);
-  context.lineWidth = lineWidth;
+  context.strokeStyle = rgbString(palette.feature, 0.58);
+  context.lineWidth = lineWidth * 0.82;
   context.stroke();
 
   const irisRadiusX = Math.max(1, Math.hypot(
@@ -627,7 +707,22 @@ function drawEye(context, eye, palette, lineWidth) {
     0,
     TAU,
   );
-  context.fillStyle = rgbString(palette.iris);
+  if (typeof context.createRadialGradient === "function") {
+    const iris = context.createRadialGradient(
+      eye.iris.highlight.x,
+      eye.iris.highlight.y,
+      0,
+      eye.iris.centre.x,
+      eye.iris.centre.y,
+      Math.max(irisRadiusX, irisRadiusY),
+    );
+    iris.addColorStop(0, rgbString(shade(palette.iris, 1.42)));
+    iris.addColorStop(0.5, rgbString(palette.iris));
+    iris.addColorStop(1, rgbString(shade(palette.iris, 0.46)));
+    context.fillStyle = iris;
+  } else {
+    context.fillStyle = rgbString(palette.iris);
+  }
   context.fill();
   context.beginPath();
   context.arc(
@@ -649,6 +744,13 @@ function drawEye(context, eye, palette, lineWidth) {
   );
   context.fillStyle = "rgba(255, 255, 255, 0.9)";
   context.fill();
+
+  context.beginPath();
+  context.moveTo(left.x, left.y);
+  context.quadraticCurveTo(top.x, top.y, right.x, right.y);
+  context.strokeStyle = rgbString(palette.feature, 0.72);
+  context.lineWidth = lineWidth * 0.72;
+  context.stroke();
 }
 
 /** Draw a projected model into an already-sized CanvasRenderingContext2D. */
@@ -683,24 +785,23 @@ export function drawFace3d(context, model, projected) {
     context.stroke();
   }
 
-  for (const triangle of projected.visibleTriangles) {
-    const aOffset = triangle.a * 3;
-    const bOffset = triangle.b * 3;
-    const cOffset = triangle.c * 3;
-    context.beginPath();
-    context.moveTo(projected.screen[aOffset], projected.screen[aOffset + 1]);
-    context.lineTo(projected.screen[bOffset], projected.screen[bOffset + 1]);
-    context.lineTo(projected.screen[cOffset], projected.screen[cOffset + 1]);
-    context.closePath();
-    const fill = rgbString(shade(palette.skin, triangle.light));
-    context.fillStyle = fill;
-    context.fill();
-    context.strokeStyle = fill;
-    context.lineWidth = 0.45 * unit;
-    context.stroke();
+  const silhouette = projected.features.silhouette;
+  const smoothCanvasHead = drawSmoothCanvasHead(context, silhouette, palette, width, height);
+  if (!smoothCanvasHead) {
+    for (const triangle of projected.visibleTriangles) {
+      const aOffset = triangle.a * 3;
+      const bOffset = triangle.b * 3;
+      const cOffset = triangle.c * 3;
+      context.beginPath();
+      context.moveTo(projected.screen[aOffset], projected.screen[aOffset + 1]);
+      context.lineTo(projected.screen[bOffset], projected.screen[bOffset + 1]);
+      context.lineTo(projected.screen[cOffset], projected.screen[cOffset + 1]);
+      context.closePath();
+      context.fillStyle = rgbString(shade(palette.skin, triangle.light));
+      context.fill();
+    }
   }
 
-  const silhouette = projected.features.silhouette;
   context.beginPath();
   context.moveTo(silhouette[0].x, silhouette[0].y);
   for (let index = 1; index < silhouette.length; index += 1) {
@@ -754,27 +855,10 @@ export function drawFace3d(context, model, projected) {
   context.strokeStyle = rgbString(palette.lip, 0.96);
   context.lineWidth = (mouth.halfOpen > 0.015 ? 3.4 : 2.7) * unit;
   context.stroke();
-  if (mouth.halfOpen > 0.035) {
-    context.beginPath();
-    const teethY = mouth.upper.y + (mouth.lower.y - mouth.upper.y) * 0.22;
-    context.moveTo(
-      mouth.left.x + (mouth.upper.x - mouth.left.x) * 0.22,
-      teethY,
-    );
-    context.quadraticCurveTo(
-      mouth.upper.x,
-      mouth.upper.y + (mouth.lower.y - mouth.upper.y) * 0.16,
-      mouth.right.x + (mouth.upper.x - mouth.right.x) * 0.22,
-      teethY,
-    );
-    context.strokeStyle = "rgba(255, 248, 235, 0.82)";
-    context.lineWidth = 2 * unit;
-    context.stroke();
-  }
-
   context.restore();
   return Object.freeze({
     mode: "canvas-3d",
+    smoothShading: smoothCanvasHead,
     expression: model.expression,
     weights: model.weights,
     headScale: model.headScale,
@@ -785,7 +869,7 @@ export function drawFace3d(context, model, projected) {
 
 function findCanvas(root) {
   if (typeof root?.getContext === "function") return root;
-  return root?.querySelector?.("canvas") ?? null;
+  return root?.querySelector?.("canvas[data-face-canvas2d], canvas") ?? null;
 }
 
 function findFallback(root) {

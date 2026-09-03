@@ -19,6 +19,7 @@ export default defineConfig({
       input: {
         settings: resolve(desktopRoot, "index.html"),
         overlay: resolve(desktopRoot, "overlay.html"),
+        study: resolve(desktopRoot, "study.html"),
       },
     },
   },

@@ -15,10 +15,12 @@ crate-type = ["lib", "cdylib", "staticlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
+affect-tracker-study-core = { path = "../crates/study-core" }
 labstream = { version = "0.1.0", optional = true }
 monio = "0.1.1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+sha2 = "0.10"
 tauri = { version = "2", features = ["macos-private-api", "tray-icon"] }
 uuid = { version = "1", features = ["serde", "v4"] }
 

@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="color-scheme" content="light dark">
+    <meta name="description" content="Control an explicitly enabled Affect Tracker desktop study.">
+    <title>Affect Tracker Remote Study Controller</title>
+    <link rel="stylesheet" href="./study.css">
+    <link rel="stylesheet" href="./study-remote.css">
+  </head>
+  <body>
+    <main class="remote-controller">
+      <header class="remote-controller-header">
+        <div>
+          <h1>Affect Tracker remote controller</h1>
+          <p>QR quick pair for one enabled desktop study.</p>
+        </div>
+        <a class="study-button" href="./study.html">Study Studio</a>
+      </header>
+
+      <section class="remote-section" aria-labelledby="remote-connection-title">
+        <h2 id="remote-connection-title">Connection</h2>
+        <p id="remote-invitation-message">Checking the one-time invitation…</p>
+        <div class="study-inline-actions">
+          <button id="remote-connect" type="button" data-variant="primary" disabled>Connect to desktop</button>
+          <button id="remote-disconnect" type="button" disabled>Disconnect controller</button>
+        </div>
+        <p id="remote-status" class="study-status" role="status" aria-live="polite">Not connected.</p>
+      </section>
+
+      <section class="remote-section" aria-labelledby="remote-state-title">
+        <h2 id="remote-state-title">Desktop run</h2>
+        <div class="study-table-wrap">
+          <table class="study-table remote-status-table">
+            <tbody>
+              <tr><th scope="row">Authentication</th><td id="remote-authentication">QR invitation · not connected</td></tr>
+              <tr><th scope="row">Granted scopes</th><td id="remote-scopes">None</td></tr>
+              <tr><th scope="row">BRSP status</th><td id="remote-brsp-phase">Idle</td></tr>
+              <tr><th scope="row">Route</th><td id="remote-route">Unknown</td></tr>
+              <tr><th scope="row">State freshness</th><td id="remote-freshness">No state received</td></tr>
+              <tr><th scope="row">Run</th><td id="remote-run">Unavailable</td></tr>
+              <tr><th scope="row">Phase</th><td id="remote-run-phase">Unavailable</td></tr>
+              <tr><th scope="row">Current block</th><td id="remote-block">Unavailable</td></tr>
+              <tr><th scope="row">Revision</th><td id="remote-revision">Unavailable</td></tr>
+              <tr><th scope="row">Storage / input / LSL</th><td id="remote-health">Unavailable</td></tr>
+              <tr><th scope="row">Last command</th><td id="remote-last-command">None</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="remote-section" aria-labelledby="remote-controls-title">
+        <h2 id="remote-controls-title">Study controls</h2>
+        <p>Controls become available only when the returned native phase permits the exact action.</p>
+        <div class="remote-command-grid" aria-label="Remote study actions">
+          <button type="button" data-study-action="arm">Arm</button>
+          <button type="button" data-study-action="start" data-variant="primary">Start experiment</button>
+          <button type="button" data-study-action="pause">Pause</button>
+          <button type="button" data-study-action="resume">Resume</button>
+          <button type="button" data-study-action="advance">Advance block</button>
+          <button type="button" data-study-action="retry-block">Retry block</button>
+          <button type="button" data-study-action="stop" data-variant="danger">Stop experiment</button>
+          <button type="button" data-study-action="finalize">Finalize record</button>
+          <button type="button" data-study-action="abort" data-variant="danger">Abort run</button>
+        </div>
+      </section>
+
+      <section class="remote-section remote-limitations" aria-labelledby="remote-boundary-title">
+        <h2 id="remote-boundary-title">Current boundary</h2>
+        <ul>
+          <li>This slice implements a fresh 192-bit QR bearer secret and BRSP/1 observe/control scopes only.</li>
+          <li>OPAQUE password-file login, passwordless local approval, public beacon discovery, reconnect, and record export are not implemented here.</li>
+          <li>VDO.Ninja uses Internet signaling, STUN, and possibly TURN. Direct peers may expose network addresses; a relay may add latency.</li>
+          <li>The pinned VDO transport is loaded only after Connect, in the same browser realm as the controller, and is trusted not to inspect controller memory.</li>
+          <li>The BRSP proof and scope gate currently run in the bundled desktop WebView. Rust still validates the typed study action through its native authority. This is not the final security architecture.</li>
+          <li>No public VDO route, physical phone, forced-TURN, or packaged desktop platform has been qualified for this slice.</li>
+        </ul>
+      </section>
+    </main>
+    <script type="module" src="./src/remote-study/controller-app.js?v=qr-study-5"></script>
+  </body>
+</html>

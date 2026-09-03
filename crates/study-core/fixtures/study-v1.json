@@ -1,0 +1,296 @@
+{
+  "schema": "affect-tracker-study",
+  "version": 1,
+  "studyId": "parity-fixture",
+  "revision": 1,
+  "title": "Mirrored parity fixture",
+  "description": "Exercises strict contracts, all portable response types, deterministic shuffle, odd Williams rows, and the synchronized presentation instruction.",
+  "pinnedSettings": {
+    "portableSettingsSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "acquisition": {
+      "sampleRateHz": 20,
+      "resetPolicy": "neutralAtRunStart"
+    },
+    "visual": {
+      "baseShape": "circle",
+      "palette": {
+        "up": "#F2C14E",
+        "down": "#4D7CFE",
+        "left": "#D1495B",
+        "right": "#4CB944"
+      },
+      "animationSpeedMultiplier": 1.0,
+      "pulseAmplitudeMultiplier": 1.0,
+      "disorderMultiplier": 1.0,
+      "opacity": 0.9,
+      "widgetScale": 1.0
+    }
+  },
+  "requiredCapabilities": [
+    "affectInput",
+    "durableJournal"
+  ],
+  "media": [
+    {
+      "assetId": "clip-a",
+      "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "byteLength": 1048576,
+      "mimeType": "video/mp4",
+      "container": "mp4",
+      "durationMs": 120000,
+      "hasAudio": true,
+      "projection": "flat",
+      "stereoLayout": "mono",
+      "defaultClip": {
+        "startMs": 0,
+        "endMs": 120000
+      },
+      "requiredCapabilities": []
+    }
+  ],
+  "questionnaires": [
+    {
+      "questionnaireId": "preflight",
+      "title": "Preflight questionnaire",
+      "description": "Portable response catalogue.",
+      "items": [
+        {
+          "type": "acknowledgement",
+          "itemId": "consent",
+          "prompt": "I understand the task.",
+          "required": true
+        },
+        {
+          "type": "singleChoice",
+          "itemId": "handedness",
+          "prompt": "Choose one option.",
+          "required": true,
+          "options": [
+            { "optionId": "left", "label": "Left" },
+            { "optionId": "right", "label": "Right" }
+          ]
+        },
+        {
+          "type": "multipleChoice",
+          "itemId": "familiarity",
+          "prompt": "Choose one or two options.",
+          "required": true,
+          "minSelections": 1,
+          "maxSelections": 2,
+          "options": [
+            { "optionId": "desktop", "label": "Desktop" },
+            { "optionId": "browser", "label": "Browser" },
+            { "optionId": "vr", "label": "VR" }
+          ]
+        },
+        {
+          "type": "likert",
+          "itemId": "clarity",
+          "prompt": "The instructions are clear.",
+          "required": true,
+          "min": 1,
+          "max": 7,
+          "minLabel": "Disagree",
+          "maxLabel": "Agree"
+        },
+        {
+          "type": "vas",
+          "itemId": "comfort",
+          "prompt": "Current comfort.",
+          "required": false,
+          "min": 0.0,
+          "max": 100.0,
+          "step": 0.5,
+          "minLabel": "Low",
+          "maxLabel": "High"
+        },
+        {
+          "type": "numeric",
+          "itemId": "age",
+          "prompt": "Age in years.",
+          "required": false,
+          "min": 18.0,
+          "max": 120.0,
+          "step": 1.0,
+          "unit": "years"
+        },
+        {
+          "type": "affect2d",
+          "itemId": "baseline-affect",
+          "prompt": "Select current valence and arousal.",
+          "required": true,
+          "step": 0.1
+        }
+      ]
+    }
+  ],
+  "sections": [
+    {
+      "sectionId": "intro",
+      "title": "Introduction",
+      "orderPolicy": { "type": "fixed" },
+      "trials": [
+        {
+          "trialId": "intro-main",
+          "label": "Introduction",
+          "blocks": [
+            {
+              "type": "instruction",
+              "blockId": "intro-comparison",
+              "content": "Compare the synchronized Face and Flubber representations.",
+              "presentation": "faceFlubberComparison"
+            },
+            {
+              "type": "video",
+              "blockId": "intro-video",
+              "purpose": "introduction",
+              "source": {
+                "kind": "contentAsset",
+                "assetId": "clip-a",
+                "clip": { "startMs": 0, "endMs": 10000 }
+              },
+              "collectAffect": false
+            },
+            {
+              "type": "questionnaire",
+              "blockId": "preflight-form",
+              "questionnaireId": "preflight"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "sectionId": "shuffle",
+      "title": "Seeded stimuli",
+      "orderPolicy": { "type": "seededShuffle" },
+      "trials": [
+        {
+          "trialId": "stim-a",
+          "label": "Stimulus A",
+          "blocks": [
+            {
+              "type": "video",
+              "blockId": "stim-a-video",
+              "purpose": "stimulus",
+              "source": {
+                "kind": "contentAsset",
+                "assetId": "clip-a",
+                "clip": { "startMs": 10000, "endMs": 20000 }
+              },
+              "collectAffect": true
+            }
+          ]
+        },
+        {
+          "trialId": "stim-b",
+          "label": "Stimulus B",
+          "blocks": [
+            {
+              "type": "video",
+              "blockId": "stim-b-video",
+              "purpose": "stimulus",
+              "source": {
+                "kind": "contentAsset",
+                "assetId": "clip-a",
+                "clip": { "startMs": 20000, "endMs": 30000 }
+              },
+              "collectAffect": true
+            }
+          ]
+        },
+        {
+          "trialId": "stim-c",
+          "label": "Stimulus C",
+          "blocks": [
+            {
+              "type": "video",
+              "blockId": "stim-c-video",
+              "purpose": "stimulus",
+              "source": {
+                "kind": "contentAsset",
+                "assetId": "clip-a",
+                "clip": { "startMs": 30000, "endMs": 40000 }
+              },
+              "collectAffect": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "sectionId": "williams",
+      "title": "Counterbalanced instructions",
+      "orderPolicy": { "type": "williamsBalancedLatinSquare" },
+      "trials": [
+        {
+          "trialId": "condition-a",
+          "label": "Condition A",
+          "blocks": [
+            {
+              "type": "instruction",
+              "blockId": "condition-a-instruction",
+              "content": "Condition A.",
+              "presentation": "standard"
+            }
+          ]
+        },
+        {
+          "trialId": "condition-b",
+          "label": "Condition B",
+          "runIf": {
+            "operator": "equals",
+            "questionnaireBlockId": "preflight-form",
+            "itemId": "handedness",
+            "value": {
+              "type": "singleChoice",
+              "optionId": "right"
+            }
+          },
+          "blocks": [
+            {
+              "type": "instruction",
+              "blockId": "condition-b-instruction",
+              "content": "Condition B.",
+              "presentation": "standard"
+            }
+          ]
+        },
+        {
+          "trialId": "condition-c",
+          "label": "Condition C",
+          "blocks": [
+            {
+              "type": "break",
+              "blockId": "condition-c-break",
+              "content": "Take a short break.",
+              "minimumDurationMs": 1000
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "sectionId": "finish",
+      "title": "Finish",
+      "orderPolicy": { "type": "fixed" },
+      "trials": [
+        {
+          "trialId": "finish-main",
+          "label": "Completion",
+          "blocks": [
+            {
+              "type": "completion",
+              "blockId": "complete",
+              "content": "The study is complete."
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "completionPolicy": {
+    "allowEarlyStop": true,
+    "requireCompletionBlock": true
+  }
+}

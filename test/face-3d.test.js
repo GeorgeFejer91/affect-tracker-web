@@ -105,12 +105,13 @@ test("neutral projected facial landmarks remain bilaterally balanced", () => {
   approximately(scene.features.mouth.left.y, scene.features.mouth.right.y, 1e-8);
 });
 
-test("shared phase animates the 3D head and reduced motion removes phase dependence", () => {
+test("shared phase animates only restrained articulation and reduced motion removes phase dependence", () => {
   const frame = { currentX: 0.6, currentY: 0.9 };
   const start = buildFace3dModel({ ...frame, phase: 0 });
   const peak = buildFace3dModel({ ...frame, phase: Math.PI / 2 });
   const cycle = buildFace3dModel({ ...frame, phase: Math.PI * 2 });
-  assert.notEqual(start.headScale, peak.headScale);
+  assert.equal(start.headScale, 1);
+  assert.equal(peak.headScale, 1);
   assert.notEqual(start.animatedJawOpen, peak.animatedJawOpen);
   approximately(start.headScale, cycle.headScale);
   approximately(start.animatedJawOpen, cycle.animatedJawOpen);
@@ -180,6 +181,16 @@ function createMockContext() {
   };
 }
 
+function createSmoothMockContext() {
+  const context = createMockContext();
+  context.counts.clips = 0;
+  context.counts.fillRects = 0;
+  context.createRadialGradient = () => ({ addColorStop() {} });
+  context.clip = () => { context.counts.clips += 1; };
+  context.fillRect = () => { context.counts.fillRects += 1; };
+  return context;
+}
+
 function createRendererFixture(context) {
   const listeners = new Map();
   const fallback = {
@@ -201,7 +212,7 @@ function createRendererFixture(context) {
   const root = {
     dataset: {},
     querySelector(selector) {
-      return selector === "canvas" ? canvas : fallback;
+      return selector.startsWith("canvas") ? canvas : fallback;
     },
   };
   return { canvas, fallback, listeners, root };
@@ -222,7 +233,7 @@ test("renderer draws the projected mesh without reading target coordinates", () 
   });
   const result = renderer(snapshot, false, "#ffd166");
   assert.equal(result.mode, "canvas-3d");
-  assert.ok(result.visibleTriangleCount > 300);
+  assert.ok(result.visibleTriangleCount >= 300);
   assert.equal(renderer.available, true);
   assert.equal(renderer.mode, "canvas");
   assert.equal(fixture.root.dataset.face3dMode, "canvas");
@@ -234,6 +245,18 @@ test("renderer draws the projected mesh without reading target coordinates", () 
   renderer.destroy();
   assert.equal(renderer.available, false);
   assert.equal(renderer.mode, "destroyed");
+});
+
+test("Canvas compatibility renderer uses smooth gradient shading without drawing a triangle grid", () => {
+  const context = createSmoothMockContext();
+  const fixture = createRendererFixture(context);
+  const renderer = createFace3dRenderer(fixture.root, { maxDevicePixelRatio: 1 });
+  const result = renderer({ currentX: 0.7, currentY: 0.7, phase: 1.2 }, false, "#5dffb0");
+  assert.equal(result.mode, "canvas-3d");
+  assert.equal(result.smoothShading, true);
+  assert.equal(context.counts.clips, 1);
+  assert.equal(context.counts.fillRects, 4);
+  assert.ok(context.counts.fills < 40, "smooth path should not repaint hundreds of triangles");
 });
 
 test("renderer invokes the local SVG fallback with the exact shared snapshot", () => {

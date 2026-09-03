@@ -8,12 +8,70 @@
 - If validation fails, credentials or CI are unavailable, ownership is ambiguous, or the user explicitly requests local-only/no-push work, stop publication and report the exact blocker. Resume and publish as soon as the blocker is resolved.
 - This standing rule covers repository and GitHub Pages publication only. It does not authorize signed/notarized installers, public package releases, app-store submissions, production credentials, or other release actions that retain an explicit authorization requirement below.
 
+## Mirrored-study gates
+
+The target in [`25-MIRRORED-STUDY-ARCHITECTURE.md`](./25-MIRRORED-STUDY-ARCHITECTURE.md)
+is not release-qualified by the existing browser, desktop, or Quest tests. The
+current automated slice covers strict native/WASM contracts and fixtures,
+Studio/Pages runner and journal behavior, native authority/result persistence,
+portable WebXR panel/media logic, and deterministic QR-controller primitives.
+It does not replace real-browser, packaged-Tauri, hostile-network, or physical
+Quest evidence. Add the following evidence incrementally and keep every unrun
+row explicitly open:
+
+- Native Rust and browser WASM must produce byte-identical canonical study
+  hashes, deterministic shuffled orders, Williams matrices, action outcomes,
+  revisions, and event fixtures for the same protocol/seed/condition.
+- Desktop, Pages 2D, and physical WebXR must execute the same portable study
+  into reconstructable equivalent block progression, committed answers,
+  affect meaning, realized order, completion state, CSV, and result manifest.
+  Exercise the optional instruction-block Face + Flubber presentation on all
+  three from the exact same current X/Y/phase state; it must not become a
+  separate phase or stimulus.
+- Contract tests must reject malformed/oversized definitions, unknown required
+  fields, duplicate IDs, invalid references, wrong asset hashes, unsupported
+  codecs/projections/questionnaire capabilities, quota exhaustion, and storage
+  interruption. Crash/close every phase and prove completed versus partial
+  finalization without fabricated samples or mid-stimulus resume.
+- Desktop asset tests must bind hashing/probing/playback to the same staged
+  bytes, preserve content-addressed identity, keep native paths out of the
+  WebView, support bounded Range reads, and atomically commit/finalize. Browser
+  tests must match user-selected files by digest and recover bounded IndexedDB
+  journals. A YouTube study must be visibly Pages 2D-only and fail the universal
+  compatibility badge.
+- Authenticated control tests must cover no network before explicit enable;
+  no state before authentication/scope/grant/snapshot sync; QR expiry,
+  one-time consumption, and fragment removal; OPAQUE RFC and Rust/browser
+  interoperability, wrong files, replay/reflection, uniform error/rate limits;
+  passwordless local rejection; stale generations/epochs; scope denial; lease
+  expiry/revocation; and absence of arbitrary path, IPC, shell, input, upload,
+  or ungranted data access.
+- Applied-but-acknowledgement-lost retries must reuse the same command ID and
+  produce at-most-once Start/Stop/advance/answer/export effects. Duplicate IDs
+  with different bodies reject. Current public state is projected afresh rather
+  than replaying a historical snapshot.
+- Saturate the digest-verified record-export lane while issuing Start/Stop and
+  state queries. Reliable control must remain ordered and bounded; bulk transfer
+  cannot starve it. Verify full app-owned records only under `data.read` and
+  `data.export`, with no raw external ECG or arbitrary-file widening.
+- Exercise direct and independently observed forced-TURN routes, signaling and
+  TURN failure, browser background/foreground, network changes, sleep/wake,
+  WebView destruction, reconnect, old-callback fencing, and remote loss during
+  an active stimulus. Record route and command-to-applied p50/p95/p99/worst;
+  initial regression ceilings are 15 seconds to control-ready and 2 seconds to
+  acknowledgement, not performance guarantees.
+- Qualify packaged Windows WebView2, macOS WKWebView, and Linux WebKitGTK
+  independently. If the exact Linux runtime lacks required WebRTC, qualify the
+  narrowly scoped pinned Chromium helper as a distinct packaged adapter rather
+  than relabelling WebKitGTK as passing. Physical Quest 2/3/3S WebXR evidence
+  remains separate from responsive emulation and from the native Quest APK.
+
 ## Web gates
 
 - Run the Node built-in unit suite.
 - Preserve mapping extrema/midpoint, profile normalization, seeded repeatability, finite/closed paths, coordinate input, ring-buffer, CSV, dragging, and sampling tests. Exercise Circle, Heart, Triangle, and Square as distinct bounded closed paths across affect extrema, visual multipliers, reduced motion, and legacy omitted-shape defaults; unknown shapes must fail closed.
 - Verify the project-path GitHub Pages URL and absence of unexpected runtime requests after deployment.
-- Verify the deployed **Synchronized Face + Flubber** accordion enables, disables, centers, and selects among exactly five local face engines while the face remains on the main stage after the accordion closes. At desktop and phone widths, prove face-left/Flubber-right order and suppression during Experiment, hidden-Flubber, and Picture-in-Picture states. Exercise AFFEC aggregate weights, MediaPipe build-time signals, continuous morphs, all 121 matrix coordinates, and photo-atlas bilinear blending. Every mode must receive the same immutable current-coordinate/phase snapshot as Flubber and own no input or clock. Verify lazy local Three.js/GLB/texture loading, detailed → photo → vector fallback, browser-local mode persistence, disclosure, checked-in license notices, and no camera, recognition model, dataset, CDN, or remote face-asset request.
+- Verify the deployed **Synchronized Face + Flubber** accordion enables, disables, centers, and selects among exactly the five declared local main-tracker engines while the face remains on the main stage after the accordion closes. At desktop and phone widths, prove face-left/Flubber-right order, bounded non-overlapping layout, and visibility suppression during Experiment, hidden-Flubber, and Picture-in-Picture states. Exercise AFFEC empirical weights against the checked-in 5,807-trial aggregate metadata, MediaPipe-atlas weights against the checked-in build-time signal table, continuous project-authored morphs, matrix anchors, and photo-atlas bilinear blending. Every mode must receive the same immutable current-coordinate/phase snapshot as the canonical Flubber and own no input/clock. Verify lazy local Three.js/GLB/texture loading, exact pinned asset URLs, deterministic morph bounds, context/loader failure through photo-atlas then vector fallback, browser-local mode persistence, disclosure, and checked-in NOTICE/license coverage. A clean network trace must show no camera, runtime recognition model, dataset, CDN, or remote face-asset request. Automated rendering tests are not empirical-expression validity or physical-platform qualification.
 - Verify shared settings normalization, desktop-compatible JSON round-trips, `visual.baseShape` round-trips/default/rejection, opacity/transparency endpoints, imports, exports, and checked-in `site/settings.json` defaults.
 - Verify Settings exposes the five task-focused disclosures, keeps the keyboard-operable illustrated Circle/Heart/Triangle/Square buttons and their programmatic pressed state with the live preview and palette inside **2D grid & colors**, keeps normal CSV actions inside **Data**, keeps advanced/native-transfer options progressively disclosed, and exposes one synchronized cursor-visibility preference under both Appearance and the Touch/Trackpad display options. Verify portable JSON import/export appears in Ground Control.
 - Verify the fixed bottom-right Windows 95 toggle has an accessible pressed state and remains usable in both skins; persists only its browser-local boolean; restores before first paint; never enters portable settings; and leaves all application behavior, input, logging, calibration, and experiment contracts unchanged. Static tests must retain the shared DOM, classic CSS token/scope, reversible modern state, visual message window, deterministic selective cue mapping, silence for unclassified/routine/countdown events, pinned local audio paths, packaged CC0 notice/license, and absence of Microsoft assets. In a real browser, exercise both themes at desktop and narrow touch sizes, reload persistence, the binding dialog, calibration overlay, one success and one error/status message, selective audio playback after the explicit theme gesture, clean console/network state, and focus/contrast/readability.
@@ -58,7 +116,7 @@
 
 Pure Rust tests cover affect math, direct-coordinate and directional clamping, smoothing, opposite-action cancellation, settings validation/migration, binding collisions, physical token naming, LSL sample schema, marker generation, and lifecycle state. Frontend tests cover the shared renderer, four-anchor color mapping, and typed IPC adapter behavior.
 
-Focused face tests must cover engine normalization and all five selections, all four detailed-model profiles, AFFEC metadata and bounded RBF weights, MediaPipe signal interpolation, continuous and matrix morph weights, local model/texture material mapping, photo-atlas cells, lazy load/context loss, and the detailed → photo → vector fallback chain. Static/UI tests must retain web/phone/desktop selection, one-frame shared snapshots, disclosures, accessible labels, exact project-path assets, and local Three.js/asset notices.
+Focused face tests must separately cover (a) the five-mode main-tracker selector and (b) the portable-study canonical vector comparison. Main-tracker coverage includes engine normalization/selection, all four detailed-model profiles, AFFEC centroid metadata and bounded RBF weights, MediaPipe build-time signal interpolation, continuous and matrix morph weights, local model/texture material mapping, photo-atlas bilinear cells, lazy load/context loss, and the detailed → photo → vector fallback chain. Static/UI tests must retain the same selected mode across main/phone presentation, the desktop's local selection, one-frame shared snapshot, disclosures, accessible labels, exact project-path assets, and local Three.js/asset notices. Portable-study tests must prove `faceFlubberComparison` uses the canonical vector face and canonical Flubber from one exact current-X/current-Y/phase snapshot across Pages, desktop, and WebXR and never becomes a phase, stimulus, input, or record source.
 
 Focused desktop traversal tests must cover all 121 exact cells, center `(5,5) = (0,0)`, axis/index round-trips, shortest 8-connected diagonal/cardinal paths, exact-node holds, `0.5–10` rate validation, Stop, Reset, and returning to continuous mode on direct movement. Paired-renderer tests must prove that face and Flubber receive the same immutable snapshot object and `currentX/currentY/phase`, never target coordinates or a renderer-owned clock. Static/UI tests must retain face-left/Flubber-right layout, keyboard-operable matrix cells, current/target state, and a Flubber-only overlay. Rust tests must confirm traversal metadata stays transient and the existing eight-channel LSL sample order is unchanged.
 
@@ -102,4 +160,4 @@ The `desktop-release.yml` workflow is the canonical packaging path. A `desktop-v
 
 ## Definition of parity
 
-A change to coordinates, mappings, smoothing defaults, input actions, pause/reset semantics, seed handling, accessibility language, or shared record meaning must be assessed in all three delivery forms. The synchronized procedural face is shared by GitHub Pages and the desktop settings window; it does not replace or extend the native Quest Flubber. The 11×11 traversal and face/Flubber settings layout are additive desktop presentation/control features, while the desktop overlay remains Flubber-only. Platform-only features such as global input, click-through overlays, Spatial video, and LSL need an explicit counterpart or documented exception. The stimulus experiment, touch-trace source, and extended browser CSV fields remain explicit online-only exceptions; Polar Stream has separate browser and native-Quest acquisition adapters sharing one documented metric/mapping contract.
+For portable `StudyDefinitionV1` behavior, the three primary parity surfaces are Pages 2D, Tauri/Rust desktop, and WebXR. A change to coordinates, mappings, smoothing defaults, study actions, pause/reset semantics, seed/order handling, questionnaire meaning, accessibility language, or shared record meaning must be assessed on all three or fail closed behind an explicit capability exception. The canonical vector Face + Flubber comparison remains an optional presentation inside an instruction block and does not import the main tracker's five-engine selector into the protocol or replace/extend the native Quest Flubber. The 11×11 traversal must retain shared semantic fixtures while the desktop overlay remains Flubber-only. Platform-only features such as global input, click-through overlays, immersive placement, and LSL require an explicit capability counterpart or documented exception. YouTube, Touch/Trackpad acquisition, and platform-specific Polar adapters remain deliberate capability exceptions. The native Quest APK is a specialized fourth form with its own gates until a later adapter is implemented.
