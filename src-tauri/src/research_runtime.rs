@@ -8484,10 +8484,15 @@ mod tests {
         let scan = workspace.rescan(&workspace_id).unwrap();
         let workspace_file_id = scan.stimuli[0].workspace_file_id.clone();
         workspace.mark_first_scanned_verified(1_000.0);
-        let settings = test_settings(
+        let mut settings = test_settings(
             &format!("{:x}", Sha256::digest(b"video")),
             &workspace_file_id,
         );
+        // Recovery semantics do not depend on the production default rate.
+        // Four hertz makes every emitted sample a durable journal checkpoint,
+        // so this test does not require 32 background wakeups under a heavily
+        // parallel CI test process.
+        settings.experiment.sampling_frequency_hz = 4;
         let plan = test_plan(&settings);
         let runtime = ResearchRuntime::new(Arc::clone(&workspace));
         let start_input_receipt_id = fresh_input_receipt(&runtime, &settings);
