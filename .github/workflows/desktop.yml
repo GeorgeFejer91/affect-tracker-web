@@ -16,13 +16,13 @@ jobs:
       AFFECT_RESEARCH_REQUIRE_LIBVLC_RUNTIME: "1"
     steps:
       - name: Check out repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
       - name: Set up pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
         with:
           version: 11.19.0
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
           cache: pnpm
@@ -32,35 +32,88 @@ jobs:
         run: pnpm audit --audit-level=moderate
       - name: Run Research tests
         run: pnpm test
+      - name: Build focused Pages application
+        run: pnpm build:pages
       - name: Build focused desktop WebView
         run: pnpm desktop:build
       - name: Stage pinned libVLC 3.0.23 runtime
         shell: pwsh
         run: |
           $archive = Join-Path $env:RUNNER_TEMP 'vlc-3.0.23-win64.zip'
+          $source = Join-Path $env:RUNNER_TEMP 'vlc-3.0.23.tar.xz'
           Invoke-WebRequest -Uri 'https://download.videolan.org/pub/videolan/vlc/3.0.23/win64/vlc-3.0.23-win64.zip' -OutFile $archive
+          Invoke-WebRequest -Uri 'https://download.videolan.org/pub/videolan/vlc/3.0.23/vlc-3.0.23.tar.xz' -OutFile $source
+          $sourceHash = (Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($sourceHash -cne 'e891cae6aa3ccda69bf94173d5105cbc55c7a7d9b1d21b9b21666e69eff3e7e0') {
+            throw 'The libVLC source archive does not match the repository pin.'
+          }
           ./src-tauri/native-media/stage-libvlc-runtime.ps1 -ArchivePath $archive
       - name: Set up Rust
-        uses: dtolnay/rust-toolchain@1.96.0
+        uses: dtolnay/rust-toolchain@ebb3d1676050bfd0971c36c1e215b5751473994d # 1.96.0
         with:
           components: rustfmt, clippy
       - name: Cache Rust artifacts
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
           workspaces: src-tauri
       - name: Check Rust formatting
         run: cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
       - name: Check native Research backend
-        run: cargo check --locked --manifest-path src-tauri/Cargo.toml
-      - name: Test native Research backend
-        run: cargo test --locked --manifest-path src-tauri/Cargo.toml
+        run: cargo check --locked --manifest-path src-tauri/Cargo.toml --all-features
+      - name: Test native Research backend with all features
+        run: cargo test --locked --manifest-path src-tauri/Cargo.toml --all-features
+      - name: Test native Research backend without optional features
+        run: cargo test --locked --manifest-path src-tauri/Cargo.toml --no-default-features
       - name: Lint native Research backend
-        run: cargo clippy --locked --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
+        run: cargo clippy --locked --manifest-path src-tauri/Cargo.toml --all-targets --all-features -- -D warnings
       - name: Build unsigned internal Windows alpha
         run: pnpm desktop:bundle
+      - name: Record exact artifact identity
+        shell: pwsh
+        run: |
+          $head = (git rev-parse --verify HEAD).Trim()
+          if ($head -cne $env:GITHUB_SHA) { throw 'The checked-out commit does not match GITHUB_SHA.' }
+          if (git status --porcelain=v1 --untracked-files=normal) { throw 'The artifact worktree is not clean.' }
+          $installers = @(Get-ChildItem -LiteralPath 'src-tauri/target/release/bundle/nsis' -Filter '*.exe' -File)
+          if ($installers.Count -ne 1) { throw 'Expected exactly one NSIS installer.' }
+          $source = Join-Path $env:RUNNER_TEMP 'vlc-3.0.23.tar.xz'
+          $runtimePinPath = 'src-tauri/native-media/libvlc-runtime-v1.json'
+          $runtimePin = Get-Content -Raw -LiteralPath $runtimePinPath | ConvertFrom-Json
+          $provenance = [ordered]@{
+            schema = 'affect-research-windows-artifact-provenance'
+            version = 1
+            commit = $env:GITHUB_SHA
+            repository = $env:GITHUB_REPOSITORY
+            workflow = $env:GITHUB_WORKFLOW
+            workflowRef = $env:GITHUB_WORKFLOW_REF
+            runId = $env:GITHUB_RUN_ID
+            runAttempt = $env:GITHUB_RUN_ATTEMPT
+            installer = [ordered]@{
+              fileName = $installers[0].Name
+              sha256 = (Get-FileHash -LiteralPath $installers[0].FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+              byteLength = $installers[0].Length
+            }
+            nativeRuntimePin = [ordered]@{
+              fileName = [IO.Path]::GetFileName($runtimePinPath)
+              sha256 = (Get-FileHash -LiteralPath $runtimePinPath -Algorithm SHA256).Hash.ToLowerInvariant()
+              byteLength = (Get-Item -LiteralPath $runtimePinPath).Length
+              stagedManifestSha256 = $runtimePin.runtimeTree.manifestSha256
+            }
+            libvlcSource = [ordered]@{
+              fileName = [IO.Path]::GetFileName($source)
+              sha256 = (Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash.ToLowerInvariant()
+              byteLength = (Get-Item -LiteralPath $source).Length
+            }
+          }
+          $json = $provenance | ConvertTo-Json -Depth 4
+          [IO.File]::WriteAllText('src-tauri/target/release/bundle/artifact-provenance.json', $json, [Text.UTF8Encoding]::new($false))
       - name: Upload internal alpha installer
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: affect-research-0.4.0-alpha.1-windows-x64
-          path: src-tauri/target/release/bundle/nsis/*.exe
+          name: affect-research-0.4.0-alpha.1-windows-x64-${{ github.sha }}
+          path: |
+            src-tauri/target/release/bundle/nsis/*.exe
+            src-tauri/target/release/bundle/artifact-provenance.json
+            src-tauri/native-media/libvlc-runtime-v1.json
+            ${{ runner.temp }}/vlc-3.0.23.tar.xz
           if-no-files-found: error

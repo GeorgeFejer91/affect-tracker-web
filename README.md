@@ -104,8 +104,10 @@ pnpm desktop:bundle
 Native-media staging instructions and the exact runtime pin are in
 [`src-tauri/native-media/README.md`](./src-tauri/native-media/README.md). A
 candidate intended for native playback must be built with the required runtime
-gate and must pass the installed-artifact media tests; ordinary local builds may
-exercise the explicit unavailable/unqualified paths.
+gate and must pass the installed-artifact media tests. `pnpm desktop:bundle`
+always enables that gate and fails when the exact Windows x64 runtime is absent
+or invalid; ordinary development builds may exercise the explicit unavailable/
+unqualified paths.
 
 The displayed product version is `0.4.0-alpha.1`; it must not be described as stable or research-ready until the automated, timing, recovery, LSL, accessibility, and physical workflow gates in the charter pass.
 
@@ -113,7 +115,7 @@ The displayed product version is `0.4.0-alpha.1`; it must not be described as st
 
 - Pull requests and pushes to `research/video-protocol-v1` validate the isolated Pages artifact and Windows Tauri candidate. They do not deploy a public site.
 - A passing push to `main` deploys only the verified Research Pages artifact to the Research project URL.
-- Windows CI runs the Research tests/build plus Rust format, check, test, and clippy gates before creating an unsigned internal installer artifact.
+- Windows CI runs the Research tests/build plus Rust format, check, test, and clippy gates before creating an unsigned internal installer artifact. Build actions are pinned to exact revisions; the artifact name and provenance bind the full commit, workflow run, installer, native-runtime pin, and exact pinned libVLC source archive.
 - The packaging workflow is manual-only. It repeats those gates and uploads an unsigned `0.4.0-alpha.1` workflow artifact; it has no tag trigger and creates no GitHub Release.
 
 Signing, auto-updates, store submission, stable installers, and any research-ready claim remain out of scope until separately authorized and qualified.

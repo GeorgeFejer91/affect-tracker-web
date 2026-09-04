@@ -39,6 +39,7 @@ export const INPUT_PRESET_IDS = Object.freeze([
 const DIGITAL_DIRECTIONS = Object.freeze(["up", "down", "left", "right"]);
 const HASH_PATTERN = /^[a-f0-9]{64}$/u;
 const ID_PATTERN = /^[a-z0-9][a-z0-9_-]{0,127}$/u;
+const CANONICAL_UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
 const PARTICIPANT_PATTERN = /^P\d{3,6}$/u;
 const HEX_COLOR = /^#[a-f0-9]{6}$/iu;
 const MONOTONIC_NS = /^(0|[1-9]\d{0,29})$/u;
@@ -154,6 +155,12 @@ function text(value, path, { minimum = 1, maximum = 200, nullable = false } = {}
 function identifier(value, path) {
   const normalized = text(value, path, { maximum: 128 }).toLowerCase();
   if (!ID_PATTERN.test(normalized)) throw new TypeError(`${path} must be a safe lowercase identifier.`);
+  return normalized;
+}
+
+function canonicalIdentifier(value, path) {
+  const normalized = identifier(value, path);
+  if (normalized !== value) throw new TypeError(`${path} must use its canonical lowercase identifier spelling.`);
   return normalized;
 }
 
@@ -1004,7 +1011,8 @@ function manifestOutput(value, path) {
 export function validateResearchRunManifestV2(value) {
   exactObject(value, "ResearchRunManifestV2", [
     "schema", "version", "runId", "experimentId", "participantId", "participantCode", "age",
-    "gender", "handedness", "attemptNumber", "sessionStem", "completionStatus", "settingsSha256",
+    "gender", "handedness", "attemptNumber", "sessionStem", "completionStatus", "playbackMode",
+    "playbackQualification", "settingsSha256",
     "assignmentPlanSha256", "stimuli", "timing", "outputs", "recovery", "build",
   ]);
   if (value.schema !== RESEARCH_RUN_MANIFEST_SCHEMA || value.version !== 2) throw new TypeError("ResearchRunManifestV2 schema or version is unsupported.");
@@ -1032,8 +1040,8 @@ export function validateResearchRunManifestV2(value) {
   const output = {
     schema: RESEARCH_RUN_MANIFEST_SCHEMA,
     version: 2,
-    runId: identifier(value.runId, "ResearchRunManifestV2.runId"),
-    experimentId: identifier(value.experimentId, "ResearchRunManifestV2.experimentId"),
+    runId: canonicalIdentifier(value.runId, "ResearchRunManifestV2.runId"),
+    experimentId: canonicalIdentifier(value.experimentId, "ResearchRunManifestV2.experimentId"),
     participantId: participantIdentifier(value.participantId, "ResearchRunManifestV2.participantId"),
     participantCode,
     age: integer(value.age, "ResearchRunManifestV2.age", 1, 120),
@@ -1046,6 +1054,8 @@ export function validateResearchRunManifestV2(value) {
       return stem;
     })(),
     completionStatus: enumeration(value.completionStatus, "ResearchRunManifestV2.completionStatus", ["completed", "partial"]),
+    playbackMode: enumeration(value.playbackMode, "ResearchRunManifestV2.playbackMode", ["nativeLibvlc", "unqualifiedWebview", "browserMediaAdapters"]),
+    playbackQualification: enumeration(value.playbackQualification, "ResearchRunManifestV2.playbackQualification", ["qualifiedNative", "unqualified", "browser"]),
     settingsSha256: sha256(value.settingsSha256, "ResearchRunManifestV2.settingsSha256"),
     assignmentPlanSha256: sha256(value.assignmentPlanSha256, "ResearchRunManifestV2.assignmentPlanSha256"),
     stimuli,
@@ -1061,7 +1071,7 @@ export function validateResearchRunManifestV2(value) {
     outputs,
     recovery: {
       resumed: boolean(value.recovery.resumed, "ResearchRunManifestV2.recovery.resumed"),
-      sourceRunId: value.recovery.sourceRunId === null ? null : identifier(value.recovery.sourceRunId, "ResearchRunManifestV2.recovery.sourceRunId"),
+      sourceRunId: value.recovery.sourceRunId === null ? null : canonicalIdentifier(value.recovery.sourceRunId, "ResearchRunManifestV2.recovery.sourceRunId"),
       restartedStimulusIds: value.recovery.restartedStimulusIds.map((id, index) => identifier(id, `ResearchRunManifestV2.recovery.restartedStimulusIds[${index}]`)),
     },
     build: {
@@ -1071,6 +1081,21 @@ export function validateResearchRunManifestV2(value) {
     },
   };
   if (participantCode !== participantCode.toLocaleUpperCase("und")) throw new TypeError("ResearchRunManifestV2.participantCode must be uppercase.");
+  const playbackPair = `${output.playbackMode}:${output.playbackQualification}`;
+  const playbackPlatformIsValid = output.build.platform === "tauri-windows"
+    ? ["nativeLibvlc:qualifiedNative", "unqualifiedWebview:unqualified"].includes(playbackPair)
+    : playbackPair === "browserMediaAdapters:browser";
+  if (!playbackPlatformIsValid) {
+    throw new TypeError("ResearchRunManifestV2 playback mode and qualification do not match.");
+  }
+  if (output.build.platform === "tauri-windows" && !CANONICAL_UUID_PATTERN.test(output.runId)) {
+    throw new TypeError("ResearchRunManifestV2.runId must be a canonical UUID for Tauri Windows.");
+  }
+  if (output.build.platform === "tauri-windows"
+    && output.recovery.sourceRunId !== null
+    && !CANONICAL_UUID_PATTERN.test(output.recovery.sourceRunId)) {
+    throw new TypeError("ResearchRunManifestV2.recovery.sourceRunId must be a canonical UUID for Tauri Windows.");
+  }
   if (new Date(output.timing.finalizedAt) < new Date(output.timing.startedAt)) throw new TypeError("ResearchRunManifestV2 finalization precedes its start.");
   if (output.recovery.resumed !== (output.recovery.sourceRunId !== null)) throw new TypeError("ResearchRunManifestV2 recovery source does not match resumed state.");
   if (new Set(output.recovery.restartedStimulusIds).size !== output.recovery.restartedStimulusIds.length

@@ -211,7 +211,7 @@ test("ResearchRunManifestV2 contains coded demographics but no raw-name slots", 
   const manifest = {
     schema: RESEARCH_RUN_MANIFEST_SCHEMA,
     version: 2,
-    runId: "run-001",
+    runId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
     experimentId: "video-affect-study",
     participantId: "P001",
     participantCode: "EF",
@@ -221,6 +221,8 @@ test("ResearchRunManifestV2 contains coded demographics but no raw-name slots", 
     attemptNumber: 1,
     sessionStem: "P001_EF_A27_GW_HR_20260903T143012482Z_R01",
     completionStatus: "partial",
+    playbackMode: "unqualifiedWebview",
+    playbackQualification: "unqualified",
     settingsSha256: digest,
     assignmentPlanSha256: planDigest,
     stimuli: [structuredClone(localIdentity)],
@@ -243,8 +245,77 @@ test("ResearchRunManifestV2 contains coded demographics but no raw-name slots", 
   };
   const normalized = validateResearchRunManifestV2(manifest);
   assert.equal(normalized.participantCode, "EF");
+  assert.equal(normalized.playbackQualification, "unqualified");
   assert.equal(JSON.stringify(normalized).includes("firstName"), false);
+  assert.throws(() => validateResearchRunManifestV2({
+    ...manifest,
+    playbackMode: "nativeLibvlc",
+  }), /playback mode and qualification do not match/u);
   assert.throws(() => validateResearchRunManifestV2({ ...manifest, firstName: "Erika" }), /unknown field firstName/);
+  assert.throws(() => validateResearchRunManifestV2({ ...manifest, runId: "run-001" }), /canonical UUID for Tauri Windows/u);
+  for (const runId of [manifest.runId.toUpperCase(), ` ${manifest.runId}`]) {
+    assert.throws(() => validateResearchRunManifestV2({ ...manifest, runId }), /runId must use its canonical lowercase identifier spelling/u);
+  }
+  const invalidNativeRunIds = [
+    "00000000-0000-0000-0000-000000000000",
+    "aaaaaaaa-aaaa-0aaa-8aaa-aaaaaaaaaaaa",
+    "aaaaaaaa-aaaa-9aaa-8aaa-aaaaaaaaaaaa",
+    "aaaaaaaa-aaaa-4aaa-0aaa-aaaaaaaaaaaa",
+    "aaaaaaaa-aaaa-4aaa-caaa-aaaaaaaaaaaa",
+  ];
+  for (const runId of invalidNativeRunIds) {
+    assert.throws(() => validateResearchRunManifestV2({ ...manifest, runId }), /canonical UUID for Tauri Windows/u);
+  }
+  for (const experimentId of [manifest.experimentId.toUpperCase(), `${manifest.experimentId} `]) {
+    assert.throws(() => validateResearchRunManifestV2({ ...manifest, experimentId }), /experimentId must use its canonical lowercase identifier spelling/u);
+  }
+  assert.throws(() => validateResearchRunManifestV2({
+    ...manifest,
+    recovery: { resumed: true, sourceRunId: "run-prior", restartedStimulusIds: [] },
+  }), /recovery\.sourceRunId must be a canonical UUID for Tauri Windows/u);
+  const resumedNativeManifest = validateResearchRunManifestV2({
+    ...manifest,
+    recovery: {
+      resumed: true,
+      sourceRunId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+      restartedStimulusIds: [],
+    },
+  });
+  assert.equal(resumedNativeManifest.recovery.sourceRunId, "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb");
+  for (const sourceRunId of [
+    resumedNativeManifest.recovery.sourceRunId.toUpperCase(),
+    `${resumedNativeManifest.recovery.sourceRunId} `,
+  ]) {
+    assert.throws(() => validateResearchRunManifestV2({
+      ...manifest,
+      recovery: { resumed: true, sourceRunId, restartedStimulusIds: [] },
+    }), /recovery\.sourceRunId must use its canonical lowercase identifier spelling/u);
+  }
+  for (const sourceRunId of invalidNativeRunIds) {
+    assert.throws(() => validateResearchRunManifestV2({
+      ...manifest,
+      recovery: { resumed: true, sourceRunId, restartedStimulusIds: [] },
+    }), /recovery\.sourceRunId must be a canonical UUID for Tauri Windows/u);
+  }
+  const browserManifest = validateResearchRunManifestV2({
+    ...manifest,
+    runId: "run-001",
+    playbackMode: "browserMediaAdapters",
+    playbackQualification: "browser",
+    recovery: { resumed: true, sourceRunId: "run-prior", restartedStimulusIds: [] },
+    build: { ...manifest.build, platform: "edge" },
+  });
+  assert.equal(browserManifest.runId, "run-001");
+  assert.equal(browserManifest.recovery.sourceRunId, "run-prior");
+  for (const runId of ["Run-001", "run-001 "]) {
+    assert.throws(() => validateResearchRunManifestV2({ ...browserManifest, runId }), /runId must use its canonical lowercase identifier spelling/u);
+  }
+  for (const sourceRunId of ["Run-Prior", " run-prior"]) {
+    assert.throws(() => validateResearchRunManifestV2({
+      ...browserManifest,
+      recovery: { ...browserManifest.recovery, sourceRunId },
+    }), /recovery\.sourceRunId must use its canonical lowercase identifier spelling/u);
+  }
 });
 
 test("portable v1 import reports every mapping, default, and discarded legacy leaf", () => {

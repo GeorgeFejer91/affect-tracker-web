@@ -14,12 +14,28 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$pinnedArchiveSha256 = '992d19dbd0b8a7cde9167d2f7780b1ef6f92acc8a71acfa736101a21f35181e1'
-$pinnedArchiveName = 'vlc-3.0.23-win64.zip'
-$pinnedExtractedRoot = 'vlc-3.0.23'
-$hashManifestName = 'runtime-files.sha256'
+$pinPath = Join-Path $PSScriptRoot 'libvlc-runtime-v1.json'
+$pin = Get-Content -Raw -LiteralPath $pinPath | ConvertFrom-Json
+if ($pin.schema -cne 'affect-research-native-media-runtime-pin' -or
+    $pin.version -ne 1 -or
+    $pin.backend -cne 'libvlc' -or
+    $pin.runtimeVersion -cne '3.0.23' -or
+    $pin.target -cne 'win-x64' -or
+    $pin.runtimeTree.manifestOrdering -cne 'ordinal-relative-path-v1' -or
+    $pin.runtimeTree.requiredPeMachine -cne '0x8664' -or
+    $pin.runtimeTree.requiredOptionalHeaderMagic -cne '0x020b') {
+    throw "The checked-in native-media pin is incompatible with this stager."
+}
+$pinnedArchiveSha256 = [string] $pin.archive.sha256
+$pinnedArchiveName = [string] $pin.archive.fileName
+$pinnedExtractedRoot = "vlc-$($pin.runtimeVersion)"
+$hashManifestName = [string] $pin.runtimeTree.manifestFileName
+$pinnedManifestSha256 = [string] $pin.runtimeTree.manifestSha256
+$pinnedFileCount = [int] $pin.runtimeTree.fileCount
+$pinnedByteLength = [UInt64] $pin.runtimeTree.byteLength
 $maximumFiles = 10000
 $maximumBytes = 1GB
+$maximumDepth = 16
 
 function Get-NormalizedRelativePath {
     param(
@@ -50,13 +66,117 @@ function Assert-SafeRelativePath {
     }
 }
 
+function Assert-OrdinaryFilesystemItem {
+    param([Parameter(Mandatory = $true)] [IO.FileSystemInfo] $Item)
+
+    if (($Item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0 -or $Item.LinkType) {
+        throw "Links and reparse points are forbidden in the staged runtime."
+    }
+}
+
+function Get-OrdinaryRuntimeFiles {
+    param([Parameter(Mandatory = $true)] [string] $RuntimeRoot)
+
+    $rootItem = Get-Item -LiteralPath $RuntimeRoot -Force
+    Assert-OrdinaryFilesystemItem -Item $rootItem
+    if (-not $rootItem.PSIsContainer) {
+        throw "The staged native runtime root is not an ordinary directory."
+    }
+
+    $pending = [Collections.Generic.Stack[object]]::new()
+    $pending.Push([pscustomobject]@{ Path = $rootItem.FullName; Depth = 0 })
+    $files = [Collections.Generic.List[IO.FileInfo]]::new()
+    while ($pending.Count -gt 0) {
+        $current = $pending.Pop()
+        foreach ($item in @(Get-ChildItem -LiteralPath $current.Path -Force)) {
+            Assert-OrdinaryFilesystemItem -Item $item
+            if ($item.PSIsContainer) {
+                $nextDepth = [int] $current.Depth + 1
+                if ($nextDepth -gt $maximumDepth) {
+                    throw "The staged runtime exceeds the supported folder depth."
+                }
+                $pending.Push([pscustomobject]@{ Path = $item.FullName; Depth = $nextDepth })
+            }
+            elseif ($item -is [IO.FileInfo]) {
+                if ($files.Count -ge $maximumFiles) {
+                    throw "The staged runtime contains too many files."
+                }
+                $files.Add($item)
+            }
+            else {
+                throw "The staged runtime contains an unsupported filesystem item."
+            }
+        }
+    }
+    $files.ToArray()
+}
+
+function Assert-PeX64 {
+    param([Parameter(Mandatory = $true)] [string] $Path)
+
+    $stream = [IO.File]::Open(
+        $Path,
+        [IO.FileMode]::Open,
+        [IO.FileAccess]::Read,
+        [IO.FileShare]::Read
+    )
+    try {
+        if ($stream.Length -lt 64) {
+            throw "A required engine file is not a valid PE image."
+        }
+        $reader = [IO.BinaryReader]::new($stream, [Text.Encoding]::ASCII, $true)
+        try {
+            if ($reader.ReadByte() -ne 0x4d -or $reader.ReadByte() -ne 0x5a) {
+                throw "A required engine file is not a valid PE image."
+            }
+            $stream.Position = 0x3c
+            [UInt64] $peOffset = $reader.ReadUInt32()
+            if ($peOffset -lt 64 -or $peOffset + 26 -gt [UInt64] $stream.Length) {
+                throw "A required engine file has an invalid PE header offset."
+            }
+            $stream.Position = [Int64] $peOffset
+            if ($reader.ReadUInt32() -ne 0x00004550) {
+                throw "A required engine file has an invalid PE signature."
+            }
+            $machine = $reader.ReadUInt16()
+            $stream.Position = [Int64] ($peOffset + 20)
+            $optionalHeaderBytes = $reader.ReadUInt16()
+            if ($optionalHeaderBytes -lt 2) {
+                throw "A required engine file has an invalid PE optional header."
+            }
+            $stream.Position = [Int64] ($peOffset + 24)
+            $optionalMagic = $reader.ReadUInt16()
+            if ($machine -ne 0x8664 -or $optionalMagic -ne 0x020b) {
+                throw "A required engine file is not an x64 PE32+ image."
+            }
+        }
+        finally {
+            $reader.Dispose()
+        }
+    }
+    finally {
+        $stream.Dispose()
+    }
+}
+
 function Test-StagedRuntime {
     param([Parameter(Mandatory = $true)] [string] $RuntimeRoot)
 
-    $resolvedRoot = (Resolve-Path -LiteralPath $RuntimeRoot).Path
+    $rootItem = Get-Item -LiteralPath $RuntimeRoot -Force
+    Assert-OrdinaryFilesystemItem -Item $rootItem
+    if (-not $rootItem.PSIsContainer) {
+        throw "The staged native runtime root is not an ordinary directory."
+    }
+    $resolvedRoot = $rootItem.FullName
     $manifestPath = Join-Path $resolvedRoot $hashManifestName
     if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) {
         throw "The staged runtime hash manifest is missing."
+    }
+    $manifestItem = Get-Item -LiteralPath $manifestPath -Force
+    Assert-OrdinaryFilesystemItem -Item $manifestItem
+    $observedManifestHash = (Get-FileHash -LiteralPath $manifestPath -Algorithm SHA256).Hash.ToLowerInvariant()
+    if ($observedManifestHash -cne $pinnedManifestSha256) {
+        throw "The staged runtime tree identity does not match the checked-in pin."
     }
     $expected = @{}
     foreach ($line in [IO.File]::ReadAllLines($manifestPath, [Text.Encoding]::UTF8)) {
@@ -75,6 +195,9 @@ function Test-StagedRuntime {
     if ($expected.Count -gt $maximumFiles) {
         throw "The staged runtime contains too many files."
     }
+    if ($expected.Count -ne $pinnedFileCount) {
+        throw "The staged runtime file count does not match the checked-in pin."
+    }
     foreach ($required in @('libvlc.dll', 'libvlccore.dll')) {
         if (-not $expected.ContainsKey($required)) {
             throw "The staged runtime is missing a required engine file."
@@ -87,7 +210,7 @@ function Test-StagedRuntime {
         throw "The staged runtime has no upstream license notice."
     }
 
-    $files = @(Get-ChildItem -LiteralPath $resolvedRoot -Recurse -File | Where-Object {
+    $files = @(Get-OrdinaryRuntimeFiles -RuntimeRoot $resolvedRoot | Where-Object {
         $_.FullName -ne $manifestPath
     })
     if ($files.Count -ne $expected.Count) {
@@ -112,6 +235,12 @@ function Test-StagedRuntime {
         if ($totalBytes -gt $maximumBytes) {
             throw "The staged runtime exceeds the one-gigabyte safety bound."
         }
+    }
+    if ($totalBytes -ne $pinnedByteLength) {
+        throw "The staged runtime byte length does not match the checked-in pin."
+    }
+    foreach ($required in @('libvlc.dll', 'libvlccore.dll')) {
+        Assert-PeX64 -Path (Join-Path $resolvedRoot $required)
     }
     [pscustomobject]@{
         RuntimeVersion = '3.0.23'
@@ -178,15 +307,27 @@ try {
         Copy-Item -LiteralPath $license.FullName -Destination $stagingRoot
     }
 
-    $runtimeFiles = @(Get-ChildItem -LiteralPath $stagingRoot -Recurse -File | Sort-Object FullName)
+    $runtimeFiles = @(Get-OrdinaryRuntimeFiles -RuntimeRoot $stagingRoot)
     if ($runtimeFiles.Count -gt $maximumFiles) {
         throw "The staged runtime contains too many files."
     }
-    $lines = foreach ($file in $runtimeFiles) {
+    $manifestEntries = [Collections.Generic.SortedDictionary[string, string]]::new(
+        [StringComparer]::Ordinal
+    )
+    $caseFoldedPaths = [Collections.Generic.HashSet[string]]::new(
+        [StringComparer]::OrdinalIgnoreCase
+    )
+    foreach ($file in $runtimeFiles) {
         $relative = Get-NormalizedRelativePath -Root $stagingRoot -Path $file.FullName
         Assert-SafeRelativePath -RelativePath $relative
+        if (-not $caseFoldedPaths.Add($relative)) {
+            throw "The staged runtime contains a case-colliding path."
+        }
         $hash = (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
-        "$hash *$relative"
+        $manifestEntries.Add($relative, $hash)
+    }
+    $lines = foreach ($entry in $manifestEntries.GetEnumerator()) {
+        "$($entry.Value) *$($entry.Key)"
     }
     $manifestPath = Join-Path $stagingRoot $hashManifestName
     [IO.File]::WriteAllText(

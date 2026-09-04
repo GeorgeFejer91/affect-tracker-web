@@ -38,6 +38,8 @@ function researchManifest(overrides = {}) {
     attemptNumber: 1,
     sessionStem: SESSION_STEM,
     completionStatus: "completed",
+    playbackMode: "browserMediaAdapters",
+    playbackQualification: "browser",
     settingsSha256: HASH_A,
     assignmentPlanSha256: HASH_B,
     stimuli: [{
@@ -213,6 +215,8 @@ class RepresentativeDecodeVideo extends EventTarget {
   constructor({ duration = 10, frameMode = "decode" } = {}) {
     super();
     this.duration = duration;
+    this.videoWidth = 1_920;
+    this.videoHeight = 1_080;
     this.frameMode = frameMode;
     this.preload = "";
     this.muted = false;
@@ -266,6 +270,8 @@ test("video preflight seeks across the complete duration and requires representa
   });
 
   assert.equal(result.decodeVerified, true);
+  assert.equal(result.videoWidth, 1_920);
+  assert.equal(result.videoHeight, 1_080);
   assert.deepEqual(result.decodedPositionsSeconds, [0.25, 5, 9.75]);
   assert.deepEqual(video.seeks, result.decodedPositionsSeconds);
   assert.deepEqual(video.decodedFrames, result.decodedPositionsSeconds,

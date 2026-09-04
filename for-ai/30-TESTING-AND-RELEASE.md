@@ -99,6 +99,26 @@ the bundler exit code as runtime evidence.
 - Verify CSV/TSV toggles are independent with at least one selected. Both files
   must serialize the same canonical rows, columns, ordering, values, and count.
 
+### Native workspace boundary
+
+- Assert `librariesReady` reflects all four exact canonical workspace
+  libraries. Remove a library, replace it with a file or a new same-path
+  directory, and replace it with a symlink/junction to an external directory;
+  status and every privileged operation must fail closed without recreating the
+  library or exposing a native path.
+- Exercise durable readiness probes in both `recovery/` and a temporary nested
+  `outputs/<experiment>/<participant>/<session>/` hierarchy. Verify exact
+  cleanup, path-free receipts/errors, and failure when either hierarchy cannot
+  be used.
+- For actual run creation, place a file, an outside-target junction, and a
+  same-path directory replacement at each nested experiment/participant
+  boundary. Assert that the runtime never follows it, revalidates around the
+  participant lock, preserves create-new session semantics, and emits no output
+  beyond the selected workspace.
+- Treat Windows reparse-point races as an explicit residual boundary until a
+  separately reviewed safe handle/file-ID design exists; passing junction and
+  replacement tests is not evidence of a race-free sandbox.
+
 ## Native Windows media gate
 
 Qualified workspace/repository playback uses the bundled libVLC 3.0.23 x64
@@ -112,13 +132,23 @@ runtime and no other VLC installation.
   `e891cae6aa3ccda69bf94173d5105cbc55c7a7d9b1d21b9b21666e69eff3e7e0`
   against `src-tauri/native-media/libvlc-runtime-v1.json`.
 - Stage only the required DLLs, plugin tree, and upstream notices. Verify the
-  complete generated file-hash manifest and reject links, traversal, extra,
-  missing, modified, or wrong-architecture files.
+  complete generated file-hash manifest and reject links, Windows directory
+  junctions/reparse points, traversal, extra, missing, modified, or
+  wrong-architecture files. A real-junction regression must prove the verifier
+  rejects before traversal and never changes the external target.
 - Package with `AFFECT_RESEARCH_REQUIRE_LIBVLC_RUNTIME=1`; prove the build fails
   closed when the tree is absent or altered. The running app must not inspect a
   system VLC, `%PATH%`, registry location, or runtime download URL.
 - Retain applicable source-offer/license obligations and use libVLC only as a
   descriptive dependency name; Affect Research must not adopt VLC branding.
+- Every distributed Windows alpha artifact must include the exact pinned
+  libVLC source archive, the machine-readable runtime pin, and a provenance
+  record binding repository, workflow/run, Git commit, runtime-pin identity,
+  and installer/source SHA-256 plus byte lengths. Every external build action
+  is pinned to an exact commit and the materialized checkout must remain clean.
+  The local `pnpm desktop:bundle` wrapper must activate the same required-runtime
+  gate. The artifact name also includes the full commit SHA; a mutable filename
+  or unbound aggregate pass count is not release evidence.
 
 ### Player-actor security and lifecycle evidence
 
@@ -146,6 +176,16 @@ child-window ownership, and callbacks-after-teardown prevention.
 - Prove `unqualifiedWebview` is an explicit opt-in, never an automatic fallback,
   and that status, first event, journal, receipt, and manifest all retain the
   unqualified label. Its media errors must still stop native sampling.
+- For the unqualified desktop probe, require decoded-frame callbacks at the
+  deterministic near-start, midpoint, and near-end positions; reject metadata,
+  seek, or short-play evidence without those frames. Assert the
+  `representativeFramesV1` / `webviewVideoFrameCallback` /
+  `attestedUnqualified` labels and one-use grant consumption on success,
+  rejection, and explicit revocation.
+- Race delayed events from a detached prior video against the current source,
+  lifecycle IPC against status polls, and an older status response against a
+  newer response. Require run/participant/attempt/hash/playback receipt binding,
+  per-source element generations, and fail-closed unknown-outcome reconciliation.
 
 Runtime staging, a verified capability response, or successful unit tests alone
 do not satisfy this gate.
@@ -163,6 +203,13 @@ do not satisfy this gate.
   permission, unavailable IndexedDB, process/tab termination, power-loss
   simulation, corrupt/truncated journals, manifest/output disagreement,
   finalization interruption, and idempotent retry.
+- Inject lifecycle event/checkpoint failures and prove native sampling/input
+  authority stops while the last durable journal remains recoverable. Reject
+  evidence shorter than journaled prefixes; permit only deterministic repair
+  beyond those prefixes. Exercise the explicit Setup pending-finalization action
+  without demographics or acquisition preflights and bind its receipt to the
+  exact durable run, participant, attempt, outcome, settings, plan, and playback
+  provenance.
 - Prove accepted evidence is never silently discarded, backfilled, relabelled,
   overwritten, or called Complete before durable finalization and lock release.
 

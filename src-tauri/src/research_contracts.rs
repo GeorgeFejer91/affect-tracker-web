@@ -6,6 +6,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use unicode_normalization::UnicodeNormalization;
 use unicode_segmentation::UnicodeSegmentation;
 use url::Url;
+use uuid::Uuid;
 
 pub const RESEARCH_SETTINGS_SCHEMA: &str = "affect-research-settings";
 pub const RESOLVED_ASSIGNMENT_PLAN_SCHEMA: &str = "affect-research-assignment-plan";
@@ -498,6 +499,8 @@ pub struct ResearchRunManifestV2 {
     pub attempt_number: u32,
     pub session_stem: String,
     pub completion_status: CompletionStatusV1,
+    pub playback_mode: RunPlaybackModeV1,
+    pub playback_qualification: RunPlaybackQualificationV1,
     pub settings_sha256: String,
     pub assignment_plan_sha256: String,
     pub stimuli: Vec<SampleStimulusIdentityV1>,
@@ -505,6 +508,22 @@ pub struct ResearchRunManifestV2 {
     pub outputs: Vec<RunOutputV1>,
     pub recovery: RecoverySummaryV1,
     pub build: ResearchBuildV1,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum RunPlaybackModeV1 {
+    NativeLibvlc,
+    UnqualifiedWebview,
+    BrowserMediaAdapters,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum RunPlaybackQualificationV1 {
+    QualifiedNative,
+    Unqualified,
+    Browser,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -1557,8 +1576,26 @@ impl SampleStimulusIdentityV1 {
 
 impl ResearchRunManifestV2 {
     pub fn validate(&self) -> ResearchResult<()> {
+        let experiment_id_is_canonical =
+            normalize_identifier(&self.experiment_id, "ResearchRunManifestV2.experimentId")
+                .is_ok_and(|normalized| normalized == self.experiment_id);
+        let run_id_is_valid = manifest_run_id_is_valid(
+            self.build.platform,
+            &self.run_id,
+            "ResearchRunManifestV2.runId",
+        );
+        let source_run_id_is_valid = self.recovery.source_run_id.as_ref().is_none_or(|run_id| {
+            manifest_run_id_is_valid(
+                self.build.platform,
+                run_id,
+                "ResearchRunManifestV2.recovery.sourceRunId",
+            )
+        });
         if self.schema != RESEARCH_RUN_MANIFEST_SCHEMA
             || self.version != 2
+            || !run_id_is_valid
+            || !source_run_id_is_valid
+            || !experiment_id_is_canonical
             || self.attempt_number == 0
             || self.age == 0
             || self.age > 120
@@ -1575,6 +1612,26 @@ impl ResearchRunManifestV2 {
             &self.assignment_plan_sha256,
             "manifest.assignmentPlanSha256",
         )?;
+        let playback_contract_is_valid = matches!(
+            (
+                self.build.platform,
+                self.playback_mode,
+                self.playback_qualification
+            ),
+            (
+                ResearchPlatformV1::TauriWindows,
+                RunPlaybackModeV1::NativeLibvlc,
+                RunPlaybackQualificationV1::QualifiedNative
+            ) | (
+                ResearchPlatformV1::TauriWindows,
+                RunPlaybackModeV1::UnqualifiedWebview,
+                RunPlaybackQualificationV1::Unqualified
+            ) | (
+                ResearchPlatformV1::Chrome | ResearchPlatformV1::Edge,
+                RunPlaybackModeV1::BrowserMediaAdapters,
+                RunPlaybackQualificationV1::Browser
+            )
+        );
         if UnicodeSegmentation::graphemes(self.participant_code.as_str(), true).count() != 2
             || self.participant_code.to_uppercase() != self.participant_code
             || self
@@ -1587,6 +1644,7 @@ impl ResearchRunManifestV2 {
             || (self.timing.gap_event_count == 0 && self.timing.missed_slot_count != 0)
             || self.timing.started_at.is_empty()
             || self.timing.finalized_at.is_empty()
+            || !playback_contract_is_valid
         {
             return Err(contract_error("ResearchRunManifestV2 metadata is invalid."));
         }
@@ -1656,6 +1714,19 @@ impl ResearchRunManifestV2 {
             return Err(contract_error("Manifest build provenance is incomplete."));
         }
         Ok(())
+    }
+}
+
+fn manifest_run_id_is_valid(platform: ResearchPlatformV1, value: &str, label: &str) -> bool {
+    match platform {
+        ResearchPlatformV1::TauriWindows => Uuid::parse_str(value).is_ok_and(|parsed| {
+            parsed.to_string() == value
+                && matches!(parsed.get_version_num(), 1..=8)
+                && parsed.get_variant() == uuid::Variant::RFC4122
+        }),
+        ResearchPlatformV1::Chrome | ResearchPlatformV1::Edge => {
+            normalize_identifier(value, label).is_ok_and(|normalized| normalized == value)
+        }
     }
 }
 
@@ -2234,11 +2305,11 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn manifest_participant_code_counts_unicode_graphemes() {
+    fn manifest_validates_native_ids_playback_and_unicode_code() {
         let manifest = ResearchRunManifestV2 {
             schema: RESEARCH_RUN_MANIFEST_SCHEMA.to_owned(),
             version: 2,
-            run_id: "run-1".to_owned(),
+            run_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa".to_owned(),
             experiment_id: "experiment".to_owned(),
             participant_id: "P001".to_owned(),
             participant_code: "A\u{301}B".to_owned(),
@@ -2248,6 +2319,8 @@ pub(crate) mod tests {
             attempt_number: 1,
             session_stem: "P001_ÁB_A20_GX_HR_20260904T000000000Z_R01".to_owned(),
             completion_status: CompletionStatusV1::Completed,
+            playback_mode: RunPlaybackModeV1::UnqualifiedWebview,
+            playback_qualification: RunPlaybackQualificationV1::Unqualified,
             settings_sha256: "2".repeat(64),
             assignment_plan_sha256: "3".repeat(64),
             stimuli: vec![SampleStimulusIdentityV1 {
@@ -2303,6 +2376,57 @@ pub(crate) mod tests {
             },
         };
         assert!(manifest.validate().is_ok());
+        let mut mismatched_playback = manifest.clone();
+        mismatched_playback.playback_mode = RunPlaybackModeV1::NativeLibvlc;
+        assert!(mismatched_playback.validate().is_err());
+        let mut invalid_run_id = manifest.clone();
+        invalid_run_id.run_id = "run-1".to_owned();
+        assert!(invalid_run_id.validate().is_err());
+        let invalid_native_run_ids = [
+            "00000000-0000-0000-0000-000000000000",
+            "aaaaaaaa-aaaa-0aaa-8aaa-aaaaaaaaaaaa",
+            "aaaaaaaa-aaaa-9aaa-8aaa-aaaaaaaaaaaa",
+            "aaaaaaaa-aaaa-4aaa-0aaa-aaaaaaaaaaaa",
+            "aaaaaaaa-aaaa-4aaa-caaa-aaaaaaaaaaaa",
+            "AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA",
+            " aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        ];
+        for run_id in invalid_native_run_ids {
+            let mut invalid_native_manifest = manifest.clone();
+            invalid_native_manifest.run_id = run_id.to_owned();
+            assert!(invalid_native_manifest.validate().is_err(), "{run_id}");
+        }
+        let mut browser_manifest = manifest.clone();
+        browser_manifest.build.platform = ResearchPlatformV1::Chrome;
+        browser_manifest.playback_mode = RunPlaybackModeV1::BrowserMediaAdapters;
+        browser_manifest.playback_qualification = RunPlaybackQualificationV1::Browser;
+        browser_manifest.run_id = "run-11111111-1111-4111-8111-111111111111".to_owned();
+        assert!(browser_manifest.validate().is_ok());
+        let mut invalid_browser_run_id = browser_manifest.clone();
+        invalid_browser_run_id.run_id = "Run-11111111-1111-4111-8111-111111111111".to_owned();
+        assert!(invalid_browser_run_id.validate().is_err());
+
+        let mut native_recovery = manifest.clone();
+        native_recovery.recovery.resumed = true;
+        native_recovery.recovery.source_run_id =
+            Some("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb".to_owned());
+        assert!(native_recovery.validate().is_ok());
+        for source_run_id in invalid_native_run_ids {
+            native_recovery.recovery.source_run_id = Some(source_run_id.to_owned());
+            assert!(native_recovery.validate().is_err(), "{source_run_id}");
+        }
+        native_recovery.recovery.source_run_id = Some("run-prior".to_owned());
+        assert!(native_recovery.validate().is_err());
+
+        let mut browser_recovery = browser_manifest;
+        browser_recovery.recovery.resumed = true;
+        browser_recovery.recovery.source_run_id = Some("run-prior".to_owned());
+        assert!(browser_recovery.validate().is_ok());
+        browser_recovery.recovery.source_run_id = Some("../run-prior".to_owned());
+        assert!(browser_recovery.validate().is_err());
+        let mut invalid_experiment_id = manifest.clone();
+        invalid_experiment_id.experiment_id = "../experiment".to_owned();
+        assert!(invalid_experiment_id.validate().is_err());
         let mut invalid = manifest;
         invalid.participant_code = "ABC".to_owned();
         assert!(invalid.validate().is_err());

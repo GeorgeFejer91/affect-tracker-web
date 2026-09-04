@@ -8,9 +8,9 @@ use crate::research_input::{
 use crate::research_lsl::{probe_readiness, LslReadiness};
 use crate::research_native_media::{NativeMediaCapability, NativeMediaService};
 use crate::research_runtime::{
-    FinalizeReceipt, FinishOutcome, MediaPlaybackFailureReceipt, MediaPlaybackFailureReport,
-    ParticipantTileStatus, RecoveryListing, ResearchRuntime, ResumeRunRequest, RunStatus,
-    StartRunReceipt, StartRunRequest, StimulusStateUpdate,
+    FinalizeReceipt, FinalizeRecoveryRequest, FinishOutcome, MediaPlaybackFailureReceipt,
+    MediaPlaybackFailureReport, ParticipantTileStatus, RecoveryListing, ResearchRuntime,
+    ResumeRunRequest, RunStatus, StartRunReceipt, StartRunRequest, StimulusStateUpdate,
 };
 use crate::research_workspace::{
     source_capabilities, AssignmentPlanExportReceipt, DecodeAttestationRequest,
@@ -393,6 +393,16 @@ pub fn research_resume_run(
 }
 
 #[tauri::command]
+pub fn research_finalize_recovery(
+    window: WebviewWindow,
+    runtime: State<'_, Arc<ResearchRuntime>>,
+    request: FinalizeRecoveryRequest,
+) -> ResearchResult<FinalizeReceipt> {
+    authorize(&window)?;
+    runtime.finalize_recovery(request)
+}
+
+#[tauri::command]
 pub fn research_run_status(
     window: WebviewWindow,
     runtime: State<'_, Arc<ResearchRuntime>>,
@@ -408,17 +418,18 @@ pub fn research_set_stimulus_state(
     update: StimulusStateUpdate,
 ) -> ResearchResult<()> {
     authorize(&window)?;
-    runtime.set_stimulus_state(update)
+    runtime.set_webview_stimulus_state(update)
 }
 
 #[tauri::command]
 pub fn research_finish_run(
     window: WebviewWindow,
     runtime: State<'_, Arc<ResearchRuntime>>,
+    run_id: String,
     outcome: FinishOutcome,
 ) -> ResearchResult<FinalizeReceipt> {
     authorize(&window)?;
-    runtime.finish(outcome)
+    runtime.finish(&run_id, outcome)
 }
 
 #[tauri::command]
@@ -428,7 +439,7 @@ pub fn research_report_media_failure(
     report: MediaPlaybackFailureReport,
 ) -> ResearchResult<MediaPlaybackFailureReceipt> {
     authorize(&window)?;
-    runtime.report_media_failure(report)
+    runtime.report_webview_media_failure(report)
 }
 
 #[tauri::command]
@@ -481,6 +492,7 @@ mod tests {
             "research_lsl_readiness",
             "research_start_run",
             "research_resume_run",
+            "research_finalize_recovery",
             "research_run_status",
             "research_set_stimulus_state",
             "research_finish_run",

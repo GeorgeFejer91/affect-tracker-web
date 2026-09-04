@@ -633,7 +633,7 @@ export function renderResearchUiMarkup(surface = "browser") {
           <div class="run-stage">
             <section class="stimulus-stage" aria-label="Current complete stimulus">
               <video id="run-video" preload="metadata" playsinline aria-label="Protocol-controlled current stimulus video"></video>
-              <p id="run-stimulus-placeholder" class="stimulus-placeholder">The verified complete video appears here after the run authority starts the attempt.</p>
+              <p id="run-stimulus-placeholder" class="stimulus-placeholder">The preflighted complete video appears here after the run authority starts the attempt.</p>
               <div id="run-youtube-player" class="youtube-player-host run-youtube-player" aria-label="Experimental YouTube stimulus player" hidden></div>
             </section>
             <aside class="run-feedback-stage" aria-label="Configured adjacent visual feedback">
@@ -774,6 +774,8 @@ function bindResearchInteractions(root, { surface }) {
   const stimuli = [];
   const participantStates = new Map();
   const participantRecoverability = new Map();
+  const participantFinalizationPending = new Map();
+  const participantFinalizationBindings = new Map();
   const touchedValidationControls = new WeakSet();
 
   const setupPreview = createResearchPreview(root.querySelector(".preview-pane"), {
@@ -1131,10 +1133,27 @@ function bindResearchInteractions(root, { surface }) {
     return normalizeAttemptDisposition(selectedParticipantState(), requested);
   }
 
+  function selectedPendingFinalization() {
+    if (surface !== "tauri"
+      || selectedParticipantState() !== "partial"
+      || selectedAttemptDisposition() !== "resume-compatible"
+      || participantFinalizationPending.get(selectedParticipant) !== true) return null;
+    const binding = participantFinalizationBindings.get(selectedParticipant);
+    const playbackMode = value("native-playback-mode", "nativeLibvlc");
+    if (!binding || !settingsSnapshot || !settingsHash || !plan
+      || binding.settingsSha256 !== settingsHash
+      || binding.assignmentPlanSha256 !== plan.planHashSha256
+      || plan.settingsSha256 !== settingsHash
+      || binding.playbackMode !== playbackMode
+      || !["completed", "partial"].includes(binding.completionStatus)) return null;
+    return binding;
+  }
+
   function renderAttemptDisposition() {
     const state = selectedParticipantState();
     const recoverable = participantRecoverability.get(selectedParticipant) === true;
-    const contextKey = `${selectedParticipant}:${state}:${recoverable}`;
+    const finalizationPending = participantFinalizationPending.get(selectedParticipant) === true;
+    const contextKey = `${selectedParticipant}:${state}:${recoverable}:${finalizationPending}`;
     const fieldset = query("#attempt-disposition");
     const resumeOption = query("#attempt-resume-option");
     const resume = query('input[name="attemptDisposition"][value="resume-compatible"]');
@@ -1167,7 +1186,9 @@ function bindResearchInteractions(root, { surface }) {
     const disposition = selectedAttemptDisposition();
     if (note) {
       note.textContent = state === "partial" && recoverable && disposition === "resume-compatible"
-        ? "Compatibility is checked against the current settings and assignment-plan hashes at Start. Recovery resumes only at a safe boundary."
+        ? finalizationPending
+          ? "A durable terminal intent is pending. With the exact frozen settings and plan selected, this action only reconciles output files; it does not start media, input, timing, or LSL."
+          : "Compatibility is checked against the current settings and assignment-plan hashes at Start. Recovery resumes only at a safe boundary."
         : state === "partial"
           ? recoverable
             ? "The recoverable partial remains intact; this choice creates a separate attempt with the next number."
@@ -1444,6 +1465,25 @@ function bindResearchInteractions(root, { surface }) {
   }
 
   function preflightItems() {
+    const pendingFinalization = selectedPendingFinalization();
+    if (pendingFinalization) {
+      const workspaceReady = capabilities.directoryPermission;
+      const manifestsReady = capabilities.manifestReady;
+      return [
+        { id: "workspace", result: workspaceReady ? "pass" : "block", label: "Workspace", message: workspaceReady ? "Owned libraries ready" : "Reauthorize the exact parent workspace" },
+        { id: "experiment", result: "pass", label: "Frozen protocol", message: `Settings ${pendingFinalization.settingsSha256}` },
+        { id: "stimuli", result: "warning", label: "Stimuli", message: "Not opened for reload-only finalization" },
+        { id: "plan", result: "pass", label: "Frozen plan", message: `balanced-v1 ${pendingFinalization.assignmentPlanSha256}` },
+        { id: "input", result: "warning", label: "Input", message: "Not acquired for reload-only finalization" },
+        { id: "output", result: "pass", label: "Output", message: `Retry durable ${pendingFinalization.completionStatus} output materialization` },
+        { id: "participant", result: "pass", label: "Participant", message: `${selectedParticipant} · attempt ${pendingFinalization.attemptNumber} · no transient demographics required` },
+        { id: "recovery", result: manifestsReady ? "pass" : "block", label: "Recovery & manifests", message: manifestsReady ? "Pending native terminal intent is readable" : manifestReadinessMessage },
+        { id: "storage", result: "warning", label: "Storage", message: "The durable retry will fail closed if output materialization is unavailable" },
+        { id: "timing", result: "warning", label: "Timing", message: "Scheduler is not started for reload-only finalization" },
+        { id: "playback", result: "warning", label: "Playback", message: "Player is not started for reload-only finalization" },
+        { id: "lsl", result: "warning", label: "LSL", message: "Outlets are not started for reload-only finalization" },
+      ];
+    }
     const experimentValid = /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(value("experiment-id"))
       && value("experiment-title").trim().length > 0
       && Number.isInteger(numberValue("participant-count"))
@@ -1485,6 +1525,9 @@ function bindResearchInteractions(root, { surface }) {
     const youtubeStimuli = stimuli.filter(({ source }) => source === "youtube");
     const hasRepository = stimuli.some(({ source }) => source === "repository");
     const hasYouTube = youtubeStimuli.length > 0;
+    const hasUnqualifiedDesktopDecode = surface === "tauri" && stimuli
+      .filter(({ source }) => source !== "youtube")
+      .some(({ decodeQualification }) => decodeQualification === "attestedUnqualified");
     const youtubeReady = surface === "browser" && youtubeStimuli.every((stimulus) => (
       isFreshYouTubePreflight(stimulus.youtubePreflight, stimulus.contractSource, {
         maximumAgeMs: YOUTUBE_PREFLIGHT_MAX_AGE_MS,
@@ -1514,7 +1557,9 @@ function bindResearchInteractions(root, { surface }) {
         message: stimuliReady && poolCapacity.valid
           ? hasYouTube
             ? `${stimuli.length} complete video${stimuli.length === 1 ? "" : "s"} covered; local files byte-verified and YouTube player-preflighted (unverified, noncanonical, qualification excluded)`
-            : `${stimuli.length} complete video${stimuli.length === 1 ? "" : "s"} covered and byte-verified`
+            : hasUnqualifiedDesktopDecode
+              ? `${stimuli.length} complete video${stimuli.length === 1 ? "" : "s"} covered and byte-bound; representative WebView frames attested (unqualified playback)`
+              : `${stimuli.length} complete video${stimuli.length === 1 ? "" : "s"} covered and byte-verified`
           : hasYouTube && surface === "tauri"
             ? "Experimental YouTube is browser-only and remains blocked in Windows Tauri"
             : hasRepository && !repositoryReady
@@ -1573,7 +1618,7 @@ function bindResearchInteractions(root, { surface }) {
             ? "Output and recovery capacity has not passed a current write/quota probe"
             : "Resolve the assignment plan before checking storage capacity",
       },
-      { id: "timing", result: capabilities.timingWorkerReady ? "pass" : "block", label: "Timing", message: capabilities.timingWorkerReady ? `${surface === "tauri" ? "Native" : "Worker"} scheduler readiness proved` : "Timing authority has not reported ready" },
+      { id: "timing", result: capabilities.timingWorkerReady ? "pass" : "block", label: "Timing", message: capabilities.timingWorkerReady ? `${surface === "tauri" ? "Native scheduler available; installed-hardware qualification pending" : "Worker scheduler available; browser timing qualification pending"}` : "Timing authority has not reported ready" },
       ...(surface === "tauri" ? [{
         id: "playback",
         result: playbackReady ? (playbackMode === "unqualifiedWebview" ? "warning" : "pass") : "block",
@@ -1606,9 +1651,17 @@ function bindResearchInteractions(root, { surface }) {
     const blocking = items.filter(({ result }) => result === "block");
     const start = query("#start-experiment");
     const status = query("#start-status");
-    if (start instanceof HTMLButtonElement) start.disabled = blocking.length > 0;
+    const pendingFinalization = selectedPendingFinalization();
+    if (start instanceof HTMLButtonElement) {
+      start.disabled = blocking.length > 0;
+      start.textContent = pendingFinalization
+        ? `Finalize pending ${pendingFinalization.completionStatus} attempt`
+        : "Start experiment / session";
+    }
     if (status) status.textContent = blocking.length === 0
-      ? "All blocking checks pass. Start will freeze this attempt."
+      ? pendingFinalization
+        ? "Ready to reconcile the durable terminal intent without starting acquisition or playback."
+        : "All blocking checks pass. Start will freeze this attempt."
       : `${blocking.length} blocking preflight item${blocking.length === 1 ? "" : "s"} remain.`;
     const readySections = new Set(items.filter(({ result }) => result !== "block").map(({ id }) => id));
     const progress = query("#setup-progress");
@@ -1688,7 +1741,9 @@ function bindResearchInteractions(root, { surface }) {
     }
     const timing = query("#timing-capability");
     if (timing) timing.textContent = capabilities.timingWorkerReady
-      ? `${surface === "tauri" ? "Native" : "Dedicated worker"} timing authority ready`
+      ? surface === "tauri"
+        ? "Native timing authority available · installed-hardware qualification pending"
+        : "Dedicated worker timing authority available · browser qualification pending"
       : "Timing authority not ready";
     const lsl = query("#lsl-capability");
     if (lsl) lsl.textContent = surface === "tauri"
@@ -1771,7 +1826,10 @@ function bindResearchInteractions(root, { surface }) {
           : youtubeFresh
             ? `Player operational · ${stimulus.contractSource.observedTitle} · ${(stimulus.contractSource.observedDurationMs / 1_000).toFixed(1)} s · unverified / noncanonical`
             : "Fresh visible-player preflight required · unverified / noncanonical"
-        : stimulus.verification === "verified" ? "Hash, duration, decode verified"
+        : stimulus.verification === "verified"
+          ? stimulus.decodeQualification === "attestedUnqualified"
+            ? "Hash + representative WebView frames attested · unqualified playback"
+            : "Hash, duration, decode verified"
           : stimulus.verification === "failed" ? `Failed: ${stimulus.error}` : "Verification pending";
       const poolCell = document.createElement("td");
       const select = document.createElement("select");
@@ -2547,6 +2605,34 @@ function bindResearchInteractions(root, { surface }) {
 
   function requestStart() {
     const blocking = preflightItems().filter(({ result }) => result === "block");
+    const pendingFinalization = selectedPendingFinalization();
+    if (pendingFinalization) {
+      if (blocking.length > 0) {
+        openSetupSection("review");
+        announce("Finalization reconciliation is blocked. Reauthorize the workspace and recovery manifest.");
+        return;
+      }
+      const event = new CustomEvent(RESEARCH_UI_EVENTS.startRequest, {
+        bubbles: true,
+        cancelable: true,
+        detail: Object.freeze({
+          participantId: selectedParticipant,
+          attemptDisposition: "resume-compatible",
+          recoveryFinalizationOnly: true,
+          pendingFinalizationAttemptNumber: pendingFinalization.attemptNumber,
+          pendingFinalizationCompletionStatus: pendingFinalization.completionStatus,
+          settings: settingsSnapshot,
+          resolvedPlan: plan,
+          settingsSha256: settingsHash,
+          playbackMode: value("native-playback-mode", "nativeLibvlc"),
+        }),
+      });
+      root.dispatchEvent(event);
+      if (!event.defaultPrevented) {
+        announce("Finalization reconciliation is waiting for the authoritative native adapter.");
+      }
+      return;
+    }
     const fieldsValid = syncFieldValidation({ force: true });
     if (blocking.length > 0 || !fieldsValid) {
       const invalid = query('[aria-invalid="true"]');
@@ -2978,6 +3064,9 @@ function bindResearchInteractions(root, { surface }) {
           location: item.source.relativePath ?? item.source.url,
           poolId,
           verification: item.source.kind === "youtube" ? "unverified" : entry.verified === false ? "pending" : "verified",
+          decodeQualification: item.source.kind === "youtube"
+            ? "unverifiedNoncanonical"
+            : entry.decodeQualification ?? existing?.decodeQualification ?? "verified",
           contractSource: structuredClone(item.source),
           youtubePreflight: null,
         };
@@ -3062,11 +3151,26 @@ function bindResearchInteractions(root, { surface }) {
   root.addEventListener(RESEARCH_UI_EVENTS.participantStates, (event) => {
     participantStates.clear();
     participantRecoverability.clear();
+    participantFinalizationPending.clear();
+    participantFinalizationBindings.clear();
     for (const [id, state] of Object.entries(event.detail ?? {})) {
       if (["available", "active", "partial", "complete"].includes(state)) participantStates.set(id, state);
     }
     for (const [id, recoverable] of Object.entries(event.detail?.__recoverable ?? {})) {
       if (typeof recoverable === "boolean") participantRecoverability.set(id, recoverable);
+    }
+    for (const [id, pending] of Object.entries(event.detail?.__finalizationPending ?? {})) {
+      if (typeof pending === "boolean") participantFinalizationPending.set(id, pending);
+    }
+    for (const [id, binding] of Object.entries(event.detail?.__finalizationBinding ?? {})) {
+      if (binding && typeof binding === "object"
+        && /^[0-9a-f]{64}$/u.test(binding.settingsSha256 ?? "")
+        && /^[0-9a-f]{64}$/u.test(binding.assignmentPlanSha256 ?? "")
+        && ["nativeLibvlc", "unqualifiedWebview"].includes(binding.playbackMode)
+        && ["completed", "partial"].includes(binding.completionStatus)
+        && Number.isSafeInteger(binding.attemptNumber) && binding.attemptNumber > 0) {
+        participantFinalizationBindings.set(id, Object.freeze({ ...binding }));
+      }
     }
     renderReview();
   });

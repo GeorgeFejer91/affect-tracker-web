@@ -180,6 +180,20 @@ mod tests {
         assert_eq!(pin["target"], PINNED_TARGET);
         assert_eq!(pin["archive"]["sha256"], PINNED_ARCHIVE_SHA256);
         assert_eq!(pin["source"]["sha256"], PINNED_SOURCE_SHA256);
+        assert_eq!(
+            pin["runtimeTree"]["manifestSha256"],
+            runtime_manifest::PINNED_RUNTIME_MANIFEST_SHA256
+        );
+        assert_eq!(
+            pin["runtimeTree"]["fileCount"],
+            runtime_manifest::PINNED_RUNTIME_FILE_COUNT
+        );
+        assert_eq!(
+            pin["runtimeTree"]["byteLength"],
+            runtime_manifest::PINNED_RUNTIME_BYTE_LENGTH
+        );
+        assert_eq!(pin["runtimeTree"]["requiredPeMachine"], "0x8664");
+        assert_eq!(pin["runtimeTree"]["requiredOptionalHeaderMagic"], "0x020b");
         assert_eq!(pin["productName"], "Affect Research");
     }
 }

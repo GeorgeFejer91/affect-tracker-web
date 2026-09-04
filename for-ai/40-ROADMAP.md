@@ -21,8 +21,8 @@ candidate is `0.4.0-alpha.1`; it is neither stable nor research-ready.
 - The active Research working tree removes superseded WebXR/Quest, remote,
   Party/Ground Control, direct Polar, face, touch, calibration, retro, phone,
   and legacy study source/assets/tests. This reduction is recoverable from the
-  refs above and must be committed and revalidated with the implementation
-  candidate before it becomes published branch evidence.
+  refs above and is committed and pushed on the implementation branch at
+  `b61f9bbd2547a2f971f44e0de2cbe1e4325243f7`.
 
 ## Implemented candidate slices
 
@@ -42,16 +42,22 @@ The current `research/video-protocol-v1` working candidate contains:
   partial/final paths, pending-finalization recovery, and evidence quarantine;
 - browser worker clock-origin mapping, session/command/provenance fencing, and
   fail-closed media-to-sampler behavior intended to prevent stale rows from
-  crossing stimulus or recovery boundaries; and
+  crossing stimulus or recovery boundaries;
 - Rust Research contract, workspace, runtime, scheduler, persistence, input,
-  LSL, participant-state, and narrow Tauri command modules.
+  LSL, participant-state, and narrow Tauri command modules, including exact
+  run-ID binding for renderer lifecycle/finalization commands, selected-library
+  revalidation, retry-safe terminal-output promotion, durable-prefix recovery,
+  and reload-only pending-finalization;
+- unqualified WebView generation/run fences, ordered native status projection,
+  strict Start/Resume/terminal receipt binding, explicit unknown-outcome
+  reconciliation, and a reachable acquisition-free finalization action.
 
-The latest recorded full JavaScript run during this documentation/source-tree
-finalization passed 120/120 tests, including the active Flubber math suite now
-enrolled in the default command. The final Rust default and no-default test
-matrices passed 50/50 tests, with format, check, and clippy also clean. These are
-local automated evidence only; production builds and installed-hardware gates
-still require exact-candidate qualification before publication.
+The latest recorded full JavaScript run passed 138/138 tests. The Rust
+all-feature and no-default-feature matrices both passed 78/78 tests; format,
+all-feature check, both-matrix clippy, dependency audit, Pages/desktop builds,
+Research-only artifact closure, and the required-runtime build gate also
+passed. These are local automated evidence only; installed-artifact and
+physical gates still require exact-candidate qualification before publication.
 
 ## Native input status — safe digital authority implemented
 
@@ -78,14 +84,30 @@ Pause/Stop-region qualification remains pending.
 
 Implemented safe groundwork:
 
-- exact libVLC 3.0.23 Windows x64 archive/source pins and official hashes;
+- exact libVLC 3.0.23 Windows x64 archive/source pins, official hashes, and a
+  canonical 368-file / 142,167,916-byte staged-tree manifest identity;
 - a deterministic staging/verifying script that rejects traversal, links,
-  missing/extra/modified files and preserves upstream notices;
+  missing/extra/modified files, coordinated DLL-plus-manifest tampering, and
+  wrong-architecture engine DLLs while preserving upstream notices;
 - a build-time package gate controlled by
   `AFFECT_RESEARCH_REQUIRE_LIBVLC_RUNTIME=1`;
-- a path-free native-media capability contract; and
+- a Windows x64 local bundle wrapper that always activates that gate, plus
+  commit-pinned desktop workflow actions and repository/workflow/run/runtime-
+  pin/installer/source provenance;
+- a path-free native-media capability contract;
 - run/receipt/recovery labelling for `nativeLibvlc` versus explicit
-  `unqualifiedWebview`, including fail-closed media-error handling.
+  `unqualifiedWebview`, including fail-closed media-error handling;
+- an IPC authority fence that accepts renderer playback lifecycle/failure
+  events only for the exact active run in the explicit unqualified WebView
+  fallback. A future qualified libVLC run cannot treat WebView media events as
+  native playback authority;
+- per-source detached video generations, ordered status/lifecycle fencing,
+  strict receipt binding, duration-end validation, and explicit restart-required
+  handling when native terminal state cannot be reconciled; and
+- explicit lower-trust WebView decode evidence requiring representative frame
+  callbacks near the start, midpoint, and end. One-use media grants are
+  consumed and this evidence remains labelled `attestedUnqualified`; it cannot
+  satisfy the future native libVLC qualification gate.
 
 Not implemented or qualified:
 
@@ -111,11 +133,13 @@ does not remove that gate and is not playback qualification.
 2. Add safe native absolute-pointer and gamepad adapters before enabling those
    presets in Tauri; until then they remain browser-only and explicitly blocked
    by native preflight.
-3. Finish shared Rust/browser fixture parity, exact local/repository
+3. Finish shared Rust/browser fixture parity, native libVLC-owned
    duration/decode preflight, and platform capability truth for every source and
    input preset.
-4. Add real-runtime Setup-to-Run, keyboard, input, Stop Early, completion,
-   rerun, finalization retry, corrupt-journal, and safe-boundary recovery tests.
+4. Extend the current retry-safe finalization tests with deterministic failures
+   after every write/sync/rename step, strict complete-record corruption
+   quarantine, worker-failure cleanup, input-queue overflow accounting, and
+   real-runtime Setup-to-Run/recovery tests.
 5. Re-run every JavaScript/Rust/build/advisory gate; inspect the isolated
    artifacts; build and launch the exact unsigned Windows installer.
 6. Publish the validated implementation branch through normal repository

@@ -17,10 +17,15 @@ available only when the operator explicitly chooses the
 The machine-readable pin is
 [`libvlc-runtime-v1.json`](./libvlc-runtime-v1.json). It records the official
 VideoLAN 3.0.23 Windows x64 archive and source archive with their official
-SHA-256 digests. Keep the source archive available beside any redistribution
-workflow, and retain every upstream `COPYING*` notice copied by the staging
-script. A release owner must review the exact upstream license obligations;
-this file is an engineering control, not legal advice.
+SHA-256 digests. It also pins the SHA-256, file count, and byte length of the
+canonical staged-tree manifest derived from that exact archive. The manifest
+uses UTF-8 without a BOM, LF endings, lowercase file digests, forward-slash
+paths, and ordinal relative-path ordering. This checked-in identity prevents a
+modified DLL from being accepted merely because its adjacent manifest was also
+rewritten. Keep the source archive available beside any redistribution workflow,
+and retain every upstream `COPYING*` notice copied by the staging script. A
+release owner must review the exact upstream license obligations; this file is
+an engineering control, not legal advice.
 
 ## Deterministic staging
 
@@ -35,7 +40,12 @@ The script never uses an installed VLC application, `%PATH%`, the registry, or
 a runtime network request. It rejects archive traversal, verifies the archive
 digest, copies only `libvlc.dll`, `libvlccore.dll`, the plugin tree, and
 upstream `COPYING*` notices, and writes `runtime-files.sha256` over every staged
-file. It refuses to replace an existing staged tree.
+file in canonical ordinal order. Staging succeeds only when that manifest
+matches the checked-in tree identity. Verification also parses the DOS, PE/COFF,
+and optional-header fields of both required engine DLLs and requires AMD64
+PE32+ (`0x8664` / `0x020b`). It rejects every Windows reparse point, including
+directory junctions, before traversal and refuses to replace an existing staged
+tree. These safe metadata checks do not claim hostile TOCTOU-race elimination.
 
 Verify an existing stage without changing it:
 
@@ -47,8 +57,13 @@ pwsh -File src-tauri/native-media/stage-libvlc-runtime.ps1 `
 
 Release/package builds must set `AFFECT_RESEARCH_REQUIRE_LIBVLC_RUNTIME=1`.
 The Rust build hook then rejects an absent, incomplete, extra-file, symlinked,
-or hash-mismatched runtime before Tauri packaging. Ordinary contract/unit builds
-leave this variable unset so the unavailable/fail-closed path remains testable.
+hash-mismatched, coordinated DLL-plus-manifest modified, or wrong-architecture
+runtime before Tauri packaging. Directory junctions and other reparse points
+also fail closed. Ordinary contract/unit builds leave this
+variable unset so the unavailable/fail-closed path remains testable.
+The repository-level `pnpm desktop:bundle` command is the supported local
+Windows x64 installer entrypoint and always sets this gate before invoking
+Tauri; it cannot produce the internal alpha through the optional-runtime path.
 
 Staging and compilation are not playback qualification. A candidate still
 requires installed Windows tests for visible output, supported formats,

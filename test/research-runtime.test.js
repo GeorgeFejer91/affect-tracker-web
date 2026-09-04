@@ -149,6 +149,8 @@ function manifest(overrides = {}) {
     attemptNumber: 1,
     sessionStem: "P001_EF_A27_GW_HR_20260903T143012482Z_R01",
     completionStatus: "completed",
+    playbackMode: "browserMediaAdapters",
+    playbackQualification: "browser",
     settingsSha256: HASH_A,
     assignmentPlanSha256: HASH_B,
     stimuli: [structuredClone(JOURNAL_STIMULUS_IDENTITY)],

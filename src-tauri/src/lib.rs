@@ -109,6 +109,7 @@ pub fn run() {
             research_commands::research_lsl_readiness,
             research_commands::research_start_run,
             research_commands::research_resume_run,
+            research_commands::research_finalize_recovery,
             research_commands::research_run_status,
             research_commands::research_set_stimulus_state,
             research_commands::research_finish_run,

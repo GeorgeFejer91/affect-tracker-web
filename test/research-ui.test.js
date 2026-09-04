@@ -199,6 +199,7 @@ test("Run is a sparse stimulus, adjacent feedback, status, pause, and controlled
     assert.doesNotMatch(run, new RegExp(`id="${setupOnly}"`, "u"));
   }
   assert.match(run, /Configured adjacent visual feedback/u);
+  assert.match(run, /preflighted complete video/u);
   assert.match(run, /Sampling is stopped and the rating is neutral/u);
   assert.match(markup, /controlled stop finalizes an explicitly partial result and cannot be resumed/u);
 });
@@ -250,6 +251,25 @@ test("Start emits an explicit attempt disposition without raw participant names"
   assert.doesNotMatch(detailBlock, /firstName|lastName/u);
 });
 
+test("pending native finalization has an explicit acquisition-free Setup dispatch", async () => {
+  const source = await read("site/src/research/app.js");
+  assert.match(source, /__finalizationPending/u);
+  assert.match(source, /__finalizationBinding/u);
+  assert.match(source, /function selectedPendingFinalization\(\)[\s\S]*binding\.settingsSha256 !== settingsHash[\s\S]*binding\.assignmentPlanSha256 !== plan\.planHashSha256/u);
+  assert.match(source, /Finalize pending \$\{pendingFinalization\.completionStatus\} attempt/u);
+  const requestStart = source.slice(
+    source.indexOf("function requestStart()"),
+    source.indexOf("root.addEventListener(\"click\"", source.indexOf("function requestStart()")),
+  );
+  const recoveryBranch = requestStart.slice(0, requestStart.indexOf("const fieldsValid"));
+  assert.match(recoveryBranch, /recoveryFinalizationOnly: true/u);
+  assert.match(recoveryBranch, /pendingFinalizationAttemptNumber: pendingFinalization\.attemptNumber/u);
+  assert.match(recoveryBranch, /pendingFinalizationCompletionStatus: pendingFinalization\.completionStatus/u);
+  assert.match(recoveryBranch, /participantId: selectedParticipant/u);
+  assert.match(recoveryBranch, /settingsSha256: settingsHash/u);
+  assert.doesNotMatch(recoveryBranch, /deriveParticipantRecord|inputTestReceiptId|verifiedStimulusIds|storageReady|timingWorkerReady/u);
+});
+
 test("manifest readiness is fail-closed and the adapter exposes authoritative neutral reset", async () => {
   const source = await read("site/src/research/app.js");
   assert.match(source, /manifestReady: false/u);
@@ -257,6 +277,8 @@ test("manifest readiness is fail-closed and the adapter exposes authoritative ne
   assert.match(source, /manifestReady: capabilities\.manifestReady/u);
   assert.match(source, /resetAffect\(reason = "safe-boundary"\)/u);
   assert.match(source, /inputController\.resetNeutral\(reason\)/u);
+  assert.match(source, /representative WebView frames attested \(unqualified playback\)/u);
+  assert.match(source, /installed-hardware qualification pending/u);
   assert.equal((source.match(/new CustomEvent\(RESEARCH_UI_EVENTS\.workspaceReady/gu) ?? []).length, 2, "selection and permission renewal both request a manifest rescan");
   for (const event of ["pointerup", "pointercancel", "lostpointercapture"]) {
     assert.match(source, new RegExp(`runFeedbackStage\\?\\.addEventListener\\("${event}", handleRunPointer\\)`, "u"));

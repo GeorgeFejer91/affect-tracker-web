@@ -9,7 +9,7 @@ use fs2::FileExt;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::fs::{self, File, OpenOptions};
-use std::io::{BufRead, BufReader, BufWriter, Read, Write};
+use std::io::{BufRead, BufReader, BufWriter, Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, SyncSender};
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -24,6 +24,9 @@ use uuid::Uuid;
 
 const BUILD_COMMIT: &str = env!("AFFECT_TRACKER_BUILD_COMMIT");
 const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
+const RUN_EVIDENCE_PERSISTENCE_ERROR: &str = "run_evidence_persistence_failed";
+const RUN_EVIDENCE_PERSISTENCE_FAILURE: &str = "stimulus-evidence-persistence-failed";
+const COMPLETION_EARLY_TOLERANCE_MS: f64 = 1_000.0;
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -50,6 +53,15 @@ pub struct ResumeRunRequest {
     pub input_test_receipt_id: String,
     #[serde(default)]
     pub playback_mode: PlaybackMode,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct FinalizeRecoveryRequest {
+    pub workspace_id: String,
+    pub recovery_id: String,
+    pub settings: ResearchSettingsV1,
+    pub assignment_plan: ResolvedAssignmentPlanV1,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -172,6 +184,7 @@ pub enum StimulusLifecycle {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct StimulusStateUpdate {
+    pub run_id: String,
     pub lifecycle: StimulusLifecycle,
     pub stimulus_id: String,
     pub stimulus_position: u32,
@@ -210,6 +223,7 @@ impl MediaPlaybackFailureReason {
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct MediaPlaybackFailureReport {
+    pub run_id: String,
     pub reason: MediaPlaybackFailureReason,
     pub stimulus_id: String,
     pub stimulus_position: u32,
@@ -226,7 +240,7 @@ pub struct MediaPlaybackFailureReceipt {
     pub last_safe_stimulus_position: u32,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct FinalizeReceipt {
     pub run_id: String,
@@ -237,7 +251,7 @@ pub struct FinalizeReceipt {
     pub files: Vec<FinalizedFileReceipt>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct FinalizedFileReceipt {
     pub file_name: String,
@@ -259,6 +273,8 @@ pub struct RecoverySummary {
     pub assignment_plan_sha256: String,
     pub playback_mode: PlaybackMode,
     pub playback_qualification: PlaybackQualification,
+    pub finalization_pending: bool,
+    pub pending_completion_status: Option<CompletionStatusV1>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -294,6 +310,8 @@ pub struct ResearchRuntime {
 }
 
 struct ActiveRun {
+    run_id: String,
+    playback_mode: PlaybackMode,
     sender: SyncSender<RunMessage>,
     status: Arc<Mutex<RunStatus>>,
     worker: Option<JoinHandle<()>>,
@@ -406,6 +424,8 @@ impl ResearchRuntime {
             }
         };
         *active = Some(ActiveRun {
+            run_id: receipt.run_id.clone(),
+            playback_mode: receipt.playback_mode,
             sender,
             status,
             worker: Some(worker),
@@ -473,12 +493,40 @@ impl ResearchRuntime {
             }
         };
         *active = Some(ActiveRun {
+            run_id: receipt.run_id.clone(),
+            playback_mode: receipt.playback_mode,
             sender,
             status,
             worker: Some(worker),
             input_authority_id,
         });
         Ok(receipt)
+    }
+
+    /// Complete an already-durable terminal transaction after reload. This path
+    /// never prepares media, input, sampling, or LSL because the attempt has no
+    /// remaining acquisition work.
+    pub fn finalize_recovery(
+        &self,
+        request: FinalizeRecoveryRequest,
+    ) -> ResearchResult<FinalizeReceipt> {
+        let active = self.lock_active();
+        if active.is_some() {
+            return Err(CommandError::run_active());
+        }
+        let settings = request.settings.normalize_and_validate()?;
+        let settings_sha256 = settings.canonical_sha256()?;
+        request.assignment_plan.validate(&settings_sha256)?;
+        validate_plan_matches_settings(&request.assignment_plan, &settings)?;
+        self.workspace
+            .with_workspace(&request.workspace_id, |root, _| {
+                finalize_recovery_at_root(
+                    root,
+                    &request.recovery_id,
+                    &settings,
+                    &request.assignment_plan,
+                )
+            })
     }
 
     pub fn status(&self) -> RunStatus {
@@ -497,43 +545,59 @@ impl ResearchRuntime {
         status
     }
 
-    pub fn set_stimulus_state(&self, update: StimulusStateUpdate) -> ResearchResult<()> {
+    /// Accept a playback lifecycle projection from the renderer only for the
+    /// deliberately selected, permanently unqualified WebView player.  A
+    /// qualified native run must be driven by the private native-media actor
+    /// path and may never treat an IPC caller as playback authority.
+    pub fn set_webview_stimulus_state(&self, update: StimulusStateUpdate) -> ResearchResult<()> {
+        validate_run_id(&update.run_id)?;
         if !update.media_time_ms.is_finite() || update.media_time_ms < 0.0 {
             return Err(CommandError::invalid_contract(
                 "Stimulus media time must be a finite non-negative number.",
             ));
         }
         let lifecycle = update.lifecycle;
-        let input_authority_id = self
-            .lock_active()
-            .as_ref()
-            .ok_or_else(CommandError::no_active_run)?
-            .input_authority_id
-            .clone();
         let begins_sampling = matches!(
             lifecycle,
             StimulusLifecycle::Started | StimulusLifecycle::Resumed
         );
-        if begins_sampling {
-            self.input.ensure_run_ready(&input_authority_id)?;
-        }
-        let (reply_sender, reply_receiver) = mpsc::channel();
-        self.send(RunMessage::Stimulus(update, reply_sender))?;
+        let (reply_receiver, input_authority_id) = {
+            let active = self.lock_active();
+            let run = active.as_ref().ok_or_else(CommandError::no_active_run)?;
+            authorize_run_id(&run.run_id, &update.run_id)?;
+            authorize_webview_media_mode(Some(run.playback_mode))?;
+            let input_authority_id = run.input_authority_id.clone();
+            if begins_sampling {
+                self.input.ensure_run_ready(&input_authority_id)?;
+            }
+            let (reply_sender, reply_receiver) = mpsc::channel();
+            run.sender
+                .try_send(RunMessage::Stimulus(update, reply_sender))
+                .map_err(|_| CommandError::io("The native run command queue is unavailable."))?;
+            (reply_receiver, input_authority_id)
+        };
         let result = reply_receiver
             .recv_timeout(Duration::from_secs(2))
             .map_err(|_| CommandError::io("The stimulus lifecycle update timed out."))?;
         if result.is_ok() {
             self.input
                 .set_run_accepting(&input_authority_id, begins_sampling)?;
+        } else if result
+            .as_ref()
+            .is_err_and(|error| error.code == RUN_EVIDENCE_PERSISTENCE_ERROR)
+        {
+            let _ = self.input.set_run_accepting(&input_authority_id, false);
         }
         result
     }
 
-    pub fn finish(&self, outcome: FinishOutcome) -> ResearchResult<FinalizeReceipt> {
+    pub fn finish(&self, run_id: &str, outcome: FinishOutcome) -> ResearchResult<FinalizeReceipt> {
+        validate_run_id(run_id)?;
         let mut active = self.lock_active();
         let Some(run) = active.as_ref() else {
             return Err(CommandError::no_active_run());
         };
+        authorize_run_id(&run.run_id, run_id)?;
         let (reply_sender, reply_receiver) = mpsc::channel();
         if run
             .sender
@@ -563,10 +627,14 @@ impl ResearchRuntime {
         result
     }
 
-    pub fn report_media_failure(
+    /// Accept renderer media failure evidence only for the explicit WebView
+    /// fallback.  Native actor failures will enter through a non-IPC adapter
+    /// once the separately approved libVLC boundary exists.
+    pub fn report_webview_media_failure(
         &self,
         report: MediaPlaybackFailureReport,
     ) -> ResearchResult<MediaPlaybackFailureReceipt> {
+        validate_run_id(&report.run_id)?;
         if report.stimulus_id.is_empty()
             || report.stimulus_id.len() > 128
             || report.stimulus_position == 0
@@ -581,6 +649,8 @@ impl ResearchRuntime {
         let Some(run) = active.as_ref() else {
             return Err(CommandError::no_active_run());
         };
+        authorize_run_id(&run.run_id, &report.run_id)?;
+        authorize_webview_media_mode(Some(run.playback_mode))?;
         let (reply_sender, reply_receiver) = mpsc::channel();
         if run
             .sender
@@ -629,14 +699,6 @@ impl ResearchRuntime {
 
     pub fn shutdown(&self) {
         let _ = self.interrupt();
-    }
-
-    fn send(&self, message: RunMessage) -> ResearchResult<()> {
-        let active = self.lock_active();
-        let run = active.as_ref().ok_or_else(CommandError::no_active_run)?;
-        run.sender
-            .try_send(message)
-            .map_err(|_| CommandError::io("The native run command queue is unavailable."))
     }
 
     fn interrupt(&self) -> ResearchResult<()> {
@@ -726,12 +788,14 @@ impl PreparedRun {
             .map_err(|_| {
                 CommandError::io("The native session timestamp could not be formatted.")
             })?;
-        let participant_root = workspace_root
-            .join("outputs")
-            .join(&settings.experiment.id)
-            .join(&participant.participant_id);
-        fs::create_dir_all(&participant_root).map_err(CommandError::io)?;
+        let output_directories = RunOutputDirectories::prepare(
+            workspace_root,
+            &settings.experiment.id,
+            &participant.participant_id,
+        )?;
+        let participant_root = output_directories.participant.path.clone();
         let attempt_lock = acquire_attempt_lock(&participant_root)?;
+        output_directories.revalidate()?;
         let previous_attempts = count_previous_attempts(&participant_root)?;
         if previous_attempts > 0 && !rerun_confirmed {
             return Err(CommandError::forbidden(
@@ -749,14 +813,7 @@ impl PreparedRun {
             session_timestamp,
             attempt_number
         );
-        let session_dir = participant_root.join(&session_stem);
-        fs::create_dir(&session_dir).map_err(|error| {
-            if error.kind() == std::io::ErrorKind::AlreadyExists {
-                CommandError::forbidden("The new run destination already exists.")
-            } else {
-                CommandError::io(error)
-            }
-        })?;
+        let session_dir = output_directories.create_session(&session_stem)?;
         let output_receipt_id = Uuid::new_v4().to_string();
         let participant = CodedParticipant {
             id: participant.participant_id,
@@ -767,7 +824,7 @@ impl PreparedRun {
             attempt_number,
         };
         let files = RunFiles::create(
-            workspace_root,
+            &output_directories.workspace.path,
             &session_dir,
             &run_id,
             &settings,
@@ -868,7 +925,7 @@ impl PreparedRun {
             &canonical_json(&plan, &[])?,
             "assignment plan",
         )?;
-        let (files, reconciled) = RunFiles::resume(
+        let (mut files, reconciled) = RunFiles::resume(
             &session_dir,
             recovery_path,
             journal.clone(),
@@ -880,16 +937,28 @@ impl PreparedRun {
                 "Recovered events exceed the frozen participant assignment.",
             ));
         }
-        let restarted_stimulus_ids = reconciled
+        if completed_boundary_is_durable(&session_dir, &files.journal, &plan)? {
+            return Err(CommandError::forbidden(
+                "The completed recovery boundary must use finalize-only recovery; no stimulus may be replayed.",
+            ));
+        }
+        let restarted_stimulus_id = reconciled
             .interrupted_stimulus_position
             .and_then(|position| {
                 assignment
                     .slots
                     .get(position.saturating_sub(1) as usize)
                     .map(|slot| slot.stimulus_id.clone())
-            })
-            .into_iter()
-            .collect();
+            });
+        let mut recovery = files.journal.recovery.clone();
+        recovery.resumed = true;
+        recovery.source_run_id = Some(journal.run_id.clone());
+        if let Some(stimulus_id) = restarted_stimulus_id {
+            if !recovery.restarted_stimulus_ids.contains(&stimulus_id) {
+                recovery.restarted_stimulus_ids.push(stimulus_id);
+            }
+        }
+        files.update_recovery_summary(recovery.clone())?;
         let participant = CodedParticipant {
             id: journal.participant_id.clone(),
             code: journal.participant_code.clone(),
@@ -935,11 +1004,7 @@ impl PreparedRun {
             event_sequence: reconciled.event_count,
             last_safe_position: reconciled.last_safe_position,
             monotonic_offset_ns: reconciled.last_monotonic_ns.saturating_add(1),
-            recovery: RecoverySummaryV1 {
-                resumed: true,
-                source_run_id: Some(journal.run_id.clone()),
-                restarted_stimulus_ids,
-            },
+            recovery,
             resumed: true,
         })
     }
@@ -988,7 +1053,14 @@ fn run_worker(
         let timeout = worker.timeout_until_sample();
         match receiver.recv_timeout(timeout) {
             Ok(RunMessage::Stimulus(update, reply)) => {
-                let _ = reply.send(worker.apply_stimulus(update));
+                let (result, evidence_failure) = worker.apply_stimulus_message(update);
+                if evidence_failure {
+                    worker.fail(RUN_EVIDENCE_PERSISTENCE_FAILURE);
+                }
+                let _ = reply.send(result);
+                if evidence_failure {
+                    return;
+                }
             }
             Ok(RunMessage::DigitalInput(input)) => {
                 if worker.apply_digital_input(input).is_err() {
@@ -1001,7 +1073,7 @@ fn run_worker(
                 lock(&worker.status).phase = RunPhase::Finalizing;
                 let result = worker.finalize(outcome);
                 let should_exit = result.is_ok();
-                if !should_exit {
+                if !should_exit && worker.finalization.is_none() {
                     lock(&worker.status).phase = previous_phase;
                 }
                 let _ = reply.send(result);
@@ -1058,6 +1130,7 @@ struct RunWorker {
     monotonic_offset_ns: u128,
     recovery: RecoverySummaryV1,
     resumed: bool,
+    finalization: Option<WorkerFinalization>,
 }
 
 #[derive(Clone, Copy)]
@@ -1076,6 +1149,15 @@ struct ActiveStimulus {
     position: u32,
     media_anchor_ms: f64,
     media_anchor_at: Instant,
+}
+
+#[derive(Clone)]
+struct WorkerFinalization {
+    completion_status: CompletionStatusV1,
+    terminal_event: ResearchEventV1,
+    events_prefix_byte_length: u64,
+    finalized_at: String,
+    lsl_marker_pushed: bool,
 }
 
 impl RunWorker {
@@ -1112,16 +1194,25 @@ impl RunWorker {
             monotonic_offset_ns: prepared.monotonic_offset_ns,
             recovery: prepared.recovery,
             resumed: prepared.resumed,
+            finalization: None,
         }
     }
 
     fn start(&mut self) -> ResearchResult<()> {
         if self.resumed {
+            let recovery_detail = if self.event_sequence == 0 {
+                playback_provenance_detail(
+                    self.receipt.playback_mode,
+                    self.receipt.playback_qualification,
+                )?
+            } else {
+                "durable-prefix-reconciled"
+            };
             self.write_event(
                 ResearchEventTypeV1::WriteRecovered,
                 None,
                 None,
-                Some("durable-prefix-reconciled".to_owned()),
+                Some(recovery_detail.to_owned()),
             )?;
             self.write_event(
                 ResearchEventTypeV1::RecoveryStarted,
@@ -1136,10 +1227,10 @@ impl RunWorker {
                 Some("partial-video-restarts-at-zero".to_owned()),
             )?;
         } else {
-            let playback_detail = match self.receipt.playback_qualification {
-                PlaybackQualification::QualifiedNative => "playback-native-libvlc-qualified",
-                PlaybackQualification::Unqualified => "playback-webview-unqualified",
-            };
+            let playback_detail = playback_provenance_detail(
+                self.receipt.playback_mode,
+                self.receipt.playback_qualification,
+            )?;
             self.write_event(
                 ResearchEventTypeV1::SessionPrepared,
                 None,
@@ -1218,6 +1309,7 @@ impl RunWorker {
     }
 
     fn apply_stimulus(&mut self, update: StimulusStateUpdate) -> ResearchResult<()> {
+        authorize_run_id(&self.receipt.run_id, &update.run_id)?;
         let current_phase = lock(&self.status).phase;
         let expected = self
             .assignment
@@ -1242,6 +1334,13 @@ impl RunWorker {
         if update.media_time_ms > identity.duration_ms + 1_000.0 {
             return Err(CommandError::invalid_contract(
                 "Stimulus media time exceeds its verified duration.",
+            ));
+        }
+        if matches!(update.lifecycle, StimulusLifecycle::Completed)
+            && identity.duration_ms - update.media_time_ms >= COMPLETION_EARLY_TOLERANCE_MS
+        {
+            return Err(CommandError::invalid_contract(
+                "A completed stimulus must report media time within one second of its verified end.",
             ));
         }
         let now = Instant::now();
@@ -1380,7 +1479,13 @@ impl RunWorker {
                 ResearchEventTypeV1::TransitionCompleted
             }
         };
-        self.write_event(event_type, Some(active), None, None)?;
+        self.write_event(event_type, Some(active), None, None)
+            .map_err(|_| {
+                CommandError::new(
+                    RUN_EVIDENCE_PERSISTENCE_ERROR,
+                    "The stimulus lifecycle transition could not be durably recorded.",
+                )
+            })?;
         let mut status = lock(&self.status);
         status.last_safe_stimulus_position = self.last_safe_position;
         match update.lifecycle {
@@ -1400,6 +1505,17 @@ impl RunWorker {
             }
         }
         Ok(())
+    }
+
+    fn apply_stimulus_message(
+        &mut self,
+        update: StimulusStateUpdate,
+    ) -> (ResearchResult<()>, bool) {
+        let result = self.apply_stimulus(update);
+        let evidence_failure = result
+            .as_ref()
+            .is_err_and(|error| error.code == RUN_EVIDENCE_PERSISTENCE_ERROR);
+        (result, evidence_failure)
     }
 
     fn reset_to_neutral(&mut self, now: Instant) {
@@ -1538,6 +1654,23 @@ impl RunWorker {
         missed_slot_count: Option<u64>,
         detail_code: Option<String>,
     ) -> ResearchResult<()> {
+        let event = self.next_event(event_type, stimulus, missed_slot_count, detail_code)?;
+        self.files.write_event(&event)?;
+        if let Some(lsl) = &self.lsl {
+            let marker = event_marker(&event);
+            lsl.push_marker(&marker)?;
+        }
+        self.publish_event_status(&event);
+        self.checkpoint_journal(None, event.monotonic_time_ns)
+    }
+
+    fn next_event(
+        &mut self,
+        event_type: ResearchEventTypeV1,
+        stimulus: Option<ActiveStimulus>,
+        missed_slot_count: Option<u64>,
+        detail_code: Option<String>,
+    ) -> ResearchResult<ResearchEventV1> {
         self.event_sequence = self.event_sequence.saturating_add(1);
         let now = Instant::now();
         let (identity, position, media_time) = match stimulus {
@@ -1553,7 +1686,7 @@ impl RunWorker {
             }
             None => (None, None, None),
         };
-        let event = ResearchEventV1 {
+        Ok(ResearchEventV1 {
             schema: RESEARCH_EVENT_SCHEMA.to_owned(),
             version: 1,
             sequence: self.event_sequence,
@@ -1570,22 +1703,17 @@ impl RunWorker {
             media_time_ms: media_time,
             missed_slot_count,
             detail_code,
-        };
-        self.files.write_event(&event)?;
-        if let Some(lsl) = &self.lsl {
-            let marker = event_marker(&event);
-            lsl.push_marker(&marker)?;
+        })
+    }
+
+    fn publish_event_status(&self, event: &ResearchEventV1) {
+        let mut status = lock(&self.status);
+        status.event_count = event.sequence;
+        if event.event_type == ResearchEventTypeV1::TimingGap {
+            let missed = event.missed_slot_count.unwrap_or(0);
+            status.gap_event_count = status.gap_event_count.saturating_add(1);
+            status.missed_slot_count = status.missed_slot_count.saturating_add(missed);
         }
-        {
-            let mut status = lock(&self.status);
-            status.event_count = self.event_sequence;
-            if event_type == ResearchEventTypeV1::TimingGap {
-                let missed = missed_slot_count.unwrap_or(0);
-                status.gap_event_count = status.gap_event_count.saturating_add(1);
-                status.missed_slot_count = status.missed_slot_count.saturating_add(missed);
-            }
-        }
-        self.checkpoint_journal(None, event.monotonic_time_ns)
     }
 
     fn checkpoint_journal(
@@ -1617,7 +1745,6 @@ impl RunWorker {
                 "A completed run must finish every assigned stimulus at a safe boundary.",
             ));
         }
-        self.clock = None;
         let (event, completion_status) = match outcome {
             FinishOutcome::Completed => (
                 ResearchEventTypeV1::SessionCompleted,
@@ -1628,18 +1755,62 @@ impl RunWorker {
                 CompletionStatusV1::Partial,
             ),
         };
-        self.write_event(event, self.active_stimulus.clone(), None, None)?;
-        let status = lock(&self.status).clone();
-        let receipt = self.files.finalize(
+
+        if let Some(pending) = &self.finalization {
+            if pending.completion_status != completion_status
+                || pending.terminal_event.event_type != event
+            {
+                return Err(CommandError::invalid_contract(
+                    "A finalization retry must keep the original terminal outcome.",
+                ));
+            }
+        } else {
+            let events_prefix_byte_length = self.files.synced_events_length()?;
+            let terminal_event =
+                self.next_event(event, self.active_stimulus.clone(), None, None)?;
+            let finalized_at = terminal_event.wall_time_utc.clone();
+            self.finalization = Some(WorkerFinalization {
+                completion_status,
+                terminal_event,
+                events_prefix_byte_length,
+                finalized_at,
+                lsl_marker_pushed: false,
+            });
+        }
+        self.clock = None;
+
+        let pending = self
+            .finalization
+            .as_ref()
+            .expect("finalization state was initialized")
+            .clone();
+        let mut final_status = lock(&self.status).clone();
+        final_status.event_count = pending.terminal_event.sequence;
+        self.files.prepare_finalization(
             &self.receipt,
             &self.settings,
             &self.assignment,
             &self.participant,
             &self.started_at,
             completion_status,
-            &status,
+            &final_status,
             &self.recovery,
+            &pending.terminal_event,
+            pending.events_prefix_byte_length,
+            &pending.finalized_at,
         )?;
+        self.files
+            .ensure_terminal_event(pending.events_prefix_byte_length, &pending.terminal_event)?;
+        if !pending.lsl_marker_pushed {
+            if let Some(lsl) = &self.lsl {
+                lsl.push_marker(&event_marker(&pending.terminal_event))?;
+            }
+            if let Some(finalization) = &mut self.finalization {
+                finalization.lsl_marker_pushed = true;
+            }
+        }
+        self.publish_event_status(&pending.terminal_event);
+        let receipt = self.files.complete_finalization(&self.receipt)?;
         let mut shared = lock(&self.status);
         shared.active = false;
         shared.phase = RunPhase::Finished;
@@ -1670,6 +1841,7 @@ impl RunWorker {
         &mut self,
         report: MediaPlaybackFailureReport,
     ) -> ResearchResult<MediaPlaybackFailureReceipt> {
+        authorize_run_id(&self.receipt.run_id, &report.run_id)?;
         self.clock = None;
         let report_matches_active = self.active_stimulus.as_ref().is_some_and(|stimulus| {
             stimulus.identity.stimulus_id == report.stimulus_id
@@ -1715,11 +1887,44 @@ impl RunWorker {
     }
 
     fn fail(&mut self, code: &str) {
+        self.clock = None;
+        self.native_input_active = false;
         let mut status = lock(&self.status);
+        status.active = false;
         status.phase = RunPhase::Failed;
+        status.input_active = false;
         status.write_healthy = false;
         status.failure_code = Some(code.to_owned());
     }
+}
+
+fn authorize_webview_media_mode(playback_mode: Option<PlaybackMode>) -> ResearchResult<()> {
+    match playback_mode {
+        Some(PlaybackMode::UnqualifiedWebview) => Ok(()),
+        Some(PlaybackMode::NativeLibvlc) => Err(CommandError::forbidden(
+            "WebView media events cannot control a qualified native playback run.",
+        )),
+        None => Err(CommandError::no_active_run()),
+    }
+}
+
+fn validate_run_id(run_id: &str) -> ResearchResult<()> {
+    if Uuid::parse_str(run_id).is_err() {
+        return Err(CommandError::invalid_contract(
+            "The run ID must be a valid UUID issued by the native runtime.",
+        ));
+    }
+    Ok(())
+}
+
+fn authorize_run_id(expected: &str, supplied: &str) -> ResearchResult<()> {
+    validate_run_id(supplied)?;
+    if supplied != expected {
+        return Err(CommandError::forbidden(
+            "The command does not belong to the active Research run.",
+        ));
+    }
+    Ok(())
 }
 
 fn validate_participant(
@@ -1934,6 +2139,229 @@ fn format_wall_time(time: OffsetDateTime) -> ResearchResult<String> {
         .map_err(|_| CommandError::io("The native wall-clock timestamp could not be formatted."))
 }
 
+#[cfg(target_os = "windows")]
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct RunDirectoryIdentity {
+    creation_time: u64,
+}
+
+#[cfg(unix)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct RunDirectoryIdentity {
+    device: u64,
+    inode: u64,
+}
+
+#[cfg(not(any(target_os = "windows", unix)))]
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct RunDirectoryIdentity {
+    created: Option<std::time::SystemTime>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct CheckedRunDirectory {
+    path: PathBuf,
+    identity: RunDirectoryIdentity,
+}
+
+#[derive(Debug)]
+struct RunOutputDirectories {
+    workspace: CheckedRunDirectory,
+    outputs: CheckedRunDirectory,
+    experiment: CheckedRunDirectory,
+    participant: CheckedRunDirectory,
+}
+
+impl RunOutputDirectories {
+    fn prepare(
+        workspace_root: &Path,
+        experiment_id: &str,
+        participant_id: &str,
+    ) -> ResearchResult<Self> {
+        if !is_safe_component(experiment_id) || !is_safe_component(participant_id) {
+            return Err(CommandError::invalid_contract(
+                "The run output identity contains an unsafe directory component.",
+            ));
+        }
+        let workspace = checked_run_root(workspace_root)?;
+        let outputs = checked_run_child(&workspace, "outputs")?;
+        let experiment = ensure_checked_run_child(&outputs, experiment_id)?;
+        let participant = ensure_checked_run_child(&experiment, participant_id)?;
+        let directories = Self {
+            workspace,
+            outputs,
+            experiment,
+            participant,
+        };
+        directories.revalidate()?;
+        Ok(directories)
+    }
+
+    fn revalidate(&self) -> ResearchResult<()> {
+        require_same_run_directory(&self.workspace, checked_run_root(&self.workspace.path)?)?;
+        require_same_run_directory(
+            &self.outputs,
+            checked_run_child(&self.workspace, "outputs")?,
+        )?;
+        let experiment_name = checked_run_directory_name(&self.experiment)?;
+        require_same_run_directory(
+            &self.experiment,
+            checked_run_child(&self.outputs, experiment_name)?,
+        )?;
+        let participant_name = checked_run_directory_name(&self.participant)?;
+        require_same_run_directory(
+            &self.participant,
+            checked_run_child(&self.experiment, participant_name)?,
+        )
+    }
+
+    fn create_session(&self, session_stem: &str) -> ResearchResult<PathBuf> {
+        if !is_safe_component(session_stem) {
+            return Err(CommandError::invalid_contract(
+                "The run session identity contains an unsafe directory component.",
+            ));
+        }
+        self.revalidate()?;
+        let session_path = self.participant.path.join(session_stem);
+        fs::create_dir(&session_path).map_err(|error| {
+            if error.kind() == std::io::ErrorKind::AlreadyExists {
+                CommandError::forbidden("The new run destination already exists.")
+            } else {
+                CommandError::io(error)
+            }
+        })?;
+        let session = checked_run_child(&self.participant, session_stem)?;
+        self.revalidate()?;
+        require_same_run_directory(
+            &session,
+            checked_run_child(&self.participant, session_stem)?,
+        )?;
+        Ok(session.path)
+    }
+}
+
+fn checked_run_root(path: &Path) -> ResearchResult<CheckedRunDirectory> {
+    let metadata = fs::symlink_metadata(path).map_err(|_| {
+        CommandError::forbidden("The selected workspace output root is unavailable.")
+    })?;
+    require_ordinary_run_directory(&metadata)?;
+    let canonical = path.canonicalize().map_err(|_| {
+        CommandError::forbidden("The selected workspace output root is unavailable.")
+    })?;
+    Ok(CheckedRunDirectory {
+        path: canonical,
+        identity: run_directory_identity(&metadata),
+    })
+}
+
+fn ensure_checked_run_child(
+    parent: &CheckedRunDirectory,
+    name: &str,
+) -> ResearchResult<CheckedRunDirectory> {
+    if !is_safe_component(name) {
+        return Err(CommandError::invalid_contract(
+            "The run output identity contains an unsafe directory component.",
+        ));
+    }
+    let child = parent.path.join(name);
+    match fs::symlink_metadata(&child) {
+        Ok(_) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            fs::create_dir(&child).map_err(|create_error| {
+                if create_error.kind() == std::io::ErrorKind::AlreadyExists {
+                    CommandError::forbidden(
+                        "A run output directory changed while it was being created.",
+                    )
+                } else {
+                    CommandError::io(create_error)
+                }
+            })?;
+        }
+        Err(error) => return Err(CommandError::io(error)),
+    }
+    checked_run_child(parent, name)
+}
+
+fn checked_run_child(
+    parent: &CheckedRunDirectory,
+    name: &str,
+) -> ResearchResult<CheckedRunDirectory> {
+    let child = parent.path.join(name);
+    let metadata = fs::symlink_metadata(&child)
+        .map_err(|_| CommandError::forbidden("A required run output directory is unavailable."))?;
+    require_ordinary_run_directory(&metadata)?;
+    let canonical = child
+        .canonicalize()
+        .map_err(|_| CommandError::forbidden("A required run output directory is unavailable."))?;
+    if canonical != child
+        || canonical.parent() != Some(parent.path.as_path())
+        || !canonical.starts_with(&parent.path)
+    {
+        return Err(CommandError::forbidden(
+            "A run output directory is not the exact canonical child of its selected parent.",
+        ));
+    }
+    Ok(CheckedRunDirectory {
+        path: canonical,
+        identity: run_directory_identity(&metadata),
+    })
+}
+
+fn require_ordinary_run_directory(metadata: &fs::Metadata) -> ResearchResult<()> {
+    if !metadata.is_dir() || metadata.file_type().is_symlink() {
+        return Err(CommandError::forbidden(
+            "A run output path component is not an ordinary directory.",
+        ));
+    }
+    Ok(())
+}
+
+fn checked_run_directory_name(directory: &CheckedRunDirectory) -> ResearchResult<&str> {
+    directory
+        .path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| CommandError::forbidden("A run output directory name is invalid."))
+}
+
+fn require_same_run_directory(
+    expected: &CheckedRunDirectory,
+    observed: CheckedRunDirectory,
+) -> ResearchResult<()> {
+    if observed != *expected {
+        return Err(CommandError::forbidden(
+            "A run output directory changed while the attempt was being prepared.",
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(target_os = "windows")]
+fn run_directory_identity(metadata: &fs::Metadata) -> RunDirectoryIdentity {
+    use std::os::windows::fs::MetadataExt;
+    RunDirectoryIdentity {
+        // Stable safe Rust exposes creation time rather than the Windows file
+        // index. Canonical child checks remain the primary link/junction guard.
+        creation_time: metadata.creation_time(),
+    }
+}
+
+#[cfg(unix)]
+fn run_directory_identity(metadata: &fs::Metadata) -> RunDirectoryIdentity {
+    use std::os::unix::fs::MetadataExt;
+    RunDirectoryIdentity {
+        device: metadata.dev(),
+        inode: metadata.ino(),
+    }
+}
+
+#[cfg(not(any(target_os = "windows", unix)))]
+fn run_directory_identity(metadata: &fs::Metadata) -> RunDirectoryIdentity {
+    RunDirectoryIdentity {
+        created: metadata.created().ok(),
+    }
+}
+
 fn count_previous_attempts(participant_root: &Path) -> ResearchResult<u32> {
     let mut count = 0u32;
     for entry in fs::read_dir(participant_root).map_err(CommandError::io)? {
@@ -1977,6 +2405,23 @@ fn event_marker(event: &ResearchEventV1) -> String {
     }
 }
 
+fn playback_provenance_detail(
+    mode: PlaybackMode,
+    qualification: PlaybackQualification,
+) -> ResearchResult<&'static str> {
+    match (mode, qualification) {
+        (PlaybackMode::NativeLibvlc, PlaybackQualification::QualifiedNative) => {
+            Ok("playback-native-libvlc-qualified")
+        }
+        (PlaybackMode::UnqualifiedWebview, PlaybackQualification::Unqualified) => {
+            Ok("playback-webview-unqualified")
+        }
+        _ => Err(CommandError::invalid_contract(
+            "Playback mode and qualification provenance are inconsistent.",
+        )),
+    }
+}
+
 // Persistence is implemented below so that no filesystem handles cross the IPC boundary.
 
 struct RunFiles {
@@ -1994,6 +2439,10 @@ struct RunFiles {
     journal: RecoveryJournalV1,
     flush_every_samples: u64,
     _attempt_lock: File,
+    #[cfg(test)]
+    fail_next_event_write: bool,
+    #[cfg(test)]
+    fail_next_journal_write: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -2023,6 +2472,26 @@ struct RecoveryJournalV1 {
     last_monotonic_time_ns: String,
     gap_event_count: u64,
     missed_slot_count: u64,
+    #[serde(default = "unresumed_recovery_summary")]
+    recovery: RecoverySummaryV1,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pending_finalization: Option<PendingFinalizationV1>,
+}
+
+fn unresumed_recovery_summary() -> RecoverySummaryV1 {
+    RecoverySummaryV1 {
+        resumed: false,
+        source_run_id: None,
+        restarted_stimulus_ids: Vec::new(),
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct PendingFinalizationV1 {
+    terminal_event: ResearchEventV1,
+    events_prefix_byte_length: u64,
+    manifest: ResearchRunManifestV2,
 }
 
 struct ReconciledRun {
@@ -2035,11 +2504,13 @@ struct ReconciledRun {
 
 struct ReconciledEvents {
     event_count: u64,
+    valid_byte_length: u64,
     last_safe_position: u32,
     interrupted_stimulus_position: Option<u32>,
     last_monotonic_ns: u128,
     gap_event_count: u64,
     missed_slot_count: u64,
+    durable_prefix_event: Option<ResearchEventV1>,
 }
 
 struct ParsedTable {
@@ -2121,6 +2592,8 @@ impl RunFiles {
             last_monotonic_time_ns: "0".to_owned(),
             gap_event_count: 0,
             missed_slot_count: 0,
+            recovery: unresumed_recovery_summary(),
+            pending_finalization: None,
         };
         write_journal_record(&recovery_path, &journal, true)?;
         Ok(Self {
@@ -2138,6 +2611,10 @@ impl RunFiles {
             journal,
             flush_every_samples: (u64::from(settings.experiment.sampling_frequency_hz) / 4).max(1),
             _attempt_lock: attempt_lock,
+            #[cfg(test)]
+            fail_next_event_write: false,
+            #[cfg(test)]
+            fail_next_journal_write: false,
         })
     }
 
@@ -2149,8 +2626,19 @@ impl RunFiles {
         attempt_lock: File,
     ) -> ResearchResult<(Self, ReconciledRun)> {
         if session_dir.join("manifest.json").exists() {
+            verify_committed_manifest(session_dir, &journal)?;
+            remove_recovery_journal_if_present(&recovery_path);
             return Err(CommandError::forbidden(
-                "A finalized attempt cannot be resumed from a stale journal.",
+                "The attempt is already durably finalized; stale recovery evidence was cleaned.",
+            ));
+        }
+        if let Some(pending) = &journal.pending_finalization {
+            validate_manifest_against_journal(&pending.manifest, &journal)?;
+            commit_pending_finalization(session_dir, &journal)?;
+            verify_committed_manifest(session_dir, &journal)?;
+            remove_recovery_journal_if_present(&recovery_path);
+            return Err(CommandError::forbidden(
+                "The pending terminal attempt was durably finalized during recovery.",
             ));
         }
         let events_path = session_dir.join("events.jsonl");
@@ -2186,6 +2674,17 @@ impl RunFiles {
                 .take_while(|index| csv.row_digests[*index] == tsv.row_digests[*index])
                 .count();
         }
+        if (common_count as u64) < journal.partial_sample_count
+            || recovered_events.event_count < journal.partial_event_count
+            || recovered_events.last_safe_position < journal.last_safe_stimulus_position
+            || recovered_events.gap_event_count < journal.gap_event_count
+            || recovered_events.missed_slot_count < journal.missed_slot_count
+        {
+            return Err(CommandError::forbidden(
+                "Recovery evidence is shorter than its last durable journal prefix.",
+            ));
+        }
+        truncate_file_to_length(&events_path, recovered_events.valid_byte_length)?;
         if let (Some(path), Some(table)) = (&csv_partial_path, &csv_table) {
             truncate_table_to_rows(path, table, common_count)?;
         }
@@ -2239,6 +2738,10 @@ impl RunFiles {
             journal,
             flush_every_samples: (u64::from(settings.experiment.sampling_frequency_hz) / 4).max(1),
             _attempt_lock: attempt_lock,
+            #[cfg(test)]
+            fail_next_event_write: false,
+            #[cfg(test)]
+            fail_next_journal_write: false,
         };
         Ok((
             files,
@@ -2253,10 +2756,38 @@ impl RunFiles {
     }
 
     fn write_event(&mut self, event: &ResearchEventV1) -> ResearchResult<()> {
+        #[cfg(test)]
+        if std::mem::take(&mut self.fail_next_event_write) {
+            return Err(CommandError::io("injected event-write failure"));
+        }
         let bytes = canonical_json(event, &[])?;
         self.events.write_all(&bytes).map_err(CommandError::io)?;
         self.events.write_all(b"\n").map_err(CommandError::io)?;
         self.events.flush().map_err(CommandError::io)
+    }
+
+    fn synced_events_length(&mut self) -> ResearchResult<u64> {
+        self.events.flush().map_err(CommandError::io)?;
+        self.events
+            .get_ref()
+            .sync_data()
+            .map_err(CommandError::io)?;
+        fs::metadata(&self.events_path)
+            .map(|metadata| metadata.len())
+            .map_err(CommandError::io)
+    }
+
+    fn ensure_terminal_event(
+        &mut self,
+        prefix_byte_length: u64,
+        event: &ResearchEventV1,
+    ) -> ResearchResult<()> {
+        self.events.flush().map_err(CommandError::io)?;
+        ensure_exact_append(
+            &self.events_path,
+            prefix_byte_length,
+            &canonical_event_line(event)?,
+        )
     }
 
     fn write_sample(&mut self, sample: &ResearchSampleV1) -> ResearchResult<()> {
@@ -2296,6 +2827,10 @@ impl RunFiles {
         missed_slot_count: u64,
     ) -> ResearchResult<()> {
         self.sync_outputs()?;
+        #[cfg(test)]
+        if std::mem::take(&mut self.fail_next_journal_write) {
+            return Err(CommandError::io("injected journal-write failure"));
+        }
         self.journal.partial_sample_count = sample_count;
         self.journal.partial_event_count = event_count;
         self.journal.last_safe_stimulus_position = last_safe_position;
@@ -2303,6 +2838,20 @@ impl RunFiles {
         self.journal.last_monotonic_time_ns = last_monotonic_time_ns;
         self.journal.gap_event_count = gap_event_count;
         self.journal.missed_slot_count = missed_slot_count;
+        write_journal_record(&self.recovery_path, &self.journal, false)
+    }
+
+    fn update_recovery_summary(&mut self, recovery: RecoverySummaryV1) -> ResearchResult<()> {
+        if !recovery_summary_append_is_valid(
+            &self.journal.recovery,
+            &recovery,
+            &self.journal.run_id,
+        ) {
+            return Err(CommandError::invalid_contract(
+                "Recovery provenance cannot replace or reorder durable history.",
+            ));
+        }
+        self.journal.recovery = recovery;
         write_journal_record(&self.recovery_path, &self.journal, false)
     }
 
@@ -2323,7 +2872,7 @@ impl RunFiles {
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn finalize(
+    fn prepare_finalization(
         &mut self,
         receipt: &StartRunReceipt,
         settings: &ResearchSettingsV1,
@@ -2333,7 +2882,15 @@ impl RunFiles {
         completion_status: CompletionStatusV1,
         status: &RunStatus,
         recovery: &RecoverySummaryV1,
-    ) -> ResearchResult<FinalizeReceipt> {
+        terminal_event: &ResearchEventV1,
+        events_prefix_byte_length: u64,
+        finalized_at: &str,
+    ) -> ResearchResult<()> {
+        if *recovery != self.journal.recovery {
+            return Err(CommandError::forbidden(
+                "The finalization recovery provenance changed after its durable checkpoint.",
+            ));
+        }
         self.flush_tables()?;
         self.events.flush().map_err(CommandError::io)?;
         self.events.get_ref().sync_all().map_err(CommandError::io)?;
@@ -2343,28 +2900,52 @@ impl RunFiles {
         if let Some(tsv) = &self.tsv {
             tsv.get_ref().sync_all().map_err(CommandError::io)?;
         }
-        if let (Some(partial), Some(final_path)) = (&self.csv_partial_path, &self.csv_path) {
-            fs::rename(partial, final_path).map_err(CommandError::io)?;
-        }
-        if let (Some(partial), Some(final_path)) = (&self.tsv_partial_path, &self.tsv_path) {
-            fs::rename(partial, final_path).map_err(CommandError::io)?;
-        }
 
+        if let Some(pending) = &self.journal.pending_finalization {
+            if pending.terminal_event != *terminal_event
+                || pending.events_prefix_byte_length != events_prefix_byte_length
+                || pending.manifest.completion_status != completion_status
+            {
+                return Err(CommandError::forbidden(
+                    "The durable finalization intent does not match this retry.",
+                ));
+            }
+            validate_manifest_against_journal(&pending.manifest, &self.journal)?;
+            if self.recovery_path.exists() {
+                write_journal_record(&self.recovery_path, &self.journal, false)?;
+            } else if self.session_dir.join("manifest.json").exists() {
+                verify_committed_manifest(&self.session_dir, &self.journal)?;
+            } else {
+                return Err(CommandError::forbidden(
+                    "The durable finalization intent disappeared before commit.",
+                ));
+            }
+            return Ok(());
+        }
+        let terminal_line = canonical_event_line(terminal_event)?;
         let mut outputs = vec![
             output_record(RunOutputKindV1::Settings, &self.settings_path, None)?,
-            output_record(RunOutputKindV1::Events, &self.events_path, None)?,
+            output_record_with_append(
+                RunOutputKindV1::Events,
+                &self.events_path,
+                events_prefix_byte_length,
+                &terminal_line,
+                None,
+            )?,
         ];
-        if let Some(path) = &self.csv_path {
-            outputs.push(output_record(
+        if let (Some(partial), Some(final_path)) = (&self.csv_partial_path, &self.csv_path) {
+            outputs.push(output_record_for_promotion(
                 RunOutputKindV1::Csv,
-                path,
+                partial,
+                final_path,
                 Some(status.sample_count),
             )?);
         }
-        if let Some(path) = &self.tsv_path {
-            outputs.push(output_record(
+        if let (Some(partial), Some(final_path)) = (&self.tsv_partial_path, &self.tsv_path) {
+            outputs.push(output_record_for_promotion(
                 RunOutputKindV1::Tsv,
-                path,
+                partial,
+                final_path,
                 Some(status.sample_count),
             )?);
         }
@@ -2393,6 +2974,8 @@ impl RunFiles {
             attempt_number: participant.attempt_number,
             session_stem: receipt.session_stem.clone(),
             completion_status,
+            playback_mode: manifest_playback_mode(receipt.playback_mode),
+            playback_qualification: manifest_playback_qualification(receipt.playback_qualification),
             settings_sha256: receipt.settings_sha256.clone(),
             assignment_plan_sha256: receipt.assignment_plan_sha256.clone(),
             stimuli,
@@ -2403,7 +2986,7 @@ impl RunFiles {
                 gap_event_count: status.gap_event_count,
                 missed_slot_count: status.missed_slot_count,
                 started_at: started_at.to_owned(),
-                finalized_at: wall_time_now()?,
+                finalized_at: finalized_at.to_owned(),
             },
             outputs,
             recovery: recovery.clone(),
@@ -2414,28 +2997,46 @@ impl RunFiles {
             },
         };
         manifest.validate()?;
-        let manifest_path = self.session_dir.join("manifest.json");
-        write_new(&manifest_path, &canonical_json(&manifest, &[])?)?;
-        let manifest_file = file_receipt(&manifest_path)?;
-        let mut files = manifest
-            .outputs
-            .iter()
-            .map(|output| FinalizedFileReceipt {
-                file_name: output.file_name.clone(),
-                sha256: output.sha256.clone(),
-                byte_length: output.byte_length,
-            })
-            .collect::<Vec<_>>();
-        files.push(manifest_file);
-        fs::remove_file(&self.recovery_path).map_err(CommandError::io)?;
-        Ok(FinalizeReceipt {
-            run_id: receipt.run_id.clone(),
-            participant_id: participant.id.clone(),
-            attempt_number: participant.attempt_number,
-            completion_status,
-            output_receipt_id: receipt.output_receipt_id.clone(),
-            files,
-        })
+        self.journal.partial_sample_count = status.sample_count;
+        self.journal.partial_event_count = status.event_count;
+        self.journal.last_monotonic_time_ns = terminal_event.monotonic_time_ns.clone();
+        self.journal.gap_event_count = status.gap_event_count;
+        self.journal.missed_slot_count = status.missed_slot_count;
+        self.journal.interrupted_stimulus_position = terminal_event.stimulus_position;
+        self.journal.pending_finalization = Some(PendingFinalizationV1 {
+            terminal_event: terminal_event.clone(),
+            events_prefix_byte_length,
+            manifest,
+        });
+        let pending = self
+            .journal
+            .pending_finalization
+            .as_ref()
+            .expect("pending finalization was initialized");
+        validate_manifest_against_journal(&pending.manifest, &self.journal)?;
+        write_journal_record(&self.recovery_path, &self.journal, false)
+    }
+
+    fn complete_finalization(
+        &mut self,
+        receipt: &StartRunReceipt,
+    ) -> ResearchResult<FinalizeReceipt> {
+        let pending = self
+            .journal
+            .pending_finalization
+            .as_ref()
+            .ok_or_else(|| CommandError::io("No durable finalization intent is available."))?;
+        validate_manifest_against_journal(&pending.manifest, &self.journal)?;
+        commit_pending_finalization(&self.session_dir, &self.journal)?;
+        let manifest = &pending.manifest;
+        validate_manifest_against_journal(manifest, &self.journal)?;
+        let final_receipt = finalize_receipt_from_manifest(
+            &self.session_dir,
+            manifest,
+            receipt.output_receipt_id.clone(),
+        )?;
+        remove_recovery_journal_if_present(&self.recovery_path);
+        Ok(final_receipt)
     }
 }
 
@@ -2585,6 +3186,48 @@ fn write_new(path: &Path, bytes: &[u8]) -> ResearchResult<()> {
     file.sync_all().map_err(CommandError::io)
 }
 
+fn canonical_event_line(event: &ResearchEventV1) -> ResearchResult<Vec<u8>> {
+    let mut line = canonical_json(event, &[])?;
+    line.push(b'\n');
+    Ok(line)
+}
+
+fn ensure_exact_append(
+    path: &Path,
+    prefix_byte_length: u64,
+    expected: &[u8],
+) -> ResearchResult<()> {
+    let mut file = OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(path)
+        .map_err(CommandError::io)?;
+    let observed_length = file.metadata().map_err(CommandError::io)?.len();
+    let expected_end = prefix_byte_length.saturating_add(expected.len() as u64);
+    if observed_length < prefix_byte_length || observed_length > expected_end {
+        return Err(CommandError::forbidden(
+            "The terminal event destination changed during finalization.",
+        ));
+    }
+    file.seek(SeekFrom::Start(prefix_byte_length))
+        .map_err(CommandError::io)?;
+    let mut observed = Vec::with_capacity((observed_length - prefix_byte_length) as usize);
+    file.read_to_end(&mut observed).map_err(CommandError::io)?;
+    if observed == expected {
+        return Ok(());
+    }
+    if !expected.starts_with(&observed) {
+        return Err(CommandError::forbidden(
+            "The terminal event destination contains conflicting evidence.",
+        ));
+    }
+    file.set_len(prefix_byte_length).map_err(CommandError::io)?;
+    file.seek(SeekFrom::Start(prefix_byte_length))
+        .map_err(CommandError::io)?;
+    file.write_all(expected).map_err(CommandError::io)?;
+    file.sync_all().map_err(CommandError::io)
+}
+
 fn write_journal_record(
     path: &Path,
     journal: &RecoveryJournalV1,
@@ -2655,9 +3298,31 @@ fn read_latest_journal(path: &Path) -> ResearchResult<Option<RecoveryJournalV1>>
         if let Some(previous) = &latest {
             if candidate.recovery_id != previous.recovery_id
                 || candidate.run_id != previous.run_id
+                || candidate.experiment_id != previous.experiment_id
+                || candidate.participant_id != previous.participant_id
+                || candidate.participant_code != previous.participant_code
+                || candidate.age != previous.age
+                || candidate.gender != previous.gender
+                || candidate.handedness != previous.handedness
+                || candidate.attempt_number != previous.attempt_number
+                || candidate.session_stem != previous.session_stem
+                || candidate.settings_sha256 != previous.settings_sha256
+                || candidate.assignment_plan_sha256 != previous.assignment_plan_sha256
+                || candidate.playback_mode != previous.playback_mode
+                || candidate.playback_qualification != previous.playback_qualification
+                || candidate.started_at != previous.started_at
                 || candidate.partial_sample_count < previous.partial_sample_count
                 || candidate.partial_event_count < previous.partial_event_count
                 || candidate.last_safe_stimulus_position < previous.last_safe_stimulus_position
+                || candidate.gap_event_count < previous.gap_event_count
+                || candidate.missed_slot_count < previous.missed_slot_count
+                || !recovery_summary_append_is_valid(
+                    &previous.recovery,
+                    &candidate.recovery,
+                    &candidate.run_id,
+                )
+                || previous.pending_finalization.is_some()
+                    && candidate.pending_finalization != previous.pending_finalization
             {
                 return Ok(None);
             }
@@ -2665,6 +3330,35 @@ fn read_latest_journal(path: &Path) -> ResearchResult<Option<RecoveryJournalV1>>
         latest = Some(candidate);
     }
     Ok(latest)
+}
+
+fn recovery_summary_append_is_valid(
+    previous: &RecoverySummaryV1,
+    candidate: &RecoverySummaryV1,
+    run_id: &str,
+) -> bool {
+    if previous == candidate {
+        return true;
+    }
+    if !candidate.resumed || candidate.source_run_id.as_deref() != Some(run_id) {
+        return false;
+    }
+    if previous.resumed && previous.source_run_id != candidate.source_run_id {
+        return false;
+    }
+    if !candidate
+        .restarted_stimulus_ids
+        .starts_with(&previous.restarted_stimulus_ids)
+    {
+        return false;
+    }
+    let added = candidate
+        .restarted_stimulus_ids
+        .len()
+        .saturating_sub(previous.restarted_stimulus_ids.len());
+    added <= 1
+        && (!previous.resumed || previous.source_run_id.as_deref() == Some(run_id))
+        && !(previous.resumed && candidate.restarted_stimulus_ids.is_empty())
 }
 
 fn open_append(path: &Path) -> ResearchResult<File> {
@@ -2816,11 +3510,15 @@ fn truncate_table_to_rows(
         .checked_sub(1)
         .and_then(|index| table.row_end_offsets.get(index).copied())
         .unwrap_or(table.header_end_offset);
+    truncate_file_to_length(path, end)
+}
+
+fn truncate_file_to_length(path: &Path, length: u64) -> ResearchResult<()> {
     let file = OpenOptions::new()
         .write(true)
         .open(path)
         .map_err(CommandError::io)?;
-    file.set_len(end).map_err(CommandError::io)?;
+    file.set_len(length).map_err(CommandError::io)?;
     file.sync_data().map_err(CommandError::io)
 }
 
@@ -2836,6 +3534,7 @@ fn reconcile_events(path: &Path, journal: &RecoveryJournalV1) -> ResearchResult<
     let mut last_monotonic_ns = 0u128;
     let mut gap_event_count = 0u64;
     let mut missed_slot_count = 0u64;
+    let mut durable_prefix_event = None;
     loop {
         record.clear();
         let read = reader
@@ -2924,23 +3623,22 @@ fn reconcile_events(path: &Path, journal: &RecoveryJournalV1) -> ResearchResult<
             missed_slot_count =
                 missed_slot_count.saturating_add(event.missed_slot_count.unwrap_or_default());
         }
+        if expected_sequence == journal.partial_event_count {
+            durable_prefix_event = Some(event.clone());
+        }
         event_count = expected_sequence;
         last_monotonic_ns = monotonic.unwrap_or_default();
         offset = offset.saturating_add(read as u64);
     }
-    let file = OpenOptions::new()
-        .write(true)
-        .open(path)
-        .map_err(CommandError::io)?;
-    file.set_len(offset).map_err(CommandError::io)?;
-    file.sync_data().map_err(CommandError::io)?;
     Ok(ReconciledEvents {
         event_count,
+        valid_byte_length: offset,
         last_safe_position,
         interrupted_stimulus_position: active_position.or(interrupted_position),
         last_monotonic_ns,
         gap_event_count,
         missed_slot_count,
+        durable_prefix_event,
     })
 }
 
@@ -2986,10 +3684,24 @@ fn validate_recovery_journal(
 ) -> ResearchResult<()> {
     validate_participant_id(&journal.participant_id)?;
     validate_participant_code(&journal.participant_code)?;
+    let recovery_id_is_canonical = Uuid::parse_str(&journal.recovery_id)
+        .is_ok_and(|parsed| parsed.to_string() == journal.recovery_id);
+    let run_id_is_canonical =
+        Uuid::parse_str(&journal.run_id).is_ok_and(|parsed| parsed.to_string() == journal.run_id);
+    let playback_contract_is_valid = matches!(
+        (journal.playback_mode, journal.playback_qualification),
+        (
+            PlaybackMode::NativeLibvlc,
+            PlaybackQualification::QualifiedNative
+        ) | (
+            PlaybackMode::UnqualifiedWebview,
+            PlaybackQualification::Unqualified
+        )
+    );
     if journal.schema != "affect-research-recovery-journal"
         || journal.version != 1
-        || Uuid::parse_str(&journal.recovery_id).is_err()
-        || Uuid::parse_str(&journal.run_id).is_err()
+        || !recovery_id_is_canonical
+        || !run_id_is_canonical
         || journal.experiment_id != settings.experiment.id
         || journal.age == 0
         || journal.age > 120
@@ -2997,14 +3709,314 @@ fn validate_recovery_journal(
         || journal.settings_sha256 != settings.canonical_sha256()?
         || journal.assignment_plan_sha256 != plan.plan_hash_sha256
         || journal.last_monotonic_time_ns.parse::<u128>().is_err()
-        || journal.started_at.is_empty()
+        || OffsetDateTime::parse(&journal.started_at, &Rfc3339).is_err()
         || !is_safe_component(&journal.session_stem)
+        || !playback_contract_is_valid
     {
         return Err(CommandError::invalid_contract(
             "The recovery journal does not match the supplied frozen run contracts.",
         ));
     }
+    validate_journal_recovery_summary(journal, plan)?;
+    if let Some(pending) = &journal.pending_finalization {
+        validate_manifest_against_journal(&pending.manifest, journal)?;
+    }
     Ok(())
+}
+
+fn validate_journal_recovery_summary(
+    journal: &RecoveryJournalV1,
+    plan: &ResolvedAssignmentPlanV1,
+) -> ResearchResult<()> {
+    if journal.recovery.resumed != journal.recovery.source_run_id.is_some()
+        || journal
+            .recovery
+            .source_run_id
+            .as_deref()
+            .is_some_and(|source_run_id| source_run_id != journal.run_id)
+        || (!journal.recovery.resumed && !journal.recovery.restarted_stimulus_ids.is_empty())
+    {
+        return Err(CommandError::invalid_contract(
+            "The recovery journal contains inconsistent recovery provenance.",
+        ));
+    }
+    let assignment = plan
+        .assignment_for(&journal.participant_id)
+        .ok_or_else(|| {
+            CommandError::invalid_contract(
+                "The recovery participant is absent from the frozen assignment plan.",
+            )
+        })?;
+    let assigned_ids = assignment
+        .slots
+        .iter()
+        .map(|slot| slot.stimulus_id.as_str())
+        .collect::<std::collections::HashSet<_>>();
+    let mut observed = std::collections::HashSet::new();
+    if journal
+        .recovery
+        .restarted_stimulus_ids
+        .iter()
+        .any(|stimulus_id| {
+            !assigned_ids.contains(stimulus_id.as_str()) || !observed.insert(stimulus_id.as_str())
+        })
+    {
+        return Err(CommandError::invalid_contract(
+            "The recovery journal contains invalid restarted-stimulus provenance.",
+        ));
+    }
+    Ok(())
+}
+
+fn load_recovery_plan_snapshot(
+    session_dir: &Path,
+    journal: &RecoveryJournalV1,
+) -> ResearchResult<ResolvedAssignmentPlanV1> {
+    let bytes =
+        fs::read(session_dir.join("assignment-plan.snapshot.json")).map_err(CommandError::io)?;
+    if bytes.len() > 16 * 1024 * 1024 {
+        return Err(CommandError::forbidden(
+            "The frozen assignment-plan snapshot exceeds its recovery bound.",
+        ));
+    }
+    let plan: ResolvedAssignmentPlanV1 = serde_json::from_slice(&bytes).map_err(|_| {
+        CommandError::forbidden(
+            "The frozen assignment-plan snapshot is not a strict Research plan.",
+        )
+    })?;
+    if canonical_json(&plan, &[])? != bytes
+        || plan.plan_hash_sha256 != journal.assignment_plan_sha256
+        || plan.validate(&journal.settings_sha256).is_err()
+    {
+        return Err(CommandError::forbidden(
+            "The frozen assignment-plan snapshot does not match the recovery identity.",
+        ));
+    }
+    Ok(plan)
+}
+
+fn completed_boundary_is_durable(
+    session_dir: &Path,
+    journal: &RecoveryJournalV1,
+    plan: &ResolvedAssignmentPlanV1,
+) -> ResearchResult<bool> {
+    let assignment = plan
+        .assignment_for(&journal.participant_id)
+        .ok_or_else(|| {
+            CommandError::forbidden(
+                "The recovery participant is absent from the frozen assignment plan.",
+            )
+        })?;
+    let final_position = assignment.slots.len() as u32;
+    if journal.last_safe_stimulus_position < final_position {
+        return Ok(false);
+    }
+    if final_position == 0
+        || journal.last_safe_stimulus_position != final_position
+        || journal.interrupted_stimulus_position.is_some()
+        || journal.partial_event_count == 0
+    {
+        return Err(CommandError::forbidden(
+            "The recovery journal does not describe one exact completed assignment boundary.",
+        ));
+    }
+
+    let reconciled = reconcile_events(&session_dir.join("events.jsonl"), journal)?;
+    if reconciled.event_count < journal.partial_event_count {
+        return Err(CommandError::forbidden(
+            "The completed recovery event prefix is shorter than its durable journal receipt.",
+        ));
+    }
+    let event = reconciled.durable_prefix_event.as_ref().ok_or_else(|| {
+        CommandError::forbidden(
+            "The completed recovery boundary has no exact durable event receipt.",
+        )
+    })?;
+    let final_slot = assignment
+        .slots
+        .last()
+        .ok_or_else(|| CommandError::forbidden("The frozen assignment has no final stimulus."))?;
+    let expected_identity = plan
+        .stimulus_by_id(&final_slot.stimulus_id)
+        .ok_or_else(|| {
+            CommandError::forbidden(
+                "The frozen assignment final stimulus is absent from the resolved plan.",
+            )
+        })?
+        .sample_identity();
+    let media_time_ms = event.media_time_ms.unwrap_or(f64::NAN);
+    if event.event_type != ResearchEventTypeV1::StimulusCompleted
+        || event.sequence != journal.partial_event_count
+        || event.stimulus_position != Some(final_position)
+        || event.stimulus_identity.as_ref() != Some(&expected_identity)
+        || !media_time_ms.is_finite()
+        || media_time_ms < 0.0
+        || media_time_ms > expected_identity.duration_ms
+        || expected_identity.duration_ms - media_time_ms >= COMPLETION_EARLY_TOLERANCE_MS
+        || event.monotonic_time_ns != journal.last_monotonic_time_ns
+        || OffsetDateTime::parse(&event.wall_time_utc, &Rfc3339).is_err()
+        || event.missed_slot_count.is_some()
+        || event.detail_code.is_some()
+    {
+        return Err(CommandError::forbidden(
+            "The durable final-stimulus event does not match the frozen completed assignment.",
+        ));
+    }
+    Ok(true)
+}
+
+fn finalize_recovery_at_root(
+    workspace_root: &Path,
+    recovery_id: &str,
+    settings: &ResearchSettingsV1,
+    plan: &ResolvedAssignmentPlanV1,
+) -> ResearchResult<FinalizeReceipt> {
+    let (recovery_path, journal) = load_recovery_journal(workspace_root, recovery_id)?;
+    validate_recovery_journal(&journal, settings, plan)?;
+    let session_dir = recovery_session_dir(workspace_root, &journal)?;
+    let participant_root = session_dir.parent().ok_or_else(|| {
+        CommandError::forbidden("The recovery participant output is unavailable.")
+    })?;
+    let attempt_lock = acquire_attempt_lock(participant_root)?;
+    verify_snapshot(
+        &session_dir.join("settings.snapshot.json"),
+        &canonical_json(settings, &[])?,
+        "settings",
+    )?;
+    verify_snapshot(
+        &session_dir.join("assignment-plan.snapshot.json"),
+        &canonical_json(plan, &[])?,
+        "assignment plan",
+    )?;
+
+    let manifest = if session_dir.join("manifest.json").exists() {
+        verify_committed_manifest(&session_dir, &journal)?
+    } else if journal.pending_finalization.is_some() {
+        commit_pending_finalization(&session_dir, &journal)?;
+        verify_committed_manifest(&session_dir, &journal)?
+    } else {
+        return finalize_completed_boundary_recovery(
+            &session_dir,
+            recovery_path,
+            journal,
+            settings,
+            plan,
+            attempt_lock,
+        );
+    };
+    let receipt =
+        finalize_receipt_from_manifest(&session_dir, &manifest, Uuid::new_v4().to_string())?;
+    remove_recovery_journal_if_present(&recovery_path);
+    Ok(receipt)
+}
+
+fn finalize_completed_boundary_recovery(
+    session_dir: &Path,
+    recovery_path: PathBuf,
+    journal: RecoveryJournalV1,
+    settings: &ResearchSettingsV1,
+    plan: &ResolvedAssignmentPlanV1,
+    attempt_lock: File,
+) -> ResearchResult<FinalizeReceipt> {
+    let assignment = plan
+        .assignment_for(&journal.participant_id)
+        .ok_or_else(|| {
+            CommandError::forbidden(
+                "The recovery participant is absent from the frozen assignment plan.",
+            )
+        })?
+        .clone();
+    let (mut files, _) =
+        RunFiles::resume(session_dir, recovery_path, journal, settings, attempt_lock)?;
+    if !completed_boundary_is_durable(session_dir, &files.journal, plan)? {
+        return Err(CommandError::forbidden(
+            "The recovery has no durable terminal finalization intent or completed boundary.",
+        ));
+    }
+
+    let terminal_sequence = files
+        .journal
+        .partial_event_count
+        .checked_add(1)
+        .ok_or_else(|| CommandError::forbidden("The recovery event sequence is exhausted."))?;
+    let terminal_monotonic_ns = files
+        .journal
+        .last_monotonic_time_ns
+        .parse::<u128>()
+        .ok()
+        .and_then(|value| value.checked_add(1))
+        .ok_or_else(|| CommandError::forbidden("The recovery monotonic sequence is exhausted."))?
+        .to_string();
+    let finalized_at = wall_time_now()?;
+    let terminal_event = ResearchEventV1 {
+        schema: RESEARCH_EVENT_SCHEMA.to_owned(),
+        version: 1,
+        sequence: terminal_sequence,
+        run_id: files.journal.run_id.clone(),
+        participant_id: files.journal.participant_id.clone(),
+        attempt_number: files.journal.attempt_number,
+        settings_sha256: files.journal.settings_sha256.clone(),
+        assignment_plan_sha256: files.journal.assignment_plan_sha256.clone(),
+        wall_time_utc: finalized_at.clone(),
+        monotonic_time_ns: terminal_monotonic_ns,
+        event_type: ResearchEventTypeV1::SessionCompleted,
+        stimulus_identity: None,
+        stimulus_position: None,
+        media_time_ms: None,
+        missed_slot_count: None,
+        detail_code: None,
+    };
+    let participant = CodedParticipant {
+        id: files.journal.participant_id.clone(),
+        code: files.journal.participant_code.clone(),
+        age: files.journal.age,
+        gender: files.journal.gender,
+        handedness: files.journal.handedness,
+        attempt_number: files.journal.attempt_number,
+    };
+    let receipt = StartRunReceipt {
+        run_id: files.journal.run_id.clone(),
+        participant_id: files.journal.participant_id.clone(),
+        attempt_number: files.journal.attempt_number,
+        session_stem: files.journal.session_stem.clone(),
+        settings_sha256: files.journal.settings_sha256.clone(),
+        assignment_plan_sha256: files.journal.assignment_plan_sha256.clone(),
+        output_receipt_id: Uuid::new_v4().to_string(),
+        resumed: files.journal.recovery.resumed,
+        resume_at_stimulus_position: None,
+        playback_mode: files.journal.playback_mode,
+        playback_qualification: files.journal.playback_qualification,
+    };
+    let mut status = RunStatus::idle();
+    status.run_id = Some(receipt.run_id.clone());
+    status.participant_id = Some(receipt.participant_id.clone());
+    status.attempt_number = Some(receipt.attempt_number);
+    status.phase = RunPhase::Finalizing;
+    status.sample_count = files.journal.partial_sample_count;
+    status.event_count = terminal_sequence;
+    status.gap_event_count = files.journal.gap_event_count;
+    status.missed_slot_count = files.journal.missed_slot_count;
+    status.last_safe_stimulus_position = files.journal.last_safe_stimulus_position;
+    status.playback_mode = Some(receipt.playback_mode);
+    status.playback_qualification = Some(receipt.playback_qualification);
+    let recovery = files.journal.recovery.clone();
+    let started_at = files.journal.started_at.clone();
+    let events_prefix_byte_length = files.synced_events_length()?;
+    files.prepare_finalization(
+        &receipt,
+        settings,
+        &assignment,
+        &participant,
+        &started_at,
+        CompletionStatusV1::Completed,
+        &status,
+        &recovery,
+        &terminal_event,
+        events_prefix_byte_length,
+        &finalized_at,
+    )?;
+    files.ensure_terminal_event(events_prefix_byte_length, &terminal_event)?;
+    files.complete_finalization(&receipt)
 }
 
 fn recovery_session_dir(
@@ -3096,6 +4108,409 @@ fn output_record(
     })
 }
 
+fn output_record_with_append(
+    kind: RunOutputKindV1,
+    path: &Path,
+    prefix_byte_length: u64,
+    appended: &[u8],
+    row_count: Option<u64>,
+) -> ResearchResult<RunOutputV1> {
+    if !regular_file_exists(path)? {
+        return Err(CommandError::io(
+            "An output required for finalization is unavailable.",
+        ));
+    }
+    let mut file = File::open(path).map_err(CommandError::io)?;
+    if file.metadata().map_err(CommandError::io)?.len() != prefix_byte_length {
+        return Err(CommandError::forbidden(
+            "The event log changed before its terminal intent became durable.",
+        ));
+    }
+    let mut digest = Sha256::new();
+    let mut observed_length = 0u64;
+    let mut buffer = [0u8; 64 * 1024];
+    loop {
+        let count = file.read(&mut buffer).map_err(CommandError::io)?;
+        if count == 0 {
+            break;
+        }
+        observed_length = observed_length.saturating_add(count as u64);
+        digest.update(&buffer[..count]);
+    }
+    if observed_length != prefix_byte_length {
+        return Err(CommandError::forbidden(
+            "The event log changed while its terminal intent was being prepared.",
+        ));
+    }
+    digest.update(appended);
+    Ok(RunOutputV1 {
+        kind,
+        file_name: path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .ok_or_else(|| CommandError::io("An output file name is invalid."))?
+            .to_owned(),
+        sha256: format!("{:x}", digest.finalize()),
+        byte_length: prefix_byte_length.saturating_add(appended.len() as u64),
+        row_count,
+    })
+}
+
+fn output_record_for_promotion(
+    kind: RunOutputKindV1,
+    partial_path: &Path,
+    final_path: &Path,
+    row_count: Option<u64>,
+) -> ResearchResult<RunOutputV1> {
+    let partial_exists = regular_file_exists(partial_path)?;
+    let final_exists = regular_file_exists(final_path)?;
+    let source = match (partial_exists, final_exists) {
+        (true, false) => partial_path,
+        (false, true) => final_path,
+        (true, true) => return Err(CommandError::forbidden(
+            "Both partial and final ratings files exist; finalization cannot choose between them.",
+        )),
+        (false, false) => {
+            return Err(CommandError::io(
+                "A ratings file required for finalization is unavailable.",
+            ))
+        }
+    };
+    let mut record = output_record(kind, source, row_count)?;
+    record.file_name = final_path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| CommandError::io("A final ratings file name is invalid."))?
+        .to_owned();
+    Ok(record)
+}
+
+fn regular_file_exists(path: &Path) -> ResearchResult<bool> {
+    match fs::symlink_metadata(path) {
+        Ok(metadata) if metadata.file_type().is_file() && !metadata.file_type().is_symlink() => {
+            Ok(true)
+        }
+        Ok(_) => Err(CommandError::forbidden(
+            "A finalization path is not a regular file.",
+        )),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(error) => Err(CommandError::io(error)),
+    }
+}
+
+fn expected_output_file_name(kind: RunOutputKindV1) -> &'static str {
+    match kind {
+        RunOutputKindV1::Settings => "settings.snapshot.json",
+        RunOutputKindV1::Events => "events.jsonl",
+        RunOutputKindV1::Csv => "ratings.csv",
+        RunOutputKindV1::Tsv => "ratings.tsv",
+    }
+}
+
+fn verify_output_record(path: &Path, expected: &RunOutputV1) -> ResearchResult<()> {
+    if path.file_name().and_then(|name| name.to_str()) != Some(expected.file_name.as_str())
+        || !regular_file_exists(path)?
+    {
+        return Err(CommandError::forbidden(
+            "A finalized output does not match its frozen file identity.",
+        ));
+    }
+    let (sha256, byte_length) = file_digest(path)?;
+    if sha256 != expected.sha256 || byte_length != expected.byte_length {
+        return Err(CommandError::forbidden(
+            "A finalized output does not match its frozen digest and length.",
+        ));
+    }
+    Ok(())
+}
+
+fn promote_or_verify_output(
+    partial_path: &Path,
+    final_path: &Path,
+    expected: &RunOutputV1,
+) -> ResearchResult<()> {
+    let partial_exists = regular_file_exists(partial_path)?;
+    let final_exists = regular_file_exists(final_path)?;
+    match (partial_exists, final_exists) {
+        (true, false) => {
+            let mut staged = expected.clone();
+            staged.file_name = partial_path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .ok_or_else(|| CommandError::io("A partial ratings file name is invalid."))?
+                .to_owned();
+            verify_output_record(partial_path, &staged)?;
+            fs::rename(partial_path, final_path).map_err(CommandError::io)?;
+            verify_output_record(final_path, expected)
+        }
+        (false, true) => verify_output_record(final_path, expected),
+        (true, true) => Err(CommandError::forbidden(
+            "Both partial and final ratings files exist during finalization.",
+        )),
+        (false, false) => Err(CommandError::io(
+            "A ratings output disappeared during finalization.",
+        )),
+    }
+}
+
+fn manifest_playback_mode(mode: PlaybackMode) -> RunPlaybackModeV1 {
+    match mode {
+        PlaybackMode::NativeLibvlc => RunPlaybackModeV1::NativeLibvlc,
+        PlaybackMode::UnqualifiedWebview => RunPlaybackModeV1::UnqualifiedWebview,
+    }
+}
+
+fn manifest_playback_qualification(
+    qualification: PlaybackQualification,
+) -> RunPlaybackQualificationV1 {
+    match qualification {
+        PlaybackQualification::QualifiedNative => RunPlaybackQualificationV1::QualifiedNative,
+        PlaybackQualification::Unqualified => RunPlaybackQualificationV1::Unqualified,
+    }
+}
+
+fn validate_terminal_event(
+    event: &ResearchEventV1,
+    manifest: &ResearchRunManifestV2,
+    journal: &RecoveryJournalV1,
+) -> ResearchResult<()> {
+    let expected_type = match manifest.completion_status {
+        CompletionStatusV1::Completed => ResearchEventTypeV1::SessionCompleted,
+        CompletionStatusV1::Partial => ResearchEventTypeV1::StoppedEarly,
+    };
+    let wall_time_is_valid = OffsetDateTime::parse(&event.wall_time_utc, &Rfc3339).is_ok();
+    if event.schema != RESEARCH_EVENT_SCHEMA
+        || event.version != 1
+        || event.event_type != expected_type
+        || event.sequence != manifest.timing.event_count
+        || event.run_id != journal.run_id
+        || event.participant_id != journal.participant_id
+        || event.attempt_number != journal.attempt_number
+        || event.settings_sha256 != journal.settings_sha256
+        || event.assignment_plan_sha256 != journal.assignment_plan_sha256
+        || event.monotonic_time_ns != journal.last_monotonic_time_ns
+        || event.monotonic_time_ns.parse::<u128>().is_err()
+        || !wall_time_is_valid
+        || event.wall_time_utc != manifest.timing.finalized_at
+        || event.missed_slot_count.is_some()
+        || event.detail_code.is_some()
+    {
+        return Err(CommandError::forbidden(
+            "The terminal event does not match the durable finalization manifest.",
+        ));
+    }
+
+    let field_count = usize::from(event.stimulus_identity.is_some())
+        + usize::from(event.stimulus_position.is_some())
+        + usize::from(event.media_time_ms.is_some());
+    if field_count != 0 && field_count != 3 {
+        return Err(CommandError::forbidden(
+            "The terminal event contains an incomplete stimulus identity.",
+        ));
+    }
+    if manifest.completion_status == CompletionStatusV1::Completed {
+        if field_count != 0
+            || journal.last_safe_stimulus_position != manifest.stimuli.len() as u32
+            || journal.interrupted_stimulus_position.is_some()
+        {
+            return Err(CommandError::forbidden(
+                "A completed terminal event is not at the final safe boundary.",
+            ));
+        }
+        return Ok(());
+    }
+    if field_count == 0 {
+        if journal.interrupted_stimulus_position.is_some() {
+            return Err(CommandError::forbidden(
+                "The partial terminal event omits its durable interrupted stimulus identity.",
+            ));
+        }
+        return Ok(());
+    }
+
+    let identity = event
+        .stimulus_identity
+        .as_ref()
+        .expect("all terminal stimulus fields are present");
+    identity.validate()?;
+    let position = event
+        .stimulus_position
+        .expect("all terminal stimulus fields are present");
+    let media_time_ms = event
+        .media_time_ms
+        .expect("all terminal stimulus fields are present");
+    let expected_identity = position
+        .checked_sub(1)
+        .and_then(|index| manifest.stimuli.get(index as usize));
+    if expected_identity != Some(identity)
+        || position != journal.last_safe_stimulus_position.saturating_add(1)
+        || Some(position) != journal.interrupted_stimulus_position
+        || !media_time_ms.is_finite()
+        || media_time_ms < 0.0
+        || media_time_ms > identity.duration_ms
+    {
+        return Err(CommandError::forbidden(
+            "The partial terminal event does not match its exact frozen stimulus boundary.",
+        ));
+    }
+    Ok(())
+}
+
+fn validate_manifest_against_journal(
+    manifest: &ResearchRunManifestV2,
+    journal: &RecoveryJournalV1,
+) -> ResearchResult<()> {
+    manifest.validate()?;
+    if manifest.run_id != journal.run_id
+        || manifest.experiment_id != journal.experiment_id
+        || manifest.participant_id != journal.participant_id
+        || manifest.participant_code != journal.participant_code
+        || manifest.age != journal.age
+        || manifest.gender != journal.gender
+        || manifest.handedness != journal.handedness
+        || manifest.attempt_number != journal.attempt_number
+        || manifest.session_stem != journal.session_stem
+        || manifest.playback_mode != manifest_playback_mode(journal.playback_mode)
+        || manifest.playback_qualification
+            != manifest_playback_qualification(journal.playback_qualification)
+        || manifest.settings_sha256 != journal.settings_sha256
+        || manifest.assignment_plan_sha256 != journal.assignment_plan_sha256
+        || manifest.timing.sample_count != journal.partial_sample_count
+        || manifest.timing.event_count != journal.partial_event_count
+        || manifest.timing.gap_event_count != journal.gap_event_count
+        || manifest.timing.missed_slot_count != journal.missed_slot_count
+        || manifest.timing.started_at != journal.started_at
+        || manifest.recovery != journal.recovery
+    {
+        return Err(CommandError::forbidden(
+            "The final manifest does not match the durable recovery identity.",
+        ));
+    }
+    if let Some(pending) = &journal.pending_finalization {
+        if pending.manifest != *manifest
+            || validate_terminal_event(&pending.terminal_event, manifest, journal).is_err()
+        {
+            return Err(CommandError::forbidden(
+                "The terminal event does not match the durable finalization manifest.",
+            ));
+        }
+        let terminal_line_length = canonical_event_line(&pending.terminal_event)?.len() as u64;
+        let events_output = manifest
+            .outputs
+            .iter()
+            .find(|output| output.kind == RunOutputKindV1::Events);
+        if events_output.is_none_or(|output| {
+            output.byte_length
+                != pending
+                    .events_prefix_byte_length
+                    .saturating_add(terminal_line_length)
+        }) {
+            return Err(CommandError::forbidden(
+                "The terminal event length does not match the final event-log receipt.",
+            ));
+        }
+    }
+    for output in &manifest.outputs {
+        if output.file_name != expected_output_file_name(output.kind) {
+            return Err(CommandError::forbidden(
+                "The final manifest contains an unexpected output file identity.",
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn commit_pending_finalization(
+    session_dir: &Path,
+    journal: &RecoveryJournalV1,
+) -> ResearchResult<()> {
+    let pending = journal
+        .pending_finalization
+        .as_ref()
+        .ok_or_else(|| CommandError::io("No durable finalization intent is available."))?;
+    validate_manifest_against_journal(&pending.manifest, journal)?;
+    ensure_exact_append(
+        &session_dir.join("events.jsonl"),
+        pending.events_prefix_byte_length,
+        &canonical_event_line(&pending.terminal_event)?,
+    )?;
+    let manifest = &pending.manifest;
+    for output in &manifest.outputs {
+        let final_path = session_dir.join(expected_output_file_name(output.kind));
+        match output.kind {
+            RunOutputKindV1::Settings | RunOutputKindV1::Events => {
+                verify_output_record(&final_path, output)?;
+            }
+            RunOutputKindV1::Csv | RunOutputKindV1::Tsv => {
+                let partial_path = session_dir.join(format!("{}.partial", output.file_name));
+                promote_or_verify_output(&partial_path, &final_path, output)?;
+            }
+        }
+    }
+    let manifest_path = session_dir.join("manifest.json");
+    let expected = canonical_json(manifest, &[])?;
+    if regular_file_exists(&manifest_path)? {
+        let observed = fs::read(&manifest_path).map_err(CommandError::io)?;
+        if observed != expected {
+            return Err(CommandError::forbidden(
+                "The durable manifest conflicts with the frozen finalization intent.",
+            ));
+        }
+    } else if let Err(error) = write_new(&manifest_path, &expected) {
+        if regular_file_exists(&manifest_path)? {
+            let observed = fs::read(&manifest_path).map_err(CommandError::io)?;
+            if observed != expected {
+                return Err(CommandError::forbidden(
+                    "A conflicting durable manifest won the finalization race.",
+                ));
+            }
+        } else {
+            return Err(error);
+        }
+    }
+    verify_committed_manifest_outputs(session_dir, manifest)
+}
+
+fn verify_committed_manifest_outputs(
+    session_dir: &Path,
+    manifest: &ResearchRunManifestV2,
+) -> ResearchResult<()> {
+    for output in &manifest.outputs {
+        verify_output_record(&session_dir.join(&output.file_name), output)?;
+    }
+    Ok(())
+}
+
+fn verify_committed_manifest(
+    session_dir: &Path,
+    journal: &RecoveryJournalV1,
+) -> ResearchResult<ResearchRunManifestV2> {
+    let path = session_dir.join("manifest.json");
+    let bytes = fs::read(&path).map_err(CommandError::io)?;
+    if bytes.len() > 16 * 1024 * 1024 {
+        return Err(CommandError::forbidden(
+            "The durable manifest exceeds the bounded recovery contract.",
+        ));
+    }
+    let manifest: ResearchRunManifestV2 = serde_json::from_slice(&bytes).map_err(|_| {
+        CommandError::forbidden("The durable manifest is not a strict ResearchRunManifestV2.")
+    })?;
+    if canonical_json(&manifest, &[])? != bytes {
+        return Err(CommandError::forbidden(
+            "The durable manifest is not canonically encoded.",
+        ));
+    }
+    validate_manifest_against_journal(&manifest, journal)?;
+    verify_committed_manifest_outputs(session_dir, &manifest)?;
+    Ok(manifest)
+}
+
+fn remove_recovery_journal_if_present(path: &Path) {
+    // A durable verified manifest is the scientific commit point. A stale
+    // journal is retried as cleanup and must not relabel the run as failed.
+    let _cleanup_result = fs::remove_file(path);
+}
+
 fn file_receipt(path: &Path) -> ResearchResult<FinalizedFileReceipt> {
     let (sha256, byte_length) = file_digest(path)?;
     Ok(FinalizedFileReceipt {
@@ -3106,6 +4521,31 @@ fn file_receipt(path: &Path) -> ResearchResult<FinalizedFileReceipt> {
             .to_owned(),
         sha256,
         byte_length,
+    })
+}
+
+fn finalize_receipt_from_manifest(
+    session_dir: &Path,
+    manifest: &ResearchRunManifestV2,
+    output_receipt_id: String,
+) -> ResearchResult<FinalizeReceipt> {
+    let mut files = manifest
+        .outputs
+        .iter()
+        .map(|output| FinalizedFileReceipt {
+            file_name: output.file_name.clone(),
+            sha256: output.sha256.clone(),
+            byte_length: output.byte_length,
+        })
+        .collect::<Vec<_>>();
+    files.push(file_receipt(&session_dir.join("manifest.json"))?);
+    Ok(FinalizeReceipt {
+        run_id: manifest.run_id.clone(),
+        participant_id: manifest.participant_id.clone(),
+        attempt_number: manifest.attempt_number,
+        completion_status: manifest.completion_status,
+        output_receipt_id,
+        files,
     })
 }
 
@@ -3131,6 +4571,49 @@ fn scan_recoveries(workspace_root: &Path) -> ResearchResult<RecoveryListing> {
             corrupt_recovery_ids.push(corrupt_recovery_id(&entry.file_name().to_string_lossy()));
             continue;
         }
+        let session_dir = match recovery_session_dir(workspace_root, &journal) {
+            Ok(session_dir) => session_dir,
+            Err(_) => {
+                corrupt_recovery_ids
+                    .push(corrupt_recovery_id(&entry.file_name().to_string_lossy()));
+                continue;
+            }
+        };
+        if session_dir.join("manifest.json").exists() {
+            if verify_committed_manifest(&session_dir, &journal).is_ok() {
+                remove_recovery_journal_if_present(&entry.path());
+            } else {
+                corrupt_recovery_ids
+                    .push(corrupt_recovery_id(&entry.file_name().to_string_lossy()));
+            }
+            continue;
+        }
+        let pending_completion_status = match journal.pending_finalization.as_ref() {
+            Some(pending) => {
+                if validate_manifest_against_journal(&pending.manifest, &journal).is_err() {
+                    corrupt_recovery_ids
+                        .push(corrupt_recovery_id(&entry.file_name().to_string_lossy()));
+                    continue;
+                }
+                Some(pending.manifest.completion_status)
+            }
+            None => {
+                let completed =
+                    load_recovery_plan_snapshot(&session_dir, &journal).and_then(|plan| {
+                        validate_journal_recovery_summary(&journal, &plan)?;
+                        completed_boundary_is_durable(&session_dir, &journal, &plan)
+                    });
+                match completed {
+                    Ok(true) => Some(CompletionStatusV1::Completed),
+                    Ok(false) => None,
+                    Err(_) => {
+                        corrupt_recovery_ids
+                            .push(corrupt_recovery_id(&entry.file_name().to_string_lossy()));
+                        continue;
+                    }
+                }
+            }
+        };
         recoveries.push(RecoverySummary {
             recovery_id: journal.recovery_id,
             run_id: journal.run_id,
@@ -3143,6 +4626,8 @@ fn scan_recoveries(workspace_root: &Path) -> ResearchResult<RecoveryListing> {
             assignment_plan_sha256: journal.assignment_plan_sha256,
             playback_mode: journal.playback_mode,
             playback_qualification: journal.playback_qualification,
+            finalization_pending: pending_completion_status.is_some(),
+            pending_completion_status,
         });
     }
     recoveries.sort_by(|left, right| left.run_id.cmp(&right.run_id));
@@ -3371,6 +4856,26 @@ mod tests {
         path
     }
 
+    #[cfg(target_os = "windows")]
+    fn create_directory_link(target: &Path, link: &Path) {
+        let output = std::process::Command::new("cmd.exe")
+            .args(["/D", "/C", "mklink", "/J"])
+            .arg(link)
+            .arg(target)
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "junction creation failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    #[cfg(unix)]
+    fn create_directory_link(target: &Path, link: &Path) {
+        std::os::unix::fs::symlink(target, link).unwrap();
+    }
+
     fn fresh_input_receipt(runtime: &ResearchRuntime, settings: &ResearchSettingsV1) -> String {
         runtime
             .input
@@ -3380,11 +4885,800 @@ mod tests {
     }
 
     #[test]
+    fn nested_output_files_are_rejected_without_recreation() {
+        let base = temporary_directory("nested-output-file");
+        let workspace = base.join("workspace");
+        let outputs = workspace.join("outputs");
+        fs::create_dir_all(&outputs).unwrap();
+        let experiment = outputs.join("experiment");
+        fs::write(&experiment, b"not a directory").unwrap();
+
+        let experiment_error =
+            RunOutputDirectories::prepare(&workspace, "experiment", "P001").unwrap_err();
+        assert_eq!(experiment_error.code, "forbidden_operation");
+        assert!(experiment.is_file());
+
+        fs::remove_file(&experiment).unwrap();
+        fs::create_dir(&experiment).unwrap();
+        let participant = experiment.join("P001");
+        fs::write(&participant, b"not a directory").unwrap();
+        let participant_error =
+            RunOutputDirectories::prepare(&workspace, "experiment", "P001").unwrap_err();
+        assert_eq!(participant_error.code, "forbidden_operation");
+        assert!(participant.is_file());
+        fs::remove_dir_all(base).unwrap();
+    }
+
+    #[cfg(any(target_os = "windows", unix))]
+    #[test]
+    fn nested_output_links_cannot_redirect_a_run_outside_the_workspace() {
+        let base = temporary_directory("nested-output-link");
+        let workspace = base.join("workspace");
+        let outputs = workspace.join("outputs");
+        let external = base.join("external");
+        fs::create_dir_all(&outputs).unwrap();
+        fs::create_dir(&external).unwrap();
+        fs::write(external.join("must-remain.txt"), b"external").unwrap();
+        let linked_experiment = outputs.join("experiment");
+        create_directory_link(&external, &linked_experiment);
+
+        let error = RunOutputDirectories::prepare(&workspace, "experiment", "P001").unwrap_err();
+        assert_eq!(error.code, "forbidden_operation");
+        assert!(!external.join("P001").exists());
+        assert_eq!(
+            fs::read(external.join("must-remain.txt")).unwrap(),
+            b"external"
+        );
+
+        fs::remove_dir(&linked_experiment).unwrap();
+        fs::remove_dir_all(base).unwrap();
+    }
+
+    #[test]
+    fn same_path_nested_output_replacement_is_rejected_before_session_creation() {
+        let base = temporary_directory("nested-output-replacement");
+        let workspace = base.join("workspace");
+        fs::create_dir_all(workspace.join("outputs")).unwrap();
+        let directories = RunOutputDirectories::prepare(&workspace, "experiment", "P001").unwrap();
+        let participant = directories.participant.path.clone();
+
+        fs::remove_dir(&participant).unwrap();
+        // Safe stable Rust exposes creation time rather than a Windows file ID.
+        // Avoid timestamp-granularity ambiguity in this deterministic host test.
+        std::thread::sleep(Duration::from_millis(20));
+        fs::create_dir(&participant).unwrap();
+
+        let error = directories.create_session("session-r01").unwrap_err();
+        assert_eq!(error.code, "forbidden_operation");
+        assert!(!participant.join("session-r01").exists());
+        fs::remove_dir_all(base).unwrap();
+    }
+
+    #[test]
+    fn preexisting_session_file_is_never_replaced() {
+        let base = temporary_directory("nested-output-session-file");
+        let workspace = base.join("workspace");
+        fs::create_dir_all(workspace.join("outputs")).unwrap();
+        let directories = RunOutputDirectories::prepare(&workspace, "experiment", "P001").unwrap();
+        let session = directories.participant.path.join("session-r01");
+        fs::write(&session, b"existing evidence").unwrap();
+
+        let error = directories.create_session("session-r01").unwrap_err();
+        assert_eq!(error.code, "forbidden_operation");
+        assert_eq!(fs::read(&session).unwrap(), b"existing evidence");
+        fs::remove_dir_all(base).unwrap();
+    }
+
+    struct PersistenceFixture {
+        base: PathBuf,
+        workspace_root: PathBuf,
+        session_dir: PathBuf,
+        settings: ResearchSettingsV1,
+        plan: ResolvedAssignmentPlanV1,
+        assignment: ParticipantAssignmentV1,
+        participant: CodedParticipant,
+        receipt: StartRunReceipt,
+        status: RunStatus,
+        recovery: RecoverySummaryV1,
+        terminal_event: ResearchEventV1,
+        events_prefix_byte_length: u64,
+        finalized_at: String,
+        files: RunFiles,
+    }
+
+    impl PersistenceFixture {
+        fn new(label: &str) -> Self {
+            let base = temporary_directory(label);
+            let workspace_root = base.join("workspace");
+            fs::create_dir_all(workspace_root.join("recovery")).unwrap();
+            let workspace_file_id = Uuid::new_v4().to_string();
+            let settings = test_settings(&"a".repeat(64), &workspace_file_id);
+            let plan = test_plan(&settings);
+            let assignment = plan.assignment_for("P001").unwrap().clone();
+            let run_id = Uuid::new_v4().to_string();
+            let session_stem = "P001_EM_A27_GW_HR_20260903T143012482Z_R01".to_owned();
+            let participant_root = workspace_root
+                .join("outputs")
+                .join(&settings.experiment.id)
+                .join("P001");
+            fs::create_dir_all(&participant_root).unwrap();
+            let session_dir = participant_root.join(&session_stem);
+            fs::create_dir(&session_dir).unwrap();
+            let participant = CodedParticipant {
+                id: "P001".to_owned(),
+                code: "EM".to_owned(),
+                age: 27,
+                gender: GenderCodeV1::W,
+                handedness: HandednessCodeV1::R,
+                attempt_number: 1,
+            };
+            let started_at = "2026-09-03T14:30:12.482Z";
+            let receipt = StartRunReceipt {
+                run_id: run_id.clone(),
+                participant_id: participant.id.clone(),
+                attempt_number: participant.attempt_number,
+                session_stem: session_stem.clone(),
+                settings_sha256: settings.canonical_sha256().unwrap(),
+                assignment_plan_sha256: plan.plan_hash_sha256.clone(),
+                output_receipt_id: Uuid::new_v4().to_string(),
+                resumed: false,
+                resume_at_stimulus_position: Some(1),
+                playback_mode: PlaybackMode::UnqualifiedWebview,
+                playback_qualification: PlaybackQualification::Unqualified,
+            };
+            let mut files = RunFiles::create(
+                &workspace_root,
+                &session_dir,
+                &run_id,
+                &settings,
+                &plan,
+                &participant,
+                &session_stem,
+                started_at,
+                PlaybackMode::UnqualifiedWebview,
+                PlaybackQualification::Unqualified,
+                acquire_attempt_lock(&participant_root).unwrap(),
+            )
+            .unwrap();
+            let events_prefix_byte_length = files.synced_events_length().unwrap();
+            let terminal_event = ResearchEventV1 {
+                schema: RESEARCH_EVENT_SCHEMA.to_owned(),
+                version: 1,
+                sequence: 1,
+                run_id,
+                participant_id: participant.id.clone(),
+                attempt_number: participant.attempt_number,
+                settings_sha256: receipt.settings_sha256.clone(),
+                assignment_plan_sha256: receipt.assignment_plan_sha256.clone(),
+                wall_time_utc: "2026-09-03T14:30:13.000Z".to_owned(),
+                monotonic_time_ns: "1".to_owned(),
+                event_type: ResearchEventTypeV1::StoppedEarly,
+                stimulus_identity: None,
+                stimulus_position: None,
+                media_time_ms: None,
+                missed_slot_count: None,
+                detail_code: None,
+            };
+            let mut status = RunStatus::idle();
+            status.active = true;
+            status.run_id = Some(receipt.run_id.clone());
+            status.participant_id = Some(participant.id.clone());
+            status.attempt_number = Some(participant.attempt_number);
+            status.phase = RunPhase::Finalizing;
+            status.event_count = terminal_event.sequence;
+            status.playback_mode = Some(PlaybackMode::UnqualifiedWebview);
+            status.playback_qualification = Some(PlaybackQualification::Unqualified);
+            Self {
+                base,
+                workspace_root,
+                session_dir,
+                settings,
+                plan,
+                assignment,
+                participant,
+                receipt,
+                status,
+                recovery: RecoverySummaryV1 {
+                    resumed: false,
+                    source_run_id: None,
+                    restarted_stimulus_ids: Vec::new(),
+                },
+                terminal_event,
+                events_prefix_byte_length,
+                finalized_at: "2026-09-03T14:30:13.000Z".to_owned(),
+                files,
+            }
+        }
+
+        fn finalize(&mut self) -> ResearchResult<FinalizeReceipt> {
+            self.files.prepare_finalization(
+                &self.receipt,
+                &self.settings,
+                &self.assignment,
+                &self.participant,
+                "2026-09-03T14:30:12.482Z",
+                CompletionStatusV1::Partial,
+                &self.status,
+                &self.recovery,
+                &self.terminal_event,
+                self.events_prefix_byte_length,
+                &self.finalized_at,
+            )?;
+            self.files
+                .ensure_terminal_event(self.events_prefix_byte_length, &self.terminal_event)?;
+            self.files.complete_finalization(&self.receipt)
+        }
+
+        fn into_worker(self) -> (PathBuf, PathBuf, Arc<Mutex<RunStatus>>, RunWorker) {
+            let Self {
+                base,
+                settings,
+                plan,
+                assignment,
+                participant,
+                receipt,
+                files,
+                ..
+            } = self;
+            let recovery_path = files.recovery_path.clone();
+            let started_at = files.journal.started_at.clone();
+            let prepared = PreparedRun {
+                receipt,
+                settings,
+                plan,
+                assignment,
+                participant,
+                started_at,
+                run_epoch: Instant::now(),
+                files,
+                lsl: None,
+                sample_sequence: 0,
+                event_sequence: 0,
+                last_safe_position: 0,
+                monotonic_offset_ns: 0,
+                recovery: RecoverySummaryV1 {
+                    resumed: false,
+                    source_run_id: None,
+                    restarted_stimulus_ids: Vec::new(),
+                },
+                resumed: false,
+            };
+            let status = Arc::new(Mutex::new(prepared.initial_status()));
+            let worker = RunWorker::new(prepared, Arc::clone(&status));
+            (base, recovery_path, status, worker)
+        }
+    }
+
+    #[test]
     fn participant_code_requires_two_uppercase_safe_graphemes() {
         assert_eq!(validate_participant_code("EM").unwrap(), "EM");
         assert_eq!(validate_participant_code("ËÅ").unwrap(), "ËÅ");
         assert!(validate_participant_code("Em").is_err());
         assert!(validate_participant_code("E_M").is_err());
+    }
+
+    #[test]
+    fn zero_prefix_recovery_first_event_retains_playback_provenance() {
+        assert_eq!(
+            playback_provenance_detail(
+                PlaybackMode::NativeLibvlc,
+                PlaybackQualification::QualifiedNative,
+            )
+            .unwrap(),
+            "playback-native-libvlc-qualified"
+        );
+        let fixture = PersistenceFixture::new("zero-prefix-playback-provenance");
+        let session_dir = fixture.session_dir.clone();
+        let (base, _, _, mut worker) = fixture.into_worker();
+        worker.resumed = true;
+        worker.recovery = RecoverySummaryV1 {
+            resumed: true,
+            source_run_id: Some(worker.receipt.run_id.clone()),
+            restarted_stimulus_ids: Vec::new(),
+        };
+        worker.start().unwrap();
+        drop(worker);
+
+        let first_line = fs::read_to_string(session_dir.join("events.jsonl"))
+            .unwrap()
+            .lines()
+            .next()
+            .unwrap()
+            .to_owned();
+        let first_event: ResearchEventV1 = serde_json::from_str(&first_line).unwrap();
+        assert_eq!(first_event.event_type, ResearchEventTypeV1::WriteRecovered);
+        assert_eq!(
+            first_event.detail_code.as_deref(),
+            Some("playback-webview-unqualified")
+        );
+        fs::remove_dir_all(base).unwrap();
+    }
+
+    #[test]
+    fn completed_stimulus_checkpoint_finalizes_after_reload_without_replay() {
+        let fixture = PersistenceFixture::new("completed-boundary-finalize");
+        let workspace_root = fixture.workspace_root.clone();
+        let session_dir = fixture.session_dir.clone();
+        let settings = fixture.settings.clone();
+        let plan = fixture.plan.clone();
+        let (base, recovery_path, _, mut worker) = fixture.into_worker();
+        worker.start().unwrap();
+        let run_id = worker.receipt.run_id.clone();
+        worker
+            .apply_stimulus(StimulusStateUpdate {
+                run_id: run_id.clone(),
+                lifecycle: StimulusLifecycle::Started,
+                stimulus_id: "video-a".to_owned(),
+                stimulus_position: 1,
+                media_time_ms: 0.0,
+            })
+            .unwrap();
+        worker
+            .apply_stimulus(StimulusStateUpdate {
+                run_id: run_id.clone(),
+                lifecycle: StimulusLifecycle::Completed,
+                stimulus_id: "video-a".to_owned(),
+                stimulus_position: 1,
+                media_time_ms: 1_000.0,
+            })
+            .unwrap();
+        drop(worker);
+
+        let journal = read_latest_journal(&recovery_path).unwrap().unwrap();
+        assert_eq!(journal.last_safe_stimulus_position, 1);
+        assert!(journal.interrupted_stimulus_position.is_none());
+        assert!(journal.pending_finalization.is_none());
+        let listing = scan_recoveries(&workspace_root).unwrap();
+        assert_eq!(listing.recoveries.len(), 1);
+        assert!(listing.recoveries[0].finalization_pending);
+        assert_eq!(
+            listing.recoveries[0].pending_completion_status,
+            Some(CompletionStatusV1::Completed)
+        );
+        let replay_error = PreparedRun::resume(
+            &workspace_root,
+            &journal.recovery_id,
+            settings.clone(),
+            plan.clone(),
+            PlaybackMode::UnqualifiedWebview,
+            PlaybackQualification::Unqualified,
+        )
+        .err()
+        .expect("a completed boundary must never resume acquisition");
+        assert_eq!(replay_error.code, "forbidden_operation");
+
+        let receipt =
+            finalize_recovery_at_root(&workspace_root, &journal.recovery_id, &settings, &plan)
+                .unwrap();
+        assert_eq!(receipt.run_id, run_id);
+        assert_eq!(receipt.completion_status, CompletionStatusV1::Completed);
+        let events = fs::read_to_string(session_dir.join("events.jsonl")).unwrap();
+        assert_eq!(events.matches("\"type\":\"stimulusCompleted\"").count(), 1);
+        assert_eq!(events.matches("\"type\":\"sessionCompleted\"").count(), 1);
+        assert_eq!(events.matches("\"type\":\"stimulusStarted\"").count(), 1);
+        let manifest: ResearchRunManifestV2 =
+            serde_json::from_slice(&fs::read(session_dir.join("manifest.json")).unwrap()).unwrap();
+        assert_eq!(manifest.completion_status, CompletionStatusV1::Completed);
+        assert_eq!(manifest.timing.event_count, journal.partial_event_count + 1);
+        assert!(!recovery_path.exists());
+        fs::remove_dir_all(base).unwrap();
+    }
+
+    #[test]
+    fn completed_boundary_rejects_changed_final_stimulus_identity() {
+        let fixture = PersistenceFixture::new("completed-boundary-identity");
+        let workspace_root = fixture.workspace_root.clone();
+        let session_dir = fixture.session_dir.clone();
+        let settings = fixture.settings.clone();
+        let plan = fixture.plan.clone();
+        let (base, recovery_path, _, mut worker) = fixture.into_worker();
+        worker.start().unwrap();
+        let run_id = worker.receipt.run_id.clone();
+        worker
+            .apply_stimulus(StimulusStateUpdate {
+                run_id: run_id.clone(),
+                lifecycle: StimulusLifecycle::Started,
+                stimulus_id: "video-a".to_owned(),
+                stimulus_position: 1,
+                media_time_ms: 0.0,
+            })
+            .unwrap();
+        worker
+            .apply_stimulus(StimulusStateUpdate {
+                run_id,
+                lifecycle: StimulusLifecycle::Completed,
+                stimulus_id: "video-a".to_owned(),
+                stimulus_position: 1,
+                media_time_ms: 1_000.0,
+            })
+            .unwrap();
+        drop(worker);
+
+        let events_path = session_dir.join("events.jsonl");
+        let mut lines = fs::read_to_string(&events_path)
+            .unwrap()
+            .lines()
+            .map(str::to_owned)
+            .collect::<Vec<_>>();
+        let final_line = lines.last_mut().unwrap();
+        let mut event: ResearchEventV1 = serde_json::from_str(final_line).unwrap();
+        event.stimulus_identity.as_mut().unwrap().stimulus_id = "video-substituted".to_owned();
+        *final_line = String::from_utf8(canonical_event_line(&event).unwrap())
+            .unwrap()
+            .trim_end()
+            .to_owned();
+        fs::write(&events_path, format!("{}\n", lines.join("\n"))).unwrap();
+
+        let journal = read_latest_journal(&recovery_path).unwrap().unwrap();
+        let error =
+            finalize_recovery_at_root(&workspace_root, &journal.recovery_id, &settings, &plan)
+                .unwrap_err();
+        assert_eq!(error.code, "forbidden_operation");
+        assert!(!session_dir.join("manifest.json").exists());
+        assert!(recovery_path.exists());
+        fs::remove_dir_all(base).unwrap();
+    }
+
+    #[test]
+    fn finalization_retry_repairs_mixed_promotion_without_duplicate_terminal_event() {
+        let mut fixture = PersistenceFixture::new("finalize-mixed-promotion");
+        let first = fixture.finalize().unwrap();
+        let first_manifest = fs::read(fixture.session_dir.join("manifest.json")).unwrap();
+
+        fs::remove_file(fixture.session_dir.join("manifest.json")).unwrap();
+        fs::rename(
+            fixture.session_dir.join("ratings.tsv"),
+            fixture.session_dir.join("ratings.tsv.partial"),
+        )
+        .unwrap();
+        write_journal_record(&fixture.files.recovery_path, &fixture.files.journal, true).unwrap();
+
+        let retried = fixture.finalize().unwrap();
+        let retried_manifest = fs::read(fixture.session_dir.join("manifest.json")).unwrap();
+        assert_eq!(retried, first);
+        assert_eq!(retried_manifest, first_manifest);
+        assert!(fixture.session_dir.join("ratings.csv").is_file());
+        assert!(fixture.session_dir.join("ratings.tsv").is_file());
+        assert!(!fixture.session_dir.join("ratings.csv.partial").exists());
+        assert!(!fixture.session_dir.join("ratings.tsv.partial").exists());
+        let events = fs::read_to_string(fixture.session_dir.join("events.jsonl")).unwrap();
+        assert_eq!(events.matches("\"type\":\"stoppedEarly\"").count(), 1);
+        let base = fixture.base.clone();
+        drop(fixture);
+        fs::remove_dir_all(base).unwrap();
+    }
+
+    #[test]
+    fn matching_manifest_with_stale_journal_is_cleanup_not_recovery() {
+        let mut fixture = PersistenceFixture::new("finalize-stale-journal");
+        fixture.finalize().unwrap();
+        fixture.files.journal.pending_finalization = None;
+        write_journal_record(&fixture.files.recovery_path, &fixture.files.journal, true).unwrap();
+        let listing = scan_recoveries(&fixture.workspace_root).unwrap();
+        assert!(listing.recoveries.is_empty());
+        assert!(listing.corrupt_recovery_ids.is_empty());
+        assert!(!fixture.files.recovery_path.exists());
+        let base = fixture.base.clone();
+        drop(fixture);
+        fs::remove_dir_all(base).unwrap();
+    }
+
+    #[test]
+    fn idempotent_finalize_is_byte_identical_and_rejects_tampering() {
+        let mut fixture = PersistenceFixture::new("finalize-idempotent");
+        let first = fixture.finalize().unwrap();
+        let first_manifest = fs::read(fixture.session_dir.join("manifest.json")).unwrap();
+        let second = fixture.finalize().unwrap();
+        assert_eq!(second, first);
+        assert_eq!(
+            fs::read(fixture.session_dir.join("manifest.json")).unwrap(),
+            first_manifest
+        );
+
+        fs::write(fixture.session_dir.join("ratings.csv"), b"tampered").unwrap();
+        let error = fixture.finalize().unwrap_err();
+        assert_eq!(error.code, "forbidden_operation");
+        let base = fixture.base.clone();
+        drop(fixture);
+        fs::remove_dir_all(base).unwrap();
+    }
+
+    #[test]
+    fn reload_finalization_commits_without_media_input_or_sampling_preflight() {
+        let mut fixture = PersistenceFixture::new("finalize-after-reload");
+        let resumable = scan_recoveries(&fixture.workspace_root).unwrap();
+        assert!(!resumable.recoveries[0].finalization_pending);
+        assert_eq!(resumable.recoveries[0].pending_completion_status, None);
+        let resumable_json = serde_json::to_value(&resumable.recoveries[0]).unwrap();
+        assert_eq!(resumable_json["finalizationPending"], false);
+        assert!(resumable_json["pendingCompletionStatus"].is_null());
+        fixture
+            .files
+            .prepare_finalization(
+                &fixture.receipt,
+                &fixture.settings,
+                &fixture.assignment,
+                &fixture.participant,
+                "2026-09-03T14:30:12.482Z",
+                CompletionStatusV1::Partial,
+                &fixture.status,
+                &fixture.recovery,
+                &fixture.terminal_event,
+                fixture.events_prefix_byte_length,
+                &fixture.finalized_at,
+            )
+            .unwrap();
+        let pending = scan_recoveries(&fixture.workspace_root).unwrap();
+        assert!(pending.recoveries[0].finalization_pending);
+        assert_eq!(
+            pending.recoveries[0].pending_completion_status,
+            Some(CompletionStatusV1::Partial)
+        );
+        let pending_json = serde_json::to_value(&pending.recoveries[0]).unwrap();
+        assert_eq!(pending_json["finalizationPending"], true);
+        assert_eq!(pending_json["pendingCompletionStatus"], "partial");
+        let recovery_id = fixture.files.journal.recovery_id.clone();
+        let PersistenceFixture {
+            base,
+            workspace_root,
+            session_dir,
+            settings,
+            plan,
+            files,
+            ..
+        } = fixture;
+        drop(files);
+
+        let receipt =
+            finalize_recovery_at_root(&workspace_root, &recovery_id, &settings, &plan).unwrap();
+        assert_eq!(receipt.completion_status, CompletionStatusV1::Partial);
+        assert!(session_dir.join("manifest.json").is_file());
+        assert!(!workspace_root
+            .join("recovery")
+            .join(format!("{}.journal.json", receipt.run_id))
+            .exists());
+        fs::remove_dir_all(base).unwrap();
+    }
+
+    #[test]
+    fn inconsistent_pending_finalization_is_quarantined_from_recovery_listing() {
+        let mut fixture = PersistenceFixture::new("pending-finalization-inconsistent");
+        fixture
+            .files
+            .prepare_finalization(
+                &fixture.receipt,
+                &fixture.settings,
+                &fixture.assignment,
+                &fixture.participant,
+                "2026-09-03T14:30:12.482Z",
+                CompletionStatusV1::Partial,
+                &fixture.status,
+                &fixture.recovery,
+                &fixture.terminal_event,
+                fixture.events_prefix_byte_length,
+                &fixture.finalized_at,
+            )
+            .unwrap();
+        let mut inconsistent = fixture.files.journal.clone();
+        inconsistent
+            .pending_finalization
+            .as_mut()
+            .unwrap()
+            .manifest
+            .completion_status = CompletionStatusV1::Completed;
+        let mut bytes = canonical_json(&inconsistent, &[]).unwrap();
+        bytes.push(b'\n');
+        fs::write(&fixture.files.recovery_path, bytes).unwrap();
+
+        let listing = scan_recoveries(&fixture.workspace_root).unwrap();
+        assert!(listing.recoveries.is_empty());
+        assert_eq!(listing.corrupt_recovery_ids.len(), 1);
+        let base = fixture.base.clone();
+        drop(fixture);
+        fs::remove_dir_all(base).unwrap();
+    }
+
+    #[test]
+    fn finalization_rejects_playback_or_terminal_provenance_changes() {
+        let mut fixture = PersistenceFixture::new("finalize-provenance");
+        fixture
+            .files
+            .prepare_finalization(
+                &fixture.receipt,
+                &fixture.settings,
+                &fixture.assignment,
+                &fixture.participant,
+                "2026-09-03T14:30:12.482Z",
+                CompletionStatusV1::Partial,
+                &fixture.status,
+                &fixture.recovery,
+                &fixture.terminal_event,
+                fixture.events_prefix_byte_length,
+                &fixture.finalized_at,
+            )
+            .unwrap();
+        let mut changed_playback = fixture.files.journal.clone();
+        changed_playback.playback_mode = PlaybackMode::NativeLibvlc;
+        changed_playback.playback_qualification = PlaybackQualification::QualifiedNative;
+        let manifest = &changed_playback
+            .pending_finalization
+            .as_ref()
+            .unwrap()
+            .manifest;
+        assert_eq!(
+            validate_manifest_against_journal(manifest, &changed_playback)
+                .unwrap_err()
+                .code,
+            "forbidden_operation"
+        );
+
+        let mut changed_terminal = fixture.files.journal.clone();
+        changed_terminal
+            .pending_finalization
+            .as_mut()
+            .unwrap()
+            .terminal_event
+            .detail_code = Some("changed-terminal".to_owned());
+        let manifest = &changed_terminal
+            .pending_finalization
+            .as_ref()
+            .unwrap()
+            .manifest;
+        assert_eq!(
+            validate_manifest_against_journal(manifest, &changed_terminal)
+                .unwrap_err()
+                .code,
+            "forbidden_operation"
+        );
+        let base = fixture.base.clone();
+        drop(fixture);
+        fs::remove_dir_all(base).unwrap();
+    }
+
+    #[test]
+    fn lifecycle_evidence_failure_stops_worker_and_preserves_durable_recovery() {
+        for fail_checkpoint in [false, true] {
+            let fixture = PersistenceFixture::new(if fail_checkpoint {
+                "lifecycle-checkpoint-failure"
+            } else {
+                "lifecycle-event-failure"
+            });
+            let run_id = fixture.receipt.run_id.clone();
+            let (base, recovery_path, status, mut worker) = fixture.into_worker();
+            worker.start().unwrap();
+            if fail_checkpoint {
+                worker.files.fail_next_journal_write = true;
+            } else {
+                worker.files.fail_next_event_write = true;
+            }
+            let (result, evidence_failure) = worker.apply_stimulus_message(StimulusStateUpdate {
+                run_id,
+                lifecycle: StimulusLifecycle::Started,
+                stimulus_id: "video-a".to_owned(),
+                stimulus_position: 1,
+                media_time_ms: 0.0,
+            });
+            assert!(evidence_failure);
+            assert_eq!(result.unwrap_err().code, RUN_EVIDENCE_PERSISTENCE_ERROR);
+            worker.fail(RUN_EVIDENCE_PERSISTENCE_FAILURE);
+            let failed = lock(&status).clone();
+            assert!(!failed.active);
+            assert_eq!(failed.phase, RunPhase::Failed);
+            assert!(!failed.write_healthy);
+            assert!(!failed.input_active);
+            assert!(worker.clock.is_none());
+            let journal = read_latest_journal(&recovery_path).unwrap().unwrap();
+            assert_eq!(journal.partial_event_count, 2);
+            drop(worker);
+            fs::remove_dir_all(base).unwrap();
+        }
+    }
+
+    #[test]
+    fn completed_lifecycle_cannot_advance_from_a_stale_near_start_timestamp() {
+        let fixture = PersistenceFixture::new("completed-media-boundary");
+        let run_id = fixture.receipt.run_id.clone();
+        let (base, _recovery_path, status, mut worker) = fixture.into_worker();
+        worker.start().unwrap();
+        worker
+            .apply_stimulus(StimulusStateUpdate {
+                run_id: run_id.clone(),
+                lifecycle: StimulusLifecycle::Started,
+                stimulus_id: "video-a".to_owned(),
+                stimulus_position: 1,
+                media_time_ms: 0.0,
+            })
+            .unwrap();
+        let stale = worker
+            .apply_stimulus(StimulusStateUpdate {
+                run_id: run_id.clone(),
+                lifecycle: StimulusLifecycle::Completed,
+                stimulus_id: "video-a".to_owned(),
+                stimulus_position: 1,
+                media_time_ms: 0.0,
+            })
+            .unwrap_err();
+        assert_eq!(stale.code, "invalid_research_contract");
+        assert_eq!(worker.last_safe_position, 0);
+        assert_eq!(lock(&status).phase, RunPhase::Playing);
+
+        worker
+            .apply_stimulus(StimulusStateUpdate {
+                run_id,
+                lifecycle: StimulusLifecycle::Completed,
+                stimulus_id: "video-a".to_owned(),
+                stimulus_position: 1,
+                media_time_ms: 1_000.0,
+            })
+            .unwrap();
+        assert_eq!(worker.last_safe_position, 1);
+        drop(worker);
+        fs::remove_dir_all(base).unwrap();
+    }
+
+    #[test]
+    fn recovery_refuses_to_truncate_below_its_durable_journal_prefix() {
+        let mut fixture = PersistenceFixture::new("recovery-durable-prefix");
+        fixture.files.journal.partial_sample_count = 1;
+        fixture.files.journal.partial_event_count = 1;
+        write_journal_record(&fixture.files.recovery_path, &fixture.files.journal, false).unwrap();
+        fixture.files.sync_outputs().unwrap();
+        let events_before = fs::read(fixture.session_dir.join("events.jsonl")).unwrap();
+        let csv_before = fs::read(fixture.session_dir.join("ratings.csv.partial")).unwrap();
+        let recovery_path = fixture.files.recovery_path.clone();
+        let session_dir = fixture.session_dir.clone();
+        let participant_root = session_dir.parent().unwrap().to_owned();
+        let settings = fixture.settings.clone();
+        drop(fixture.files);
+        let journal = read_latest_journal(&recovery_path).unwrap().unwrap();
+        let error = RunFiles::resume(
+            &session_dir,
+            recovery_path,
+            journal,
+            &settings,
+            acquire_attempt_lock(&participant_root).unwrap(),
+        )
+        .err()
+        .expect("a durable-prefix shortfall must fail recovery");
+        assert_eq!(error.code, "forbidden_operation");
+        assert_eq!(
+            fs::read(session_dir.join("events.jsonl")).unwrap(),
+            events_before
+        );
+        assert_eq!(
+            fs::read(session_dir.join("ratings.csv.partial")).unwrap(),
+            csv_before
+        );
+        fs::remove_dir_all(fixture.base).unwrap();
+    }
+
+    #[test]
+    fn journal_append_cannot_change_frozen_playback_provenance() {
+        let mut fixture = PersistenceFixture::new("journal-provenance");
+        fixture.files.journal.playback_mode = PlaybackMode::NativeLibvlc;
+        fixture.files.journal.playback_qualification = PlaybackQualification::QualifiedNative;
+        write_journal_record(&fixture.files.recovery_path, &fixture.files.journal, false).unwrap();
+        assert!(read_latest_journal(&fixture.files.recovery_path)
+            .unwrap()
+            .is_none());
+        let base = fixture.base.clone();
+        drop(fixture);
+        fs::remove_dir_all(base).unwrap();
+    }
+
+    #[test]
+    fn webview_media_events_are_confined_to_the_unqualified_fallback() {
+        assert!(authorize_webview_media_mode(Some(PlaybackMode::UnqualifiedWebview)).is_ok());
+        let native = authorize_webview_media_mode(Some(PlaybackMode::NativeLibvlc)).unwrap_err();
+        assert_eq!(native.code, "forbidden_operation");
+        assert!(authorize_webview_media_mode(None).is_err());
+
+        let active = "11111111-1111-4111-8111-111111111111";
+        assert!(authorize_run_id(active, active).is_ok());
+        let stale = authorize_run_id(active, "22222222-2222-4222-8222-222222222222").unwrap_err();
+        assert_eq!(stale.code, "forbidden_operation");
+        let malformed = authorize_run_id(active, "renderer-selected-run").unwrap_err();
+        assert_eq!(malformed.code, "invalid_research_contract");
     }
 
     #[test]
@@ -3530,8 +5824,30 @@ mod tests {
             receipt.playback_qualification,
             PlaybackQualification::Unqualified
         );
+        let startup_deadline = Instant::now() + Duration::from_secs(2);
+        while runtime.status().phase == RunPhase::Prepared && Instant::now() < startup_deadline {
+            thread::sleep(Duration::from_millis(1));
+        }
+        assert_eq!(runtime.status().phase, RunPhase::BetweenStimuli);
+        let stale_run_id = Uuid::new_v4().to_string();
+        let stale_event = runtime
+            .set_webview_stimulus_state(StimulusStateUpdate {
+                run_id: stale_run_id.clone(),
+                lifecycle: StimulusLifecycle::Started,
+                stimulus_id: "video-a".to_owned(),
+                stimulus_position: 1,
+                media_time_ms: 0.0,
+            })
+            .unwrap_err();
+        assert_eq!(stale_event.code, "forbidden_operation");
+        let stale_finish = runtime
+            .finish(&stale_run_id, FinishOutcome::StopEarly)
+            .unwrap_err();
+        assert_eq!(stale_finish.code, "forbidden_operation");
+        assert_eq!(runtime.status().phase, RunPhase::BetweenStimuli);
         runtime
-            .set_stimulus_state(StimulusStateUpdate {
+            .set_webview_stimulus_state(StimulusStateUpdate {
+                run_id: receipt.run_id.clone(),
                 lifecycle: StimulusLifecycle::Started,
                 stimulus_id: "video-a".to_owned(),
                 stimulus_position: 1,
@@ -3546,7 +5862,9 @@ mod tests {
             runtime.status().sample_count >= 2,
             "the authoritative scheduler did not publish two samples before the bounded deadline"
         );
-        let finalized = runtime.finish(FinishOutcome::StopEarly).unwrap();
+        let finalized = runtime
+            .finish(&receipt.run_id, FinishOutcome::StopEarly)
+            .unwrap();
         assert_eq!(finalized.completion_status, CompletionStatusV1::Partial);
 
         let session_dir = selected
@@ -3559,6 +5877,14 @@ mod tests {
         assert!(manifest.timing.sample_count >= 2);
         assert_eq!(manifest.participant_code, "EM");
         assert_eq!(manifest.completion_status, CompletionStatusV1::Partial);
+        assert_eq!(
+            manifest.playback_mode,
+            RunPlaybackModeV1::UnqualifiedWebview
+        );
+        assert_eq!(
+            manifest.playback_qualification,
+            RunPlaybackQualificationV1::Unqualified
+        );
         let csv = fs::read_to_string(session_dir.join("ratings.csv")).unwrap();
         let tsv = fs::read_to_string(session_dir.join("ratings.tsv")).unwrap();
         assert!(fs::read_to_string(session_dir.join("events.jsonl"))
@@ -3653,7 +5979,8 @@ mod tests {
             })
             .unwrap();
         runtime
-            .set_stimulus_state(StimulusStateUpdate {
+            .set_webview_stimulus_state(StimulusStateUpdate {
+                run_id: started.run_id.clone(),
                 lifecycle: StimulusLifecycle::Started,
                 stimulus_id: "video-a".to_owned(),
                 stimulus_position: 1,
@@ -3729,7 +6056,8 @@ mod tests {
         assert!(resumed.resumed);
         assert_eq!(resumed.resume_at_stimulus_position, Some(1));
         runtime
-            .set_stimulus_state(StimulusStateUpdate {
+            .set_webview_stimulus_state(StimulusStateUpdate {
+                run_id: resumed.run_id.clone(),
                 lifecycle: StimulusLifecycle::Started,
                 stimulus_id: "video-a".to_owned(),
                 stimulus_position: 1,
@@ -3738,14 +6066,17 @@ mod tests {
             .unwrap();
         thread::sleep(Duration::from_millis(20));
         runtime
-            .set_stimulus_state(StimulusStateUpdate {
+            .set_webview_stimulus_state(StimulusStateUpdate {
+                run_id: resumed.run_id.clone(),
                 lifecycle: StimulusLifecycle::Completed,
                 stimulus_id: "video-a".to_owned(),
                 stimulus_position: 1,
                 media_time_ms: 1_000.0,
             })
             .unwrap();
-        runtime.finish(FinishOutcome::Completed).unwrap();
+        runtime
+            .finish(&resumed.run_id, FinishOutcome::Completed)
+            .unwrap();
 
         let manifest: ResearchRunManifestV2 =
             serde_json::from_slice(&fs::read(session_dir.join("manifest.json")).unwrap()).unwrap();
@@ -3816,7 +6147,8 @@ mod tests {
             })
             .unwrap();
         runtime
-            .set_stimulus_state(StimulusStateUpdate {
+            .set_webview_stimulus_state(StimulusStateUpdate {
+                run_id: started.run_id.clone(),
                 lifecycle: StimulusLifecycle::Started,
                 stimulus_id: "video-a".to_owned(),
                 stimulus_position: 1,
@@ -3825,7 +6157,8 @@ mod tests {
             .unwrap();
         thread::sleep(Duration::from_millis(30));
         let failure = runtime
-            .report_media_failure(MediaPlaybackFailureReport {
+            .report_webview_media_failure(MediaPlaybackFailureReport {
+                run_id: started.run_id.clone(),
                 reason: MediaPlaybackFailureReason::Decode,
                 stimulus_id: "video-a".to_owned(),
                 stimulus_position: 1,
@@ -3836,7 +6169,8 @@ mod tests {
         assert_eq!(failure.failure_code, "media-decode");
         assert_eq!(failure.interrupted_stimulus_position, Some(1));
         assert!(runtime
-            .set_stimulus_state(StimulusStateUpdate {
+            .set_webview_stimulus_state(StimulusStateUpdate {
+                run_id: started.run_id.clone(),
                 lifecycle: StimulusLifecycle::Paused,
                 stimulus_id: "video-a".to_owned(),
                 stimulus_position: 1,

@@ -19,7 +19,7 @@
     "desktop:build": "vite build --config desktop/vite.config.js && node scripts/verify-research-build.js desktop",
     "desktop:preview": "vite preview --config desktop/vite.config.js",
     "desktop:icons": "tauri icon desktop/icons/app-icon.svg -o src-tauri/icons",
-    "desktop:bundle": "tauri build --bundles nsis"
+    "desktop:bundle": "node scripts/build-research-desktop.js"
   },
   "engines": {
     "node": ">=22.12.0"

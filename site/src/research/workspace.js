@@ -224,6 +224,120 @@ export async function sha256Blob(blob, cryptoObject = globalThis.crypto) {
     .join("");
 }
 
+export async function probeVideoElement(video, { timeoutMs = 15_000 } = {}) {
+  if (!video || typeof video.addEventListener !== "function") {
+    fail("decode-unavailable", "Video decode preflight could not create a media element.");
+  }
+  const waitForEvent = (type, message) => new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      cleanup();
+      reject(new ResearchWorkspaceError("decode-timeout", message));
+    }, timeoutMs);
+    const loaded = (event) => { cleanup(); resolve(event); };
+    const errored = () => {
+      cleanup();
+      reject(new ResearchWorkspaceError("decode-failed", "The browser could not decode the selected complete video."));
+    };
+    const cleanup = () => {
+      clearTimeout(timer);
+      video.removeEventListener(type, loaded);
+      video.removeEventListener("error", errored);
+    };
+    video.addEventListener(type, loaded, { once: true });
+    video.addEventListener("error", errored, { once: true });
+  });
+  const waitForDecodedFrame = (expectedPosition, durationSeconds) => new Promise((resolve, reject) => {
+    if (typeof video.requestVideoFrameCallback !== "function") {
+      reject(new ResearchWorkspaceError(
+        "decode-unavailable",
+        "Decoded-frame verification requires desktop Chrome or Edge video frame callbacks.",
+      ));
+      return;
+    }
+    let callbackId = null;
+    let settled = false;
+    const toleranceSeconds = Math.max(0.05, Math.min(0.5, durationSeconds * 0.02));
+    const cleanup = () => {
+      if (callbackId !== null && typeof video.cancelVideoFrameCallback === "function") {
+        video.cancelVideoFrameCallback(callbackId);
+      }
+      clearTimeout(timer);
+    };
+    const timer = setTimeout(() => {
+      settled = true;
+      cleanup();
+      reject(new ResearchWorkspaceError(
+        "decode-timeout",
+        "A representative video frame was not decoded before the preflight deadline.",
+      ));
+    }, timeoutMs);
+    const requestFrame = () => {
+      callbackId = video.requestVideoFrameCallback((_now, metadata) => {
+        if (settled) return;
+        const mediaTime = Number(metadata?.mediaTime);
+        if (Number.isFinite(mediaTime) && Math.abs(mediaTime - expectedPosition) <= toleranceSeconds) {
+          settled = true;
+          cleanup();
+          resolve(mediaTime);
+          return;
+        }
+        requestFrame();
+      });
+    };
+    requestFrame();
+  });
+
+  video.preload = "auto";
+  video.muted = true;
+  video.playsInline = true;
+  const metadata = waitForEvent(
+    "loadedmetadata",
+    "Video metadata did not become available before the preflight deadline.",
+  );
+  video.load?.();
+  await metadata;
+  const durationSeconds = Number(video.duration);
+  const videoWidth = Number(video.videoWidth);
+  const videoHeight = Number(video.videoHeight);
+  if (!Number.isFinite(durationSeconds) || durationSeconds <= 0) {
+    fail("invalid-duration", "Video duration must be finite and positive.");
+  }
+  if (!Number.isInteger(videoWidth) || videoWidth <= 0
+    || !Number.isInteger(videoHeight) || videoHeight <= 0) {
+    fail("decode-failed", "Video metadata must include positive integer frame dimensions.");
+  }
+  const candidates = [
+    Math.min(durationSeconds * 0.1, 0.25),
+    durationSeconds * 0.5,
+    Math.max(0, durationSeconds - Math.min(0.25, durationSeconds * 0.1)),
+  ];
+  const decodedPositionsSeconds = [];
+  for (const position of candidates) {
+    const bounded = Math.max(0, Math.min(durationSeconds, position));
+    if (decodedPositionsSeconds.some((existing) => Math.abs(existing - bounded) < 0.001)) continue;
+    const seeked = waitForEvent(
+      "seeked",
+      "A representative video position could not be decoded before the preflight deadline.",
+    );
+    video.currentTime = bounded;
+    // Subscribe in the same task that initiated the seek, before yielding to
+    // either the seek event or compositor, so the target frame cannot race us.
+    const decodedFrame = waitForDecodedFrame(bounded, durationSeconds);
+    await Promise.all([seeked, decodedFrame]);
+    decodedPositionsSeconds.push(bounded);
+  }
+  if (decodedPositionsSeconds.length !== 3) {
+    fail("decode-failed", "The complete video did not expose distinct near-start, midpoint, and near-end frames.");
+  }
+  return Object.freeze({
+    durationSeconds,
+    videoWidth,
+    videoHeight,
+    decodeVerified: true,
+    decodedPositionsSeconds: Object.freeze(decodedPositionsSeconds),
+  });
+}
+
 export async function probeVideoFile(file, {
   createObjectURL = globalThis.URL?.createObjectURL?.bind(globalThis.URL),
   revokeObjectURL = globalThis.URL?.revokeObjectURL?.bind(globalThis.URL),
@@ -241,75 +355,8 @@ export async function probeVideoFile(file, {
 
   const objectUrl = createObjectURL(file);
   try {
-    const waitForEvent = (type, message) => new Promise((resolve, reject) => {
-      const timer = setTimeout(() => {
-        cleanup();
-        reject(new ResearchWorkspaceError("decode-timeout", message));
-      }, timeoutMs);
-      const loaded = (event) => { cleanup(); resolve(event); };
-      const errored = () => {
-        cleanup();
-        reject(new ResearchWorkspaceError("decode-failed", "The browser could not decode the selected complete video."));
-      };
-      const cleanup = () => {
-        clearTimeout(timer);
-        video.removeEventListener(type, loaded);
-        video.removeEventListener("error", errored);
-      };
-      video.addEventListener(type, loaded, { once: true });
-      video.addEventListener("error", errored, { once: true });
-    });
-    const waitForDecodedFrame = () => new Promise((resolve, reject) => {
-      if (typeof video.requestVideoFrameCallback !== "function") {
-        reject(new ResearchWorkspaceError(
-          "decode-unavailable",
-          "Decoded-frame verification requires desktop Chrome or Edge video frame callbacks.",
-        ));
-        return;
-      }
-      const timer = setTimeout(() => reject(new ResearchWorkspaceError(
-        "decode-timeout",
-        "A representative video frame was not decoded before the preflight deadline.",
-      )), timeoutMs);
-      video.requestVideoFrameCallback(() => {
-        clearTimeout(timer);
-        resolve();
-      });
-    });
-
-    video.preload = "auto";
-    video.muted = true;
-    video.playsInline = true;
     video.src = objectUrl;
-    video.load?.();
-    await waitForEvent("loadedmetadata", "Video metadata did not become available before the preflight deadline.");
-    const durationSeconds = Number(video.duration);
-    if (!Number.isFinite(durationSeconds) || durationSeconds <= 0) {
-      fail("invalid-duration", "Video duration must be finite and positive.");
-    }
-    const candidates = [
-      Math.min(durationSeconds * 0.1, 0.25),
-      durationSeconds * 0.5,
-      Math.max(0, durationSeconds - Math.min(0.25, durationSeconds * 0.1)),
-    ];
-    const decodedPositionsSeconds = [];
-    for (const position of candidates) {
-      const bounded = Math.max(0, Math.min(durationSeconds, position));
-      if (decodedPositionsSeconds.some((existing) => Math.abs(existing - bounded) < 0.001)) continue;
-      const seeked = waitForEvent("seeked", "A representative video position could not be decoded before the preflight deadline.");
-      video.currentTime = bounded;
-      await seeked;
-      await waitForDecodedFrame();
-      decodedPositionsSeconds.push(bounded);
-    }
-    if (decodedPositionsSeconds.length < 2) {
-      fail("decode-failed", "The complete video did not expose enough representative decoded frames.");
-    }
-    return Object.freeze({
-      durationSeconds,
-      decodeVerified: true,
-      decodedPositionsSeconds: Object.freeze(decodedPositionsSeconds),
-    });
+    return await probeVideoElement(video, { timeoutMs });
   } finally {
     video.pause?.();
     video.removeAttribute?.("src");

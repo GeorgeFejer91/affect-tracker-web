@@ -82,14 +82,44 @@ Tauri Rust owns root selection, safe child creation, staged copy/import,
 recursive rescan, streaming hashes, media probes, create-new output ownership,
 locks, and atomic file finalization behind narrow typed root/run commands.
 
+`librariesReady` is a live capability result for the selected root's four
+required libraries, never a proxy for app-data initialization. Initial root
+selection may create missing libraries; later scans and privileged operations
+revalidate the selected root plus every exact canonical child, compare the
+recorded directory identity, and fail closed rather than recreate a removed or
+replaced library. Storage readiness performs durable create/write/sync/read/
+delete probes in both `recovery/` and a temporary nested
+`outputs/<experiment>/<participant>/<session>/` hierarchy, returning only
+counts and booleans. Probe cleanup is part of readiness: an undeletable probe
+or temporary hierarchy fails the capability rather than leaving a successful
+readiness result.
+
+Run creation separately walks the real `outputs/<experiment-id>/<participant-id>`
+chain one component at a time. Every existing or newly created component must
+be an ordinary directory and the exact canonical child of its validated parent.
+The native runtime snapshots directory identity, revalidates after acquiring the
+participant attempt lock, and validates the create-new session directory before
+opening any scientific output. A pre-existing file, link/junction, same-path
+replacement, or session collision fails closed.
+
+This boundary uses safe standard-library path and metadata operations. Unix
+uses device/inode identity. Stable safe Rust does not expose the Windows file
+index, so Windows same-path replacement detection additionally uses directory
+creation time; canonicalization rejects ordinary symlink/junction redirection,
+but this is not a claim of race-free defense against adversarial reparse-point
+replacement between validation and a later path operation.
+
 ### Windows native-media boundary
 
 Qualified local/repository playback uses only the packaged libVLC 3.0.23 x64
 tree described by `src-tauri/native-media/libvlc-runtime-v1.json`. The app does
 not search `%PATH%`, the registry, a system VLC installation, or the network.
 The build/runtime verifier rejects an absent, unexpected, modified, symlinked,
-or wrong-architecture tree. Staging preserves the applicable upstream notices
-and generates a complete file-hash manifest.
+Windows reparse-point/junction, or wrong-architecture tree before descending
+through it. Staging preserves the applicable upstream notices and generates a
+complete file-hash manifest. Safe metadata checks reject ordinary reparse
+trees; they do not claim hostile swap-race elimination without handle-relative
+Windows APIs.
 
 The native media service is one serialized Rust actor. Before Prepare, the
 workspace service revalidates the opaque stimulus identity, hash, byte length,
@@ -119,6 +149,28 @@ closed.
 automatic fallback. Its receipt, journal, events, and manifest remain labelled
 unqualified. A WebView media failure is still reported to Rust and fences the
 native sampling/run authority.
+
+The unqualified desktop preflight uses the shared complete-video probe and
+requires `requestVideoFrameCallback` evidence at the deterministic near-start,
+midpoint, and near-end positions. Rust records the evidence separately as
+`representativeFramesV1`, backend `webviewVideoFrameCallback`, and status
+`attestedUnqualified`; no generic “verified” decode state can be mistaken for
+future qualified libVLC evidence. Rust consumes the opaque probe grant before
+accepting or rejecting each terminal attestation request, while the renderer
+requests explicit revocation when probing fails before attestation. Final
+identity is rehashed from the same Rust-held locked file handle. This remains
+a lower-trust WebView attestation and is not native playback qualification.
+
+During an explicit unqualified desktop run, every renderer lifecycle command
+is bound to the native UUID run ID, participant/attempt receipt, frozen hashes,
+and a fresh per-stimulus video-element generation. Replacing the video element
+for each source prevents delayed events from a detached prior source from being
+relabeled. Native status projection is suppressed while a lifecycle IPC is in
+flight and is ordered by local revision/request sequence. Rust independently
+requires a Completed timestamp within one second of the exact preflighted end.
+If neither a recovery interruption nor terminal receipt can be confirmed, the
+renderer labels the outcome unknown, disables further run controls, and
+requires restart; it never presents an unconfirmed stop as complete or partial.
 
 Chrome and Edge obtain one File System Access directory handle in a secure
 context from an immediate user activation. They retain the handle only through
@@ -268,6 +320,17 @@ with actionable status; they are never silently repaired, skipped, or called
 complete. Stop Early uses the same durable terminal path with partial status.
 Completion receipt/manifest durability precedes lock release and return to
 Setup.
+
+Terminal finalization is a retryable transaction. Its immutable outcome,
+playback provenance, complete terminal event, and durable file-prefix lengths
+are recorded before create-new promotion. A retry may repair only bytes beyond
+the last durable prefix and must verify already-promoted files byte-for-byte;
+shorter evidence, changed provenance, or a conflicting final artifact is
+quarantined. After reload, Setup exposes a dedicated pending-finalization action
+that calls the Rust finalize-only command before demographics, input, timing,
+media, storage, or playback gates and does not start acquisition. Ordinary
+Tauri Setup initialization still performs its normal workspace rescan/WebView
+attestation and input-status polling before that action is selected.
 
 ## Outbound LSL boundary
 

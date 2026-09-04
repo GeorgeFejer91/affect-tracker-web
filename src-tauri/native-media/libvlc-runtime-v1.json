@@ -9,6 +9,15 @@
     "url": "https://download.videolan.org/pub/videolan/vlc/3.0.23/win64/vlc-3.0.23-win64.zip",
     "sha256": "992d19dbd0b8a7cde9167d2f7780b1ef6f92acc8a71acfa736101a21f35181e1"
   },
+  "runtimeTree": {
+    "manifestFileName": "runtime-files.sha256",
+    "manifestOrdering": "ordinal-relative-path-v1",
+    "manifestSha256": "cab51c65c02bf656d0d77e86b3ec421b130e67b4f7ac52efac20f99cd4be3f26",
+    "fileCount": 368,
+    "byteLength": 142167916,
+    "requiredPeMachine": "0x8664",
+    "requiredOptionalHeaderMagic": "0x020b"
+  },
   "source": {
     "fileName": "vlc-3.0.23.tar.xz",
     "url": "https://download.videolan.org/pub/videolan/vlc/3.0.23/vlc-3.0.23.tar.xz",

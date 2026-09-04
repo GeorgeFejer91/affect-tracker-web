@@ -17,6 +17,7 @@ const MAX_SCAN_DEPTH: usize = 16;
 const MAX_SCAN_FILES: usize = 10_000;
 const VIDEO_EXTENSIONS: &[&str] = &["mp4", "webm", "mov", "m4v", "avi", "mkv"];
 const MAX_PROTOCOL_CHUNK: u64 = 8 * 1024 * 1024;
+const WORKSPACE_LIBRARY_NAMES: [&str; 4] = ["stimuli", "settings", "outputs", "recovery"];
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -39,6 +40,9 @@ pub struct ScannedStimulusSummary {
     pub mime_type: String,
     pub duration_ms: Option<f64>,
     pub decode_status: DecodeStatus,
+    pub decode_backend: Option<DecodeBackend>,
+    pub decode_attestation: Option<DecodeEvidence>,
+    pub decoded_positions_ms: Vec<f64>,
     pub source: Option<WorkspaceSourceContract>,
 }
 
@@ -56,8 +60,21 @@ pub struct WorkspaceSourceContract {
 #[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub enum DecodeStatus {
-    Verified,
     Unverified,
+    AttestedUnqualified,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum DecodeBackend {
+    WebviewVideoFrameCallback,
+    NativeLibvlc,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum DecodeEvidence {
+    RepresentativeFramesV1,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -84,21 +101,35 @@ pub struct MediaUrlReceipt {
     pub mime_type: String,
     pub duration_ms: Option<f64>,
     pub decode_status: DecodeStatus,
+    pub decode_backend: Option<DecodeBackend>,
+    pub decode_attestation: Option<DecodeEvidence>,
+    pub decoded_positions_ms: Vec<f64>,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum DecodeAttestationKind {
+    AttestRepresentativeFramesV1,
+    RevokeGrant,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct DecodeAttestationRequest {
+    pub attestation_kind: DecodeAttestationKind,
+    pub decode_backend: DecodeBackend,
     pub workspace_id: String,
     pub media_grant_id: String,
     pub workspace_file_id: String,
     pub sha256: String,
     pub byte_length: u64,
     pub mime_type: String,
-    pub observed_duration_ms: f64,
-    pub video_width: u32,
-    pub video_height: u32,
-    pub muted_playback_ms: f64,
+    pub observed_duration_ms: Option<f64>,
+    pub video_width: Option<u32>,
+    pub video_height: Option<u32>,
+    pub muted_playback_ms: Option<f64>,
+    #[serde(default)]
+    pub decoded_positions_ms: Vec<f64>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -169,6 +200,9 @@ pub(crate) struct ScannedStimulus {
     pub mime_type: String,
     pub duration_ms: Option<f64>,
     pub decode_status: DecodeStatus,
+    pub decode_backend: Option<DecodeBackend>,
+    pub decode_attestation: Option<DecodeEvidence>,
+    pub decoded_positions_ms: Vec<f64>,
 }
 
 #[derive(Debug, Clone)]
@@ -184,15 +218,37 @@ struct MediaGrant {
 struct SelectedWorkspace {
     id: String,
     root: PathBuf,
+    root_identity: DirectoryIdentity,
+    libraries: WorkspaceLibraries,
     display_name: String,
     scanned: Vec<ScannedStimulus>,
     media_grants: HashMap<String, MediaGrant>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct WorkspaceLibraries {
+    stimuli: PathBuf,
+    settings: PathBuf,
+    outputs: PathBuf,
+    recovery: PathBuf,
+    identities: [DirectoryIdentity; 4],
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct DirectoryIdentity {
+    #[cfg(target_os = "windows")]
+    creation_time: u64,
+    #[cfg(unix)]
+    device: u64,
+    #[cfg(unix)]
+    inode: u64,
+    #[cfg(not(any(target_os = "windows", unix)))]
+    created: Option<std::time::SystemTime>,
+}
+
 #[derive(Debug)]
 pub struct WorkspaceService {
     selected: Mutex<Option<SelectedWorkspace>>,
-    app_data_namespace: PathBuf,
 }
 
 impl WorkspaceService {
@@ -201,21 +257,23 @@ impl WorkspaceService {
         fs::create_dir_all(&namespace).map_err(CommandError::io)?;
         Ok(Self {
             selected: Mutex::new(None),
-            app_data_namespace: namespace,
         })
     }
 
     pub fn status(&self) -> WorkspaceStatus {
         let guard = self.lock_selected();
         match guard.as_ref() {
-            Some(workspace) => WorkspaceStatus {
-                selected: true,
-                workspace_id: Some(workspace.id.clone()),
-                display_name: Some(workspace.display_name.clone()),
-                namespace: RESEARCH_NAMESPACE,
-                stimuli_count: workspace.scanned.len(),
-                libraries_ready: self.app_data_namespace.is_dir(),
-            },
+            Some(workspace) => {
+                let libraries_ready = validate_selected_workspace(workspace).is_ok();
+                WorkspaceStatus {
+                    selected: true,
+                    workspace_id: Some(workspace.id.clone()),
+                    display_name: Some(workspace.display_name.clone()),
+                    namespace: RESEARCH_NAMESPACE,
+                    stimuli_count: workspace.scanned.len(),
+                    libraries_ready,
+                }
+            }
             None => WorkspaceStatus {
                 selected: false,
                 workspace_id: None,
@@ -236,7 +294,9 @@ impl WorkspaceService {
                 "The selected workspace must be a directory.",
             ));
         }
-        ensure_workspace_libraries(&root)?;
+        let libraries = ensure_workspace_libraries(&root)?;
+        let root_identity =
+            directory_identity(&fs::symlink_metadata(&root).map_err(CommandError::io)?);
         let display_name = root
             .file_name()
             .and_then(|name| name.to_str())
@@ -246,6 +306,8 @@ impl WorkspaceService {
         let selected = SelectedWorkspace {
             id: Uuid::new_v4().to_string(),
             root,
+            root_identity,
+            libraries,
             display_name,
             scanned: Vec::new(),
             media_grants: HashMap::new(),
@@ -257,7 +319,7 @@ impl WorkspaceService {
     pub fn rescan(&self, workspace_id: &str) -> ResearchResult<RescanResult> {
         let mut guard = self.lock_selected();
         let workspace = selected_mut(&mut guard, workspace_id)?;
-        ensure_workspace_libraries(&workspace.root)?;
+        validate_selected_workspace(workspace)?;
         workspace.scanned = scan_videos(&workspace.root)?;
         workspace.media_grants.clear();
         let stimuli = workspace.scanned.iter().map(scanned_summary).collect();
@@ -276,6 +338,7 @@ impl WorkspaceService {
         let bytes = canonical_json(&settings, &[])?;
         let mut guard = self.lock_selected();
         let workspace = selected_mut(&mut guard, workspace_id)?;
+        validate_selected_workspace(workspace)?;
         let file_name = format!("{}.settings.json", settings.experiment.id);
         let target = workspace.root.join("settings").join(&file_name);
         write_replacing(&target, &bytes)?;
@@ -300,21 +363,8 @@ impl WorkspaceService {
             let available_bytes = fs2::available_space(root)
                 .map_err(CommandError::io)?
                 .min(crate::research_contracts::MAX_SAFE_INTEGER);
-            let probe = root
-                .join("recovery")
-                .join(format!(".readiness-{}.tmp", Uuid::new_v4()));
-            let write_ready = (|| -> std::io::Result<()> {
-                let mut file = OpenOptions::new()
-                    .write(true)
-                    .create_new(true)
-                    .open(&probe)?;
-                file.write_all(b"affect-research-storage-readiness-v1")?;
-                file.sync_all()?;
-                drop(file);
-                fs::remove_file(&probe)
-            })()
-            .is_ok();
-            let _ = fs::remove_file(&probe);
+            let libraries = validate_workspace_libraries(root)?;
+            let write_ready = probe_storage_paths(&libraries).is_ok();
             Ok(StorageReadiness {
                 available_bytes,
                 required_bytes,
@@ -330,10 +380,9 @@ impl WorkspaceService {
         selections: Vec<PathBuf>,
     ) -> ResearchResult<RescanResult> {
         let destination = self.with_workspace(workspace_id, |root, _| {
-            Ok(root.join("stimuli").join("imported"))
+            let libraries = validate_workspace_libraries(root)?;
+            ensure_exact_child_directory(&libraries.stimuli, "imported")
         })?;
-        fs::create_dir_all(&destination).map_err(CommandError::io)?;
-        let destination = destination.canonicalize().map_err(CommandError::io)?;
         let mut sources = collect_import_videos(selections)?;
         sources.sort();
         sources.dedup();
@@ -353,6 +402,7 @@ impl WorkspaceService {
     ) -> ResearchResult<MediaUrlReceipt> {
         let mut guard = self.lock_selected();
         let workspace = selected_mut(&mut guard, workspace_id)?;
+        validate_selected_workspace(workspace)?;
         let candidate = scanned_candidate(
             &workspace.scanned,
             workspace_file_id,
@@ -392,33 +442,24 @@ impl WorkspaceService {
             mime_type: candidate.mime_type.clone(),
             duration_ms: candidate.duration_ms,
             decode_status: candidate.decode_status,
+            decode_backend: candidate.decode_backend,
+            decode_attestation: candidate.decode_attestation,
+            decoded_positions_ms: candidate.decoded_positions_ms.clone(),
         })
     }
 
-    /// Accepts WebView decode evidence only for the exact locked file grant that
-    /// produced the probe URL.  The renderer never supplies a filesystem path.
+    /// Consumes one exact locked-file grant. WebView frame evidence remains
+    /// explicitly unqualified and cannot satisfy a future libVLC verifier.
     pub fn attest_workspace_decode(
         &self,
         request: DecodeAttestationRequest,
     ) -> ResearchResult<ScannedStimulusSummary> {
-        if !request.observed_duration_ms.is_finite()
-            || !(1.0..=86_400_000.0).contains(&request.observed_duration_ms)
-            || request.video_width == 0
-            || request.video_height == 0
-            || request.video_width > 32_768
-            || request.video_height > 32_768
-            || !request.muted_playback_ms.is_finite()
-            || !(50.0..=5_000.0).contains(&request.muted_playback_ms)
-        {
-            return Err(CommandError::invalid_contract(
-                "Decode attestation requires finite duration, video dimensions, and a short muted playback probe.",
-            ));
-        }
         let mut guard = self.lock_selected();
         let workspace = selected_mut(&mut guard, &request.workspace_id)?;
+        validate_selected_workspace(workspace)?;
         let grant = workspace
             .media_grants
-            .get(&request.media_grant_id)
+            .remove(&request.media_grant_id)
             .ok_or_else(|| CommandError::forbidden("The media probe grant is unavailable."))?;
         if grant.workspace_file_id != request.workspace_file_id
             || grant.sha256 != request.sha256
@@ -429,29 +470,89 @@ impl WorkspaceService {
                 "Decode evidence does not match the exact native media grant.",
             ));
         }
-        let candidate = scanned_candidate(
-            &workspace.scanned,
-            &request.workspace_file_id,
-            &request.sha256,
-            request.byte_length,
-            &request.mime_type,
-        )?;
-        let (observed_hash, observed_bytes) = hash_file(&candidate.path)?;
-        if observed_hash != request.sha256 || observed_bytes != request.byte_length {
-            return Err(CommandError::forbidden(
-                "The workspace stimulus changed during decode preflight.",
+        let candidate_index = workspace
+            .scanned
+            .iter()
+            .position(|entry| {
+                entry.id == request.workspace_file_id
+                    && entry.sha256 == request.sha256
+                    && entry.byte_length == request.byte_length
+                    && entry.mime_type == request.mime_type
+            })
+            .ok_or_else(|| {
+                CommandError::forbidden(
+                    "The opaque workspace file and metadata do not match the latest native scan.",
+                )
+            })?;
+
+        if request.attestation_kind == DecodeAttestationKind::RevokeGrant {
+            if request.decode_backend != DecodeBackend::WebviewVideoFrameCallback
+                || request.observed_duration_ms.is_some()
+                || request.video_width.is_some()
+                || request.video_height.is_some()
+                || request.muted_playback_ms.is_some()
+                || !request.decoded_positions_ms.is_empty()
+            {
+                return Err(CommandError::invalid_contract(
+                    "A media-grant revocation may contain only its exact WebView identity.",
+                ));
+            }
+            return Ok(scanned_summary(&workspace.scanned[candidate_index]));
+        }
+        if request.decode_backend != DecodeBackend::WebviewVideoFrameCallback {
+            return Err(CommandError::invalid_contract(
+                "This command accepts only unqualified WebView decoded-frame evidence.",
             ));
         }
-        let candidate = workspace
-            .scanned
-            .iter_mut()
-            .find(|entry| entry.id == request.workspace_file_id)
-            .expect("candidate was selected from this scan");
-        candidate.duration_ms = Some(request.observed_duration_ms);
-        candidate.decode_status = DecodeStatus::Verified;
-        let summary = scanned_summary(candidate);
-        workspace.media_grants.remove(&request.media_grant_id);
-        Ok(summary)
+        let (
+            Some(observed_duration_ms),
+            Some(video_width),
+            Some(video_height),
+            Some(muted_playback_ms),
+        ) = (
+            request.observed_duration_ms,
+            request.video_width,
+            request.video_height,
+            request.muted_playback_ms,
+        )
+        else {
+            return Err(CommandError::invalid_contract(
+                "Representative-frame attestation requires complete duration, dimensions, and muted-playback evidence.",
+            ));
+        };
+        if !observed_duration_ms.is_finite()
+            || !(1.0..=86_400_000.0).contains(&observed_duration_ms)
+            || video_width == 0
+            || video_height == 0
+            || video_width > 32_768
+            || video_height > 32_768
+            || !muted_playback_ms.is_finite()
+            || !(50.0..=5_000.0).contains(&muted_playback_ms)
+        {
+            return Err(CommandError::invalid_contract(
+                "Decode attestation requires finite duration, video dimensions, and a short muted playback probe.",
+            ));
+        }
+        validate_representative_positions(observed_duration_ms, &request.decoded_positions_ms)?;
+        let (observed_hash, observed_bytes) = {
+            let mut locked_file = grant
+                .file
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            hash_open_file(&mut locked_file)?
+        };
+        if observed_hash != request.sha256 || observed_bytes != request.byte_length {
+            return Err(CommandError::forbidden(
+                "The locked workspace stimulus changed during decode preflight.",
+            ));
+        }
+        let candidate = &mut workspace.scanned[candidate_index];
+        candidate.duration_ms = Some(observed_duration_ms);
+        candidate.decode_status = DecodeStatus::AttestedUnqualified;
+        candidate.decode_backend = Some(DecodeBackend::WebviewVideoFrameCallback);
+        candidate.decode_attestation = Some(DecodeEvidence::RepresentativeFramesV1);
+        candidate.decoded_positions_ms = request.decoded_positions_ms;
+        Ok(scanned_summary(candidate))
     }
 
     pub fn export_assignment_plan(
@@ -544,10 +645,11 @@ impl WorkspaceService {
         }
         let grant = {
             let guard = self.lock_selected();
-            guard
-                .as_ref()
-                .and_then(|workspace| workspace.media_grants.get(token))
-                .cloned()
+            guard.as_ref().and_then(|workspace| {
+                validate_selected_workspace(workspace)
+                    .ok()
+                    .and_then(|_| workspace.media_grants.get(token).cloned())
+            })
         };
         let Some(grant) = grant else {
             return protocol_error(StatusCode::NOT_FOUND);
@@ -562,6 +664,7 @@ impl WorkspaceService {
     ) -> ResearchResult<T> {
         let guard = self.lock_selected();
         let workspace = selected_ref(&guard, workspace_id)?;
+        validate_selected_workspace(workspace)?;
         action(&workspace.root, &workspace.scanned)
     }
 
@@ -577,7 +680,7 @@ impl WorkspaceService {
         expected_duration_ms: f64,
     ) -> ResearchResult<()> {
         self.with_workspace(workspace_id, |_, scanned| {
-            let candidate = verified_candidate(
+            let candidate = webview_attested_candidate(
                 scanned,
                 workspace_file_id,
                 expected_sha256,
@@ -610,7 +713,10 @@ impl WorkspaceService {
             .and_then(|workspace| workspace.scanned.first_mut())
         {
             entry.duration_ms = Some(duration_ms);
-            entry.decode_status = DecodeStatus::Verified;
+            entry.decode_status = DecodeStatus::AttestedUnqualified;
+            entry.decode_backend = Some(DecodeBackend::WebviewVideoFrameCallback);
+            entry.decode_attestation = Some(DecodeEvidence::RepresentativeFramesV1);
+            entry.decoded_positions_ms = representative_positions_ms(duration_ms).to_vec();
         }
     }
 }
@@ -649,16 +755,198 @@ fn selected_mut<'a>(
     Ok(workspace)
 }
 
-fn ensure_workspace_libraries(root: &Path) -> ResearchResult<()> {
-    for name in ["stimuli", "settings", "outputs", "recovery"] {
+fn ensure_workspace_libraries(root: &Path) -> ResearchResult<WorkspaceLibraries> {
+    for name in WORKSPACE_LIBRARY_NAMES {
         let child = root.join(name);
-        fs::create_dir_all(&child).map_err(CommandError::io)?;
-        let canonical = child.canonicalize().map_err(CommandError::io)?;
-        if !canonical.starts_with(root) || !canonical.is_dir() {
-            return Err(CommandError::forbidden(
-                "A workspace library resolves outside the selected parent.",
-            ));
+        match fs::symlink_metadata(&child) {
+            Ok(_) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                fs::create_dir(&child).map_err(CommandError::io)?;
+            }
+            Err(error) => return Err(CommandError::io(error)),
         }
+    }
+    validate_workspace_libraries(root)
+}
+
+fn validate_selected_workspace(
+    workspace: &SelectedWorkspace,
+) -> ResearchResult<WorkspaceLibraries> {
+    let root_metadata = fs::symlink_metadata(&workspace.root).map_err(|_| {
+        CommandError::forbidden(
+            "The selected workspace or one of its required libraries is unavailable.",
+        )
+    })?;
+    if !root_metadata.is_dir() || root_metadata.file_type().is_symlink() {
+        return Err(CommandError::forbidden(
+            "The selected workspace or one of its required libraries is unavailable.",
+        ));
+    }
+    let canonical_root = workspace.root.canonicalize().map_err(|_| {
+        CommandError::forbidden(
+            "The selected workspace or one of its required libraries is unavailable.",
+        )
+    })?;
+    if canonical_root != workspace.root {
+        return Err(CommandError::forbidden(
+            "The selected workspace changed after it was selected.",
+        ));
+    }
+    if directory_identity(&root_metadata) != workspace.root_identity {
+        return Err(CommandError::forbidden(
+            "The selected workspace changed after it was selected.",
+        ));
+    }
+    let observed = validate_workspace_libraries(&canonical_root)?;
+    if observed != workspace.libraries {
+        return Err(CommandError::forbidden(
+            "A required workspace library changed after the workspace was selected.",
+        ));
+    }
+    Ok(observed)
+}
+
+fn validate_workspace_libraries(root: &Path) -> ResearchResult<WorkspaceLibraries> {
+    let paths = WORKSPACE_LIBRARY_NAMES
+        .map(|name| validate_exact_child_directory(root, name))
+        .into_iter()
+        .collect::<ResearchResult<Vec<_>>>()?;
+    Ok(WorkspaceLibraries {
+        stimuli: paths[0].0.clone(),
+        settings: paths[1].0.clone(),
+        outputs: paths[2].0.clone(),
+        recovery: paths[3].0.clone(),
+        identities: std::array::from_fn(|index| paths[index].1.clone()),
+    })
+}
+
+fn validate_exact_child_directory(
+    parent: &Path,
+    name: &str,
+) -> ResearchResult<(PathBuf, DirectoryIdentity)> {
+    let child = parent.join(name);
+    let metadata = fs::symlink_metadata(&child).map_err(|_| {
+        CommandError::forbidden(
+            "The selected workspace or one of its required libraries is unavailable.",
+        )
+    })?;
+    if !metadata.is_dir() || metadata.file_type().is_symlink() {
+        return Err(CommandError::forbidden(
+            "A required workspace library is not an ordinary directory.",
+        ));
+    }
+    let canonical = child.canonicalize().map_err(|_| {
+        CommandError::forbidden(
+            "The selected workspace or one of its required libraries is unavailable.",
+        )
+    })?;
+    if canonical != child || canonical.parent() != Some(parent) || !canonical.starts_with(parent) {
+        return Err(CommandError::forbidden(
+            "A required workspace library is not the exact canonical child of the selected parent.",
+        ));
+    }
+    Ok((canonical, directory_identity(&metadata)))
+}
+
+fn ensure_exact_child_directory(parent: &Path, name: &str) -> ResearchResult<PathBuf> {
+    let child = parent.join(name);
+    match fs::symlink_metadata(&child) {
+        Ok(_) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            fs::create_dir(&child).map_err(CommandError::io)?;
+        }
+        Err(error) => return Err(CommandError::io(error)),
+    }
+    validate_exact_child_directory(parent, name).map(|(path, _)| path)
+}
+
+#[cfg(target_os = "windows")]
+fn directory_identity(metadata: &fs::Metadata) -> DirectoryIdentity {
+    use std::os::windows::fs::MetadataExt;
+    DirectoryIdentity {
+        // Stable safe Rust does not currently expose the Windows file index.
+        // Creation time detects ordinary same-path replacement without unsafe
+        // platform calls; canonical-path validation remains the primary guard.
+        creation_time: metadata.creation_time(),
+    }
+}
+
+#[cfg(unix)]
+fn directory_identity(metadata: &fs::Metadata) -> DirectoryIdentity {
+    use std::os::unix::fs::MetadataExt;
+    DirectoryIdentity {
+        device: metadata.dev(),
+        inode: metadata.ino(),
+    }
+}
+
+#[cfg(not(any(target_os = "windows", unix)))]
+fn directory_identity(metadata: &fs::Metadata) -> DirectoryIdentity {
+    DirectoryIdentity {
+        created: metadata.created().ok(),
+    }
+}
+
+fn probe_storage_paths(libraries: &WorkspaceLibraries) -> std::io::Result<()> {
+    const PAYLOAD: &[u8] = b"affect-research-storage-readiness-v1";
+    let token = Uuid::new_v4().simple().to_string();
+    let recovery_probe = libraries.recovery.join(format!(".readiness-{token}.tmp"));
+    let output_experiment = libraries.outputs.join(format!(".readiness-{token}"));
+    let output_participant = output_experiment.join("P001");
+    let output_session = output_participant.join("readiness-session");
+    let output_probe = output_session.join("probe.tmp");
+
+    let result = (|| -> std::io::Result<()> {
+        durable_file_probe(&recovery_probe, PAYLOAD)?;
+        fs::create_dir(&output_experiment)?;
+        fs::create_dir(&output_participant)?;
+        fs::create_dir(&output_session)?;
+        durable_file_probe(&output_probe, PAYLOAD)
+    })();
+
+    let mut cleanup_error = None;
+    for path in [&recovery_probe, &output_probe] {
+        record_cleanup_error(&mut cleanup_error, remove_file_if_present(path));
+    }
+    for path in [&output_session, &output_participant, &output_experiment] {
+        record_cleanup_error(&mut cleanup_error, remove_directory_if_present(path));
+    }
+    result.and_then(|()| cleanup_error.map_or(Ok(()), Err))
+}
+
+fn record_cleanup_error(slot: &mut Option<std::io::Error>, result: std::io::Result<()>) {
+    if let Err(error) = result {
+        slot.get_or_insert(error);
+    }
+}
+
+fn remove_file_if_present(path: &Path) -> std::io::Result<()> {
+    match fs::remove_file(path) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(error),
+    }
+}
+
+fn remove_directory_if_present(path: &Path) -> std::io::Result<()> {
+    match fs::remove_dir(path) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(error),
+    }
+}
+
+fn durable_file_probe(path: &Path, payload: &[u8]) -> std::io::Result<()> {
+    let mut file = OpenOptions::new().write(true).create_new(true).open(path)?;
+    file.write_all(payload)?;
+    file.sync_all()?;
+    drop(file);
+    let observed = fs::read(path)?;
+    if observed != payload {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "storage readiness probe contents changed",
+        ));
     }
     Ok(())
 }
@@ -725,6 +1013,9 @@ fn scan_videos(root: &Path) -> ResearchResult<Vec<ScannedStimulus>> {
                 mime_type,
                 duration_ms: None,
                 decode_status: DecodeStatus::Unverified,
+                decode_backend: None,
+                decode_attestation: None,
+                decoded_positions_ms: Vec::new(),
             });
         }
     }
@@ -762,7 +1053,16 @@ fn video_mime_type(path: &Path) -> &'static str {
 fn scanned_summary(entry: &ScannedStimulus) -> ScannedStimulusSummary {
     let source = entry
         .duration_ms
-        .filter(|_| entry.decode_status == DecodeStatus::Verified)
+        .filter(|_| {
+            entry.decode_status == DecodeStatus::AttestedUnqualified
+                && entry.decode_backend == Some(DecodeBackend::WebviewVideoFrameCallback)
+                && entry.decode_attestation == Some(DecodeEvidence::RepresentativeFramesV1)
+                && validate_representative_positions(
+                    entry.duration_ms.unwrap_or_default(),
+                    &entry.decoded_positions_ms,
+                )
+                .is_ok()
+        })
         .map(|duration_ms| WorkspaceSourceContract {
             kind: "workspaceFile",
             relative_path: logical_relative_path(&entry.id),
@@ -784,6 +1084,9 @@ fn scanned_summary(entry: &ScannedStimulus) -> ScannedStimulusSummary {
         mime_type: entry.mime_type.clone(),
         duration_ms: entry.duration_ms,
         decode_status: entry.decode_status,
+        decode_backend: entry.decode_backend,
+        decode_attestation: entry.decode_attestation,
+        decoded_positions_ms: entry.decoded_positions_ms.clone(),
         source,
     }
 }
@@ -810,7 +1113,7 @@ fn scanned_candidate<'a>(
         })
 }
 
-fn verified_candidate<'a>(
+fn webview_attested_candidate<'a>(
     scanned: &'a [ScannedStimulus],
     workspace_file_id: &str,
     expected_sha256: &str,
@@ -821,7 +1124,7 @@ fn verified_candidate<'a>(
 ) -> ResearchResult<&'a ScannedStimulus> {
     if !expected_duration_ms.is_finite() || expected_duration_ms <= 0.0 {
         return Err(CommandError::invalid_contract(
-            "A verified workspace stimulus requires a positive duration.",
+            "A WebView-attested workspace stimulus requires a positive duration.",
         ));
     }
     if expected_relative_path != logical_relative_path(workspace_file_id) {
@@ -836,16 +1139,51 @@ fn verified_candidate<'a>(
                 && entry.sha256 == expected_sha256
                 && entry.byte_length == expected_byte_length
                 && entry.mime_type == expected_mime_type
-                && entry.decode_status == DecodeStatus::Verified
+                && entry.decode_status == DecodeStatus::AttestedUnqualified
+                && entry.decode_backend == Some(DecodeBackend::WebviewVideoFrameCallback)
+                && entry.decode_attestation == Some(DecodeEvidence::RepresentativeFramesV1)
                 && entry
                     .duration_ms
                     .is_some_and(|duration| (duration - expected_duration_ms).abs() <= 0.5)
+                && validate_representative_positions(
+                    entry.duration_ms.unwrap_or_default(),
+                    &entry.decoded_positions_ms,
+                )
+                .is_ok()
         })
         .ok_or_else(|| {
             CommandError::forbidden(
-                "The opaque workspace file and its verified metadata do not match the latest scan.",
+                "The opaque workspace file and its unqualified WebView attestation do not match the latest scan.",
             )
         })
+}
+
+fn representative_positions_ms(duration_ms: f64) -> [f64; 3] {
+    let offset = (duration_ms * 0.1).min(250.0);
+    [offset, duration_ms * 0.5, (duration_ms - offset).max(0.0)]
+}
+
+fn validate_representative_positions(duration_ms: f64, positions_ms: &[f64]) -> ResearchResult<()> {
+    if !duration_ms.is_finite() || duration_ms <= 0.0 || positions_ms.len() != 3 {
+        return Err(CommandError::invalid_contract(
+            "Decode attestation requires near-start, midpoint, and near-end frames.",
+        ));
+    }
+    let expected = representative_positions_ms(duration_ms);
+    if positions_ms.iter().any(|position| !position.is_finite())
+        || positions_ms
+            .windows(2)
+            .any(|positions| positions[1] - positions[0] < 1.0)
+        || positions_ms
+            .iter()
+            .zip(expected)
+            .any(|(observed, expected)| (observed - expected).abs() > 1.0)
+    {
+        return Err(CommandError::invalid_contract(
+            "Decoded-frame positions must bind the expected near-start, midpoint, and near-end probes.",
+        ));
+    }
+    Ok(())
 }
 
 fn logical_relative_path(workspace_file_id: &str) -> String {
@@ -1185,6 +1523,97 @@ mod tests {
     }
 
     #[test]
+    fn removed_library_is_not_recreated_and_disables_workspace_operations() {
+        let base = temporary_directory("removed-library");
+        let service = WorkspaceService::new(base.join("app-data")).unwrap();
+        let workspace = base.join("chosen");
+        fs::create_dir(&workspace).unwrap();
+        let status = service.select(workspace.clone()).unwrap();
+        let workspace_id = status.workspace_id.unwrap();
+
+        fs::remove_dir(workspace.join("settings")).unwrap();
+
+        assert!(!service.status().libraries_ready);
+        let error = service.rescan(&workspace_id).unwrap_err();
+        assert_eq!(error.code, "forbidden_operation");
+        assert!(!workspace.join("settings").exists());
+        assert!(!serde_json::to_string(&error).unwrap().contains("chosen"));
+        fs::remove_dir_all(base).unwrap();
+    }
+
+    #[test]
+    fn same_path_directory_replacement_invalidates_the_selected_workspace() {
+        let base = temporary_directory("replaced-library");
+        let service = WorkspaceService::new(base.join("app-data")).unwrap();
+        let workspace = base.join("chosen");
+        fs::create_dir(&workspace).unwrap();
+        let status = service.select(workspace.clone()).unwrap();
+        let workspace_id = status.workspace_id.unwrap();
+        let outputs = workspace.join("outputs");
+
+        fs::remove_dir(&outputs).unwrap();
+        // Windows stable Rust exposes creation time, rather than the directory
+        // file ID; avoid timestamp-granularity ambiguity in this host test.
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        fs::create_dir(&outputs).unwrap();
+
+        assert!(!service.status().libraries_ready);
+        let error = service
+            .with_workspace(&workspace_id, |_, _| Ok(()))
+            .unwrap_err();
+        assert_eq!(error.code, "forbidden_operation");
+        fs::remove_dir_all(base).unwrap();
+    }
+
+    #[test]
+    fn library_replaced_by_a_file_is_rejected_without_recreation() {
+        let base = temporary_directory("file-library");
+        let service = WorkspaceService::new(base.join("app-data")).unwrap();
+        let workspace = base.join("chosen");
+        fs::create_dir(&workspace).unwrap();
+        let status = service.select(workspace.clone()).unwrap();
+        let workspace_id = status.workspace_id.unwrap();
+        let recovery = workspace.join("recovery");
+
+        fs::remove_dir(&recovery).unwrap();
+        fs::write(&recovery, b"not a directory").unwrap();
+
+        assert!(!service.status().libraries_ready);
+        let error = service.storage_readiness(&workspace_id, 1).unwrap_err();
+        assert_eq!(error.code, "forbidden_operation");
+        assert!(recovery.is_file());
+        fs::remove_dir_all(base).unwrap();
+    }
+
+    #[cfg(any(target_os = "windows", unix))]
+    #[test]
+    fn library_replaced_by_a_link_outside_the_workspace_is_rejected() {
+        let base = temporary_directory("linked-library");
+        let service = WorkspaceService::new(base.join("app-data")).unwrap();
+        let workspace = base.join("chosen");
+        let external = base.join("external");
+        fs::create_dir(&workspace).unwrap();
+        fs::create_dir(&external).unwrap();
+        fs::write(external.join("must-remain.txt"), b"external").unwrap();
+        let status = service.select(workspace.clone()).unwrap();
+        let workspace_id = status.workspace_id.unwrap();
+        let outputs = workspace.join("outputs");
+        fs::remove_dir(&outputs).unwrap();
+        create_directory_link(&external, &outputs);
+
+        assert!(!service.status().libraries_ready);
+        let error = service.storage_readiness(&workspace_id, 1).unwrap_err();
+        assert_eq!(error.code, "forbidden_operation");
+
+        fs::remove_dir(&outputs).unwrap();
+        assert_eq!(
+            fs::read(external.join("must-remain.txt")).unwrap(),
+            b"external"
+        );
+        fs::remove_dir_all(base).unwrap();
+    }
+
+    #[test]
     fn scan_ignores_non_video_files_and_never_returns_a_path() {
         let base = temporary_directory("scan");
         let service = WorkspaceService::new(base.join("app-data")).unwrap();
@@ -1206,11 +1635,10 @@ mod tests {
     #[test]
     fn namespace_is_dedicated_and_does_not_probe_legacy_storage() {
         let base = temporary_directory("namespace");
-        let service = WorkspaceService::new(base.clone()).unwrap();
-        assert!(service
-            .app_data_namespace
-            .ends_with(Path::new("affect-research/v1")));
-        assert!(service.app_data_namespace.is_dir());
+        let _service = WorkspaceService::new(base.clone()).unwrap();
+        let namespace = base.join("affect-research").join("v1");
+        assert!(namespace.ends_with(Path::new("affect-research/v1")));
+        assert!(namespace.is_dir());
         fs::remove_dir_all(base).unwrap();
     }
 
@@ -1228,10 +1656,31 @@ mod tests {
         assert!(readiness.sufficient);
         assert!(readiness.available_bytes >= readiness.required_bytes);
         assert_eq!(fs::read_dir(workspace.join("recovery")).unwrap().count(), 0);
+        assert_eq!(fs::read_dir(workspace.join("outputs")).unwrap().count(), 0);
         assert!(!serde_json::to_string(&readiness)
             .unwrap()
             .contains("chosen"));
         fs::remove_dir_all(base).unwrap();
+    }
+
+    #[cfg(target_os = "windows")]
+    fn create_directory_link(target: &Path, link: &Path) {
+        let output = std::process::Command::new("cmd.exe")
+            .args(["/D", "/C", "mklink", "/J"])
+            .arg(link)
+            .arg(target)
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "junction creation failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    #[cfg(unix)]
+    fn create_directory_link(target: &Path, link: &Path) {
+        std::os::unix::fs::symlink(target, link).unwrap();
     }
 
     #[test]
@@ -1260,6 +1709,7 @@ mod tests {
                 .unwrap();
             assert!(!receipt.media_url.contains("clip"));
             assert!(!receipt.media_url.contains("chosen"));
+            let media_url = receipt.media_url.clone();
             let request = Request::builder()
                 .method(Method::GET)
                 .uri(&receipt.media_url)
@@ -1271,22 +1721,139 @@ mod tests {
             assert_eq!(response.body(), b"ide");
             let verified = service
                 .attest_workspace_decode(DecodeAttestationRequest {
+                    attestation_kind: DecodeAttestationKind::AttestRepresentativeFramesV1,
+                    decode_backend: DecodeBackend::WebviewVideoFrameCallback,
                     workspace_id: status.workspace_id.clone().unwrap(),
-                    media_grant_id: receipt.media_grant_id,
+                    media_grant_id: receipt.media_grant_id.clone(),
                     workspace_file_id: item.workspace_file_id.clone(),
                     sha256: item.sha256.clone(),
                     byte_length: item.byte_length,
                     mime_type: item.mime_type.clone(),
-                    observed_duration_ms: 1_000.0,
-                    video_width: 1_920,
-                    video_height: 1_080,
-                    muted_playback_ms: 100.0,
+                    observed_duration_ms: Some(1_000.0),
+                    video_width: Some(1_920),
+                    video_height: Some(1_080),
+                    muted_playback_ms: Some(100.0),
+                    decoded_positions_ms: vec![100.0, 500.0, 900.0],
                 })
                 .unwrap();
-            assert_eq!(verified.decode_status, DecodeStatus::Verified);
+            assert_eq!(verified.decode_status, DecodeStatus::AttestedUnqualified);
+            assert_eq!(
+                verified.decode_backend,
+                Some(DecodeBackend::WebviewVideoFrameCallback)
+            );
+            assert_eq!(
+                verified.decode_attestation,
+                Some(DecodeEvidence::RepresentativeFramesV1)
+            );
+            assert_eq!(verified.decoded_positions_ms, [100.0, 500.0, 900.0]);
             assert_eq!(verified.duration_ms, Some(1_000.0));
             assert!(verified.source.is_some());
+            let boundary = serde_json::to_value(&verified).unwrap();
+            assert_eq!(boundary["decodeStatus"], "attestedUnqualified");
+            assert_eq!(boundary["decodeBackend"], "webviewVideoFrameCallback");
+            assert_eq!(boundary["decodeAttestation"], "representativeFramesV1");
+            let consumed = Request::builder()
+                .method(Method::GET)
+                .uri(media_url)
+                .body(Vec::new())
+                .unwrap();
+            assert_eq!(
+                service.protocol_response("research", consumed).status(),
+                StatusCode::NOT_FOUND
+            );
         }
+        fs::remove_dir_all(base).unwrap();
+    }
+
+    #[test]
+    fn failed_and_explicitly_revoked_decode_attestations_consume_their_grants() {
+        let base = temporary_directory("media-revoke");
+        let service = WorkspaceService::new(base.join("app-data")).unwrap();
+        let workspace = base.join("chosen");
+        fs::create_dir(&workspace).unwrap();
+        let status = service.select(workspace.clone()).unwrap();
+        fs::write(workspace.join("stimuli").join("clip.mp4"), b"video").unwrap();
+        let item = service
+            .rescan(status.workspace_id.as_deref().unwrap())
+            .unwrap()
+            .stimuli
+            .remove(0);
+
+        let invalid = service
+            .issue_media_url(
+                status.workspace_id.as_deref().unwrap(),
+                &item.workspace_file_id,
+                &item.sha256,
+                item.byte_length,
+                &item.mime_type,
+            )
+            .unwrap();
+        let invalid_url = invalid.media_url.clone();
+        let error = service
+            .attest_workspace_decode(DecodeAttestationRequest {
+                attestation_kind: DecodeAttestationKind::AttestRepresentativeFramesV1,
+                decode_backend: DecodeBackend::WebviewVideoFrameCallback,
+                workspace_id: status.workspace_id.clone().unwrap(),
+                media_grant_id: invalid.media_grant_id,
+                workspace_file_id: item.workspace_file_id.clone(),
+                sha256: item.sha256.clone(),
+                byte_length: item.byte_length,
+                mime_type: item.mime_type.clone(),
+                observed_duration_ms: Some(1_000.0),
+                video_width: Some(1_920),
+                video_height: Some(1_080),
+                muted_playback_ms: Some(100.0),
+                decoded_positions_ms: vec![100.0, 500.0, 500.0],
+            })
+            .unwrap_err();
+        assert_eq!(error.code, "invalid_research_contract");
+        let request = Request::builder()
+            .method(Method::GET)
+            .uri(invalid_url)
+            .body(Vec::new())
+            .unwrap();
+        assert_eq!(
+            service.protocol_response("research", request).status(),
+            StatusCode::NOT_FOUND
+        );
+
+        let revoked = service
+            .issue_media_url(
+                status.workspace_id.as_deref().unwrap(),
+                &item.workspace_file_id,
+                &item.sha256,
+                item.byte_length,
+                &item.mime_type,
+            )
+            .unwrap();
+        let revoked_url = revoked.media_url.clone();
+        let summary = service
+            .attest_workspace_decode(DecodeAttestationRequest {
+                attestation_kind: DecodeAttestationKind::RevokeGrant,
+                decode_backend: DecodeBackend::WebviewVideoFrameCallback,
+                workspace_id: status.workspace_id.unwrap(),
+                media_grant_id: revoked.media_grant_id,
+                workspace_file_id: item.workspace_file_id,
+                sha256: item.sha256,
+                byte_length: item.byte_length,
+                mime_type: item.mime_type,
+                observed_duration_ms: None,
+                video_width: None,
+                video_height: None,
+                muted_playback_ms: None,
+                decoded_positions_ms: Vec::new(),
+            })
+            .unwrap();
+        assert_eq!(summary.decode_status, DecodeStatus::Unverified);
+        let request = Request::builder()
+            .method(Method::GET)
+            .uri(revoked_url)
+            .body(Vec::new())
+            .unwrap();
+        assert_eq!(
+            service.protocol_response("research", request).status(),
+            StatusCode::NOT_FOUND
+        );
         fs::remove_dir_all(base).unwrap();
     }
 

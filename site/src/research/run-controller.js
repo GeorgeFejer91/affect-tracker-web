@@ -1105,6 +1105,8 @@ export class BrowserResearchRunController extends EventTarget {
       attemptNumber: this.context.attemptNumber,
       sessionStem: this.context.sessionStem,
       completionStatus,
+      playbackMode: "browserMediaAdapters",
+      playbackQualification: "browser",
       settingsSha256: this.context.settingsHash,
       assignmentPlanSha256: this.context.planHash,
       stimuli: this.context.assignment.slots.map((slot) => stimulusIdentity(this.context.stimuliById.get(slot.stimulusId))),

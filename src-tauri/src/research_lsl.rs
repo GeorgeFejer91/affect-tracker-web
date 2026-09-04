@@ -98,7 +98,7 @@ pub fn validate_marker(marker: &str) -> ResearchResult<()> {
     Ok(())
 }
 
-#[cfg(feature = "lsl-streaming")]
+#[cfg(all(feature = "lsl-streaming", target_os = "windows"))]
 mod implementation {
     use super::*;
     use labstream::{Channel, Format, Outlet, StreamInfo};
@@ -173,7 +173,7 @@ mod implementation {
     }
 }
 
-#[cfg(not(feature = "lsl-streaming"))]
+#[cfg(not(all(feature = "lsl-streaming", target_os = "windows")))]
 mod implementation {
     use super::*;
 
@@ -227,5 +227,19 @@ mod tests {
         assert!(validate_marker("stimulus_started:video-1").is_ok());
         assert!(validate_marker("C:\\private\\participant name").is_err());
         assert!(validate_marker("").is_err());
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    #[test]
+    fn non_windows_builds_cannot_start_lsl_directly() {
+        let settings = ResearchLslSettingsV1 {
+            enabled: true,
+            state_stream: "AffectState".to_owned(),
+            stream_type: "Affect".to_owned(),
+            marker_stream: "AffectMarkers".to_owned(),
+            source_id: "affect-research-test".to_owned(),
+        };
+        let error = LslService::start(&settings, 130, "test-run").unwrap_err();
+        assert_eq!(error.code, "forbidden_operation");
     }
 }
