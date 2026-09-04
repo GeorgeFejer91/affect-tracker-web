@@ -1,0 +1,92 @@
+{
+  "schema": "affect-tracker-photo-atlas-multi-anchor-pack",
+  "version": 1,
+  "id": "photo-synthetic-08",
+  "label": "Synthetic preset 09",
+  "presentationStyle": "feminine-coded",
+  "regionalDesignInspirations": [],
+  "skinToneAudit": null,
+  "source": "anchors-v1.png",
+  "sourceSha256": "9c192e71b96afb244b7944cc0e6852bad38fea076bec666bfaf3ca51c6b65d7f",
+  "preparedSourceSha256": "9df28b84c4ff266a922812c19ebe5ab8733c0e90452f580a5421c71c776e6723",
+  "sourcePreprocessing": {
+    "method": "center-crop-cell-border-black-matte-soft-alpha-v1",
+    "inputMode": "RGB",
+    "inputSize": [
+      1254,
+      1254
+    ],
+    "normalizedSize": [
+      1250,
+      1250
+    ],
+    "centerCrop": {
+      "left": 2,
+      "top": 2,
+      "size": 1250
+    },
+    "sourceGridSize": 5,
+    "cellSize": 250,
+    "backgroundConnectivity": 8,
+    "blackPoint": 8,
+    "opaquePoint": 24,
+    "alphaCurve": "smoothstep",
+    "edgeRgbPolicy": "preserve-source-straight-rgb",
+    "transparentPixelCount": 220445,
+    "softPixelCount": 186852,
+    "opaquePixelCount": 1155203,
+    "preparedSha256": "9df28b84c4ff266a922812c19ebe5ab8733c0e90452f580a5421c71c776e6723",
+    "limitation": "Border-connected near-black foreground detail may be inseparable from the black matte and requires contact-sheet review."
+  },
+  "sourceGridSize": 5,
+  "sourceAnchorCount": 25,
+  "additionalIntermediateAnchorCount": 16,
+  "authoring": "authoring-v1.json",
+  "authoringSha256": "ebb8af1ac39003f98bc99ac3bd824161fd94d0844c10a4936bd23eef396f31d8",
+  "output": "atlas-v1.webp",
+  "outputSha256": "367df69e3a5c1787c41ef6fac4ab6a0adf457ed8de04540c6f675db55dafbd5f",
+  "gridSize": 21,
+  "nodeCount": 441,
+  "tileSize": 160,
+  "quality": 88,
+  "controlPointCount": 58,
+  "triangleCount": 98,
+  "topologySweepSize": 101,
+  "minimumTriangleAreaPixels": 3.72751,
+  "method": "25 project-owned image-to-image anchors plus MediaPipe stable landmarks and piecewise-affine premultiplied local interpolation",
+  "runtimeInterpolation": "continuous bilinear blend between adjacent 21x21 generated nodes",
+  "affectEvidence": {
+    "layoutSource": "https://www.nature.com/articles/s41598-023-49209-8",
+    "layoutUse": "five valence by five arousal authoring design only",
+    "participantMediaUsed": false,
+    "participantAnnotationsUsed": false,
+    "affecAggregateEvidence": "../../affec-perceived-va-evidence-v1.json"
+  },
+  "affectValidation": "Twenty-five project-owned image-to-image anchors and 441 derived nodes are presentation assets; they are not independently validated affect observations, emotion recognition, demographic inference, or diagnosis.",
+  "versions": {
+    "mediapipe": "0.10.8",
+    "opencv": "4.8.1",
+    "numpy": "1.26.4",
+    "scipy": "1.10.1",
+    "pillow": "12.2.0"
+  },
+  "tooling": {
+    "builder": "build-multi-anchor-photo-atlas.py",
+    "builderSha256": "7db0ba25f9b852a9588cb7a91cfe0c222b8dd5d5f3a06839a9b72d9e42ede59d",
+    "geometryHelper": "build-dense-photo-atlas.py",
+    "geometryHelperSha256": "2479ed7bbe557a64c1bc48cf7fce4dc1cde705474d488d49663d9a777dd0f38c"
+  },
+  "provenance": {
+    "identityType": "synthetic-fictional",
+    "sourceOwnership": "project-owned",
+    "demographicLabelType": "creator-prompt-inspiration-only",
+    "demographicLabelScope": "Creator-selected appearance styling only; not a claim or inference of sex, gender identity, pronouns, race, ethnicity, ancestry, nationality, culture, or personal identity.",
+    "consentBasis": "synthetic-source-with-no-real-person-identity-intended",
+    "license": "BSD-3-Clause",
+    "generatorName": "OpenAI built-in image generation service",
+    "generatorVersion": "service model version unavailable",
+    "generatedOn": "2026-09-03",
+    "generationRecord": "authoring-v1.json",
+    "affectValidation": "Twenty-five project-owned image-to-image anchors and 441 derived nodes are presentation assets; they are not independently validated affect observations, emotion recognition, demographic inference, or diagnosis."
+  }
+}

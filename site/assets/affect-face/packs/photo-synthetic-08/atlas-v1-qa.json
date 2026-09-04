@@ -1,0 +1,423 @@
+{
+  "schema": "affect-tracker-photo-atlas-multi-anchor-engineering-qa",
+  "version": 1,
+  "passed": true,
+  "evidenceBoundary": "Engineering QA of one project-authored synthetic 5x5 anchor sheet and its deterministic 21x21 atlas only. The 25 generated anchors include 16 additional grid positions relative to a reference-only 3x3 layout; the original nine reference cells are not asserted to be byte-preserved. Landmark, topology, continuity, and image checks do not establish perceived or validated valence/arousal, demographic identity, emotion recognition, or diagnosis. No participant media or annotations are used.",
+  "anchorLineage": {
+    "generatedAnchorGridSize": 5,
+    "generatedAnchorCount": 25,
+    "additionalGridPositionCount": 16,
+    "referenceGridSize": 3,
+    "referenceAnchorCount": 9,
+    "referenceRole": "The original 3x3 atlas is an image-to-image authoring reference only; its nine cells are not asserted to be byte-preserved in the generated 5x5 sheet."
+  },
+  "thresholds": {
+    "anchorMinimumForegroundRgbPsnrDb": 35.0,
+    "anchorMaximumAlphaError": 0,
+    "landmarkMedianErrorPixels": 1.0,
+    "landmarkP95ErrorPixels": 1.5,
+    "landmarkMaximumErrorPixels": 3.0,
+    "neighborContinuityP95ResidualPixels": 1.5,
+    "diagonalContinuityP95ResidualPixels": 2.25,
+    "atlasMaximumBytes": 5000000,
+    "decodedRgbaBytes": 45158400
+  },
+  "checks": {
+    "metadataSchemaVersionAndPackAreExact": true,
+    "authoringSchemaVersionAndIdentityAreExact": true,
+    "sourceHashMatchesMetadataAndAuthoring": true,
+    "authoringHashMatchesMetadata": true,
+    "atlasHashMatchesMetadata": true,
+    "builderHashMatchesMetadata": true,
+    "geometryHelperHashMatchesMetadata": true,
+    "toolVersionsMatchMetadata": true,
+    "sourcePreprocessingReproducesExactly": true,
+    "sourceGridHasExactlyTwentyFiveDetectedFaces": true,
+    "anchorLineageDistinguishesGeneratedAndReferencePositions": true,
+    "denseAtlasHasExactlyFourHundredFortyOneDetectedFaces": true,
+    "allTwentyFiveAnchorsLandOnExactOutputNodes": true,
+    "anchorsPreserveAlphaWithinEncoderTolerance": true,
+    "anchorsPreserveRgbWithinEncoderTolerance": true,
+    "expectedTopologyHasNoFolds": true,
+    "observedLandmarkTopologyHasNoFolds": true,
+    "landmarkAgreementWithinBounds": true,
+    "axialNeighborContinuityWithinBounds": true,
+    "diagonalNeighborContinuityWithinBounds": true,
+    "atlasTransferAndDecodedMemoryStayWithinExistingRuntimeEnvelope": true,
+    "evidenceBoundaryIsNotWeakened": true,
+    "noParticipantMediaAnnotationsOrRowsArePackaged": true
+  },
+  "diagnostics": {
+    "gating": false,
+    "sourceAnchorAxisProgress": {
+      "diagnosticOnly": true,
+      "seriesCount": 20,
+      "minimumIncrement": 0.348272,
+      "maximumLinearError": 0.151728,
+      "reversalCount": 0,
+      "nearStallCount": 0,
+      "reversals": [],
+      "nearStalls": [],
+      "interpretation": "Endpoint-projected landmark motion is a noisy engineering diagnostic. It is deliberately excluded from pass/fail and is not perceived-VA evidence."
+    },
+    "denseObservedAxisProgress": {
+      "diagnosticOnly": true,
+      "seriesCount": 84,
+      "minimumIncrement": 0.055917,
+      "maximumLinearError": 0.147834,
+      "reversalCount": 0,
+      "nearStallCount": 0,
+      "reversals": [],
+      "nearStalls": [],
+      "interpretation": "Endpoint-projected landmark motion is a noisy engineering diagnostic. It is deliberately excluded from pass/fail and is not perceived-VA evidence."
+    },
+    "boundary": "These endpoint-projected landmark diagnostics are excluded from pass/fail and cannot establish perceived valence or arousal."
+  },
+  "asset": {
+    "packId": "photo-synthetic-08",
+    "source": "anchors-v1.png",
+    "sourceSha256": "9c192e71b96afb244b7944cc0e6852bad38fea076bec666bfaf3ca51c6b65d7f",
+    "preparedSourceSha256": "9df28b84c4ff266a922812c19ebe5ab8733c0e90452f580a5421c71c776e6723",
+    "authoring": "authoring-v1.json",
+    "authoringSha256": "ebb8af1ac39003f98bc99ac3bd824161fd94d0844c10a4936bd23eef396f31d8",
+    "referenceSource": "affect-face-atlas-v1.webp",
+    "referenceSourceSha256": "22041af6617163830c1ec2274bd9157f31feade83601a1640680b8663c8a9590",
+    "atlas": "atlas-v1.webp",
+    "atlasSha256": "367df69e3a5c1787c41ef6fac4ab6a0adf457ed8de04540c6f675db55dafbd5f",
+    "atlasBytes": 3739388,
+    "decodedRgbaBytes": 45158400,
+    "decodedRgbaMegabytes": 45.1584,
+    "decodedRgbaMebibytes": 43.0664,
+    "metadata": "atlas-v1.json",
+    "metadataSha256": "f19de06f6927c0305d3d737fe1c323637d6455585b6673caf006591999e823c1",
+    "builder": "build-multi-anchor-photo-atlas.py",
+    "builderSha256": "7db0ba25f9b852a9588cb7a91cfe0c222b8dd5d5f3a06839a9b72d9e42ede59d",
+    "geometryHelper": "build-dense-photo-atlas.py",
+    "geometryHelperSha256": "2479ed7bbe557a64c1bc48cf7fce4dc1cde705474d488d49663d9a777dd0f38c",
+    "verifier": "verify-multi-anchor-photo-atlas.py",
+    "verifierSha256": "898b96c0889f6bd5f2bdbc75e785976667a0ebba0b5c376f88d366339ba0910d",
+    "sourceGridSize": 5,
+    "sourceAnchorCount": 25,
+    "additionalGridPositionCount": 16,
+    "gridSize": 21,
+    "nodeCount": 441,
+    "tileSize": 160,
+    "detectedSourceFaceCount": 25,
+    "detectedCellCount": 441
+  },
+  "toolVersions": {
+    "mediapipe": "0.10.8",
+    "opencv": "4.8.1",
+    "numpy": "1.26.4",
+    "scipy": "1.10.1",
+    "pillow": "12.2.0"
+  },
+  "metrics": {
+    "expectedTopologyMinimumTriangleAreaPixels": 3.72751,
+    "observedTopologyMinimumTriangleAreaPixels": 3.787741,
+    "observedFoldCount": 0,
+    "landmarkErrorPixels": {
+      "median": 0.363562,
+      "p95": 0.797557,
+      "maximum": 2.977924
+    },
+    "axialNeighborLandmarkDeltaResidualPixels": {
+      "median": 0.202573,
+      "p95": 0.293057,
+      "maximum": 0.425719
+    },
+    "diagonalNeighborLandmarkDeltaResidualPixels": {
+      "median": 0.224087,
+      "p95": 0.313065,
+      "maximum": 0.548659
+    },
+    "anchorPreservation": {
+      "minimumForegroundRgbPsnrDb": 38.819327,
+      "maximumAlphaError": 0,
+      "anchorOutputIndices": [
+        0,
+        5,
+        10,
+        15,
+        20
+      ],
+      "anchors": [
+        {
+          "sourceRow": 0,
+          "sourceColumn": 0,
+          "valence": -1.0,
+          "arousal": 1.0,
+          "denseRow": 0,
+          "denseColumn": 0,
+          "maximumAlphaError": 0,
+          "foregroundRgbPsnrDb": 39.138266,
+          "foregroundRgbMeanAbsoluteError": 2.13428
+        },
+        {
+          "sourceRow": 0,
+          "sourceColumn": 1,
+          "valence": -0.5,
+          "arousal": 1.0,
+          "denseRow": 0,
+          "denseColumn": 5,
+          "maximumAlphaError": 0,
+          "foregroundRgbPsnrDb": 39.084458,
+          "foregroundRgbMeanAbsoluteError": 2.147434
+        },
+        {
+          "sourceRow": 0,
+          "sourceColumn": 2,
+          "valence": 0.0,
+          "arousal": 1.0,
+          "denseRow": 0,
+          "denseColumn": 10,
+          "maximumAlphaError": 0,
+          "foregroundRgbPsnrDb": 38.935692,
+          "foregroundRgbMeanAbsoluteError": 2.176691
+        },
+        {
+          "sourceRow": 0,
+          "sourceColumn": 3,
+          "valence": 0.5,
+          "arousal": 1.0,
+          "denseRow": 0,
+          "denseColumn": 15,
+          "maximumAlphaError": 0,
+          "foregroundRgbPsnrDb": 38.874537,
+          "foregroundRgbMeanAbsoluteError": 2.183993
+        },
+        {
+          "sourceRow": 0,
+          "sourceColumn": 4,
+          "valence": 1.0,
+          "arousal": 1.0,
+          "denseRow": 0,
+          "denseColumn": 20,
+          "maximumAlphaError": 0,
+          "foregroundRgbPsnrDb": 38.819327,
+          "foregroundRgbMeanAbsoluteError": 2.208944
+        },
+        {
+          "sourceRow": 1,
+          "sourceColumn": 0,
+          "valence": -1.0,
+          "arousal": 0.5,
+          "denseRow": 5,
+          "denseColumn": 0,
+          "maximumAlphaError": 0,
+          "foregroundRgbPsnrDb": 38.978515,
+          "foregroundRgbMeanAbsoluteError": 2.166511
+        },
+        {
+          "sourceRow": 1,
+          "sourceColumn": 1,
+          "valence": -0.5,
+          "arousal": 0.5,
+          "denseRow": 5,
+          "denseColumn": 5,
+          "maximumAlphaError": 0,
+          "foregroundRgbPsnrDb": 39.125592,
+          "foregroundRgbMeanAbsoluteError": 2.133324
+        },
+        {
+          "sourceRow": 1,
+          "sourceColumn": 2,
+          "valence": 0.0,
+          "arousal": 0.5,
+          "denseRow": 5,
+          "denseColumn": 10,
+          "maximumAlphaError": 0,
+          "foregroundRgbPsnrDb": 39.263021,
+          "foregroundRgbMeanAbsoluteError": 2.097111
+        },
+        {
+          "sourceRow": 1,
+          "sourceColumn": 3,
+          "valence": 0.5,
+          "arousal": 0.5,
+          "denseRow": 5,
+          "denseColumn": 15,
+          "maximumAlphaError": 0,
+          "foregroundRgbPsnrDb": 39.19742,
+          "foregroundRgbMeanAbsoluteError": 2.112034
+        },
+        {
+          "sourceRow": 1,
+          "sourceColumn": 4,
+          "valence": 1.0,
+          "arousal": 0.5,
+          "denseRow": 5,
+          "denseColumn": 20,
+          "maximumAlphaError": 0,
+          "foregroundRgbPsnrDb": 39.091125,
+          "foregroundRgbMeanAbsoluteError": 2.144473
+        },
+        {
+          "sourceRow": 2,
+          "sourceColumn": 0,
+          "valence": -1.0,
+          "arousal": 0.0,
+          "denseRow": 10,
+          "denseColumn": 0,
+          "maximumAlphaError": 0,
+          "foregroundRgbPsnrDb": 39.0407,
+          "foregroundRgbMeanAbsoluteError": 2.138687
+        },
+        {
+          "sourceRow": 2,
+          "sourceColumn": 1,
+          "valence": -0.5,
+          "arousal": 0.0,
+          "denseRow": 10,
+          "denseColumn": 5,
+          "maximumAlphaError": 0,
+          "foregroundRgbPsnrDb": 38.991074,
+          "foregroundRgbMeanAbsoluteError": 2.154684
+        },
+        {
+          "sourceRow": 2,
+          "sourceColumn": 2,
+          "valence": 0.0,
+          "arousal": 0.0,
+          "denseRow": 10,
+          "denseColumn": 10,
+          "maximumAlphaError": 0,
+          "foregroundRgbPsnrDb": 38.832313,
+          "foregroundRgbMeanAbsoluteError": 2.188321
+        },
+        {
+          "sourceRow": 2,
+          "sourceColumn": 3,
+          "valence": 0.5,
+          "arousal": 0.0,
+          "denseRow": 10,
+          "denseColumn": 15,
+          "maximumAlphaError": 0,
+          "foregroundRgbPsnrDb": 39.089361,
+          "foregroundRgbMeanAbsoluteError": 2.128091
+        },
+        {
+          "sourceRow": 2,
+          "sourceColumn": 4,
+          "valence": 1.0,
+          "arousal": 0.0,
+          "denseRow": 10,
+          "denseColumn": 20,
+          "maximumAlphaError": 0,
+          "foregroundRgbPsnrDb": 39.014649,
+          "foregroundRgbMeanAbsoluteError": 2.146089
+        },
+        {
+          "sourceRow": 3,
+          "sourceColumn": 0,
+          "valence": -1.0,
+          "arousal": -0.5,
+          "denseRow": 15,
+          "denseColumn": 0,
+          "maximumAlphaError": 0,
+          "foregroundRgbPsnrDb": 39.210798,
+          "foregroundRgbMeanAbsoluteError": 2.103806
+        },
+        {
+          "sourceRow": 3,
+          "sourceColumn": 1,
+          "valence": -0.5,
+          "arousal": -0.5,
+          "denseRow": 15,
+          "denseColumn": 5,
+          "maximumAlphaError": 0,
+          "foregroundRgbPsnrDb": 39.178495,
+          "foregroundRgbMeanAbsoluteError": 2.1184
+        },
+        {
+          "sourceRow": 3,
+          "sourceColumn": 2,
+          "valence": 0.0,
+          "arousal": -0.5,
+          "denseRow": 15,
+          "denseColumn": 10,
+          "maximumAlphaError": 0,
+          "foregroundRgbPsnrDb": 39.136418,
+          "foregroundRgbMeanAbsoluteError": 2.124198
+        },
+        {
+          "sourceRow": 3,
+          "sourceColumn": 3,
+          "valence": 0.5,
+          "arousal": -0.5,
+          "denseRow": 15,
+          "denseColumn": 15,
+          "maximumAlphaError": 0,
+          "foregroundRgbPsnrDb": 39.111791,
+          "foregroundRgbMeanAbsoluteError": 2.131054
+        },
+        {
+          "sourceRow": 3,
+          "sourceColumn": 4,
+          "valence": 1.0,
+          "arousal": -0.5,
+          "denseRow": 15,
+          "denseColumn": 20,
+          "maximumAlphaError": 0,
+          "foregroundRgbPsnrDb": 39.113756,
+          "foregroundRgbMeanAbsoluteError": 2.125292
+        },
+        {
+          "sourceRow": 4,
+          "sourceColumn": 0,
+          "valence": -1.0,
+          "arousal": -1.0,
+          "denseRow": 20,
+          "denseColumn": 0,
+          "maximumAlphaError": 0,
+          "foregroundRgbPsnrDb": 39.217604,
+          "foregroundRgbMeanAbsoluteError": 2.107624
+        },
+        {
+          "sourceRow": 4,
+          "sourceColumn": 1,
+          "valence": -0.5,
+          "arousal": -1.0,
+          "denseRow": 20,
+          "denseColumn": 5,
+          "maximumAlphaError": 0,
+          "foregroundRgbPsnrDb": 39.169858,
+          "foregroundRgbMeanAbsoluteError": 2.120919
+        },
+        {
+          "sourceRow": 4,
+          "sourceColumn": 2,
+          "valence": 0.0,
+          "arousal": -1.0,
+          "denseRow": 20,
+          "denseColumn": 10,
+          "maximumAlphaError": 0,
+          "foregroundRgbPsnrDb": 39.207733,
+          "foregroundRgbMeanAbsoluteError": 2.110328
+        },
+        {
+          "sourceRow": 4,
+          "sourceColumn": 3,
+          "valence": 0.5,
+          "arousal": -1.0,
+          "denseRow": 20,
+          "denseColumn": 15,
+          "maximumAlphaError": 0,
+          "foregroundRgbPsnrDb": 39.218165,
+          "foregroundRgbMeanAbsoluteError": 2.111399
+        },
+        {
+          "sourceRow": 4,
+          "sourceColumn": 4,
+          "valence": 1.0,
+          "arousal": -1.0,
+          "denseRow": 20,
+          "denseColumn": 20,
+          "maximumAlphaError": 0,
+          "foregroundRgbPsnrDb": 39.096495,
+          "foregroundRgbMeanAbsoluteError": 2.14271
+        }
+      ]
+    }
+  }
+}

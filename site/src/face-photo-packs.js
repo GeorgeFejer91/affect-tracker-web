@@ -10,6 +10,7 @@ export const FACE_PHOTO_PACK_CATALOG_URL = new URL(
 
 const SYNTHETIC_PACK_ID_PATTERN = /^photo-synthetic-([0-9]{2})$/;
 const PACK_ID_PATTERN = /^(?:photo-reference-v3|photo-synthetic-[0-9]{2})$/;
+const MULTI_ANCHOR_PREVIEW_PACK_ID = "photo-synthetic-08";
 const LOCAL_PATH_SEGMENT_PATTERN = /^[a-z0-9][a-z0-9._-]*$/;
 const SHA256_PATTERN = /^[a-f0-9]{64}$/i;
 const PRESENTATION_STYLE_LABELS = Object.freeze({
@@ -175,6 +176,9 @@ export function normalizeFacePhotoPackId(value, catalog = BUILTIN_FACE_PHOTO_PAC
 
 export function facePhotoPackPublicLabel(pack, catalog = BUILTIN_FACE_PHOTO_PACK_CATALOG) {
   const definition = facePhotoPackDefinition(pack?.id ?? pack, catalog);
+  if (definition.id === MULTI_ANCHOR_PREVIEW_PACK_ID) {
+    return "Synthetic preset 09 · 25-anchor preview";
+  }
   const style = PRESENTATION_STYLE_LABELS[definition.presentationStyle]
     ?? PRESENTATION_STYLE_LABELS.reference;
   const syntheticNumber = SYNTHETIC_PACK_ID_PATTERN.exec(definition.id)?.[1];
@@ -187,6 +191,9 @@ export function facePhotoPackPublicLabel(pack, catalog = BUILTIN_FACE_PHOTO_PACK
 /** Keep the distinguishing preset number visible in narrow native selects. */
 export function facePhotoPackCompactLabel(pack, catalog = BUILTIN_FACE_PHOTO_PACK_CATALOG) {
   const definition = facePhotoPackDefinition(pack?.id ?? pack, catalog);
+  if (definition.id === MULTI_ANCHOR_PREVIEW_PACK_ID) {
+    return "09 · 25 anchors";
+  }
   const style = COMPACT_PRESENTATION_STYLE_LABELS[definition.presentationStyle]
     ?? COMPACT_PRESENTATION_STYLE_LABELS.reference;
   const syntheticNumber = SYNTHETIC_PACK_ID_PATTERN.exec(definition.id)?.[1];

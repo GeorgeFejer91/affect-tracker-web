@@ -241,6 +241,31 @@
         "license": "BSD-3-Clause",
         "affectValidation": "Derived interpolation for presentation only; neither the nine anchors nor generated nodes are independently validated affect observations, emotion recognition, or diagnosis."
       }
+    },
+    {
+      "id": "photo-synthetic-08",
+      "label": "Synthetic preset 09",
+      "presentationStyle": "feminine-coded",
+      "regionalDesignInspirations": [],
+      "skinToneAudit": null,
+      "atlas": "packs/photo-synthetic-08/atlas-v1.webp",
+      "metadata": "packs/photo-synthetic-08/atlas-v1.json",
+      "qa": "packs/photo-synthetic-08/atlas-v1-qa.json",
+      "available": true,
+      "gridSize": 21,
+      "tileSize": 160,
+      "quality": 88,
+      "atlasSha256": "367df69e3a5c1787c41ef6fac4ab6a0adf457ed8de04540c6f675db55dafbd5f",
+      "atlasBytes": 3739388,
+      "provenance": {
+        "identityType": "synthetic-fictional",
+        "sourceOwnership": "project-owned",
+        "demographicLabelType": "creator-prompt-inspiration-only",
+        "demographicLabelScope": "Creator-selected appearance styling only; not a claim or inference of sex, gender identity, pronouns, race, ethnicity, ancestry, nationality, culture, or personal identity.",
+        "consentBasis": "synthetic-source-with-no-real-person-identity-intended",
+        "license": "BSD-3-Clause",
+        "affectValidation": "Twenty-five project-owned image-to-image anchors and 441 derived nodes are presentation assets; they are not independently validated affect observations, emotion recognition, demographic inference, or diagnosis."
+      }
     }
   ]
 }

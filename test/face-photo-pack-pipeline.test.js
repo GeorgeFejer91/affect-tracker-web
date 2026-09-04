@@ -22,6 +22,7 @@ const expectedIds = [
   "photo-synthetic-05",
   "photo-synthetic-06",
   "photo-synthetic-07",
+  "photo-synthetic-08",
 ];
 
 const internalMetadata = {
@@ -60,7 +61,14 @@ test("Photoatlas catalog is closed-world, centered, neutral in public, and fully
     assert.equal(pack.provenance.sourceOwnership, "project-owned");
     assert.equal(pack.provenance.demographicLabelType, "creator-prompt-inspiration-only");
     assert.match(pack.provenance.demographicLabelScope, /not a claim or inference/);
-    assert.match(pack.provenance.affectValidation, /neither .* independently validated affect observations/);
+    if (pack.id === "photo-synthetic-08") {
+      assert.equal(
+        pack.provenance.affectValidation,
+        "Twenty-five project-owned image-to-image anchors and 441 derived nodes are presentation assets; they are not independently validated affect observations, emotion recognition, demographic inference, or diagnosis.",
+      );
+    } else {
+      assert.match(pack.provenance.affectValidation, /neither .* independently validated affect observations/);
+    }
     for (const relative of [pack.atlas, pack.metadata, pack.qa]) {
       assert.equal(path.posix.isAbsolute(relative), false);
       assert.doesNotMatch(relative, /(?:^|\/)\.\.(?:\/|$)|\\|:|\?|#/);
@@ -84,8 +92,10 @@ test("legacy v3 atlas and reproducibility tools remain byte-for-byte unchanged",
   }
 });
 
-test("each synthetic pack binds its source, atlas, metadata, QA, and internal prompt provenance", () => {
-  for (const pack of catalog.packs.slice(1)) {
+test("the seven legacy synthetic packs retain their source, schema, QA, and provenance contract", () => {
+  const legacyPacks = catalog.packs.slice(1).filter(({ id }) => id !== "photo-synthetic-08");
+  assert.equal(legacyPacks.length, 7);
+  for (const pack of legacyPacks) {
     const directory = path.posix.dirname(pack.atlas);
     const metadata = json(`site/assets/affect-face/${pack.metadata}`);
     const qa = json(`site/assets/affect-face/${pack.qa}`);
@@ -154,6 +164,102 @@ test("each synthetic pack binds its source, atlas, metadata, QA, and internal pr
     assert.equal(qa.metrics.anchorPreservation.maximumAlphaError, 0);
     assert.equal(qa.asset.packCommonSha256, digest(bytes("scripts/photo_atlas_pack_common.py")));
   }
+});
+
+test("the 25-anchor preview binds its distinct authoring record, schema, and engineering QA", () => {
+  const pack = catalog.packs.find(({ id }) => id === "photo-synthetic-08");
+  assert.ok(pack);
+  const directory = path.posix.dirname(pack.atlas);
+  const metadataRelative = `site/assets/affect-face/${pack.metadata}`;
+  const atlasRelative = `site/assets/affect-face/${pack.atlas}`;
+  const sourceRelative = `site/assets/affect-face/${directory}/anchors-v1.png`;
+  const authoringRelative = `site/assets/affect-face/${directory}/authoring-v1.json`;
+  const metadata = json(metadataRelative);
+  const authoring = json(authoringRelative);
+  const qa = json(`site/assets/affect-face/${pack.qa}`);
+
+  assert.equal(pack.label, "Synthetic preset 09");
+  assert.deepEqual(pack.regionalDesignInspirations, []);
+  assert.equal(pack.skinToneAudit, null);
+  assert.equal(pack.atlasSha256, digest(bytes(atlasRelative)));
+  assert.equal(pack.atlasBytes, statSync(path.join(root, atlasRelative)).size);
+  assert.match(pack.provenance.demographicLabelScope, /appearance styling only/);
+  assert.match(pack.provenance.affectValidation, /Twenty-five project-owned/);
+  assert.match(pack.provenance.affectValidation, /demographic inference/);
+
+  assert.equal(metadata.schema, "affect-tracker-photo-atlas-multi-anchor-pack");
+  assert.equal(metadata.version, 1);
+  assert.equal(metadata.id, pack.id);
+  assert.equal(metadata.source, "anchors-v1.png");
+  assert.equal(metadata.sourceSha256, digest(bytes(sourceRelative)));
+  assert.equal(metadata.authoring, "authoring-v1.json");
+  assert.equal(metadata.authoringSha256, digest(bytes(authoringRelative)));
+  assert.equal(metadata.outputSha256, pack.atlasSha256);
+  assert.equal(metadata.sourceGridSize, 5);
+  assert.equal(metadata.sourceAnchorCount, 25);
+  assert.equal(metadata.additionalIntermediateAnchorCount, 16);
+  assert.equal(metadata.gridSize, 21);
+  assert.equal(metadata.nodeCount, 441);
+  assert.equal(metadata.tileSize, 160);
+  assert.equal(metadata.quality, 88);
+  assert.equal(metadata.affectEvidence.participantMediaUsed, false);
+  assert.equal(metadata.affectEvidence.participantAnnotationsUsed, false);
+  assert.equal(metadata.affectValidation, pack.provenance.affectValidation);
+  assert.equal(metadata.provenance.affectValidation, pack.provenance.affectValidation);
+
+  assert.equal(authoring.schema, "affect-tracker-photo-atlas-image-to-image-authoring");
+  assert.equal(authoring.version, 1);
+  assert.equal(authoring.classification, "project-authored-synthetic-image-to-image-experiment");
+  assert.equal(authoring.sourceReference.identityType, "synthetic-fictional");
+  assert.equal(authoring.sourceReference.sourceOwnership, "project-owned");
+  assert.equal(authoring.generatedAnchorSheet.path, "anchors-v1.png");
+  assert.equal(authoring.generatedAnchorSheet.sha256, metadata.sourceSha256);
+  assert.equal(authoring.generatedAnchorSheet.sourceGridSize, 5);
+  assert.equal(authoring.generatedAnchorSheet.sourceAnchorCount, 25);
+  assert.equal(authoring.generatedAnchorSheet.additionalIntermediateAnchorCount, 16);
+  assert.deepEqual(authoring.generatedAnchorSheet.generationSemantics, {
+    allTwentyFiveCellsNewlyGenerated: true,
+    referencePositionCount: 9,
+    additionalIntermediatePositionCount: 16,
+    referenceCellBytePreservationClaimed: false,
+  });
+  assert.equal(authoring.affectEvidence.participantMediaUsed, false);
+  assert.equal(authoring.affectEvidence.participantAnnotationsUsed, false);
+  assert.ok(authoring.claimScope.doesNotSupport.includes("emotion recognition"));
+
+  assert.equal(qa.schema, "affect-tracker-photo-atlas-multi-anchor-engineering-qa");
+  assert.equal(qa.version, 1);
+  assert.equal(qa.passed, true);
+  assert.match(qa.evidenceBoundary, /Engineering QA/);
+  assert.match(qa.evidenceBoundary, /do not establish perceived or validated valence\/arousal/);
+  assert.match(qa.evidenceBoundary, /No participant media or annotations are used/);
+  assert.equal(qa.asset.packId, pack.id);
+  assert.equal(qa.asset.sourceSha256, metadata.sourceSha256);
+  assert.equal(qa.asset.authoringSha256, metadata.authoringSha256);
+  assert.equal(qa.asset.atlasSha256, metadata.outputSha256);
+  assert.equal(qa.asset.atlasBytes, pack.atlasBytes);
+  assert.equal(qa.asset.metadataSha256, digest(bytes(metadataRelative)));
+  assert.equal(qa.asset.sourceGridSize, 5);
+  assert.equal(qa.asset.sourceAnchorCount, 25);
+  assert.equal(qa.asset.additionalGridPositionCount, 16);
+  assert.equal(qa.asset.gridSize, 21);
+  assert.equal(qa.asset.nodeCount, 441);
+  assert.equal(qa.asset.tileSize, 160);
+  assert.equal(qa.asset.detectedSourceFaceCount, 25);
+  assert.equal(qa.asset.detectedCellCount, 441);
+  assert.equal(
+    qa.asset.builderSha256,
+    digest(bytes("scripts/build-multi-anchor-photo-atlas.py")),
+  );
+  assert.equal(
+    qa.asset.geometryHelperSha256,
+    digest(bytes("scripts/build-dense-photo-atlas.py")),
+  );
+  assert.equal(
+    qa.asset.verifierSha256,
+    digest(bytes("scripts/verify-multi-anchor-photo-atlas.py")),
+  );
+  assert.ok(Object.values(qa.checks).every(Boolean));
 });
 
 test("pack tooling is offline, deterministic, and delegates without mutating v3", () => {

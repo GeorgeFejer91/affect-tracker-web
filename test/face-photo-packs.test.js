@@ -87,11 +87,13 @@ test("neutral preset numbers stay stable when an earlier pack is unavailable", (
   const normalized = normalizeFacePhotoPackCatalog(catalog([
     pack({ id: "photo-synthetic-01", available: false }),
     pack({ id: "photo-synthetic-02", label: "Internal labels are not rendered" }),
+    pack({ id: "photo-synthetic-08", label: "Internal labels are not rendered" }),
   ]));
 
   assert.deepEqual(normalized.packs.map(({ id }) => id), [
     DEFAULT_FACE_PHOTO_PACK_ID,
     "photo-synthetic-02",
+    "photo-synthetic-08",
   ]);
   assert.equal(
     facePhotoPackPublicLabel("photo-synthetic-02", normalized),
@@ -104,6 +106,14 @@ test("neutral preset numbers stay stable when an earlier pack is unavailable", (
   assert.equal(
     facePhotoPackCompactLabel(DEFAULT_FACE_PHOTO_PACK_ID, normalized),
     "Original · Reference",
+  );
+  assert.equal(
+    facePhotoPackPublicLabel("photo-synthetic-08", normalized),
+    "Synthetic preset 09 · 25-anchor preview",
+  );
+  assert.equal(
+    facePhotoPackCompactLabel("photo-synthetic-08", normalized),
+    "09 · 25 anchors",
   );
 });
 

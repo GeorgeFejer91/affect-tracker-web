@@ -40,6 +40,31 @@ from photo_atlas_pack_common import (
 
 DEFAULT_ASSET_ROOT = Path("site/assets/affect-face")
 DEFAULT_CATALOG = DEFAULT_ASSET_ROOT / "photo-atlas-packs-v1.json"
+MULTI_ANCHOR_PACK_ID = "photo-synthetic-08"
+MULTI_ANCHOR_METADATA_SCHEMA = "affect-tracker-photo-atlas-multi-anchor-pack"
+MULTI_ANCHOR_METADATA_VERSION = 1
+MULTI_ANCHOR_QA_SCHEMA = "affect-tracker-photo-atlas-multi-anchor-engineering-qa"
+MULTI_ANCHOR_QA_VERSION = 1
+MULTI_ANCHOR_AUTHORING_SCHEMA = "affect-tracker-photo-atlas-image-to-image-authoring"
+MULTI_ANCHOR_QA_EVIDENCE_BOUNDARY = (
+    "Engineering QA of one project-authored synthetic 5x5 anchor sheet and its "
+    "deterministic 21x21 atlas only. The 25 generated anchors include 16 "
+    "additional grid positions relative to a reference-only 3x3 layout; the "
+    "original nine reference cells are not asserted to be byte-preserved. "
+    "Landmark, topology, continuity, and image checks do not establish perceived "
+    "or validated valence/arousal, demographic identity, emotion recognition, "
+    "or diagnosis. No participant media or annotations are used."
+)
+MULTI_ANCHOR_AFFECT_VALIDATION_BOUNDARY = (
+    "Twenty-five project-owned image-to-image anchors and 441 derived nodes "
+    "are presentation assets; they are not independently validated affect "
+    "observations, emotion recognition, demographic inference, or diagnosis."
+)
+MULTI_ANCHOR_DEMOGRAPHIC_LABEL_SCOPE = (
+    "Creator-selected appearance styling only; not a claim or inference of "
+    "sex, gender identity, pronouns, race, ethnicity, ancestry, nationality, "
+    "culture, or personal identity."
+)
 
 CATALOG_FIELDS = {
     "schema",
@@ -154,10 +179,20 @@ def require_exact_fields(
     return True
 
 
-def validate_provenance(value: Any, field: str, errors: list[str]) -> None:
+def validate_provenance(
+    value: Any, field: str, pack_id: str, errors: list[str]
+) -> None:
     if not require_exact_fields(value, CATALOG_PROVENANCE_FIELDS, field, errors):
         return
-    for key, expected in EXPECTED_PROVENANCE.items():
+    expected_provenance = dict(EXPECTED_PROVENANCE)
+    if pack_id == MULTI_ANCHOR_PACK_ID:
+        expected_provenance.update(
+            {
+                "demographicLabelScope": MULTI_ANCHOR_DEMOGRAPHIC_LABEL_SCOPE,
+                "affectValidation": MULTI_ANCHOR_AFFECT_VALIDATION_BOUNDARY,
+            }
+        )
+    for key, expected in expected_provenance.items():
         if value[key] != expected:
             errors.append(f"{field}.{key} changed the required guardrail.")
     try:
@@ -311,6 +346,160 @@ def validate_synthetic_artifacts(
             errors.append(f"{entry['id']} QA {check_group} contains a failed check.")
 
 
+def validate_multi_anchor_artifacts(
+    entry: dict[str, Any],
+    atlas_path: Path,
+    metadata_path: Path,
+    qa_path: Path,
+    errors: list[str],
+) -> None:
+    """Validate the separate 5x5-authoring path without weakening legacy packs."""
+
+    metadata = load_json(metadata_path, f"{entry['id']} metadata", errors)
+    qa = load_json(qa_path, f"{entry['id']} QA", errors)
+    if metadata is None or qa is None:
+        return
+    expected_metadata = {
+        "schema": MULTI_ANCHOR_METADATA_SCHEMA,
+        "version": MULTI_ANCHOR_METADATA_VERSION,
+        "id": entry["id"],
+        "label": entry["label"],
+        "presentationStyle": entry["presentationStyle"],
+        "regionalDesignInspirations": entry["regionalDesignInspirations"],
+        "skinToneAudit": entry["skinToneAudit"],
+        "output": atlas_path.name,
+        "outputSha256": entry["atlasSha256"],
+        "sourceGridSize": 5,
+        "sourceAnchorCount": 25,
+        "additionalIntermediateAnchorCount": 16,
+        "gridSize": entry["gridSize"],
+        "nodeCount": entry["gridSize"] ** 2,
+        "tileSize": entry["tileSize"],
+        "quality": entry["quality"],
+        "affectValidation": MULTI_ANCHOR_AFFECT_VALIDATION_BOUNDARY,
+    }
+    for key, expected in expected_metadata.items():
+        if metadata.get(key) != expected:
+            errors.append(f"{entry['id']} multi-anchor metadata {key} does not match catalog.")
+
+    source_path = metadata_path.parent / str(metadata.get("source", ""))
+    if source_path.name != "anchors-v1.png" or source_path.parent != metadata_path.parent:
+        errors.append(f"{entry['id']} metadata source must be the colocated anchors-v1.png.")
+    elif not source_path.is_file():
+        errors.append(f"{entry['id']} source anchor asset is missing: {source_path}")
+    elif metadata.get("sourceSha256") != sha256(source_path):
+        errors.append(f"{entry['id']} source anchor hash is stale or mismatched.")
+
+    authoring_path = metadata_path.parent / str(metadata.get("authoring", ""))
+    authoring: dict[str, Any] | None = None
+    if (
+        authoring_path.name != "authoring-v1.json"
+        or authoring_path.parent != metadata_path.parent
+    ):
+        errors.append(
+            f"{entry['id']} metadata authoring record must be the colocated authoring-v1.json."
+        )
+    elif not authoring_path.is_file():
+        errors.append(f"{entry['id']} authoring record is missing: {authoring_path}")
+    elif metadata.get("authoringSha256") != sha256(authoring_path):
+        errors.append(f"{entry['id']} authoring hash is stale or mismatched.")
+    else:
+        authoring = load_json(authoring_path, f"{entry['id']} authoring", errors)
+    if authoring is not None:
+        generated_sheet = authoring.get("generatedAnchorSheet")
+        if (
+            authoring.get("schema") != MULTI_ANCHOR_AUTHORING_SCHEMA
+            or authoring.get("version") != 1
+        ):
+            errors.append(f"{entry['id']} has an unsupported authoring schema/version.")
+        if not isinstance(generated_sheet, dict):
+            errors.append(f"{entry['id']} authoring generatedAnchorSheet is missing.")
+        else:
+            expected_sheet = {
+                "path": "anchors-v1.png",
+                "sha256": metadata.get("sourceSha256"),
+                "sourceGridSize": 5,
+                "sourceAnchorCount": 25,
+                "additionalIntermediateAnchorCount": 16,
+            }
+            for key, expected in expected_sheet.items():
+                if generated_sheet.get(key) != expected:
+                    errors.append(
+                        f"{entry['id']} authoring generatedAnchorSheet {key} is stale or mismatched."
+                    )
+
+    affect_evidence = metadata.get("affectEvidence")
+    if not isinstance(affect_evidence, dict):
+        errors.append(f"{entry['id']} metadata affectEvidence is missing.")
+    elif (
+        affect_evidence.get("participantMediaUsed") is not False
+        or affect_evidence.get("participantAnnotationsUsed") is not False
+    ):
+        errors.append(f"{entry['id']} must not claim participant media or annotations.")
+    metadata_provenance = metadata.get("provenance")
+    if not isinstance(metadata_provenance, dict):
+        errors.append(f"{entry['id']} metadata provenance is missing.")
+    else:
+        for key, expected in entry["provenance"].items():
+            if metadata_provenance.get(key) != expected:
+                errors.append(f"{entry['id']} metadata provenance {key} mismatches catalog.")
+
+    if qa.get("schema") != MULTI_ANCHOR_QA_SCHEMA or qa.get("version") != MULTI_ANCHOR_QA_VERSION:
+        errors.append(f"{entry['id']} has an unsupported multi-anchor QA schema/version.")
+    if qa.get("passed") is not True:
+        errors.append(f"{entry['id']} multi-anchor engineering QA has not passed.")
+    if qa.get("evidenceBoundary") != MULTI_ANCHOR_QA_EVIDENCE_BOUNDARY:
+        errors.append(f"{entry['id']} multi-anchor QA evidence boundary was weakened.")
+    checks = qa.get("checks")
+    if not isinstance(checks, dict) or not checks or not all(
+        value is True for value in checks.values()
+    ):
+        errors.append(f"{entry['id']} multi-anchor QA contains a failed check.")
+    asset = qa.get("asset")
+    if not isinstance(asset, dict):
+        errors.append(f"{entry['id']} multi-anchor QA asset record is missing.")
+    else:
+        expected_asset = {
+            "packId": entry["id"],
+            "source": metadata.get("source"),
+            "sourceSha256": metadata.get("sourceSha256"),
+            "authoring": metadata.get("authoring"),
+            "authoringSha256": metadata.get("authoringSha256"),
+            "atlas": atlas_path.name,
+            "atlasSha256": entry["atlasSha256"],
+            "atlasBytes": entry["atlasBytes"],
+            "metadata": metadata_path.name,
+            "metadataSha256": sha256(metadata_path),
+            "sourceGridSize": 5,
+            "sourceAnchorCount": 25,
+            "additionalGridPositionCount": 16,
+            "gridSize": entry["gridSize"],
+            "nodeCount": entry["gridSize"] ** 2,
+            "tileSize": entry["tileSize"],
+        }
+        for key, expected in expected_asset.items():
+            if asset.get(key) != expected:
+                errors.append(
+                    f"{entry['id']} multi-anchor QA asset {key} is stale or mismatched."
+                )
+        current_tools = {
+            "builderSha256": sha256(
+                Path(__file__).with_name("build-multi-anchor-photo-atlas.py")
+            ),
+            "geometryHelperSha256": sha256(
+                Path(__file__).with_name("build-dense-photo-atlas.py")
+            ),
+            "verifierSha256": sha256(
+                Path(__file__).with_name("verify-multi-anchor-photo-atlas.py")
+            ),
+        }
+        for key, expected in current_tools.items():
+            if asset.get(key) != expected:
+                errors.append(
+                    f"{entry['id']} multi-anchor QA asset {key} does not bind the current tool."
+                )
+
+
 def validate_available_artifacts(
     entry: dict[str, Any],
     atlas_path: Path | None,
@@ -334,6 +523,8 @@ def validate_available_artifacts(
         errors.append(f"{entry['id']} atlas byte count does not match catalog.")
     if entry["id"] == "photo-reference-v3":
         validate_reference_artifacts(entry, atlas_path, metadata_path, qa_path, errors)
+    elif entry["id"] == MULTI_ANCHOR_PACK_ID:
+        validate_multi_anchor_artifacts(entry, atlas_path, metadata_path, qa_path, errors)
     else:
         validate_synthetic_artifacts(entry, atlas_path, metadata_path, qa_path, errors)
 
@@ -390,7 +581,7 @@ def validate_entry(
                 errors.append(str(error))
     if reference and audit is not None:
         errors.append("photo-reference-v3 must not add an unperformed skin-tone audit.")
-    validate_provenance(entry["provenance"], f"{pack_id}.provenance", errors)
+    validate_provenance(entry["provenance"], f"{pack_id}.provenance", pack_id, errors)
 
     if type(entry["available"]) is not bool:
         errors.append(f"{pack_id}.available must be a JSON boolean.")

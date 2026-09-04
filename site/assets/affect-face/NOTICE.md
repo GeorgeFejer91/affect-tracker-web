@@ -120,14 +120,16 @@ repository's [BSD 3-Clause License](../../../LICENSE).
 ## Separately packaged synthetic portrait presets
 
 `photo-atlas-packs-v1.json` is the closed-world catalog for the original
-portrait and seven optional, separately stored synthetic portrait presets.
+portrait and eight optional, separately stored synthetic portrait presets.
 The browser loads only the selected local WebP, so adding presets does not add
 their bytes to the initial page or require a runtime model, camera, remote
 service, or CDN. Public labels remain the neutral `Original portrait` and
-`Synthetic preset 02` through `Synthetic preset 08` names.
+`Synthetic preset 02` through `Synthetic preset 09` names.
 
-Each preset begins as a project-owned 3 by 3 fictional portrait sheet in
-`packs/<neutral-id>/anchors-v1.png`. Internal `presentationStyle`,
+The first seven synthetic presets begin as project-owned 3 by 3 fictional
+portrait sheets in `packs/<neutral-id>/anchors-v1.png`. Experimental
+`photo-synthetic-08` instead begins as a newly generated 5 by 5 sheet with 25
+project-owned image-to-image anchors. Internal `presentationStyle`,
 `regionalDesignInspirations`, and `skinToneAudit` fields record creator-prompt
 provenance and an explicitly unvalidated audit descriptor. They are not a
 demographic taxonomy or a claim or inference about sex, gender identity,
@@ -155,6 +157,45 @@ evidence boundaries. `scripts/verify-photo-atlas-pack.py` reproduces each pack;
 paths, stale hashes, unavailable defaults, non-neutral public names, or QA that
 has not passed. These are deterministic rendering checks, not demographic,
 representational, or perceived-affect validation.
+
+### `photo-synthetic-08` 5 by 5 authoring experiment
+
+`packs/photo-synthetic-08/authoring-v1.json` records the complete offline
+image-to-image authoring request, source hash, generated-sheet hash, service
+execution record, and claim boundary. The project-owned fictional original
+portrait atlas, itself derived from the earlier 3 by 3 reference layout, was
+supplied only as the identity and expression-layout reference. The resulting
+`anchors-v1.png` contains 25 newly generated anchors at the 25 target positions
+of a 5-valence by 5-arousal authoring lattice. They include 16 additional target
+positions beyond the earlier 3 by 3 lattice. Because all
+25 cells were newly generated, the nine corresponding reference positions are
+not claimed to preserve the earlier pixels byte-for-byte.
+
+The 5 by 5 layout was informed only by Namba et al.'s published description of
+the [RIKEN facial-expression database](https://doi.org/10.1038/s41598-023-49209-8),
+whose participants recalled one individualized event for each combination of
+five valence and five arousal levels. The project did not acquire, inspect,
+train on, copy, transform, or redistribute RIKEN participant media or
+annotations; database access requires an end-user license agreement. RIKEN is
+therefore a grid-design lesson, not the expression or pixel source and not
+evidence that this generated portrait is perceived at the requested
+coordinates.
+
+The dense-correspondence and VA-path work reported for 4DFAB is likewise a
+methodological blueprint only. No 4DFAB mesh, image, annotation, mean
+deformation, trained model, or code is present in the source sheet, derived
+atlas, or application. AFEW-VA, Aff-Wild2, AffectNet, DISFA/DISFA+, BP4D/BP4D+,
+and other access-controlled or redistribution-restricted participant datasets
+were reviewed and rejected as public GitHub Pages asset sources; none of their
+media, annotations, models, or derived data was used.
+
+The 25 anchors and the 441 derived runtime nodes are project-owned synthetic
+presentation assets distributed under this repository's BSD 3-Clause License.
+Engineering checks can establish file integrity, face detectability, topology,
+and transition continuity, but they cannot establish perceived valence or
+arousal. Blinded human ratings of the anchors, intermediate nodes, and
+transition paths remain required before this pack or its mapping may be called
+perceptually validated.
 
 ## Local rendering libraries
 
