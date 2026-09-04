@@ -577,10 +577,21 @@ impl ResearchRuntime {
         let status = Arc::new(Mutex::new(prepared.initial_status()));
         let worker_status = Arc::clone(&status);
         let worker_mailbox = Arc::clone(&input_mailbox);
+        let worker_input = Arc::clone(&self.input);
+        let worker_input_authority_id = input_authority_id.clone();
         let worker = match thread::Builder::new()
             .name("affect-research-writer".to_owned())
-            .spawn(move || run_worker(prepared, receiver, worker_status, worker_mailbox))
-        {
+            .spawn(move || {
+                run_worker(
+                    prepared,
+                    receiver,
+                    worker_status,
+                    worker_mailbox,
+                    move || {
+                        let _ = worker_input.set_run_accepting(&worker_input_authority_id, false);
+                    },
+                )
+            }) {
             Ok(worker) => worker,
             Err(error) => {
                 self.input.end_run(&input_authority_id);
@@ -649,10 +660,21 @@ impl ResearchRuntime {
         let status = Arc::new(Mutex::new(prepared.initial_status()));
         let worker_status = Arc::clone(&status);
         let worker_mailbox = Arc::clone(&input_mailbox);
+        let worker_input = Arc::clone(&self.input);
+        let worker_input_authority_id = input_authority_id.clone();
         let worker = match thread::Builder::new()
             .name("affect-research-writer".to_owned())
-            .spawn(move || run_worker(prepared, receiver, worker_status, worker_mailbox))
-        {
+            .spawn(move || {
+                run_worker(
+                    prepared,
+                    receiver,
+                    worker_status,
+                    worker_mailbox,
+                    move || {
+                        let _ = worker_input.set_run_accepting(&worker_input_authority_id, false);
+                    },
+                )
+            }) {
             Ok(worker) => worker,
             Err(error) => {
                 self.input.end_run(&input_authority_id);
@@ -1274,12 +1296,34 @@ impl PreparedRun {
     }
 }
 
-fn run_worker(
+struct RunWorkerInputFence<F: FnOnce()> {
+    stop_accepting: Option<F>,
+}
+
+impl<F: FnOnce()> RunWorkerInputFence<F> {
+    fn new(stop_accepting: F) -> Self {
+        Self {
+            stop_accepting: Some(stop_accepting),
+        }
+    }
+}
+
+impl<F: FnOnce()> Drop for RunWorkerInputFence<F> {
+    fn drop(&mut self) {
+        if let Some(stop_accepting) = self.stop_accepting.take() {
+            stop_accepting();
+        }
+    }
+}
+
+fn run_worker<F: FnOnce()>(
     prepared: PreparedRun,
     receiver: Receiver<RunMessage>,
     shared_status: Arc<Mutex<RunStatus>>,
     input_mailbox: Arc<NativeInputMailbox>,
+    stop_input_acceptance: F,
 ) {
+    let _input_fence = RunWorkerInputFence::new(stop_input_acceptance);
     let mut worker = RunWorker::new(prepared, shared_status);
     if worker.start().is_err() {
         worker.fail("start-failed");
@@ -2851,6 +2895,88 @@ fn playback_provenance_detail(
 
 // Persistence is implemented below so that no filesystem handles cross the IPC boundary.
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RunPersistenceBoundary {
+    InitialSettingsWrite,
+    InitialSettingsSync,
+    InitialPlanWrite,
+    InitialPlanSync,
+    InitialEventsSync,
+    InitialCsvHeaderWrite,
+    InitialCsvHeaderFlush,
+    InitialCsvHeaderSync,
+    InitialTsvHeaderWrite,
+    InitialTsvHeaderFlush,
+    InitialTsvHeaderSync,
+    InitialJournalWrite,
+    InitialJournalBeforeSync,
+    InitialJournalSync,
+    EventWrite,
+    EventFlush,
+    CsvSampleWrite,
+    TsvSampleWrite,
+    CsvFlush,
+    TsvFlush,
+    EventsSync,
+    CsvSync,
+    TsvSync,
+    JournalWrite,
+    JournalBeforeSync,
+    JournalSync,
+}
+
+struct RunPersistenceCheckpoints {
+    #[cfg(test)]
+    fail_before: Option<RunPersistenceBoundary>,
+    #[cfg(test)]
+    observed: Vec<RunPersistenceBoundary>,
+}
+
+impl RunPersistenceCheckpoints {
+    fn production() -> Self {
+        Self {
+            #[cfg(test)]
+            fail_before: None,
+            #[cfg(test)]
+            observed: Vec::new(),
+        }
+    }
+
+    #[cfg(test)]
+    fn failing_before(boundary: RunPersistenceBoundary) -> Self {
+        Self {
+            fail_before: Some(boundary),
+            observed: Vec::new(),
+        }
+    }
+
+    #[cfg(test)]
+    fn arm_before(&mut self, boundary: RunPersistenceBoundary) {
+        assert!(self.fail_before.replace(boundary).is_none());
+    }
+
+    #[cfg(test)]
+    fn is_armed(&self, boundary: RunPersistenceBoundary) -> bool {
+        self.fail_before == Some(boundary)
+    }
+
+    fn before(&mut self, boundary: RunPersistenceBoundary) -> ResearchResult<()> {
+        #[cfg(not(test))]
+        let _ = boundary;
+        #[cfg(test)]
+        {
+            self.observed.push(boundary);
+            if self.fail_before == Some(boundary) {
+                self.fail_before = None;
+                return Err(CommandError::io(
+                    "injected native run persistence boundary failure",
+                ));
+            }
+        }
+        Ok(())
+    }
+}
+
 struct RunFiles {
     session_dir: PathBuf,
     recovery_path: PathBuf,
@@ -2865,14 +2991,11 @@ struct RunFiles {
     tsv: Option<BufWriter<File>>,
     journal: RecoveryJournalV1,
     flush_every_samples: u64,
+    persistence_checkpoints: RunPersistenceCheckpoints,
     _attempt_lock: File,
-    #[cfg(test)]
-    fail_next_event_write: bool,
-    #[cfg(test)]
-    fail_next_journal_write: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct RecoveryJournalV1 {
     schema: String,
@@ -2962,22 +3085,76 @@ impl RunFiles {
         playback_qualification: PlaybackQualification,
         attempt_lock: File,
     ) -> ResearchResult<Self> {
+        let cleanup_guard =
+            InitialSessionCleanupGuard::capture(workspace_root, session_dir, run_id)?;
+        let result = Self::create_with_checkpoints(
+            workspace_root,
+            session_dir,
+            run_id,
+            settings,
+            plan,
+            participant,
+            session_stem,
+            started_at,
+            playback_mode,
+            playback_qualification,
+            attempt_lock,
+            RunPersistenceCheckpoints::production(),
+        );
+        if result.is_err() {
+            cleanup_guard.cleanup_if_unpublished();
+        }
+        result
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn create_with_checkpoints(
+        workspace_root: &Path,
+        session_dir: &Path,
+        run_id: &str,
+        settings: &ResearchSettingsV1,
+        plan: &ResolvedAssignmentPlanV1,
+        participant: &CodedParticipant,
+        session_stem: &str,
+        started_at: &str,
+        playback_mode: PlaybackMode,
+        playback_qualification: PlaybackQualification,
+        attempt_lock: File,
+        mut persistence_checkpoints: RunPersistenceCheckpoints,
+    ) -> ResearchResult<Self> {
         let settings_path = session_dir.join("settings.snapshot.json");
-        write_new(&settings_path, &canonical_json(settings, &[])?)?;
+        write_new_with_checkpoints(
+            &settings_path,
+            &canonical_json(settings, &[])?,
+            RunPersistenceBoundary::InitialSettingsWrite,
+            RunPersistenceBoundary::InitialSettingsSync,
+            &mut persistence_checkpoints,
+        )?;
         // The plan snapshot is intentionally local-only recovery evidence. Its digest is bound
         // into every row and manifest, while paths never cross the command boundary.
-        write_new(
+        write_new_with_checkpoints(
             &session_dir.join("assignment-plan.snapshot.json"),
             &canonical_json(plan, &[])?,
+            RunPersistenceBoundary::InitialPlanWrite,
+            RunPersistenceBoundary::InitialPlanSync,
+            &mut persistence_checkpoints,
         )?;
         let events_path = session_dir.join("events.jsonl");
-        let events = BufWriter::new(create_new_file(&events_path)?);
+        let events_file = create_new_file(&events_path)?;
+        persistence_checkpoints.before(RunPersistenceBoundary::InitialEventsSync)?;
+        events_file.sync_all().map_err(CommandError::io)?;
+        let events = BufWriter::new(events_file);
         let headers = sample_headers();
         let (csv_path, csv_partial_path, csv) = if settings.output.csv {
             let final_path = session_dir.join("ratings.csv");
             let partial_path = session_dir.join("ratings.csv.partial");
             let mut writer = BufWriter::new(create_new_file(&partial_path)?);
+            persistence_checkpoints.before(RunPersistenceBoundary::InitialCsvHeaderWrite)?;
             write_delimited(&mut writer, &headers, b',')?;
+            persistence_checkpoints.before(RunPersistenceBoundary::InitialCsvHeaderFlush)?;
+            writer.flush().map_err(CommandError::io)?;
+            persistence_checkpoints.before(RunPersistenceBoundary::InitialCsvHeaderSync)?;
+            writer.get_ref().sync_all().map_err(CommandError::io)?;
             (Some(final_path), Some(partial_path), Some(writer))
         } else {
             (None, None, None)
@@ -2986,7 +3163,12 @@ impl RunFiles {
             let final_path = session_dir.join("ratings.tsv");
             let partial_path = session_dir.join("ratings.tsv.partial");
             let mut writer = BufWriter::new(create_new_file(&partial_path)?);
+            persistence_checkpoints.before(RunPersistenceBoundary::InitialTsvHeaderWrite)?;
             write_delimited(&mut writer, &headers, b'\t')?;
+            persistence_checkpoints.before(RunPersistenceBoundary::InitialTsvHeaderFlush)?;
+            writer.flush().map_err(CommandError::io)?;
+            persistence_checkpoints.before(RunPersistenceBoundary::InitialTsvHeaderSync)?;
+            writer.get_ref().sync_all().map_err(CommandError::io)?;
             (Some(final_path), Some(partial_path), Some(writer))
         } else {
             (None, None, None)
@@ -3022,7 +3204,15 @@ impl RunFiles {
             recovery: unresumed_recovery_summary(),
             pending_finalization: None,
         };
-        write_journal_record(&recovery_path, &journal, true)?;
+        write_journal_record_with_checkpoints(
+            &recovery_path,
+            &journal,
+            true,
+            RunPersistenceBoundary::InitialJournalWrite,
+            RunPersistenceBoundary::InitialJournalBeforeSync,
+            RunPersistenceBoundary::InitialJournalSync,
+            &mut persistence_checkpoints,
+        )?;
         Ok(Self {
             session_dir: session_dir.to_owned(),
             recovery_path,
@@ -3037,11 +3227,8 @@ impl RunFiles {
             tsv,
             journal,
             flush_every_samples: (u64::from(settings.experiment.sampling_frequency_hz) / 4).max(1),
+            persistence_checkpoints,
             _attempt_lock: attempt_lock,
-            #[cfg(test)]
-            fail_next_event_write: false,
-            #[cfg(test)]
-            fail_next_journal_write: false,
         })
     }
 
@@ -3164,11 +3351,8 @@ impl RunFiles {
             tsv,
             journal,
             flush_every_samples: (u64::from(settings.experiment.sampling_frequency_hz) / 4).max(1),
+            persistence_checkpoints: RunPersistenceCheckpoints::production(),
             _attempt_lock: attempt_lock,
-            #[cfg(test)]
-            fail_next_event_write: false,
-            #[cfg(test)]
-            fail_next_journal_write: false,
         };
         Ok((
             files,
@@ -3183,13 +3367,12 @@ impl RunFiles {
     }
 
     fn write_event(&mut self, event: &ResearchEventV1) -> ResearchResult<()> {
-        #[cfg(test)]
-        if std::mem::take(&mut self.fail_next_event_write) {
-            return Err(CommandError::io("injected event-write failure"));
-        }
-        let bytes = canonical_json(event, &[])?;
+        let bytes = canonical_event_line(event)?;
+        self.persistence_checkpoints
+            .before(RunPersistenceBoundary::EventWrite)?;
         self.events.write_all(&bytes).map_err(CommandError::io)?;
-        self.events.write_all(b"\n").map_err(CommandError::io)?;
+        self.persistence_checkpoints
+            .before(RunPersistenceBoundary::EventFlush)?;
         self.events.flush().map_err(CommandError::io)
     }
 
@@ -3220,10 +3403,14 @@ impl RunFiles {
     fn write_sample(&mut self, sample: &ResearchSampleV1) -> ResearchResult<()> {
         sample.stimulus_identity.validate()?;
         let values = sample_values(sample)?;
-        if let Some(csv) = &mut self.csv {
+        if let Some(csv) = self.csv.as_mut() {
+            self.persistence_checkpoints
+                .before(RunPersistenceBoundary::CsvSampleWrite)?;
             write_delimited(csv, &values, b',')?;
         }
-        if let Some(tsv) = &mut self.tsv {
+        if let Some(tsv) = self.tsv.as_mut() {
+            self.persistence_checkpoints
+                .before(RunPersistenceBoundary::TsvSampleWrite)?;
             write_delimited(tsv, &values, b'\t')?;
         }
         if sample.sequence.is_multiple_of(self.flush_every_samples) {
@@ -3233,10 +3420,14 @@ impl RunFiles {
     }
 
     fn flush_tables(&mut self) -> ResearchResult<()> {
-        if let Some(csv) = &mut self.csv {
+        if let Some(csv) = self.csv.as_mut() {
+            self.persistence_checkpoints
+                .before(RunPersistenceBoundary::CsvFlush)?;
             csv.flush().map_err(CommandError::io)?;
         }
-        if let Some(tsv) = &mut self.tsv {
+        if let Some(tsv) = self.tsv.as_mut() {
+            self.persistence_checkpoints
+                .before(RunPersistenceBoundary::TsvFlush)?;
             tsv.flush().map_err(CommandError::io)?;
         }
         Ok(())
@@ -3254,10 +3445,6 @@ impl RunFiles {
         missed_slot_count: u64,
     ) -> ResearchResult<()> {
         self.sync_outputs()?;
-        #[cfg(test)]
-        if std::mem::take(&mut self.fail_next_journal_write) {
-            return Err(CommandError::io("injected journal-write failure"));
-        }
         self.journal.partial_sample_count = sample_count;
         self.journal.partial_event_count = event_count;
         self.journal.last_safe_stimulus_position = last_safe_position;
@@ -3265,7 +3452,15 @@ impl RunFiles {
         self.journal.last_monotonic_time_ns = last_monotonic_time_ns;
         self.journal.gap_event_count = gap_event_count;
         self.journal.missed_slot_count = missed_slot_count;
-        write_journal_record(&self.recovery_path, &self.journal, false)
+        write_journal_record_with_checkpoints(
+            &self.recovery_path,
+            &self.journal,
+            false,
+            RunPersistenceBoundary::JournalWrite,
+            RunPersistenceBoundary::JournalBeforeSync,
+            RunPersistenceBoundary::JournalSync,
+            &mut self.persistence_checkpoints,
+        )
     }
 
     fn update_recovery_summary(&mut self, recovery: RecoverySummaryV1) -> ResearchResult<()> {
@@ -3284,15 +3479,23 @@ impl RunFiles {
 
     fn sync_outputs(&mut self) -> ResearchResult<()> {
         self.flush_tables()?;
+        self.persistence_checkpoints
+            .before(RunPersistenceBoundary::EventFlush)?;
         self.events.flush().map_err(CommandError::io)?;
+        self.persistence_checkpoints
+            .before(RunPersistenceBoundary::EventsSync)?;
         self.events
             .get_ref()
             .sync_data()
             .map_err(CommandError::io)?;
         if let Some(csv) = &self.csv {
+            self.persistence_checkpoints
+                .before(RunPersistenceBoundary::CsvSync)?;
             csv.get_ref().sync_data().map_err(CommandError::io)?;
         }
         if let Some(tsv) = &self.tsv {
+            self.persistence_checkpoints
+                .before(RunPersistenceBoundary::TsvSync)?;
             tsv.get_ref().sync_data().map_err(CommandError::io)?;
         }
         Ok(())
@@ -3607,9 +3810,168 @@ fn create_new_file(path: &Path) -> ResearchResult<File> {
         .map_err(CommandError::io)
 }
 
-fn write_new(path: &Path, bytes: &[u8]) -> ResearchResult<()> {
+struct InitialSessionCleanupGuard {
+    workspace: CheckedRunDirectory,
+    outputs: CheckedRunDirectory,
+    experiment: CheckedRunDirectory,
+    participant: CheckedRunDirectory,
+    session: CheckedRunDirectory,
+    recovery: CheckedRunDirectory,
+    recovery_path: PathBuf,
+}
+
+impl InitialSessionCleanupGuard {
+    fn capture(workspace_root: &Path, session_dir: &Path, run_id: &str) -> ResearchResult<Self> {
+        let session_name = session_dir
+            .file_name()
+            .and_then(|name| name.to_str())
+            .filter(|name| is_safe_component(name))
+            .ok_or_else(|| CommandError::forbidden("The new run destination is invalid."))?;
+        let participant_name = session_dir
+            .parent()
+            .and_then(Path::file_name)
+            .and_then(|name| name.to_str())
+            .filter(|name| is_safe_component(name))
+            .ok_or_else(|| CommandError::forbidden("The new run destination is invalid."))?;
+        let experiment_name = session_dir
+            .parent()
+            .and_then(Path::parent)
+            .and_then(Path::file_name)
+            .and_then(|name| name.to_str())
+            .filter(|name| is_safe_component(name))
+            .ok_or_else(|| CommandError::forbidden("The new run destination is invalid."))?;
+        let workspace = checked_run_root(workspace_root)?;
+        let outputs = checked_run_child(&workspace, "outputs")?;
+        let experiment = checked_run_child(&outputs, experiment_name)?;
+        let participant = checked_run_child(&experiment, participant_name)?;
+        let session = checked_run_child(&participant, session_name)?;
+        let supplied_session = session_dir
+            .canonicalize()
+            .map_err(|_| CommandError::forbidden("The new run destination is unavailable."))?;
+        if session.path != supplied_session {
+            return Err(CommandError::forbidden(
+                "The new run destination is not the exact selected workspace child.",
+            ));
+        }
+        let recovery = checked_run_child(&workspace, "recovery")?;
+        Ok(Self {
+            recovery_path: recovery.path.join(format!("{run_id}.journal.json")),
+            workspace,
+            outputs,
+            experiment,
+            participant,
+            session,
+            recovery,
+        })
+    }
+
+    fn revalidate(&self) -> ResearchResult<()> {
+        require_same_run_directory(&self.workspace, checked_run_root(&self.workspace.path)?)?;
+        require_same_run_directory(
+            &self.outputs,
+            checked_run_child(&self.workspace, "outputs")?,
+        )?;
+        require_same_run_directory(
+            &self.experiment,
+            checked_run_child(&self.outputs, checked_run_directory_name(&self.experiment)?)?,
+        )?;
+        require_same_run_directory(
+            &self.participant,
+            checked_run_child(
+                &self.experiment,
+                checked_run_directory_name(&self.participant)?,
+            )?,
+        )?;
+        require_same_run_directory(
+            &self.session,
+            checked_run_child(
+                &self.participant,
+                checked_run_directory_name(&self.session)?,
+            )?,
+        )?;
+        require_same_run_directory(
+            &self.recovery,
+            checked_run_child(&self.workspace, "recovery")?,
+        )
+    }
+
+    fn cleanup_if_unpublished(&self) {
+        if self.revalidate().is_err() {
+            return;
+        }
+        let complete_journal_may_exist = match fs::symlink_metadata(&self.recovery_path) {
+            Ok(metadata)
+                if metadata.file_type().is_file() && !metadata.file_type().is_symlink() =>
+            {
+                !matches!(read_latest_journal(&self.recovery_path), Ok(None))
+            }
+            Ok(_) => true,
+            Err(error) => error.kind() != std::io::ErrorKind::NotFound,
+        };
+        if complete_journal_may_exist {
+            return;
+        }
+
+        // RunFiles creates only this closed set before publishing its first
+        // journal. Revalidate the captured ordinary-directory identities before
+        // every removal; any substitution leaves the incomplete attempt in place
+        // for explicit inspection rather than widening deletion authority.
+        for name in [
+            "settings.snapshot.json",
+            "assignment-plan.snapshot.json",
+            "events.jsonl",
+            "ratings.csv.partial",
+            "ratings.tsv.partial",
+        ] {
+            if self.revalidate().is_err() {
+                return;
+            }
+            let path = self.session.path.join(name);
+            match fs::symlink_metadata(&path) {
+                Ok(metadata)
+                    if metadata.file_type().is_file() && !metadata.file_type().is_symlink() =>
+                {
+                    if fs::remove_file(path).is_err() {
+                        return;
+                    }
+                }
+                Ok(_) => return,
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(_) => return,
+            }
+        }
+        if self.revalidate().is_err() {
+            return;
+        }
+        match fs::symlink_metadata(&self.recovery_path) {
+            Ok(metadata)
+                if metadata.file_type().is_file() && !metadata.file_type().is_symlink() =>
+            {
+                if fs::remove_file(&self.recovery_path).is_err() {
+                    return;
+                }
+            }
+            Ok(_) => return,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(_) => return,
+        }
+        if self.revalidate().is_ok() {
+            let _ = fs::remove_dir(&self.session.path);
+        }
+    }
+}
+
+fn write_new_with_checkpoints(
+    path: &Path,
+    bytes: &[u8],
+    write_boundary: RunPersistenceBoundary,
+    sync_boundary: RunPersistenceBoundary,
+    checkpoints: &mut RunPersistenceCheckpoints,
+) -> ResearchResult<()> {
     let mut file = create_new_file(path)?;
+    checkpoints.before(write_boundary)?;
     file.write_all(bytes).map_err(CommandError::io)?;
+    checkpoints.before(sync_boundary)?;
     file.sync_all().map_err(CommandError::io)
 }
 
@@ -3733,6 +4095,27 @@ fn write_journal_record(
     journal: &RecoveryJournalV1,
     create_new: bool,
 ) -> ResearchResult<()> {
+    write_journal_record_with_checkpoints(
+        path,
+        journal,
+        create_new,
+        RunPersistenceBoundary::JournalWrite,
+        RunPersistenceBoundary::JournalBeforeSync,
+        RunPersistenceBoundary::JournalSync,
+        &mut RunPersistenceCheckpoints::production(),
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn write_journal_record_with_checkpoints(
+    path: &Path,
+    journal: &RecoveryJournalV1,
+    create_new: bool,
+    write_boundary: RunPersistenceBoundary,
+    before_sync_boundary: RunPersistenceBoundary,
+    sync_boundary: RunPersistenceBoundary,
+    checkpoints: &mut RunPersistenceCheckpoints,
+) -> ResearchResult<()> {
     if !create_new {
         truncate_incomplete_journal_tail(path)?;
     }
@@ -3746,7 +4129,18 @@ fn write_journal_record(
     let mut file = options.open(path).map_err(CommandError::io)?;
     let mut record = canonical_json(journal, &[])?;
     record.push(b'\n');
+    checkpoints.before(write_boundary)?;
+    #[cfg(test)]
+    if checkpoints.is_armed(before_sync_boundary) {
+        let prefix_length = (record.len() / 2).clamp(1, record.len() - 1);
+        file.write_all(&record[..prefix_length])
+            .map_err(CommandError::io)?;
+        return checkpoints.before(before_sync_boundary);
+    }
+    #[cfg(not(test))]
+    let _ = before_sync_boundary;
     file.write_all(&record).map_err(CommandError::io)?;
+    checkpoints.before(sync_boundary)?;
     file.sync_data().map_err(CommandError::io)
 }
 
@@ -5539,6 +5933,71 @@ mod tests {
         path
     }
 
+    struct InitialCreationAttempt {
+        base: PathBuf,
+        participant_root: PathBuf,
+        session_dir: PathBuf,
+        recovery_path: PathBuf,
+        cleanup_guard: InitialSessionCleanupGuard,
+        result: ResearchResult<RunFiles>,
+    }
+
+    fn initial_creation_attempt(
+        label: &str,
+        boundary: RunPersistenceBoundary,
+    ) -> InitialCreationAttempt {
+        let base = temporary_directory(label);
+        let workspace_root = base.join("workspace");
+        fs::create_dir_all(workspace_root.join("recovery")).unwrap();
+        let workspace_file_id = Uuid::new_v4().to_string();
+        let settings = test_settings(&"a".repeat(64), &workspace_file_id);
+        let plan = test_plan(&settings);
+        let participant = CodedParticipant {
+            id: "P001".to_owned(),
+            code: "EM".to_owned(),
+            age: 27,
+            gender: GenderCodeV1::W,
+            handedness: HandednessCodeV1::R,
+            attempt_number: 1,
+        };
+        let run_id = Uuid::new_v4().to_string();
+        let session_stem = "P001_EM_A27_GW_HR_20260903T143012482Z_R01";
+        let participant_root = workspace_root
+            .join("outputs")
+            .join(&settings.experiment.id)
+            .join("P001");
+        fs::create_dir_all(&participant_root).unwrap();
+        let session_dir = participant_root.join(session_stem);
+        fs::create_dir(&session_dir).unwrap();
+        let recovery_path = workspace_root
+            .join("recovery")
+            .join(format!("{run_id}.journal.json"));
+        let cleanup_guard =
+            InitialSessionCleanupGuard::capture(&workspace_root, &session_dir, &run_id).unwrap();
+        let result = RunFiles::create_with_checkpoints(
+            &workspace_root,
+            &session_dir,
+            &run_id,
+            &settings,
+            &plan,
+            &participant,
+            session_stem,
+            "2026-09-03T14:30:12.482Z",
+            PlaybackMode::UnqualifiedWebview,
+            PlaybackQualification::Unqualified,
+            acquire_attempt_lock(&participant_root).unwrap(),
+            RunPersistenceCheckpoints::failing_before(boundary),
+        );
+        InitialCreationAttempt {
+            base,
+            participant_root,
+            session_dir,
+            recovery_path,
+            cleanup_guard,
+            result,
+        }
+    }
+
     #[cfg(target_os = "windows")]
     fn create_directory_link(target: &Path, link: &Path) {
         let output = std::process::Command::new("cmd.exe")
@@ -5557,6 +6016,16 @@ mod tests {
     #[cfg(unix)]
     fn create_directory_link(target: &Path, link: &Path) {
         std::os::unix::fs::symlink(target, link).unwrap();
+    }
+
+    #[cfg(target_os = "windows")]
+    fn remove_directory_link(path: &Path) {
+        fs::remove_dir(path).unwrap();
+    }
+
+    #[cfg(unix)]
+    fn remove_directory_link(path: &Path) {
+        fs::remove_file(path).unwrap();
     }
 
     fn fresh_input_receipt(runtime: &ResearchRuntime, settings: &ResearchSettingsV1) -> String {
@@ -5842,6 +6311,172 @@ mod tests {
     }
 
     #[test]
+    fn initial_session_creation_boundaries_fail_without_publishing_partial_recovery() {
+        let boundaries = [
+            RunPersistenceBoundary::InitialSettingsWrite,
+            RunPersistenceBoundary::InitialSettingsSync,
+            RunPersistenceBoundary::InitialPlanWrite,
+            RunPersistenceBoundary::InitialPlanSync,
+            RunPersistenceBoundary::InitialEventsSync,
+            RunPersistenceBoundary::InitialCsvHeaderWrite,
+            RunPersistenceBoundary::InitialCsvHeaderFlush,
+            RunPersistenceBoundary::InitialCsvHeaderSync,
+            RunPersistenceBoundary::InitialTsvHeaderWrite,
+            RunPersistenceBoundary::InitialTsvHeaderFlush,
+            RunPersistenceBoundary::InitialTsvHeaderSync,
+            RunPersistenceBoundary::InitialJournalWrite,
+            RunPersistenceBoundary::InitialJournalBeforeSync,
+            RunPersistenceBoundary::InitialJournalSync,
+        ];
+
+        for boundary in boundaries {
+            let attempt =
+                initial_creation_attempt(&format!("initial-persistence-{boundary:?}"), boundary);
+            let InitialCreationAttempt {
+                base,
+                participant_root,
+                session_dir,
+                recovery_path,
+                cleanup_guard,
+                result,
+            } = attempt;
+            let error = match result {
+                Ok(_) => panic!("boundary {boundary:?} did not fail"),
+                Err(error) => error,
+            };
+            assert_eq!(error.code, "research_io", "boundary {boundary:?}");
+            assert_eq!(
+                error.message, "The Research workspace operation could not be completed.",
+                "boundary {boundary:?}"
+            );
+            assert!(
+                !error.message.contains(base.to_string_lossy().as_ref()),
+                "boundary {boundary:?} exposed a native path"
+            );
+            assert!(!session_dir.join("manifest.json").exists());
+
+            let latest = if recovery_path.exists() {
+                read_latest_journal(&recovery_path).unwrap()
+            } else {
+                None
+            };
+            if boundary == RunPersistenceBoundary::InitialJournalSync {
+                let journal = latest.expect(
+                    "a complete initial record that survives a sync failure is safe to recover",
+                );
+                assert_eq!(journal.partial_sample_count, 0);
+                assert_eq!(journal.partial_event_count, 0);
+                assert_eq!(journal.last_safe_stimulus_position, 0);
+            } else {
+                assert!(
+                    latest.is_none(),
+                    "boundary {boundary:?} published a partial initial journal"
+                );
+            }
+
+            if matches!(
+                boundary,
+                RunPersistenceBoundary::InitialJournalWrite
+                    | RunPersistenceBoundary::InitialJournalBeforeSync
+                    | RunPersistenceBoundary::InitialJournalSync
+            ) {
+                assert!(session_dir.join("settings.snapshot.json").is_file());
+                assert!(session_dir.join("assignment-plan.snapshot.json").is_file());
+                assert_eq!(
+                    fs::metadata(session_dir.join("events.jsonl"))
+                        .unwrap()
+                        .len(),
+                    0
+                );
+                assert!(
+                    fs::metadata(session_dir.join("ratings.csv.partial"))
+                        .unwrap()
+                        .len()
+                        > 0
+                );
+                assert!(
+                    fs::metadata(session_dir.join("ratings.tsv.partial"))
+                        .unwrap()
+                        .len()
+                        > 0
+                );
+            }
+
+            cleanup_guard.cleanup_if_unpublished();
+            if boundary == RunPersistenceBoundary::InitialJournalSync {
+                assert!(session_dir.is_dir());
+                assert!(recovery_path.is_file());
+            } else {
+                assert!(!session_dir.exists(), "boundary {boundary:?}");
+                assert!(!recovery_path.exists(), "boundary {boundary:?}");
+            }
+
+            // A failed Start attempt cannot retain the participant lock.
+            drop(acquire_attempt_lock(&participant_root).unwrap());
+            fs::remove_dir_all(base).unwrap();
+        }
+    }
+
+    #[cfg(any(target_os = "windows", unix))]
+    #[test]
+    fn initial_cleanup_refuses_swapped_session_or_recovery_directories() {
+        let attempt = initial_creation_attempt(
+            "initial-cleanup-swapped-session",
+            RunPersistenceBoundary::InitialJournalWrite,
+        );
+        let InitialCreationAttempt {
+            base,
+            session_dir,
+            cleanup_guard,
+            result,
+            ..
+        } = attempt;
+        assert!(result.is_err());
+        let external = temporary_directory("initial-cleanup-session-external");
+        fs::write(external.join("must-remain.txt"), b"external-session").unwrap();
+        fs::remove_dir_all(&session_dir).unwrap();
+        create_directory_link(&external, &session_dir);
+        cleanup_guard.cleanup_if_unpublished();
+        assert_eq!(
+            fs::read(external.join("must-remain.txt")).unwrap(),
+            b"external-session"
+        );
+        assert!(session_dir.exists());
+        remove_directory_link(&session_dir);
+        fs::remove_dir_all(base).unwrap();
+        fs::remove_dir_all(external).unwrap();
+
+        let attempt = initial_creation_attempt(
+            "initial-cleanup-swapped-recovery",
+            RunPersistenceBoundary::InitialJournalWrite,
+        );
+        let InitialCreationAttempt {
+            base,
+            session_dir,
+            recovery_path,
+            cleanup_guard,
+            result,
+            ..
+        } = attempt;
+        assert!(result.is_err());
+        let recovery_dir = recovery_path.parent().unwrap().to_owned();
+        fs::remove_file(&recovery_path).unwrap();
+        fs::remove_dir(&recovery_dir).unwrap();
+        let external = temporary_directory("initial-cleanup-recovery-external");
+        fs::write(external.join("must-remain.txt"), b"external-recovery").unwrap();
+        create_directory_link(&external, &recovery_dir);
+        cleanup_guard.cleanup_if_unpublished();
+        assert_eq!(
+            fs::read(external.join("must-remain.txt")).unwrap(),
+            b"external-recovery"
+        );
+        assert!(session_dir.is_dir());
+        remove_directory_link(&recovery_dir);
+        fs::remove_dir_all(base).unwrap();
+        fs::remove_dir_all(external).unwrap();
+    }
+
+    #[test]
     fn participant_code_requires_two_uppercase_safe_graphemes() {
         assert_eq!(validate_participant_code("EM").unwrap(), "EM");
         assert_eq!(validate_participant_code("ËÅ").unwrap(), "ËÅ");
@@ -6104,8 +6739,9 @@ mod tests {
         let (sender, receiver) = mpsc::sync_channel(8);
         let worker_status = Arc::clone(&status);
         let worker_mailbox = Arc::clone(&mailbox);
-        let worker =
-            thread::spawn(move || run_worker(prepared, receiver, worker_status, worker_mailbox));
+        let worker = thread::spawn(move || {
+            run_worker(prepared, receiver, worker_status, worker_mailbox, || {})
+        });
 
         mailbox.push(digital_update(
             DirectionV1::Up,
@@ -6252,9 +6888,15 @@ mod tests {
                 })
                 .unwrap();
             if fault == "event" {
-                worker.files.fail_next_event_write = true;
+                worker
+                    .files
+                    .persistence_checkpoints
+                    .arm_before(RunPersistenceBoundary::EventWrite);
             } else {
-                worker.files.fail_next_journal_write = true;
+                worker
+                    .files
+                    .persistence_checkpoints
+                    .arm_before(RunPersistenceBoundary::JournalWrite);
             }
             let mailbox = NativeInputMailbox::new(InputKindV1::Digital);
             mailbox.push(digital_update(
@@ -6288,6 +6930,306 @@ mod tests {
             drop(worker);
             fs::remove_dir_all(base).unwrap();
         }
+    }
+
+    #[test]
+    fn streaming_event_boundaries_stop_input_and_recover_from_a_complete_prefix() {
+        let boundaries = [
+            RunPersistenceBoundary::EventWrite,
+            RunPersistenceBoundary::EventFlush,
+            RunPersistenceBoundary::CsvFlush,
+            RunPersistenceBoundary::TsvFlush,
+            RunPersistenceBoundary::EventsSync,
+            RunPersistenceBoundary::CsvSync,
+            RunPersistenceBoundary::TsvSync,
+            RunPersistenceBoundary::JournalWrite,
+            RunPersistenceBoundary::JournalBeforeSync,
+            RunPersistenceBoundary::JournalSync,
+        ];
+
+        for boundary in boundaries {
+            let fixture = PersistenceFixture::new(&format!("stream-event-{boundary:?}"));
+            let run_id = fixture.receipt.run_id.clone();
+            let session_dir = fixture.session_dir.clone();
+            let participant_root = session_dir.parent().unwrap().to_owned();
+            let settings = fixture.settings.clone();
+            let (base, recovery_path, status, mut worker) = fixture.into_worker();
+            worker.start().unwrap();
+            worker
+                .apply_stimulus(StimulusStateUpdate {
+                    run_id,
+                    lifecycle: StimulusLifecycle::Started,
+                    stimulus_id: "video-a".to_owned(),
+                    stimulus_position: 1,
+                    media_time_ms: 0.0,
+                })
+                .unwrap();
+            let durable_before = read_latest_journal(&recovery_path)
+                .unwrap()
+                .expect("the pre-fault journal is durable");
+            worker.native_input_active = true;
+            lock(&status).input_active = true;
+            worker.files.persistence_checkpoints.arm_before(boundary);
+
+            let mailbox = NativeInputMailbox::new(InputKindV1::Digital);
+            mailbox.push(digital_update(
+                DirectionV1::Up,
+                format!("stream-event-{boundary:?}"),
+                Instant::now(),
+                true,
+                true,
+            ));
+            let failure = drain_native_input_mailbox(&mailbox, &mut worker)
+                .expect_err("the armed event boundary must fail");
+            assert!(matches!(
+                &failure,
+                NativeInputDrainFailure::Persistence(error) if error.code == "research_io"
+            ));
+            stop_for_native_input_failure(&mut worker, &failure);
+
+            let failed = lock(&status).clone();
+            assert_eq!(failed.phase, RunPhase::Failed, "boundary {boundary:?}");
+            assert!(!failed.active, "boundary {boundary:?}");
+            assert!(!failed.input_active, "boundary {boundary:?}");
+            assert!(!failed.write_healthy, "boundary {boundary:?}");
+            assert!(worker.clock.is_none(), "boundary {boundary:?}");
+
+            let visible_after = read_latest_journal(&recovery_path)
+                .unwrap()
+                .expect("the last complete journal must remain readable");
+            if boundary == RunPersistenceBoundary::JournalSync {
+                assert_eq!(
+                    visible_after.partial_event_count,
+                    durable_before.partial_event_count + 1
+                );
+            } else {
+                assert_eq!(
+                    visible_after, durable_before,
+                    "boundary {boundary:?} advanced the complete journal prefix"
+                );
+            }
+
+            drop(worker);
+            let journal = read_latest_journal(&recovery_path)
+                .unwrap()
+                .expect("a recoverable journal must survive the worker");
+            let (files, reconciled) = RunFiles::resume(
+                &session_dir,
+                recovery_path,
+                journal,
+                &settings,
+                acquire_attempt_lock(&participant_root).unwrap(),
+            )
+            .unwrap();
+            assert!(
+                reconciled.event_count >= durable_before.partial_event_count,
+                "boundary {boundary:?} lost a durable event prefix"
+            );
+            assert_eq!(files.journal.partial_event_count, reconciled.event_count);
+            assert_eq!(files.journal.last_safe_stimulus_position, 0);
+            drop(files);
+            fs::remove_dir_all(base).unwrap();
+        }
+    }
+
+    #[test]
+    fn streaming_sample_boundaries_stop_sampling_and_reconcile_table_prefixes() {
+        let boundaries = [
+            RunPersistenceBoundary::CsvSampleWrite,
+            RunPersistenceBoundary::TsvSampleWrite,
+            RunPersistenceBoundary::CsvFlush,
+            RunPersistenceBoundary::TsvFlush,
+            RunPersistenceBoundary::EventFlush,
+            RunPersistenceBoundary::EventsSync,
+            RunPersistenceBoundary::CsvSync,
+            RunPersistenceBoundary::TsvSync,
+            RunPersistenceBoundary::JournalWrite,
+            RunPersistenceBoundary::JournalBeforeSync,
+            RunPersistenceBoundary::JournalSync,
+        ];
+
+        for boundary in boundaries {
+            let fixture = PersistenceFixture::new(&format!("stream-sample-{boundary:?}"));
+            let run_id = fixture.receipt.run_id.clone();
+            let session_dir = fixture.session_dir.clone();
+            let participant_root = session_dir.parent().unwrap().to_owned();
+            let settings = fixture.settings.clone();
+            let (base, recovery_path, status, mut worker) = fixture.into_worker();
+            worker.start().unwrap();
+            worker
+                .apply_stimulus(StimulusStateUpdate {
+                    run_id,
+                    lifecycle: StimulusLifecycle::Started,
+                    stimulus_id: "video-a".to_owned(),
+                    stimulus_position: 1,
+                    media_time_ms: 0.0,
+                })
+                .unwrap();
+            let durable_before = read_latest_journal(&recovery_path)
+                .unwrap()
+                .expect("the pre-fault journal is durable");
+            worker.files.flush_every_samples = 1;
+            worker.native_input_active = true;
+            lock(&status).input_active = true;
+            let epoch = Instant::now()
+                .checked_sub(Duration::from_millis(8))
+                .unwrap();
+            worker.clock = Some(
+                DeadlineClock::new(worker.settings.experiment.sampling_frequency_hz, epoch)
+                    .unwrap(),
+            );
+            worker.files.persistence_checkpoints.arm_before(boundary);
+
+            let error = worker
+                .sample_if_due()
+                .expect_err("the armed sample boundary must fail");
+            assert_eq!(error.code, "research_io", "boundary {boundary:?}");
+            worker.fail("sample-write-failed");
+            let failed = lock(&status).clone();
+            assert_eq!(failed.phase, RunPhase::Failed, "boundary {boundary:?}");
+            assert!(!failed.active, "boundary {boundary:?}");
+            assert!(!failed.input_active, "boundary {boundary:?}");
+            assert!(!failed.write_healthy, "boundary {boundary:?}");
+            assert!(worker.clock.is_none(), "boundary {boundary:?}");
+            assert_eq!(failed.sample_count, 0, "boundary {boundary:?}");
+
+            let visible_after = read_latest_journal(&recovery_path)
+                .unwrap()
+                .expect("the last complete journal must remain readable");
+            if boundary == RunPersistenceBoundary::JournalSync {
+                assert_eq!(
+                    visible_after.partial_sample_count,
+                    durable_before.partial_sample_count + 1
+                );
+            } else {
+                assert_eq!(
+                    visible_after, durable_before,
+                    "boundary {boundary:?} advanced the complete journal prefix"
+                );
+            }
+
+            drop(worker);
+            let journal = read_latest_journal(&recovery_path)
+                .unwrap()
+                .expect("a recoverable journal must survive the worker");
+            let (files, reconciled) = RunFiles::resume(
+                &session_dir,
+                recovery_path,
+                journal,
+                &settings,
+                acquire_attempt_lock(&participant_root).unwrap(),
+            )
+            .unwrap();
+            assert!(reconciled.sample_count <= 1, "boundary {boundary:?}");
+            assert!(
+                reconciled.sample_count >= durable_before.partial_sample_count,
+                "boundary {boundary:?} lost a durable sample prefix"
+            );
+            assert_eq!(files.journal.partial_sample_count, reconciled.sample_count);
+            let csv = parse_sample_table(
+                files.csv_partial_path.as_ref().unwrap(),
+                b',',
+                &files.journal,
+            )
+            .unwrap();
+            let tsv = parse_sample_table(
+                files.tsv_partial_path.as_ref().unwrap(),
+                b'\t',
+                &files.journal,
+            )
+            .unwrap();
+            assert_eq!(csv.row_digests, tsv.row_digests, "boundary {boundary:?}");
+            assert_eq!(
+                csv.row_digests.len() as u64,
+                reconciled.sample_count,
+                "boundary {boundary:?}"
+            );
+            drop(files);
+            fs::remove_dir_all(base).unwrap();
+        }
+    }
+
+    #[test]
+    fn run_worker_exit_fence_disables_input_after_background_sample_failure() {
+        let mut fixture = PersistenceFixture::new("sample-failure-input-fence");
+        fixture.files.flush_every_samples = 1;
+        fixture
+            .files
+            .persistence_checkpoints
+            .arm_before(RunPersistenceBoundary::CsvSampleWrite);
+        let events_path = fixture.files.events_path.clone();
+        let run_id = fixture.receipt.run_id.clone();
+        let (base, recovery_path, prepared) = fixture.into_prepared();
+        let status = Arc::new(Mutex::new(prepared.initial_status()));
+        let mailbox = Arc::new(NativeInputMailbox::new(InputKindV1::Digital));
+        let (sender, receiver) = mpsc::sync_channel(8);
+        let worker_status = Arc::clone(&status);
+        let worker_mailbox = Arc::clone(&mailbox);
+        let acceptance_fenced = Arc::new(Mutex::new(false));
+        let worker_fenced = Arc::clone(&acceptance_fenced);
+        let worker = thread::spawn(move || {
+            run_worker(
+                prepared,
+                receiver,
+                worker_status,
+                worker_mailbox,
+                move || *lock(&worker_fenced) = true,
+            )
+        });
+
+        let (reply, result) = mpsc::channel();
+        sender
+            .send(RunMessage::Stimulus(
+                StimulusStateUpdate {
+                    run_id,
+                    lifecycle: StimulusLifecycle::Started,
+                    stimulus_id: "video-a".to_owned(),
+                    stimulus_position: 1,
+                    media_time_ms: 0.0,
+                },
+                reply,
+            ))
+            .unwrap();
+        result
+            .recv_timeout(Duration::from_secs(2))
+            .unwrap()
+            .unwrap();
+        worker.join().unwrap();
+
+        assert!(*lock(&acceptance_fenced));
+        let failed = lock(&status).clone();
+        assert_eq!(failed.phase, RunPhase::Failed);
+        assert_eq!(failed.failure_code.as_deref(), Some("sample-write-failed"));
+        assert!(!failed.active);
+        assert!(!failed.input_active);
+        assert!(!failed.write_healthy);
+        let journal = read_latest_journal(&recovery_path)
+            .unwrap()
+            .expect("the pre-sample durable journal must survive");
+        assert_eq!(journal.partial_sample_count, 0);
+        let events = fs::read_to_string(events_path)
+            .unwrap()
+            .lines()
+            .map(|line| serde_json::from_str::<ResearchEventV1>(line).unwrap())
+            .collect::<Vec<_>>();
+        assert_eq!(events.len() as u64, journal.partial_event_count);
+        assert!(events.len() >= 3);
+        assert_eq!(events[0].event_type, ResearchEventTypeV1::SessionPrepared);
+        assert_eq!(events[1].event_type, ResearchEventTypeV1::SessionStarted);
+        assert_eq!(events[2].event_type, ResearchEventTypeV1::StimulusStarted);
+        assert!(events
+            .iter()
+            .skip(3)
+            .all(|event| event.event_type == ResearchEventTypeV1::TimingGap));
+        let gap_events = events.len().saturating_sub(3) as u64;
+        let missed_slots = events
+            .iter()
+            .skip(3)
+            .map(|event| event.missed_slot_count.unwrap_or_default())
+            .sum::<u64>();
+        assert_eq!(journal.gap_event_count, gap_events);
+        assert_eq!(journal.missed_slot_count, missed_slots);
+        fs::remove_dir_all(base).unwrap();
     }
 
     #[test]
@@ -7110,9 +8052,15 @@ mod tests {
             let (base, recovery_path, status, mut worker) = fixture.into_worker();
             worker.start().unwrap();
             if fail_checkpoint {
-                worker.files.fail_next_journal_write = true;
+                worker
+                    .files
+                    .persistence_checkpoints
+                    .arm_before(RunPersistenceBoundary::JournalWrite);
             } else {
-                worker.files.fail_next_event_write = true;
+                worker
+                    .files
+                    .persistence_checkpoints
+                    .arm_before(RunPersistenceBoundary::EventWrite);
             }
             let (result, evidence_failure) = worker.apply_stimulus_message(StimulusStateUpdate {
                 run_id,

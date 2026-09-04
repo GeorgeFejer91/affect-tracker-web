@@ -272,6 +272,22 @@ state-anchor provenance for every matched probe, and zero visibility loss.
 
 ## LSL qualification
 
+- The deterministic Rust suite checks the state/marker metadata contract,
+  channel order, sample serialization, marker bounds, and unavailable-build
+  failure without requiring a network receiver. On Windows, run the ignored
+  project-level socket loopback explicitly with:
+
+  ```powershell
+  $env:AFFECT_RESEARCH_RUN_LSL_LOOPBACK = "1"
+  & "$env:USERPROFILE\.cargo\bin\cargo.exe" test --manifest-path src-tauri/Cargo.toml --locked --all-features research_lsl::tests::windows_lsl_loopback_conformance -- --ignored --exact --nocapture
+  Remove-Item Env:AFFECT_RESEARCH_RUN_LSL_LOOPBACK
+  ```
+
+  The loopback exercises `LslService`-owned outlets through real local
+  discovery, wire metadata, inlets, state/marker transport, shutdown, and a
+  distinct-run restart. It is same-process project evidence only. It does not
+  substitute for an independent receiver, LabRecorder, packaged-candidate,
+  clock/network, disconnect/reconnect, sleep/wake, or long-run receipt.
 - Resolve the regular state and irregular marker outlets with an independent
   current receiver and LabRecorder.
 - Confirm eight Float32 channels in exact order, configured nominal rate,

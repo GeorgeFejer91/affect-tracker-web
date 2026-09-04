@@ -46,22 +46,36 @@ The current `research/video-protocol-v1` working candidate contains:
   diagnostic that exposes trailing silence, missing or unmatched planned state
   probes, exact-anchor mismatches, and visibility loss without claiming
   full-application qualification;
+- direct `IndexedDbResearchJournal` adversity coverage for transaction abort,
+  quota rejection, reload/reconciliation, and durable corrupt-evidence
+  quarantine, using an atomic test harness that fails if the adapter touches
+  `localStorage` or falls back to the in-memory journal;
 - Rust Research contract, workspace, runtime, scheduler, persistence, input,
   LSL, participant-state, and narrow Tauri command modules, including exact
   run-ID binding for renderer lifecycle/finalization commands, selected-library
   revalidation, retry-safe terminal-output promotion, durable-prefix recovery,
   and reload-only pending-finalization;
+- typed native persistence checkpoints across initial snapshots, empty event
+  log, rating headers, streaming rows/events, and recovery journals; an input-
+  authority exit fence; and conservative unpublished-session cleanup that
+  revalidates exact directory identities and refuses swapped session/recovery
+  links before removing its closed artifact set;
+- exact LSL state/marker metadata validation plus an opt-in Windows local-
+  socket loopback through the project service, covering discovery, inlets,
+  payloads, timestamps, shutdown, and distinct-run restart without claiming an
+  independent-receiver or LabRecorder qualification; and
 - unqualified WebView generation/run fences, ordered native status projection,
   strict Start/Resume/terminal receipt binding, explicit unknown-outcome
   reconciliation, and a reachable acquisition-free finalization action.
 
-The latest recorded combined local run passed 206/206 JavaScript tests. The
-Rust all-feature and no-default-feature matrices both passed 112/112 tests;
-format, both-matrix check and clippy, dependency audit, Pages/desktop builds,
-Research-only artifact closure, and the required-runtime NSIS bundle gate also
-passed. These dirty-tree/local automated results are not an exact committed-
-candidate or installed-artifact receipt; physical gates still require
-exact-candidate qualification before publication.
+The latest combined safe-hardening run passed 209/209 JavaScript tests. The
+Rust all-feature matrix passed 119 tests with the explicitly environment-gated
+LSL loopback ignored by default, and the no-default-feature matrix passed
+118/118 tests. Format, both-matrix check and clippy, dependency audit,
+Pages/desktop builds, Research-only artifact closure, the required-runtime NSIS
+bundle gate, and a separately invoked real local LSL loopback also passed.
+These local automated results do not qualify physical workflow, independent
+LSL reception, long-run timing, or native VLC playback.
 
 ## Native input status — safe pointer and gamepad authority implemented
 
@@ -148,19 +162,45 @@ qualification.
    [`30-TESTING-AND-RELEASE.md`](./30-TESTING-AND-RELEASE.md).
 2. Implement native libVLC-owned duration/decode preflight and exact lifecycle
    authority for workspace/repository sources after the actor exists.
-3. Extend persistence injection to initial-session, streaming, and journal-
-   before-sync boundaries; exercise real full-disk/power-loss and directory-
-   entry durability; and add packaged Setup-to-Run/recovery tests.
-4. Commit the combined safe candidate, re-run every JavaScript/Rust/build/
-   advisory gate in CI, inspect its isolated artifacts, and launch the exact
-   unsigned Windows installer.
+3. Exercise real full-disk/power-loss and directory-entry durability, real
+   browser quota/permission loss, and packaged Setup-to-Run/recovery workflows;
+   deterministic initial/streaming/journal and IndexedDB transaction fault
+   coverage is now implemented.
+4. Publish the combined safe-hardening commit, re-run every JavaScript/Rust/
+   build/advisory gate in CI, inspect its isolated artifacts, and launch its
+   exact unsigned Windows installer.
 5. Publish the validated implementation branch through normal repository
    safeguards, verify CI, merge deliberately, deploy Research Pages, and bind
    all later qualification receipts to the exact resulting candidate.
 
-## Qualification receipts — all pending
+## Qualification receipts — limited engineering evidence only
 
-No installed-artifact, physical-workflow, native-playback, timing, LSL, or
+Exact committed candidate `69f1729fda0d45dbdbf4009659e9c3b0db12895e`
+passed [Pages CI](https://github.com/GeorgeFejer91/affect-tracker-research/actions/runs/33921097839)
+and [Desktop CI](https://github.com/GeorgeFejer91/affect-tracker-research/actions/runs/33921097853).
+Desktop artifact `9955275027` bound that SHA and the pinned VLC runtime; its
+artifact digest is
+`bcb6ba7cce5cddc165235d0c3f751c7c6b2e326ed937f4a5d54056f070799a0e`
+and its 39,648,784-byte unsigned NSIS installer SHA-256 is
+`b66f0b9af4b1269847d70814e7229adc1eae5a5dce5c84b81d6969f1a2d86173`.
+The installer was installed into an isolated temporary location, launched
+responsively as **Affect Research**, and closed cleanly.
+This is installer-integrity/startup evidence, not Setup-to-Run, native playback,
+hardware, or installed-workflow qualification.
+
+A ten-second current-Chrome Worker diagnostic at 130 Hz recorded 1300/1300
+slots, zero gaps/missed/corrupt rows, five planned/sent/matched state probes,
+130.048255 Hz mean rate, 4.776923 ms p95 lateness, and 12.199951 ms p95
+state-to-sample latency. It correctly failed only the required 30-minute-window
+gate. This is Worker-only diagnostic evidence, not a visible full-application
+Chrome receipt. Current Edge remains untested because the required browser-
+control endpoint was unavailable.
+
+The project LSL service has also passed a same-process Windows local-socket
+loopback for exact metadata, channel order, nominal rate, state/marker payloads,
+timestamps, shutdown, and distinct-run restart. It is not independent-receiver,
+LabRecorder, network reconnect, sleep/wake, packaged-candidate, or long-run
+qualification. No physical-workflow, native-playback, 30-minute timing, or
 accessibility qualification receipt currently exists for Research v1.
 
 Before a stable or research-ready claim, record:
