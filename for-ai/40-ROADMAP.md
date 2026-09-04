@@ -68,14 +68,18 @@ The current `research/video-protocol-v1` working candidate contains:
   strict Start/Resume/terminal receipt binding, explicit unknown-outcome
   reconciliation, and a reachable acquisition-free finalization action.
 
-The latest combined safe-hardening run passed 209/209 JavaScript tests. The
-Rust all-feature matrix passed 119 tests with the explicitly environment-gated
-LSL loopback ignored by default, and the no-default-feature matrix passed
-118/118 tests. Format, both-matrix check and clippy, dependency audit,
-Pages/desktop builds, Research-only artifact closure, the required-runtime NSIS
-bundle gate, and a separately invoked real local LSL loopback also passed.
-These local automated results do not qualify physical workflow, independent
-LSL reception, long-run timing, or native VLC playback.
+The safe-hardening sequence is published through commits
+`eefa257d1696c8c22b9d6c9c619a2531457ee2c9` (persistence, IndexedDB, and LSL
+boundaries), `218c1c99e3cc5847bfd9a042d0776854e6b65c1a` (durable recovery checkpoint
+wait), and `03c505984e1a3eaeb3849793ba1ad1862bbb6beb` (scheduler-load-independent
+recovery test). The exact final implementation commit passed 209/209
+JavaScript tests. The Rust all-feature matrix passed 119 tests with the
+explicitly environment-gated LSL loopback ignored by default, and the
+no-default-feature matrix passed 118/118 tests. Format, both-matrix check and
+clippy, dependency audit, Pages/desktop builds, Research-only artifact closure,
+the required-runtime NSIS bundle gate, and a separately invoked real local LSL
+loopback also passed. These automated results do not qualify physical workflow,
+independent LSL reception, long-run timing, or native VLC playback.
 
 ## Native input status — safe pointer and gamepad authority implemented
 
@@ -166,26 +170,30 @@ qualification.
    browser quota/permission loss, and packaged Setup-to-Run/recovery workflows;
    deterministic initial/streaming/journal and IndexedDB transaction fault
    coverage is now implemented.
-4. Publish the combined safe-hardening commit, re-run every JavaScript/Rust/
-   build/advisory gate in CI, inspect its isolated artifacts, and launch its
-   exact unsigned Windows installer.
-5. Publish the validated implementation branch through normal repository
+4. Publish the validated implementation branch through normal repository
    safeguards, verify CI, merge deliberately, deploy Research Pages, and bind
    all later qualification receipts to the exact resulting candidate.
 
 ## Qualification receipts — limited engineering evidence only
 
-Exact committed candidate `69f1729fda0d45dbdbf4009659e9c3b0db12895e`
-passed [Pages CI](https://github.com/GeorgeFejer91/affect-tracker-research/actions/runs/33921097839)
-and [Desktop CI](https://github.com/GeorgeFejer91/affect-tracker-research/actions/runs/33921097853).
-Desktop artifact `9955275027` bound that SHA and the pinned VLC runtime; its
-artifact digest is
-`bcb6ba7cce5cddc165235d0c3f751c7c6b2e326ed937f4a5d54056f070799a0e`
-and its 39,648,784-byte unsigned NSIS installer SHA-256 is
-`b66f0b9af4b1269847d70814e7229adc1eae5a5dce5c84b81d6969f1a2d86173`.
-The installer was installed into an isolated temporary location, launched
-responsively as **Affect Research**, and closed cleanly.
-This is installer-integrity/startup evidence, not Setup-to-Run, native playback,
+Exact committed implementation candidate
+`03c505984e1a3eaeb3849793ba1ad1862bbb6beb` passed
+[Pages CI](https://github.com/GeorgeFejer91/affect-tracker-research/actions/runs/33926910211)
+and [Desktop CI](https://github.com/GeorgeFejer91/affect-tracker-research/actions/runs/33926910208).
+Desktop artifact `9957326856` binds that SHA, workflow run/attempt, installer,
+runtime pin, and libVLC source archive. Its 66,128,101-byte archive SHA-256 is
+`f0bda32b67fa9cf836db12a23c637f121d7cdf7088ca49556842cc9c6ee22052`,
+matching GitHub's artifact digest. Its 39,639,492-byte unsigned NSIS installer
+SHA-256 is
+`b7cfd9b66bbf23ef8ccc16f8bc2ae46b979cc7221d6a47639b77263451fb92b2`.
+The isolated install verified the exact 368-file / 142,167,916-byte runtime
+tree, launched responsively as **Affect Research**, accepted a normal visible-
+state close while positioned off-screen, exited with code zero, and uninstalled
+without a lingering target process. The Pages artifact is `9957120830`, with
+digest
+`d29add748e8df77c6f227155e9e43efd63dc3b6f08290dcf7281fcceddd17c8d`;
+deployment was correctly skipped by the implementation-branch gate. This is
+installer-integrity/startup/close evidence, not Setup-to-Run, native playback,
 hardware, or installed-workflow qualification.
 
 A ten-second current-Chrome Worker diagnostic at 130 Hz recorded 1300/1300
