@@ -1,33 +1,86 @@
 # Read this first
 
-This directory is the durable brief for the Affect Tracker project. Every future AI agent must read every Markdown file here, in filename order, before taking any project action.
+This directory is the durable brief for **Affect Tracker Research**. Every
+future AI agent must read every Markdown file here, in lexical filename order,
+before taking project action.
 
-The repository root is the central project folder. [`05-PROJECT-METADATA.md`](./05-PROJECT-METADATA.md) records its identity, goals, global constraints, and source-of-truth map. [`25-MIRRORED-STUDY-ARCHITECTURE.md`](./25-MIRRORED-STUDY-ARCHITECTURE.md) is the normative, phase-gated target for semantic study correspondence across Pages 2D, Tauri desktop, and WebXR; it must never be read as evidence that an unqualified phase is already implemented. [`50-AGENT-WORKFLOW.md`](./50-AGENT-WORKFLOW.md) defines the mandatory agent approach, skill routing, living-documentation policy, and Git checkpoint/clean-tree rules. [`60-EXPERIMENTAL-TOUCH-TRACE.md`](./60-EXPERIMENTAL-TOUCH-TRACE.md), [`65-EXPERIMENTAL-POLAR-STREAM.md`](./65-EXPERIMENTAL-POLAR-STREAM.md), [`66-EXPERIMENTAL-REMOTE-FLUBBER.md`](./66-EXPERIMENTAL-REMOTE-FLUBBER.md), [`68-EXPERIMENTAL-SETTINGS-BEACON.md`](./68-EXPERIMENTAL-SETTINGS-BEACON.md), and [`69-EXPERIMENTAL-FLUBBER-COLLABORATION.md`](./69-EXPERIMENTAL-FLUBBER-COLLABORATION.md) are the normative contracts for the web-only movement prototype, browser/native H10 prototype, explicit browser-to-browser coordinate transport, independent static portable-settings beacon, and explicit Universe/party collaboration modes. [`70-RESEARCH-PROVENANCE.md`](./70-RESEARCH-PROVENANCE.md) is the mandatory source ledger for research-derived ideas.
+[`15-RESEARCH-V1-CHARTER.md`](./15-RESEARCH-V1-CHARTER.md) is the sole active
+product and architecture authority. [`05-PROJECT-METADATA.md`](./05-PROJECT-METADATA.md)
+records identity and the active/frozen source map;
+[`10-PRODUCT-REQUIREMENTS.md`](./10-PRODUCT-REQUIREMENTS.md),
+[`20-ARCHITECTURE.md`](./20-ARCHITECTURE.md), and
+[`30-TESTING-AND-RELEASE.md`](./30-TESTING-AND-RELEASE.md) refine the active
+requirements, ownership, and evidence gates. [`40-ROADMAP.md`](./40-ROADMAP.md)
+is the implementation-status authority. Target language is never evidence that
+the corresponding implementation or qualification has landed.
 
-## Project purpose
+Documents explicitly marked **Frozen Playground/history** preserve the
+feature-rich checkpoint's design, safety rules, provenance, and evidence. They
+are not active-v1 requirements or release gates. Their code may remain during
+the migration, but code presence is not support and must not be described as
+removal. Safety, privacy, attribution, and licensing rules continue to bind any
+frozen code that is still reachable.
 
-Provide one valence/arousal affect tracker in three primary semantically corresponding study surfaces plus one specialized native delivery form:
+## Active project purpose
 
-1. An online, static and self-contained GitHub Pages 2D application suitable for designing and running browser studies and, only through the explicit authenticated exception, controlling an enabled desktop target.
-2. A downloadable Tauri desktop companion for Windows, macOS, and Linux whose core tracker, study authority, recording, overlay, settings, global input, and LSL functions remain local and offline unless a labelled network mode is enabled.
-3. A hosted WebXR participant runner that executes the same portable study semantics in an immersive headset-browser presentation.
-4. A specialized native Meta Quest Spatial SDK APK that plays researcher-provided local video, displays the same procedural Flubber on a transparent movable spatial panel, accepts Touch-controller input or explicitly assigned Polar H10 metrics, and publishes the desktop-compatible LSL schema over the local network.
+Affect Tracker Research is a local-first continuous valence/arousal research
+instrument with exactly two user-visible application modes:
 
-The three primary study surfaces must share the `StudyDefinitionV1` contract, reducer behavior, ordering, records, affect semantics, and visual mathematics once their migration phases land. Differences are permitted only where the runtime requires them and are capability-tested, not silently skipped. The native Quest APK keeps its separately qualified native contract until a later deliberate adapter phase.
+1. **Setting Up the Experiment** — load, validate, edit, and save `settings.json`;
+   position and lock the overlay; configure the controller, appearance,
+   Flubber, Grid, outbound LSL, affect mappings, sampling, and automatic
+   condition allocation; then deliberately start a session.
+2. **Running the Experiment** — freeze the validated setup, collect continuous
+   ratings, publish Windows LSL when enabled, persist local research rows, and
+   finish or retain an explicitly partial record after interruption.
+
+Active v1 has two supported delivery surfaces only:
+
+- the Tauri desktop application on Windows; and
+- the static web application in current desktop Google Chrome and Microsoft
+  Edge.
+
+The default sampling frequency is 130 Hz and the valid configured range is
+1–240 Hz. Continuous rating is always enabled. Active v1 has no summary-only,
+single-summary, step-acquisition, immersive, headset, remote, face, or direct
+physiology mode.
 
 ## Non-negotiable workflow
 
-- Read this directory before source files.
 - Preserve the BSD-3-Clause license and attribution to `afourcade/AffectTracker`.
-- Keep browser operation local and private by default: no analytics, telemetry, CDN, external font, or silent runtime API dependency. The bundled experiment stimulus is repository-hosted. YouTube is an explicit user-selected stimulus source and must disclose the third-party connection before playback.
-- Pointer trajectories are a narrow privacy exception: capture them only while the user has visibly selected Experimental Touch/Trackpad control, and write raw points only during active experiment playback.
-- Physiological data are a second explicit opt-in exception: Polar H10 acquisition requires either a user-triggered browser chooser or the native launcher's explicit Connect action plus Android nearby-device permission, retains only bounded raw ECG in memory, and never writes raw 130 Hz ECG to CSV, LSL, JSON, or portable settings.
-- Remote Flubber is a third explicit opt-in exception: only a fresh user press may connect to VDO.Ninja, and only final anonymous X/Y coordinates plus normalized Flubber viewport placement may leave the source browser. Raw pointer trajectories remain local. Every session must disclose public discovery, peer-IP visibility, third-party signaling/STUN/TURN, and possible relay latency. See `66-EXPERIMENTAL-REMOTE-FLUBBER.md`.
-- The public settings beacon is a fourth explicit opt-in exception, independent from remote Flubber: only a fresh user press may advertise or discover, the source sends one immutable copy of the complete portable settings JSON over a reliable ordered channel, and the receiver validates and previews it before a separate Apply gesture. See `68-EXPERIMENTAL-SETTINGS-BEACON.md`.
-- Universe synchronization and FLUBBER parties are explicit extensions of the reviewed coordinate exception, not general messaging: Universe is reciprocal two-person X/Y co-control in an isolated room, while a browser or Tauri desktop Party host explicitly receives up to eight ordinary public live FLUBBERs and mirrors the bounded aggregate scene back to every invited broadcaster over those existing data channels. The desktop WebView may also advertise its Rust-authoritative Flubber as an ordinary source for a browser host. See `69-EXPERIMENTAL-FLUBBER-COLLABORATION.md`.
-- Authenticated browser-to-desktop experiment control is a separate explicit exception, defined only by `25-MIRRORED-STUDY-ARCHITECTURE.md`. It is disabled by default, uses a nonsecret public rendezvous projection plus a fresh private data-only route, and grants only typed Rust-owned BRSP scopes after QR, OPAQUE password-file, or locally accepted passwordless authentication. Existing public Flubber/settings/Party sessions never confer study authority.
-- Treat Tauri WebViews and IPC arguments as untrusted. Native authority stays in Rust behind narrow typed commands.
-- Do not introduce remote WebView content, generic shell execution, unrestricted filesystem/network permissions, silent global input capture, or any network path outside the reviewed exceptions above.
-- Test Pages 2D, desktop, WebXR, and native Quest behavior proportionally to each affected contract, using shared Rust/WASM fixtures or cross-language golden vectors where code cannot be shared directly.
-- Update these documents when an approved product requirement or architecture decision changes.
-- **Publication is part of completion.** After every completed and validated in-scope change—including source, assets, configuration, tests, and `for-ai/` documentation—create a coherent commit and push it to the canonical GitHub repository as soon as practical. This is standing project authorization for routine publication; do not leave finished work only in a local commit or ask again for ordinary push permission. A web-facing change is not complete until the exact pushed commit has passed the standard GitHub Pages workflow and the public project-path URL has been opened and verified. For a non-site change, verify that the commit is publicly visible in the canonical repository and that the Pages workflow remains healthy; do not falsely imply that repository-only files are served by the website. Delay publication only for an explicit user request for local-only/no-push work, failed validation, unavailable credentials/CI, ambiguous ownership, or another concrete safety blocker, and report that blocker immediately.
+- Keep research data participant-local. Active v1 has no upload, webhook,
+  account, analytics, telemetry, remote-control, collaboration, or direct-sensor
+  network path.
+- Treat browser state, Tauri WebViews, imported JSON, and IPC arguments as
+  untrusted. Validate schemas, ranges, identifiers, colors, mappings, and file
+  ownership at the owning boundary.
+- One run consumes one immutable normalized settings snapshot and one automatic
+  `balanced-v1` allocation. Setup edits cannot drift into a running session.
+- The research clock, recorder, and Windows LSL publisher must not depend on
+  renderer cadence. Never invent catch-up samples after a stall.
+- A final or interrupted run must remain recoverable as local CSV or TSV. Never
+  silently discard accepted rows.
+- Keep keyboard access, labels, visible focus, high contrast, reduced-motion
+  behavior, and polite status announcements without changing coordinate
+  meaning.
+- Test only the active Windows Tauri and desktop Chrome/Edge support matrix for
+  active-v1 release claims. Historical platform evidence remains historical.
+- Do not extend, repair, or expose a frozen feature unless the user explicitly
+  reactivates it through a charter change. Narrow security, privacy, licensing,
+  or build-containment work remains permissible when frozen code is still
+  shipped or reachable.
+- Update this directory whenever requirements, schemas, authority, data fields,
+  privacy, supported platforms, or release gates change.
+- Publication is part of a completed validated implementation change, subject
+  to the user's current instructions and repository safeguards. Documentation-
+  only planning or an explicit no-commit/no-push request does not authorize Git
+  or GitHub mutation.
+
+## Frozen Playground/history
+
+The feature-rich checkpoint preserves the former mirrored Pages/Tauri/WebXR
+program, native Quest application, remote-control and VDO.Ninja protocols,
+Face/Photoatlas work, direct Polar H10 acquisition, Touch/Trackpad inference
+prototype, and the other presentation experiments documented below. These are
+reference material only for active v1 unless a later charter explicitly
+reactivates a bounded feature.

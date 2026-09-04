@@ -1,164 +1,256 @@
-# Architecture and parity contract
+# Research architecture and authority contract
 
-## Document status and staged target
+## Status
 
-This file describes the implemented architecture and the boundaries that must
-remain stable while the product matures. The approved end-state for portable
-studies is the phase-gated
-[`25-MIRRORED-STUDY-ARCHITECTURE.md`](./25-MIRRORED-STUDY-ARCHITECTURE.md).
-Its first vertical slice has landed: one pure Rust reducer runs natively and as
-browser WASM; Study Studio and Pages use it; Tauri exposes the native authority
-and durable result writer; and Portable Study WebXR uses it for panels and
-verified content media. This is automated implementation evidence, not the
-cross-platform/physical qualification or completed security integration
-required by the target. Exact partial/open phases belong in `40-ROADMAP.md`.
+This file refines the sole active authority in
+[`15-RESEARCH-V1-CHARTER.md`](./15-RESEARCH-V1-CHARTER.md). It describes the
+target architecture; it is not evidence that the current feature-rich runtime
+already conforms. Delivery status belongs in `40-ROADMAP.md`.
 
-## Repository layout
+## Authority map
+
+| Concern | One active authority | Adapters/consumers |
+| --- | --- | --- |
+| Settings | Strict normalized `ResearchSettingsV1` | Setup form, JSON load/save, explicit legacy importer |
+| Input bindings | `InputBindingV1` inside normalized settings | Windows input adapter; Chrome/Edge event and Gamepad adapters |
+| Stimulus library | Workspace catalogue with exact source identity and verification state | Tauri file commands; browser File System Access; checked-in demo assets; experimental YouTube metadata adapter |
+| Assignment | Pure deterministic `balanced-v1` resolver producing `ResolvedAssignmentPlanV1` | Virtualized preview, `assignment-plan.csv`, run preparation |
+| Participant/attempt state | Locks, journals, and `ResearchRunManifestV2` | Four-state chooser projection; never editable flags |
+| Run lifecycle | One run authority per attempt | Setup Start, Run Pause/Stop Early, recovery |
+| Affect state | One bounded current/target x/y engine | Inputs, Grid/Flubber renderer, recorder, Windows LSL |
+| Sampling | Run-owned monotonic scheduler | Canonical rows and Windows regular LSL outlet |
+| Recording | Canonical typed sample/event model | CSV, TSV, `events.jsonl`, manifest, recovery journal |
+| Presentation | In-app normalized Grid/Flubber renderer | Persistent Setup preview and adjacent Run feedback; never a clock |
+| LSL | Windows Rust outbound adapter | Regular eight-channel state plus irregular semantic markers |
+
+No UI handler, renderer, WebView, video player, or LSL adapter creates a second
+settings, allocation, affect, lifecycle, timestamp, or record authority.
+
+## Contract family
+
+The active closed-world family is `ResearchSettingsV1`,
+`ResolvedAssignmentPlanV1`, `InputBindingV1`, `ResearchSampleV1`,
+`ResearchEventV1`, and `ResearchRunManifestV2`. Canonical JSON plus SHA-256 bind
+normalized settings and resolved plan. Outputs bind both hashes and exact
+stimulus identities.
+
+Readers reject unknown fields and keys, duplicate IDs, unsupported versions or
+algorithm tokens, invalid enum/color/path values, non-finite or out-of-range
+numbers, excessive counts/depth/bytes, and hash mismatches. A changed meaning
+requires a new version or an explicit migration; it never becomes permissive
+interpretation.
+
+The old portable-settings v1 remains byte/meaning compatible with its existing
+readers. A separately selected importer may produce Research settings only
+after showing every defaulted and discarded field. It preserves the source
+file and writes a new schema identity. No browser storage or Tauri app-data is
+automatically migrated.
+
+## Setup composition
+
+One Setup shell owns only the exact seven-accordion order, single-open state,
+status summary, and Start orchestration. Each accordion keeps a narrow owner:
+
+1. Workspace & Libraries — root authorization, directory creation, import,
+   recursive rescan, catalogue, settings load/save;
+2. Experiment — identity, participant ID range, sample rate, transition policy;
+3. Stimuli & Counterbalancer — pools, counts, source identity, verification,
+   deterministic plan and capacity preflight;
+4. Input — presets, custom capture, conflict validation, live test;
+5. Visual — normalized overlay, Grid/Flubber visibility and geometry, colors;
+6. Advanced — outbound LSL fields and six independent affect mappings; and
+7. Review & Start — aggregate preflight, derived participant/demographic data,
+   output selections, lock/reservation, and atomic mode transition.
+
+The persistent preview receives immutable projected settings and affect state.
+It cannot mutate a run, sample from animation frames, or act as a native
+transparent overlay. One normalized overlay position is shared between Setup
+preview and Run feedback. Lock position is the sole drag-disable owner and is
+forced true once Run starts.
+
+## Workspace and media boundary
+
+One selected root contains `stimuli/`, `settings/`, `outputs/`, and `recovery/`.
+All generated paths are descendants of that root and are constructed from
+validated bounded identifiers; the WebView never supplies or receives an
+arbitrary native path.
+
+Tauri Rust owns root selection, safe child creation, staged copy/import,
+recursive rescan, streaming hashes, media probes, create-new output ownership,
+locks, and atomic file finalization behind narrow typed root/run commands.
+
+Chrome and Edge obtain one File System Access directory handle in a secure
+context from an immediate user activation. They retain the handle only through
+browser-managed storage, surface permission loss, renew access through another
+explicit gesture, and never substitute a different root. IndexedDB/storage
+uses the isolated namespace `affect-research/v1` for locks, allocation records,
+journals, and recovery metadata.
+
+Workspace and repository videos are complete-file sources. Before Start, hash
+and measure the exact bytes, probe full duration, and prove decode readiness.
+Repository media is limited to small demonstrations and uses the same identity
+contract.
+
+Experimental YouTube is a separate unverified adapter. It retains normalized
+URL/video ID and observed metadata, has no byte hash, fails honestly offline,
+and is excluded from qualified reproducibility. The active overlay is adjacent
+to rather than on top of the player. Tauri exposes YouTube only after exact CSP
+and referrer behavior passes; otherwise native preflight rejects that source.
+
+## Assignment architecture
+
+The planner accepts canonically ordered pools, per-pool counts, participant IDs,
+Williams or cyclic order, and a seed. One all-video pool is naturally the
+one-hat design; multiple pools are stratified. No video may occur in two pools
+or twice for one participant.
+
+For each participant slot, `balanced-v1` chooses the eligible video with lowest
+total exposure, then lowest exposure at that position, then lowest seeded hash
+under a fully specified byte encoding. The implementation maintains exposure
+difference no greater than one whenever the constraints permit it.
+
+Capacity preflight is part of planning, not a best-effort runtime warning. It
+must enumerate uncovered videos and calculate the minimum participant-count or
+pool-count adjustment. A valid result is immutable `ResolvedAssignmentPlanV1`
+with algorithm version, seed, normalized input, exact schedule, exposure and
+position counts, condition order, canonical hash, and CSV projection.
+
+Run preparation atomically reserves one participant/attempt against the current
+plan and workspace. Locks, journals, and manifests reconstruct Available,
+Active, Partial, and Complete. Reruns allocate a new attempt counter and retain
+all earlier evidence.
+
+## Participant derivation boundary
+
+Review receives transient first name, last name, age, gender choice, and
+handedness choice. It validates age 1–120 and the closed gender/handedness enums.
+The derivation owner uses Unicode extended grapheme clusters, takes the last
+first-name grapheme plus first last-name grapheme, and uppercases the resulting
+two-grapheme code consistently.
+
+Only that code, age, gender code `W/M/N/S/X`, and handedness `L/R/A` enter run
+identity/records. Raw names and self-description text are dropped before the
+immutable Start input is constructed and must never reach logs, storage,
+markers, crash reports, or filenames.
+
+## Input and renderer boundaries
+
+`InputBindingV1` normalizes the closed preset/custom action catalogue. Digital
+actions are edge-triggered and ignore OS repeat. Pointer/trackpad Grid and
+gamepad sticks supply continuous/absolute values and have no step-size meaning.
+Custom capture observes exactly the next allowed physical action, then validates
+global conflicts before replacing the binding.
+
+The affect engine clamps current and target x/y to `[-1,1]`. Radius and angle
+derive from the same snapshot. Mapping drivers normalize x/y, radius, or angle;
+Reverse transforms `t` before linear interpolation. The six labels, bounds,
+defaults, drivers, and reverse defaults are exactly those in the charter.
+
+`site/src/math.js` may remain the procedural geometry baseline, but active
+mapping parameters come only from validated Research settings. Grid/Flubber
+visibility, color, geometry, and feedback hiding are presentation state.
+Rendering consumes a snapshot and never supplies research timestamps or
+samples.
+
+## Run and timing boundary
+
+Start is one fail-closed transition:
+
+1. validate settings, workspace, stimuli, capacity, plan/hash, input, output
+   choice, storage estimate, timing support, and platform-specific LSL;
+2. derive privacy-safe participant fields and choose a create-new attempt;
+3. atomically write the lock/reservation and initial journal;
+4. freeze settings, plan, bindings, demographics, assignment, and geometry; and
+5. enter Run only after durable success.
+
+Tauri Rust owns its monotonic scheduler and timestamps. Chrome/Edge use a
+dedicated worker rather than the window animation loop. The configured integer
+1–240 Hz rate, default 130 Hz, drives continuous rating rows and the Windows
+regular LSL state stream. A missed slot creates one `ResearchEventV1` timing-gap
+record. There is no catch-up row, retrospective timestamp, or later-state
+backfill.
+
+Sampling runs only during active decoded video playback. Pause, buffering,
+between-video transition, recovery, and terminal states create explicit gaps.
+Between videos the state returns to neutral and the configured transition
+owner runs.
+
+Every sample records wall and monotonic timestamps, LSL-compatible timestamp,
+state-anchor age, nominal rate, observable jitter/gap context, exact stimulus
+identity/position, current and target x/y, radius, angle, six mapped values,
+and input/feedback state.
+
+## Recording, output, and recovery
+
+The recorder owns one typed row sequence. CSV and TSV serialize identical
+columns, order, values, and row counts; only delimiter escaping differs. The
+two outputs are independently selected and at least one is required.
+
+Output directories have this create-new shape:
 
 ```text
-site/                 static, self-contained GitHub Pages application
-site/src/study/       Study Studio, browser authority adapter, journal/recovery, Pages runner
-site/src/study-xr/    renderer-neutral portable immersive panel/media adapters
-site/screen-calibration/ self-contained Screen Calibration module and assets
-desktop/              Tauri WebView source and Vite configuration
-src-tauri/            Rust application, capabilities, configuration, tests
-crates/study-core/    strict portable-study contracts and native/WASM reducer
-test/                 browser/shared JavaScript tests
-for-ai/               mandatory project contract
-.github/workflows/    Pages and desktop verification/release automation
+outputs/<experiment-id>/<participant-id>/<session-stem>/
 ```
 
-`site/src/math.js` is the canonical SVG affect renderer used by both runtimes. It precomputes the Circle, normalized parametric Heart, Triangle, and Square perimeter profiles once, then applies the existing affect deformation to the selected profile. Desktop and WebXR code import it during the Vite/static build. Do not fork or copy its formulas into a second JavaScript renderer.
+The stem contains participant ID, two-grapheme code, age, gender, handedness,
+UTC timestamp, and attempt counter, for example
+`P001_EF_A27_GW_HR_20260903T143012482Z_R01`. No operation overwrites an existing
+attempt directory.
 
-`site/src/face-engines.js` is the main-tracker face-selection boundary. It exposes six browser/desktop presentation modes and passes each the same immutable current-coordinate/shared-phase snapshot as the adjacent canonical Flubber. Four modes use `site/src/face-model.js` and a checked-in CC0-derived Vitruvian morph head: `affec-empirical` applies aggregate perceived-valence/arousal locations derived from 5,807 valid AFFEC observations to project-authored expression prototypes; `mediapipe-atlas` applies compact 52-blendshape summaries extracted once at build time from the nine project-owned synthetic atlas cells; `facs-continuous` uses direct project-authored morph equations; and `matrix-anchors` evaluates project-authored expression anchors. The last profile precomputes a compact 21×21 coefficient cache—441 records at exact `0.1` nodes, with no duplicated mesh, texture, or image—and returns the exact cached record on a node while retaining continuous anchor evaluation for an off-grid snapshot. This presentation cache does not own or quantize affect state.
+Every attempt contains the frozen settings snapshot, semantic `events.jsonl`,
+`ResearchRunManifestV2`, and selected rating files. The manifest binds settings
+and plan hashes, participant/attempt identity, exact stimuli, timing summary,
+output digests, recovery lineage, completion/partial state, and build/platform
+identity.
 
-The other two modes, `photo-affec` and `photo-atlas`, share `site/src/face-photo.js` and `site/src/face-photo-packs.js`. Both draw the same selected portrait asset, but `photo-affec` maps the immutable tracker coordinate into atlas-authoring space through the AFFEC-guided profile while `photo-atlas` samples the direct grid. The mapper returns separate `atlasX/atlasY` and cannot mutate or feed back `currentX/currentY`. Dataset-derived AFFEC facts live alone in the hash-bound `affec-perceived-va-evidence-v1.json`; the category-to-atlas correspondences and transfer parameters live in the separately classified `affec-photoatlas-authoring-binding-v1.json`. Runtime uses the checked-in compiled mapping constants in `face-affec.js` and fetches neither artifact. AFFEC supports the aggregate perceived category locations only; the face binding and rendered portraits are not perceptually validated. A small checked-in catalog is the closed-world authority for one original and eight optional fictional synthetic portrait packs. The original and first seven synthetic packs use nine project-owned 3×3 anchors. Experimental `photo-synthetic-08` uses a separately recorded, newly generated 25-cell 5×5 image-to-image sheet—16 additional target positions—and makes no byte-preservation claim for its nine corresponding reference positions. The catalog validator requires safe local paths, stable neutral IDs/labels, exact hashes and byte counts, passing per-pack QA, and an available reference default. The browser loads the catalog at startup but does not create an image request until Photoatlas actually renders; changing packs retires stale load/error callbacks, resets to the vector fallback, and lazily requests only the selected atlas. Desktop packages the atlases for offline use but likewise decodes only the selected URL. Pack selection is local presentation state and cannot enter portable study settings or affect coordinates.
+Tauri appends accepted evidence and flushes at bounded time/lifecycle boundaries
+before atomic finalization. The browser commits accepted event/sample batches to
+its IndexedDB journal before materializing workspace files. Permission loss,
+quota/full disk, write failure, forced termination, or finalization failure
+retains the journal/partial record for explicit retry.
 
-`scripts/build-dense-photo-atlas.py` uses offline MediaPipe landmarks only during asset preparation: it interpolates a target mesh, piecewise-affine warps four adjacent source cells, and combines premultiplied pixels into 441 exact 21×21 nodes. `scripts/build-photo-atlas-pack.py` wraps that geometry builder for the 3×3 sheets. `scripts/build-multi-anchor-photo-atlas.py` applies the same offline landmark/warp family to a declared multi-anchor lattice such as `photo-synthetic-08`'s 5×5 sheet, while `scripts/verify-multi-anchor-photo-atlas.py` checks its declared 25 anchors and 21×21 output. `photo_atlas_pack_common.py` converts each RGB black-matte source cell into soft alpha through border-connected near-black detection while preserving straight source RGB, avoiding low-alpha color amplification. Per-pack metadata binds the source, prepared source, atlas, builder, wrapper, and shared preprocessing hashes. The authoring manifest separately binds the project-owned fictional input, 25 newly generated anchors, and image-generation execution record. `scripts/verify-photo-atlas-pack.py` and the multi-anchor verifier reproduce the applicable preparation and delegate detection, topology, continuity, landmark, alpha, and anchor-integrity checks; `scripts/verify-photo-atlas-catalog.py` activates only complete passing packs. Runtime bilinearly blends the four nearest cells with additive premultiplied-alpha compositing, which is order-independent and fully opaque at total weight one. No landmark or image-generation model executes in the application. RIKEN's 5×5 study informs only the authoring-grid shape and 4DFAB informs only the dense-correspondence/synthesis blueprint; no participant or redistribution-restricted media, annotation, model, or derived data enters the assets. These checks establish rendering integrity only—not perceived valence/arousal, gender, race, ethnicity, ancestry, culture, or representational adequacy. Blinded human ratings remain required for perceptual VA validation.
+Recovery validates the journal and resumes only at a safe stimulus boundary. A
+partially played video restarts at its beginning. Corrupt journals are isolated
+with actionable status; they are never silently repaired, skipped, or called
+complete. Stop Early uses the same durable terminal path with partial status.
+Completion receipt/manifest durability precedes lock release and return to
+Setup.
 
-Detailed rendering uses locally vendored Three.js 0.184.0, a checked-in meshopt GLB, and local texture maps. `face-model.js` applies a friendly-soft shader/material grade after texture sampling: it desaturates and brightens the sclera while preserving its alpha window and luminance detail, remaps non-pupil iris texels to a muted gray-green range, selectively reduces excess red chroma in the skin material, and softens the separate tearline/caruncle materials. Higher roughness, lower material specular intensity, absent iris clearcoat, and softer key/rim lights reduce wet or glassy highlights across eyes, skin, and mouth. The canonical `site/src/face.js` SVG fallback keeps neutral-white eyes with dark pupils; it has no textured iris. This presentation layer does not change the shared snapshot, morph weights, mesh, source texture files, or photo anchors. Failure degrades through the default local v3 photo atlas to that canonical vector face. `site/assets/affect-face/NOTICE.md`, the vendored Three.js license, and `70-RESEARCH-PROVENANCE.md` are part of this asset/runtime boundary. Construction remains inert until rendering, and the running application performs no camera access, recognition-model execution, demographic inference, dataset download, remote model/texture request, diagnostic inference, or renderer-owned timing.
+## Outbound LSL boundary
 
-The mirrored-study `faceFlubberComparison` presentation intentionally does not adopt the main tracker's six-mode selector. `site/src/study/affect-comparison.js` and the immersive adapter render the canonical vector face and canonical Flubber from one exact current-X/current-Y/phase snapshot inside an instruction block. This keeps the portable contract presentation-only and non-diagnostic and prevents a face engine from becoming a phase, stimulus, input, or data source.
+LSL is an outbound Windows adapter over the exact run sample/event streams. It
+is not inbound control, sensor acquisition, browser capability, or cloud upload.
+Enable/name/type/source settings are validated before Start.
 
-The Quest APK cannot execute the browser SVG renderer. Its native `FlubberGeometry` is an independently implemented platform adapter over the same constants, seed algorithm, four base profiles, and frame equations. JavaScript-generated golden vertices for every envelope are the conformance authority; a Kotlin change that alters them requires an explicit renderer-contract decision.
+The regular Float32 stream runs at the configured research rate with the fixed
+ordered channels `current_valence`, `current_arousal`, `target_valence`,
+`target_arousal`, `radius`, `angle_degrees`, `animation_active`, and
+`input_active`. The irregular marker stream projects only bounded semantic
+lifecycle, stimulus, input-edge, pause/resume, timing-gap, write/recovery, and
+terminal events. It excludes raw names, composed characters, arbitrary error
+text, settings bodies, native paths, and video data.
 
-`site/src/portable-settings.js` is the canonical cross-runtime settings validator/serializer for web code, and `site/settings.json` is the checked-in hosted default. Rust has an independent typed deserializer and validator for the identical versioned schema; keep its contract test green whenever either side changes.
+## Frozen code boundary
 
-`site/src/vr-session.js` owns the additive Quest envelope and exporter. It nests a normalized portable settings v1 object without extending that schema. Pixel overlay position/size remain round-trippable web/desktop data but are not Quest placement authority; `vr.flubber` owns metric placement, optional controller-follow rigging, and the optional `showAffectValues` diagnostic presentation switch. `vr.environment` independently selects a dark virtual background or system-compositor passthrough. Headset-only Flubber-only presentation and followed-controller visibility are typed in-memory launch overrides, not persisted schema fields.
+The active build must make frozen WebXR/Quest, remote/VDO/BRSP, Face/Photoatlas,
+direct Polar, Touch inference, Ground Control/Party, Screen Calibration,
+Windows 95, phone/Picture-in-Picture, matrix traversal, and cross-platform
+packaging paths inert and absent from active navigation. Loading Research must
+not construct their clients, request their permissions, or fetch their assets.
 
-`site/screen-calibration/` is the browser-only Screen Calibration product boundary. `coin-reference-catalog.js` is its static, versioned authority for countries, shared currencies, and current circulating denominations. Every coin has an official circular diameter or maximum polygonal/scalloped outer span plus an HTTPS issuing-authority or official-law source. Shape metadata is presentation guidance and is deliberately not added to persisted v2 records, preserving read compatibility; conversion continues to use the catalogued outer size. The running page never fetches remote catalog data or icon assets. `controller.js` owns the three-step DOM workflow, project-authored SVG currency badges and SVG-contained flag glyphs, primary Pointer Events/capture, keyboard alternatives, Fullscreen lifecycle, persistence, and participant-facing completion copy. For draw/adjust states it marks the fullscreen layer with the active protocol step; CSS uses that state to reserve the upper half for guidance/actions and make the SVG exactly `100vw × 50dvh` at the lower-left viewport origin, with no padding or control overlay at the left, right, or bottom physical screen rims. Its continuous black surface has only a horizontal upper separator, while the unfilled square and adjustment points remain white in both visual themes. `screen-calibration.js` owns explicit SVG-coordinate square creation/translation/resizing within that live lower-half coordinate system, display signatures, v2 CSS-pixel-to-millimetre conversion, derived centimetre/inch/diagonal/coin-span summaries, strict v1/v2 record validation, stale detection, and privacy-safe CSV context. The Experiment module only reads the controller's validated privacy-safe context for CSV rows. Calibration retains its existing local-storage key for v1 discovery, never mutates portable settings, records no pointer trajectory, and withholds physical dimensions unless the stored record validates against the current display signature. All calibration visual assets live under `site/screen-calibration/assets/`.
-
-Advanced feature bindings are stored separately from required affect/action bindings. They are optional, but their physical tokens share one global uniqueness constraint with core bindings. `visual.baseShape` selects only the precomputed envelope; visual multipliers modify the canonical renderer output without replacing the valence/arousal mapping formulas.
-
-## Runtime ownership
-
-### Browser
-
-The WebView/browser owns affect state, input timing, logging, preferences, and SVG rendering. It has no native privileges.
-
-The browser can import/export the shared settings JSON. It retains desktop-only LSL metadata unchanged, but must clearly disclose that browsers do not publish LSL. Browser-local preferences override `site/settings.json` after the first customized visit. The public settings beacon reuses this exact normalized object as an immutable start-time snapshot; it does not define another settings schema or include browser-local preferences.
-
-`site/src/accordion-protocols.js` is the top-level product-module registry. It maps Settings, Synchronized Face + Flubber, Experiment, Screen Calibration, Touch/Trackpad, Polar Stream, and Ground Control to distinct panel/state keys and responsibility sets, normalizes their mutually exclusive open state, and defines when an armed Touch/Trackpad source is effective. `app.js` is the coordination shell: it may bind DOM events, render shared Flubber/face state, and arbitrate declared precedence, but module-specific acquisition, validation, transformation, persistence, assets, and privacy rules remain in the corresponding product-module folders. The same rule applies to native frontends and Rust adapters: every frontend product module that needs backend/native authority gets a matching narrow named adapter/service and module folder; do not hide product behavior in a generic privileged backend or a second monolithic UI controller. A browser-only module such as Screen Calibration has no invented backend service because it requires no native authority.
-
-The web Settings presentation uses five independent task-focused disclosure sections rather than one long customization form. **2D grid & colors** owns the four-button base-envelope picker, live affect-space preview, and palette together; Appearance owns size, transparency, visibility, dragging, cursor, and Picture-in-Picture controls; Data owns normal-session CSV only. Portable JSON file controls have moved to Ground Control without changing schema version 1. `app.js` derives the selected shape from the buttons' `data-base-shape` values and mirrors the persisted value back through their `aria-pressed` state. Direction buttons are configuration triggers, not affect-action buttons: `app.js` opens one modal physical-input capture flow, applies the same cross-grid uniqueness validation as other bindings, and automatically writes both polar-opposite core actions when a wheel direction is captured for Up/Down/Left/Right. This changes only the interaction used to edit the existing portable version-1 binding values.
-
-The Synchronized Face + Flubber web module is a presentation projection. During the existing animation-frame render, `app.js` creates one immutable affect-frame object from the canonical displayed state and passes that exact object to the canonical Flubber and the selected desktop-width or phone-width face engine. At desktop widths, the main-stage face remains left of Flubber independently of whether the accordion is open; the accordion owns browser-local enablement, engine and portrait selection, centering, renderer status, and disclosure. On smartphones, the shell reparents the existing Affect-owned direct controller—not a clone—between the mutually exclusive Affect and Face panels. Face opens to the live face/Flubber-over-grid view with a compact six-choice header selector and, for either Photoatlas mapping, an adjacent portrait selector. The quick and detailed controls call one normalized selection path over canonical browser-local `faceEngineMode` and `facePhotoPackId`, the existing main/phone renderer pair, persistence, logging, and announcement. Face options temporarily swaps the live view for visibility, transition, rate, centering, detailed descriptions, and disclosures; this host role and the selectors grant Face no manual-input, affect-transition, or coordinate authority. Enabling centers the pair, and responsive presentation bounds both visuals without changing the saved Flubber size. Experiment, hidden-Flubber, and Picture-in-Picture states hide the paired face. Enablement, engine, and portrait choices may be remembered as browser presentation preferences, but none has a portable-setting field or changes affect ownership. Model, textures, atlases, Three.js modules, and derived signals are all checked-in project-path resources; their local load is not a CDN/runtime model request. The fixed local failure chain is detailed model → default photo atlas → canonical vector face.
-
-The affect-transition control is displayed inside Face options but crosses immediately into the canonical browser affect-state boundary; the face module and renderer remain consumers. `site/src/affect-matrix.js` is a pure state-machine helper for a session-only 21×21 grid whose axis indices `0..20` map exactly to `-1 + index × 0.1`, making zero-based cell `(10,10)` neutral. Smooth mode retains the existing continuous browser response. Matrix mode quantizes a selected target to one of 441 nodes, builds the shortest 8-connected queue by taking diagonal steps while both axes differ and cardinal steps afterward, and advances at `0.5–20` nodes/second. Stop clears the queue at the exact current node; Go to neutral targets `(10,10)`. The direct phone grid may target any cell in matrix mode, while smooth mode retains its existing-marker grab rule. `app.js` freezes each resulting current-X/current-Y/phase snapshot once per animation frame and gives that same object to face and Flubber. Matrix traversal state and rate are not persisted and do not enter portable settings, LSL, WebXR, or native Quest. They are also independent from the Rust-owned desktop 11×11/121-state traversal.
-
-`site/src/ground-control.js` owns the static VDO.Ninja settings-snapshot protocol: the separate public room, per-session transport IDs with a bounded public-name token and fresh random suffix, public operator label normalization, reliable custom channel, bounded versioned envelope, explicit discovery/selection, and teardown. The name token is required because the VDO.Ninja room listing does not expose the custom label before peer connection. The module never mutates application settings itself. `app.js` supplies a validated frozen `settingsFromState()` snapshot to the broadcaster and applies a received snapshot only after a separate user action. Ground Control delegates continuous X/Y transport to `flubber-remote.js`; that module supports protocol-specific room/prefix/channel/label options while retaining the exact codec, rate/staleness behavior, named random-suffix listings, WebXR compatibility, and a bounded reciprocal string-message hook on an already-open channel. `site/src/flubber-collaboration.js` owns the ordinary sender-or-receiver role calculation, a dedicated reciprocal Universe publisher/receiver pair, the commutative full-scale additive combination with per-axis saturation, bounded guest placement geometry, the deterministic sinusoidally perturbed two-cell scalar field and marching-squares SVG contour extraction for topological Party birth, closed-contour arc-length resampling/alignment and pointwise interpolation into canonical Flubber paths, a bounded set of explicitly invited party receivers, and the validated ≤8 KiB aggregate Party-scene envelope. The Party host assembles its own state plus every accepted guest, sends changed scenes at no more than 30 Hz with a 250 ms unchanged heartbeat through each guest's existing duplex data channel, and never opens a second connection. The shell owns buttons, animated state, the one success-to-dismiss rule, vector-birth presentation timing and exact-boundary renderer handoff, deterministic per-participant SVG views, rendering of an invited broadcaster's returned aggregate scene, each guest's independent session-only bounded screen position and pointer/keyboard movement, reduced-motion bypass, foreground-helper lifecycle, and the final precedence decision. Its radar stays open through discovery/selection/connecting and closes on validated JSON receipt, an ordinary or invited guest's first live frame, or Universe reciprocal live readiness. JSON preview/Apply, live status/disconnect, Universe state, and Party roster/stop remain persistent in the Ground Control panel; Party's Invite action reopens discovery for the next guest. Ordinary live receive owns both main axes, Universe sums the two independent full-scale local intents and clamps each displayed axis without attenuation, and Party never couples one guest's incoming coordinates or screen drag to another Flubber.
-
-The Windows 95 presentation is one CSS/data-attribute skin over the same web DOM, never a fork of application behavior. `theme-bootstrap.js` synchronously restores only the browser-local boolean before first paint; `app.js` remains authoritative for the toggle, persistence, event logging, visual status window, and reversible `data-theme` state. `retro-theme.js` owns deterministic selective message-to-cue classification and a cached low-volume HTML Audio adapter. Unclassified status, routine controls, movement, field changes, and countdowns produce no sound; opening/ready, completion, and warning/error classes may play one cue. Four pinned Kenney CC0 WAV files are served from `site/assets/retro-ui/`; they are never fetched remotely and no Microsoft asset is present. The preference is deliberately absent from portable settings and does not cross into desktop, WebXR, or native Quest delivery forms.
-
-The original main-page video Experiment module remains a deliberately browser-only legacy path. A media-adapter boundary gives its bundled static MP4 and optional YouTube IFrame player the same prepare/start/stop/current-time lifecycle. The parent page owns countdown and sampling time, covers the player with an input shield, disables player keyboard controls, and restores normal layout after automatic CSV export. The default MP4 is a checked-in Pages asset; the YouTube API is loaded only after the user explicitly selects YouTube and starts that legacy experiment. Screen Calibration remains a separate sibling module whose validated privacy-safe context may be consumed by that legacy CSV.
-
-The portable path is separately implemented under `site/study.html` and `site/src/study/`. Study Studio edits locally autosaved drafts, validates and publishes immutable `StudyDefinitionV1` revisions through the native or WASM core, reports platform compatibility, and launches the ordinary 2D participant adapter. `BrowserStudySession` wraps the WASM authority on Pages, journals committed action/event batches and safe checkpoints in IndexedDB, builds the shared long-form CSV/result manifest, and exposes explicit partial-export/discard recovery after interruption. Local media is selected and hashed in the browser and remains bound only for that browser session; object URLs do not become native paths. YouTube is an explicit Pages 2D-only block source and fails the universal compatibility contract.
-
-`site/src/touch-trace.js` is a dependency-free browser-only signal layer. It owns the 1€ position filters, equal-distance resampling, structural-chord turn/winding/corner/directional metrics, adjacent-vector reversal evidence, classifier-only covariance whitening for ellipse tolerance, bounded rolling histograms, asymmetric range smoothing, confidence gating, gated live target integration/hold, continuous-mode inactivity decay, and aspect-preserving overview fitting. `app.js` owns Pointer Events acquisition, pointer-type-specific UI exclusion, rendering, experiment lifecycle, and logging. Display fitting is never a classifier input. The portable settings schema remains version 1; `inputSource`, touch feedback behavior, trace visibility, cursor hiding, Polar panel state, and Polar axis mappings are separate browser-local preferences.
-
-`site/src/polar-stream.js` is a second dependency-free browser-only signal adapter. It owns Web Bluetooth support detection, the user-selected H10 GATT lifecycle, Polar PMD/heart-rate byte decoding, and bounded five-second ECG/300-RR metric windows. The initial device chooser remains the first asynchronous operation inside one explicit Connect gesture. If PMD acknowledges startup but the control acknowledgement or first valid ECG packet times out, that same gesture permits one bounded full teardown, 750 ms Windows lease-release delay, and complete setup retry against the already selected object; two unsuccessful setups fail closed and clear the connection. This adds no automatic page-load/range-loss connection, identifier persistence, or steady-state processing. `app.js` owns the main-page waveform rendering, per-axis low/high/reverse mapping, manual-versus-sensor target arbitration, active Touch/Trackpad precedence, and reconstructable low-rate CSV context. `site/src/accordion-protocols.js` owns the seven-surface exclusive-open state and the rule that Touch drives only while its protocol surface is open or an experiment is active. The adapter has no persistence or network destination. The main page rejects Stock Meta Quest Browser before chooser access. The separate `site/webxr.html` entrypoint opts into a narrower Quest diagnostic override: it enables the chooser only when the current headset browser actually exposes `requestDevice`, requires connection before XR entry, and remains explicitly unqualified until a physical H10/headset pass.
-
-`site/src/flubber-remote.js` is the single browser-neutral authority for the explicit coordinate network exception. It owns the VDO.Ninja SDK adapter, public-room discovery, source IDs, the required partial-reliability `flubberxyv1` channel, its exact 12-byte affect packets and magic-tagged 16-byte normalized-placement packets, unsigned sequencing, 60 Hz long-run change limits, shared 100 ms latest-state heartbeat, latest-state backpressure, two-second affect staleness grace, three-frame recovery hysteresis, bounded receiver-local gap diagnostics, route diagnostics, relative viewport conversion, and teardown. The placement packet is `uint32 "FVP1" magic + uint32 sequence + float32 viewportX + float32 viewportY`, each axis clamped to `[0,1]` over the Flubber center's movable range; it is displayed state, not a raw pointer event or trajectory. Sending both packet types over the already-proven affect channel prevents a successful connection from silently omitting drag synchronization. New receivers temporarily accept the previous 12-byte `flubberpositionv1` auxiliary channel for transition compatibility, while older receivers safely ignore the unfamiliar 16-byte packet by length. Changed-value scheduling advances one ideal 60 Hz deadline and permits at most five milliseconds of bounded early scheduling debt with an 11.67 ms minimum separation; this absorbs ordinary animation-frame timestamp jitter instead of rejecting every slightly-early frame and collapsing toward 30 Hz, while high-rate callers remain capped over time. The heartbeat repeats both latest states so a lost final drag packet can recover, but only the affect stream owns receiver liveness. Stop enters a non-broadcasting teardown phase synchronously, cancels every scheduler, closes the data channel, clears latest state, and only then awaits VDO signaling teardown; no changed frame or heartbeat may be produced while SDK disconnect is pending. An explicit non-persisted `?remote-force-turn=1` qualification flag passes VDO.Ninja's documented `forceTURN` option into a newly created SDK and labels the request at both endpoints; a receipt is accepted only when peer-quality readback independently reports a relay route. The flag neither creates a client nor connects on page load. `app.js` offers final post-smoothing `currentX/currentY` and the current normalized Flubber center as one timestamped state operation immediately before rendering; it may not expose upstream manual, Touch, Polar, or raw pointer samples to the transport. A browser receiver anchors the first sender placement to its existing local placement, then adds sender displacement from that anchor to its own normalized anchor and clamps the result. A local receiver drag reanchors this offset, preserving independent placement without a connect-time jump. Placement frames never establish or extend affect liveness. Because the offers are animation-frame-owned, the Broadcast gesture reuses the existing Document Picture-in-Picture renderer as a browser-owned foreground frame owner and requests a renewable sender screen wake lock. The offers never pass the owning Window's animation-frame timestamp: Picture-in-Picture has a distinct clock domain, so the broadcaster's own monotonic clock remains the single rate-limit authority. If the helper is closed or displaced during a broadcast, the page immediately reports degraded foreground mode and exposes one user-gesture-owned restore action without restarting the public source. Stop releases the lock and closes only the helper it created; a manually opened floating Flubber retains its existing lifecycle. The receiver treats a decoded packet as transport receipt only. `webxr-study.js` owns the applied-result boundary: every valid live or stale remote affect snapshot writes both target and current coordinates on the next XR frame, so status hysteresis never becomes an input buffer, while its HUD, signal-timing/receiver-mode readouts, and CSV provide receiver-side readback. WebXR deliberately ignores the browser-only normalized 2D placement. The WebXR page requests a renewable screen wake lock while incoming mode is active, relies on the immersive XR session for foreground scheduling, and reports the session's `visible`, `visible-blurred`, or hidden state; it cannot override Meta OS scheduling when another spatial or system surface owns focus. The locally vendored SDK is inert until either explicit remote button creates an SDK instance.
-
-The signal layer also owns the exported cold-start speed constants: lower `0.15 D/s`, upper `0.80 D/s`, and their log-feature midpoint `expm1((log1p(low)+log1p(high))/2)`, approximately `0.4387 D/s`. They are physical movement anchors derived from published deliberate-drag/quick-swipe measurements, not affect classifiers. Adaptive p10/p90 bounds remain authoritative after calibration evidence accumulates. Any change to these constants requires an algorithm-version decision, exact tests, and an update to `for-ai/70-RESEARCH-PROVENANCE.md`.
-
-Cursor hiding is presentation-only: `app.js` applies `is-touch-cursor-hidden` only while the touch source is active. CSS removes the pointer from capture, Flubber, and fullscreen experiment surfaces but restores an ordinary cursor at `.panel-stack`, preventing an invisible-control trap. The Settings Appearance section and playground display options mirror the same browser-local preference. Every CSV row records the effective condition as `cursor_hidden`; toggles also create an event row.
-
-The **Touch/Trackpad Playground** accordion is the discovery and practice surface for its browser-only mode. Its switch records the browser-local `inputSource` choice; live Touch ownership additionally requires this protocol surface to be open or an experiment to be active. Closing it suspends pointer acquisition without erasing the choice, and reopening it resumes Touch ownership. Its embedded trace canvas mirrors the shared analyzer without storing practice coordinates, and its metrics mirror the optional floating trace. Both canvases dynamically and uniformly fit the same recent page-wide points with butt caps and miter joins, preserving aspect ratio and turn geometry without becoming classifier input. A second cached palette canvas presents the same four-color affect space as Settings, with a read-only point and numeric outputs bound to displayed `currentX/currentY`. Mouse/touchpad `pointermove` is captured across the active page even over controls; mouse down/up remain ordinary UI events and do not delimit the hover trajectory. For touch/pen, the playground surface remains the sole settings-panel acquisition region and other native controls stay excluded. Only one of Settings, Experiment, Screen Calibration, Touch/Trackpad, Polar Stream, or Ground Control may be open at a time.
-
-`site/src/mobile.js` owns the narrow touch-capable viewport predicate plus pure coordinate/pixel conversion and existing-marker hit testing for the direct phone controller. It also owns the phone preview's forward and inverse normalized layout and normalized Party-camera projection/inversion with zoom `0.5`–`1.6` and bounded pan. A clean smartphone visit opens Affect once and persists the existing `mobileTouchIntroSeen` discovery marker; it never changes `inputSource`, so movement privacy still requires the Touch Lab's explicit switch. CSS owns the compact seven-tab navigation, viewport-relative full-screen sheet, safe-area/dynamic-height handling, equal upper/lower controller panes, the ≥44 px inline Face selector, portrait/phone-landscape breakpoints, and smartphone-only Party camera controls/surface. `app.js` reparents the one direct controller between Affect and Face, reveals that selector only while Face hosts it, forwards the already-generated canonical path/color to its upper phone SVG, and never creates a second render or input authority. The face/Flubber pair translates as one legal non-overlapping footprint; the exact inverse converts pointer movement back to canonical normalized main-widget placement. A zero-travel axis retains its prior normalized value. When the face is hidden, the solo Flubber uses the full pane span. While a Party is active on a smartphone, one empty-space pointer pans and two pointers pinch around their centroid; the accessible range and Reset action reach the same camera state. Rendering projects every Party object and inverse-projects direct object drags, while the untransmitted camera state never changes aggregate scene coordinates. In smooth mode the lower palette pane accepts a primary pointer only when it begins inside the existing marker's bounded grab radius, captures that pointer for exact two-axis direct-coordinate updates, and leaves off-marker presses inert. In browser matrix mode a primary press anywhere in the pane selects the nearest exact 21×21 target cell, after which capture permits gridwide traversal targeting. The normal desktop Settings grid retains click-anywhere placement in either browser transition mode. The phone Settings/Face-options return actions only swap presentation inside their current module and do not create a second settings authority. Mobile presentation must not increment the touch algorithm version unless signal processing or recorded semantics also change.
-
-The Settings feature-space canvas remains the manual direct-coordinate control. Its positioned marker is a miniature instance of the canonical rendered SVG path, so it shares the live geometry, phase, and palette with the main Flubber. A pointer press or drag writes both target and displayed coordinates immediately so the chosen grid point is the visible state without a second smoothing delay; pointer capture supports continuous dragging without page scrolling, and arrow keys remain the keyboard path. Entering Settings makes an armed Touch/Trackpad source ineffective, and selecting the grid atomically returns both Polar axes to Manual before applying the exact coordinate, preventing either optional module from silently vetoing or overwriting the selection.
-
-Touch/pen `pointerdown` begins a new geometry segment and resets the 1€ filters. When the new stroke begins within 900 ms of the prior delivered point, bounded five-sample speed windows and up to six qualified per-stroke direction summaries carry forward. Direction summaries are computed only from each stroke's own on-surface start/end vector after at least `0.01D` of path and displacement; the algorithm compares adjacent directions but never creates a segment across a lifted-finger gap. This gives alternating micro-swipes enough evidence to reach full speed confidence and become live angular evidence without measuring off-surface displacement or treating the gap as curvature. Within each continuous stroke, the equal-distance geometry buffer retains 513 points/512 segments (`2.56D`), enough to keep several screen-spanning direction changes in the same estimate. Mouse/touchpad hover remains one continuous page-wide cursor trajectory. Structural turn coherence and sign changes use 0.02D chords, dominant corners require at least 60°, adjacent 0.005D vectors supply only explicit reversal evidence, and winding is strong only after partial path closure. This keeps backtracking and V/W commands responsive without interpreting ordinary cursor micro-jitter as dominant angularity. Gaps above 400 ms retain the full-reset behavior.
-
-The default gated feedback path groups delivered movement into a window that closes after 400 ms without a valid point. Incoming points refresh confidence-weighted shape/speed evidence for immediate feedback, while representative gate observations remain limited to 20 Hz and bounded storage. Evidence outside the 0.12 dead zone becomes a signed `0.04..0.4` units/second velocity and is integrated with timestamp-derived `dt` while movement is fresh. The target therefore moves continuously for as long as the participant draws, clamps to `[-1,1]`, and freezes at gate close; closing never adds a second step. Because this velocity is already bounded and smooth, the rendered Flubber/grid state follows the gated target directly rather than adding a lagging exponential layer. Touch/pen pointer-up stops integration immediately; mouse/touchpad cursor input expires after 80 ms without movement. Only the completed gate representative is added to each adaptive range, giving short and long gestures equal calibration weight. Gated calibration retains up to 120 completed windows and blends from priors over 20 qualified gates. The optional continuous path retains 1,200 feature samples, the 100-sample bootstrap, 300 ms attack, 1.8-second hold, and 3-second neutral release. Switching behavior resets analyzer calibration but seeds the new behavior from the existing affect target.
-
-Normal sessions continue to use `AffectLogger`'s 10,000-row ring buffer. An experiment creates one `ExperimentCsvWriter`: it serializes append-only rows into roughly 1,000-row chunks, keeps chronological sequence numbers, and never sends high-rate pointer records through the ring buffer. Experiment elapsed time is wall-clock monotonic; `active_elapsed_ms` advances only while the player is playing, and stimulus time comes from the active media adapter.
-
-Document Picture-in-Picture is a browser-only, transient presentation mode. It mirrors the canonical SVG renderer, requires a user gesture, is feature-detected, is never persisted in portable JSON, and cannot be described as a transparent, click-through, globally monitored substitute for the Tauri overlay. CSS must leave its HTML/body/widget surfaces transparent and undecorated, but the browser-owned frame and OS compositor remain outside application control.
-
-The Experimental Touch/Trackpad source remains an online-only exception. Polar Stream now has two deliberately separate acquisition adapters: dependency-free Web Bluetooth for the browser and official Polar BLE SDK 8.1.0 for the native Quest APK. They share metric IDs, bounded formulas, normalization, partial-axis arbitration, and privacy semantics, but do not share transport or lifecycle code. The browser adapter owns a five-second post-readiness ECG watchdog: one silent interval temporarily releases Polar axis ownership and performs one complete same-device GATT/PMD restart inside the explicit connection session; a second silent interval fails closed, and actual range loss never reconnects automatically. Tauri state and portable settings version 1 remain unchanged. WebXR still consumes only the browser adapter through its pre-entry capability-tested experiment and must not imply broadly supported Quest-Browser acquisition.
-
-`site/webxr.html` is a second, explicitly experimental browser entrypoint rather than a mode inside `app.js`. It exposes two visibly distinct runtimes. **Portable Study** loads a published definition in the ordinary 2D page, validates/hashes it with the shared WASM core, hashes and decode-probes each required user-selected `contentAsset`, requires IndexedDB and observed MIME/controller capability, and fails closed before starting the authority when any block cannot run. `site/src/study-xr/` projects authoritative instruction/questionnaire/break/completion state into bounded canvas-panel models, translates edge-triggered Touch intents into typed action effects, resolves clips and projection/stereo UVs, and never owns lifecycle, branching, answers, or study time. `webxr-study.js` binds those models to the existing gaze-aligned texture, switches verified local flat/equirectangular-180/equirectangular-360 mono/SBS/top-bottom video, reports the real media timeline, and records at the pinned rate only while a decoded frame is actively playing. Controller, buffer, visibility, session, or clip-end transitions stop sampling rather than inventing catch-up rows. The canonical vector Face + Flubber instruction projection consumes one exact snapshot. YouTube and every unsupported capability reject instead of being skipped. The portable result uses `BrowserStudySession`, the WASM authority, IndexedDB journal/recovery, long-form CSV, and strict result manifest.
-
-The separately selected legacy mode preserves the prior closed stimulus library and lifecycle. There, `webxr-study.js` owns the immersive session, WebGL video/Flubber presentation, controller polling, pre-entry Polar menu, and opt-in delivery. It requests `immersive-vr` for virtual presentation or `immersive-ar` with an alpha XR layer for flat-video and Flubber-only passthrough; Flubber-only unloads the media element and draws no video geometry. The renderer obtains a standard WebGL context with an experimental-name fallback, then explicitly calls `makeXRCompatible()` before constructing `XRWebGLLayer`. It imports `site/src/math.js` for canonical Flubber geometry and `site/src/polar-stream.js` for the bounded H10 protocol/metric state. `webxr-study-core.js` contains browser-neutral controller normalization, continuous affect advancement, partial-axis Polar override, legacy CSV serialization, HTTPS webhook validation, controller-facing placement/matrix helpers, and deterministic equirectangular sphere geometry. `webxr-stimuli.js` remains the closed catalog authority for the flat Great Dictator clip and eight CEAP-360VR excerpts. Browser HTML collects legacy stimulus/presentation choice, Flubber size/controller rigging, Polar connection/mapping, consent, and the optional webhook before immersive entry; no DOM-overlay or Bluetooth prompt is assumed inside XR.
-
-The legacy WebXR run stores samples in memory, binds every row to presentation mode, Flubber size/rigging/tracking state, low-rate Polar connection/mapping/value/normalized context and—when video exists—the chosen stimulus identity/projection/CEAP provenance, exposes the finalized CSV as a browser download, and may POST exactly those CSV bytes to a non-persisted HTTPS URL entered for the current run. Raw ECG and RR series remain bounded adapter memory and never enter WebXR records. A finite Polar target replaces only its mapped controller axis; the other controller component remains active, and unavailable metrics fall back to controller availability without fabricating a value. The webhook is an explicit browser-only network exception, not telemetry, a default backend, LSL, or a portable setting. Failure cannot discard the local CSV. Full-sphere video uses a viewer-centred, rotation-preserving equirectangular mesh; a separate viewer reference space keeps the Flubber available as a low stereo-correct HUD while the wearer looks around. Flat VR retains its world-anchored 16:9 screen and Flubber; passthrough retains the transparent compositor background. Controller-follow reads the selected `XRInputSource.gripSpace` in `local-floor`, places a sized billboard 0.16 m above it, recomputes viewer-facing orientation per frame, and retains the last matrix during tracking loss. The native launcher opens the canonical hosted URL with an Android browsable `ACTION_VIEW` intent and does not pass session files, identifiers, credentials, or results to the browser. None of these implementation paths are physical Quest qualification evidence.
-
-The legacy WebXR pre-entry surface owns one non-persisted Circle/Heart/Triangle/Square choice per run and records it as `flubber_base_shape`; Portable Study instead consumes the published pinned visual setting. Both forward the token to the canonical imported math rather than maintaining their own profiles.
-
-Incoming WebXR coordinates are a second explicit network mode, independent of the completed-CSV webhook. Enabling them first releases direct Quest H10 ownership, while retaining its in-memory mappings; accepted packets suppress both controller axes and reset until explicit remote disconnect. Discovery/source choice must finish before the XR session. No source switch occurs automatically once immersed. Receiver event rows record selection/live/stale/recovery/switch/disconnect edges, and low-rate samples add only enabled/source/state/last-sequence/local-age provenance rather than logging every packet.
-
-### Desktop
-
-Rust owns authoritative affect state and durable settings. The `monio` raw-input hook maps global physical events to actions and marker records. A bounded background loop advances smoothed state, emits compact snapshots to both Tauri windows, and supplies the always-on LSL service. The WebView renders snapshots and issues narrow product commands.
-
-The Rust `AffectEngine` also owns the desktop traversal mode and all 11×11 matrix path state. Axis index `0..10` maps exactly to `-1 + index × 0.2`, making `(5,5)` neutral. A target cell is expanded into the shortest 8-connected queue by moving both indices toward the target whenever possible, then the remaining index. The background tick advances at a bounded `0.5–10` nodes/second and writes exact node coordinates; continuous mode uses the existing smoother. The snapshot carries traversal mode, grid size, current/target cells, traversal status, and rate for presentation, but none of those transient fields are persisted or added to portable settings.
-
-`src-tauri/src/study_runtime.rs` is the process-local native `StudyAuthorityV1` owner. Study-window-only Tauri commands validate/publish a strict definition, prepare one run, return its current state, and apply typed actions through the same Rust reducer used by WASM. Each accepted action-produced event batch is appended, flushed, and synced to an app-owned `.partial.csv` before its candidate authority becomes visible. A terminal action constructs a strict manifest bound to the CSV digest and finalizes the manifest and long-form CSV through atomic file renames; on a recoverable failure the terminal batch is rolled back and the partial CSV remains authoritative.
-
-`src-tauri/src/asset_vault.rs` supplies staged streaming hash/length verification, content-addressed object identity, atomic catalog updates, safe catalog transaction recovery, and opaque path-free catalog projections. Native prepare resolves each published media descriptor to its catalog entry, checks the supplied MIME/container declaration, freshly reads the app-owned object to verify SHA-256 and byte length, and fails before run creation on any missing or mismatched asset. That path-free observed/expected verification set is frozen in the active run and copied into `ResultManifestV1` at finalization with `verified: true`; it is not reconstructed from a later mutable alias. This verifies content identity only. MIME/container values remain allowlisted caller-supplied declarations recorded as `SuppliedUnprobed`, and no trusted codec, duration, audio-presence, projection, or stereo-layout probe has landed. The native picker UI, integrated player, opaque-ID custom protocol with bounded Range responses, partial-record recovery UI, and packaged-platform qualification remain open.
-
-After `apply_study_action` returns a successful durable outcome, `src-tauri/src/runtime.rs` projects only a fixed `affect-tracker:study:v1` lifecycle allowlist to the existing irregular LSL marker outlet. The allowed edges are prepared, armed, started, paused/resumed, block entered/completed, questionnaire submitted, media playing/paused with position, ready to finalize, stopped early, completed, and aborted. The marker contains only validated bounded run/section/trial/block identity, generation, revision, sequence, and the applicable numeric media position. Questionnaire answers, affect samples, branch and retry decisions, settings/calibration payloads, health/stall detail, hashes, and caller-authored reason text never enter this projection. A failed reduction, append, or terminal finalization therefore emits no study lifecycle marker.
-
-`desktop/src/render.js` is the paired main-tracker presentation boundary. It passes one immutable Rust snapshot to the selected six-mode face adapter and canonical Flubber, using the same `currentX`, `currentY`, and `phase`, and assigns no independent timer or smoothing. Its 21×21 matrix-anchor face profile uses the shared compact 441-coefficient cache at exact `0.1` nodes and continuous evaluation off-grid; that renderer behavior is independent from native traversal. The detailed local model falls back through the local photo atlas to the canonical vector face. `desktop/src/matrix.js` owns only 11×11 cell construction, coordinate conversion, roving keyboard focus, and current/target styling; it does not calculate or advance the Rust-owned 121-state native path. The overlay continues to render only the canonical Flubber from the same Rust snapshot.
-
-The desktop Study Studio loads the shared 2D authoring/participant shell but selects the native core adapter. Its current media picker still holds browser `File` bindings/object URLs for the run; it does not yet constitute the complete native-vault playback route described above. The current Remote Control step is a QR-only BRSP/1 vertical slice. Its bundled WebView creates the one-time invitation/private VDO route, applies only `study.observe` and `study.control`, projects native state, holds a 15-second controller lease, and sends typed commands back through the study-window command adapter. Rust revalidates each resulting `StudyActionV1`, but authentication proof, accepted scopes, grant ownership, dedupe/audit, and data export have not yet moved into Rust. OPAQUE/password-file and passwordless modes are not implemented, so the slice is not the final hostile-network boundary.
-
-`desktop/src/party.js` is the explicit settings-WebView adapter for cross-runtime Party. It creates the browser-neutral `FlubberParty` and `FlubberBroadcaster` lifecycles inertly, starts either role only from its exact semantic button, and stops both transports on Stop or page teardown. Host mode projects the newest Rust snapshot into the local host participant, combines it with accepted guest snapshots through `party-core.js`, renders that exact logical aggregate in the desktop stage, then hands the same scene object to the shared validated fan-out codec. Broadcast mode offers only the Rust snapshot's bounded current X/Y and session placement upstream, accepts a reciprocal scene only when it contains the fresh desktop stream ID, binds to one live peer, enforces unsigned sequence order, and permits a new peer only after the old aggregate is stale. Returned Party data is presentation-only and has no path to a Tauri command, persistence, history, markers, or LSL.
-
-Do not make the SVG animation loop the source of LSL timestamps. Rendering can stall independently of research sampling.
-
-A transient data-channel close or selected-source departure edge is recorded immediately but does not bypass the receiver's packet-age grace or flash the HUD stale. A repaired channel that supplies a valid frame inside the grace resumes immediate coordinates and rearms the deadline without introducing a coordinate buffer.
-
-## Tauri boundary
-
-Allowed product-level commands include reading/saving settings, obtaining a snapshot/status, applying a directional action or exact coordinate, selecting continuous/matrix traversal mode, targeting/stopping an 11×11 traversal, reset/pause, toggling overlay editing/visibility, opening Study Studio, validating/publishing studies, preparing/querying/applying a study run, and importing/listing/removing study-vault assets. Study and asset commands are study-window-only and typed; native reducers and storage revalidate untrusted WebView data. The current asset commands never reveal vault paths. There is no LSL start/stop command. Validate ranges, lengths, enum values, colors, input-binding conflicts, study contracts, action preconditions, identifiers, sizes, hashes, and safe file ownership in Rust.
-
-The overlay capability is intentionally narrower than the settings capability. Neither window gets shell, arbitrary filesystem, or general HTTP authority. Packaged content is local. The settings WebView CSP permits only Tauri IPC, `wss://wss.vdo.ninja` signaling, and the SDK's `https://turnservers.vdo.ninja` TURN-credential endpoint for the explicit Party role; it does not grant wildcard WebSocket/HTTP, remote-script, camera, or microphone authority. The overlay receives no network permission or Party code.
-
-### Quest
-
-The Quest control plane has one required root `active-session.json`, which is both the default video declaration and the sole persisted runtime-profile authority. The SAF loader independently validates up to 24 optional standard v1 manifests under `sessions/`, retains each optional manifest's session/video identity and explicit projection/stereo/loop fields, then overlays the active environment, affect, Flubber, controller, and LSL profile before staging it. The active staged fingerprint participates in every optional fingerprint, so changing universal settings invalidates stale cached choices. Up to 24 otherwise-unclaimed files under `media/` are also settled, hashed, metadata-probed, and offered with an app-generated session ID; they inherit the active projection/stereo/loop defaults and are visibly labelled as such. A manifest remains required whenever those defaults are not correct. Selection is ephemeral launcher state and rewrites nothing. The optional Flubber value readout is rendered by the same native transparent `FlubberView`: geometry stays frame-driven, while one locale-stable string containing only the current bounded `X` and `Y` coordinates refreshes at a bounded 10 Hz when enabled. The Ready screen passes typed per-run overrides for that readout, `dark`/`passthrough`, Flubber-only passthrough, controller-follow enablement, left/right follow hand, and followed-controller model visibility. Every control initializes from the active profile, applies only to the armed `StagedSession`, does not mutate its fingerprint, and never rewrites JSON. Flubber-only mode omits video entity creation and decoder preparation but retains the single activity, frame loop, controller engine, and LSL authority. These overrides introduce no second panel, process, renderer, tracking session, or sampling authority.
-
-`vr/` is an isolated Android/Spatial SDK source boundary. `SessionLoader` owns SAF authorization, stable-copy observation, universal-profile application, manifest/hash/media validation, bounded default-layout discovery, and last-good staging. Media3 owns decode state and enables its compatible-decoder fallback within the platform's installed decoder set; `SpatialVideoCoordinator` owns immutable shape/stereo panel registrations and world carriers; pure `SpatialPlacement` owns the head-pose-relative placement, current-gaze recenter, and controller-follow equations; and the activity owns the one OpenXR/Spatial frame loop, controller input, avatar visibility, placement locking, passthrough selection, and lifecycle markers. The activity explicitly selects the Interaction SDK input backend and retains Spatial SDK's registered `LocomotionSystem` because `VRFeature` also supplies that exact object to ISDK as its `ExternalControllerInputHandler`. It immediately calls `enableLocomotion(false)` and reasserts the `Disabled` state from the late polling system, so `areControllersInUse()` remains false and teleport/snap/world movement cannot start while the bridge continues its per-frame input-result reset. Controller rigging, tracked pose, pointer/grab input, and the late-feature affect polling system remain registered. Controller polling runs after the controller/avatar entities exist, matching the working MesmerPrism Spatial app lifecycle while preserving exclusive affect ownership of the stick. Each selected hand resolves its local controller attachment first, then its player-avatar controller, then the bounded all-controller fallback; hand-specific thumb bits retain routing. Two additional inputs remain inside that same `VrActivity`: ISDK `PointerEvent.scrollInfo` for a physical stick scrolling a panel, and Spatial SDK's `VrActivity.pinGameController` MotionEvent route for joystick-class devices. Spatial SDK 0.13.2 registers an `InputDeviceListener` but does not seed devices connected before activity creation, so the APK enumerates the already-present gamepad/joystick sources using the SDK's exact source masks before pinning; it does not read `/dev/input`, request privileged input permissions, or open another OpenXR session. All physical routes feed the single `AffectEngine`, are gated by visible-Flubber lifetime rather than LSL/video/panel focus, display the selected route and X/Y receipt in-app, and emit route-specific SDK→target/current→canvas receipts. Spatial SDK's app-owned Touch render model preserves tracked pose and pointer presentation but is not treated as equivalent to Meta Home's shell-owned button-articulation model. Per-hand `Visible` components are refreshed independently from `Controller` components, so a hidden followed model retains tracking/input ownership; the immersive window remains awake and late polling remains frame-driven while follow is active, while hardware controller sleep stays firmware-controlled. The manifest declares Meta's optional hand-tracking and render-model capabilities and their vendor permissions because Spatial SDK's Interaction SDK input/controller representation uses those official declarations; neither grants broad filesystem access. A debug-only, `android.permission.DUMP`-protected typed broadcast can emulate a bounded stick direction through the same engine/draw path for pipeline diagnosis, but it is never physical Touch evidence. The native Flubber uses the toolkit-managed input listener on one tightly bounded registered panel scene object; manual ISDK edge-handle widths are deliberately absent so they cannot overlap or drift from the panel dimensions. A free A button invokes the same activity's pure gaze-centered placement path and emits an app/LSL receipt. Optional controller-follow reuses the selected local controller/avatar entity's world-space `Transform` from that same late polling system, keeps the panel between the wearer and configured hand, and points it at the current viewer with no second renderer or tracking session. It becomes the sole transform authority while enabled. Mixed reality calls Spatial SDK's compositor passthrough switch; the application never receives camera frames. An entity-created marker is not accepted as proof until its Android canvas reports a completed shape draw. Video bytes never enter JSON or LSL.
-
-`PolarH10Manager` is an application-scoped Android domain adapter modeled on Study 6 readiness behavior. Kotlin owns Android permission, Bluetooth power, official-SDK auto-discovery/reconnection, ECG and HR/RR subscriptions, stream termination, status, and the 160-sample launcher waveform. `PolarMetricProcessor` owns only bounded five-second ECG/300-RR state and mirrors the browser's ten formulas; it deliberately does not adopt Polar Stream's broader five-minute HRV engine. `PolarAffectMappings` is transient application memory outside the staged-session fingerprint and JSON v1. The launcher blocks an assigned run until exact 130 Hz ECG has produced real samples for three seconds and remains fresh within five seconds. During `sessionActive`, the activity reads one immutable state snapshot per Spatial frame and supplies finite normalized values through `AffectEngine.setExternalTargets`; null axes stay controller-owned. Pause holds the prior target, Reset changes only controller-owned axes, and readiness loss returns only affected axes to the controller. The manager performs no file I/O, never logs a device identifier, and publishes no raw physiology. Only bounded one-hertz mapping/value context enters the existing irregular LSL marker outlet; Rust LSL construction and the eight-channel state schema are unchanged.
-
-The native LSL adapter is a Rust `cdylib` behind a four-call JNI boundary. It owns outlet construction and wire publication; Kotlin owns app/session lifecycle and supplies typed snapshots through a bounded, preallocated command pool to one dedicated worker. The library and worker remain inside the APK process. Multicast permission is held only while outlets are active. FFmpeg is not a v1 video engine: Media3/platform hardware decode remains the media path, while official `liblsl` is the pinned-interface fallback if the young `labstream` implementation fails physical interoperability gates.
-
-## LSL boundary
-
-LSL is an in-process Rust service behind a small adapter. Keep native-library and crate-specific details out of commands and domain state. The service owns outlet lifecycle and accepts typed snapshots/markers through bounded or coalescing communication.
-
-Continuous and matrix traversal both feed the existing engine snapshot consumed by LSL. The regular stream keeps its exact eight-channel schema; traversal metadata is presentation state and never becomes another LSL channel. Neither the face nor Flubber render loop supplies LSL timestamps.
-
-If direct FFI is introduced later, it requires an explicit review and must isolate all `unsafe` code with documented ownership, ABI, teardown, and thread-affinity invariants.
+Historical code and provenance may remain during reduction. If reachable, its
+existing privacy, security, attribution, and licensing constraints still bind.
+No historical test, build, or physical receipt qualifies the changed Research
+runtime.
 
 ## Platform expectations
 
-- Windows and macOS are first-class release targets.
-- Linux packages target mainstream X11 environments for raw global input. Wayland may support the transparent overlay but generally blocks the X11 hook; never claim full Wayland global-capture support without a separately tested backend and permission model.
-- Native packages are built on matching GitHub-hosted operating systems.
-- Signing/notarization and public release publication require explicit user authorization and credentials; CI may verify unsigned development bundles beforehand.
+- Package and qualify Tauri on Windows first. Retain the bundle ID while using
+  the new product/data namespace.
+- Qualify desktop Chrome and Edge independently, including File System Access,
+  permission renewal, worker timing, IndexedDB recovery, video playback, and
+  offline behavior.
+- Do not claim macOS, Linux, Firefox, Safari, mobile, WebXR, Quest, or direct
+  physiology support.
+- Signing, public installer/release publication, and production credentials
+  remain separately authorized actions.

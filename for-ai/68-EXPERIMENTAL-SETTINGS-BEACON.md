@@ -1,5 +1,12 @@
 # Experimental Ground Control settings beacon
 
+> **Status — Frozen Playground/history.** This body preserves the feature-rich
+> checkpoint contract; Ground Control and its settings beacon are not active
+> Research v1 scope and are superseded by
+> [`15-RESEARCH-V1-CHARTER.md`](./15-RESEARCH-V1-CHARTER.md). It creates no
+> active support, release, or qualification requirement. Its safety, privacy,
+> and license constraints remain binding while the legacy code is reachable.
+
 This is the normative contract for Ground Control's browser-to-browser portable-settings snapshot. It is the static half of the sixth Ground Control module, not the continuous FLUBBER X/Y transport, a database, persistent storage, physiology channel, or general messaging API.
 
 ## Product boundary

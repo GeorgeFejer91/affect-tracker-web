@@ -1,5 +1,12 @@
 # Mirrored study architecture
 
+> **Status — Frozen Playground/history.** This superseded architecture is
+> preserved for feature-rich history and provenance. Active Research v1 is
+> governed solely by [`15-RESEARCH-V1-CHARTER.md`](./15-RESEARCH-V1-CHARTER.md).
+> This document creates no active product, parity, support, release, or
+> qualification requirement. Its safety, privacy, and license constraints remain
+> binding while corresponding legacy code is still reachable.
+
 ## Status and precedence
 
 This file is the normative target contract for the approved mirrored study

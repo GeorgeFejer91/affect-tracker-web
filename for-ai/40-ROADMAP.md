@@ -1,5 +1,51 @@
 # Roadmap
 
+> **Active Research v1 roadmap.** [`15-RESEARCH-V1-CHARTER.md`](./15-RESEARCH-V1-CHARTER.md)
+> is the sole active product and architecture authority. The roadmap below this
+> active section is preserved as frozen Playground/history and is not an active
+> delivery or qualification commitment.
+
+## Active Research v1 status
+
+The charter is an approved target, not implementation evidence. `main` retains
+the feature-rich implementation history through `5df1e53`; it is not yet
+Research-v1-compliant, research-ready, or stable. The exact feature-rich freeze
+remains branch `checkpoint/feature-rich-2026-09-03` and annotated tag
+`checkpoint-2026-09-03-feature-rich`, both at `34a137d9d6d0f33a8e5ebef6c04bf8bc0219fd86`.
+The separate `GeorgeFejer91/affect-tracker-playground` repository preserves the
+post-checkpoint source on branch `history/post-checkpoint-source-main` at exact
+commit `5df1e5365aacd2e59cd36347d752b003f1af432d`; that branch does not redefine the
+Research checkpoint refs.
+
+The first internal Research build is `0.4.0-alpha.1`. Deliver it in these
+coherent phases, preserving strict contracts and qualification evidence at each
+boundary:
+
+1. **Authority and storage:** add the strict Research contracts, canonical
+   hashing, explicit legacy-settings importer, Research storage namespace, and
+   narrow Tauri/browser workspace adapters.
+2. **Setup instrument:** implement the seven ordered single-open accordions,
+   persistent preview, full video catalogue, input binding/capture, visual and
+   color controls, exact affect mappings, and Research-only LSL settings.
+3. **Assignment and preflight:** implement one-hat and stratified pools,
+   Williams/cyclic ordering, deterministic `balanced-v1`, participant-plan
+   preview/export/hash, reconstructed participant states, demographics
+   minimization, and all blocking capacity/media/input/output checks.
+4. **Run and evidence:** implement the narrowed Run surface, scheduler and input
+   ownership, CSV/TSV parity, semantic events, manifests, no-overwrite attempts,
+   controlled partial finalization, crash journals, and safe-boundary recovery.
+5. **Qualification:** pass the exact Windows Tauri and visible desktop
+   Chrome/Edge timing, persistence, failure, accessibility, media, and
+   independent LSL receiver gates in
+   [`30-TESTING-AND-RELEASE.md`](./30-TESTING-AND-RELEASE.md), and verify that no
+   frozen Playground surface remains reachable from the Research product.
+
+## Frozen Playground/history roadmap
+
+Everything below this heading records the superseded feature-rich program. It
+remains useful history and provenance but creates no active Research v1 scope,
+support, parity, release, or qualification requirement.
+
 ## Mirrored study program — approved target, not yet release-qualified
 
 The complete target and its staged-status rule are normative in

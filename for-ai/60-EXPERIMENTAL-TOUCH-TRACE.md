@@ -1,5 +1,11 @@
 # Experimental Touch/Trackpad mode
 
+> **Status — Frozen Playground/history.** This body preserves the feature-rich
+> checkpoint contract; it is not active Research v1 scope and is superseded by
+> [`15-RESEARCH-V1-CHARTER.md`](./15-RESEARCH-V1-CHARTER.md). It creates no
+> active support, release, or qualification requirement. Its safety, privacy,
+> and license constraints remain binding while the legacy code is reachable.
+
 This file is the normative contract for the browser-only movement-feedback prototype. It quantifies how a two-dimensional pointer path is moving and maps those features into the affect display. It is **not** an emotion-recognition, diagnostic, or validated affect-inference system.
 
 ## Product behavior and privacy

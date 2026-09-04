@@ -1,5 +1,144 @@
 # Testing and release gates
 
+> **Active authority:** Only the Research v1 gates in this status block are
+> active. [`15-RESEARCH-V1-CHARTER.md`](./15-RESEARCH-V1-CHARTER.md) is the sole
+> product authority. All pre-existing sections after the explicit **Frozen
+> Playground/history gates** marker are retained as historical evidence and are
+> not active release requirements.
+
+## Active Research v1 gates
+
+The first internal target is `0.4.0-alpha.1`. Documentation, compilation, unit
+tests, historical evidence, or one successful adapter never establish a stable
+or research-ready claim.
+
+### Contract and settings
+
+- Round-trip every `ResearchSettingsV1`, `ResolvedAssignmentPlanV1`,
+  `InputBindingV1`, `ResearchSampleV1`, `ResearchEventV1`, and
+  `ResearchRunManifestV2` fixture through Rust and browser readers.
+- Reject unknown fields, duplicate keys/IDs, wrong schemas/versions/algorithms,
+  invalid colors/enums/paths, non-finite/out-of-range numbers, oversized or
+  deeply nested inputs, and settings/plan/stimulus hash drift.
+- Prove canonical JSON and SHA-256 equality across Rust/browser implementations.
+- Exercise explicit legacy settings import and show every default/discard. Prove
+  that neither existing app data nor browser storage migrates automatically.
+- Verify all seven Setup accordions, exact ordering/single-open behavior, the
+  persistent right preview, complete load/save round-trip, 1–240 Hz bounds with
+  130 Hz default, always-enabled continuous rating, and complete absence of a
+  summary-rating option.
+
+### Counterbalancing and participant plan
+
+- Property-test one-hat and multi-pool designs across participant/video/count
+  bounds. Prove one-pool ownership, no participant duplicate, deterministic
+  Williams and cyclic ordering, and no factorial-permutation path.
+- Prove `balanced-v1` chooses lowest total exposure, then lowest position
+  exposure, then seeded hash; identical inputs reproduce the same plan/hash;
+  exposure differs by no more than one whenever constraints permit it.
+- Cover insufficient capacity, name every uncovered item, and verify the exact
+  participant-count or affected-pool-count adjustment.
+- Test virtualized previews, `assignment-plan.csv`, atomic locks, concurrent
+  starts, rerun/new-attempt behavior, and reconstruction of Available/Active/
+  Partial/Complete exclusively from locks, journals, and manifests.
+- Cover Unicode extended grapheme derivation and uppercasing. Verify raw names
+  and self-description never reach storage, outputs, markers, logs, or crash
+  state; age and gender/handedness codes remain exact.
+
+### Input, visual, and mappings
+
+- Exercise every keyboard, pointer/trackpad, mouse/wheel, D-pad, and analog-stick
+  preset plus custom capture, global conflict rejection, inert live test, OS
+  key-repeat suppression, default Arrow/0.1 behavior, and **N/A** step display
+  for continuous/absolute inputs.
+- Verify Grid and Flubber independently/together, Size %, Transparency, hidden
+  feedback without stopped sampling, normalized drag bounds, sole Lock-position
+  ownership, forced Run lock, Flubber/Grid dimensions, and color wheel/hex/reset.
+- Golden-test all six exact mapping labels, allowed ranges, defaults, drivers,
+  Reverse values, neutral angle zero, driver normalization, and interpolation.
+  Ensure Color & Gradient is the sole halo-color owner.
+
+### Media, records, and recovery
+
+- For workspace/repository media, prove exact bytes/hash/length, complete-video
+  duration, decode readiness, recursive import/rescan, and changed/missing-file
+  failure. Keep repository fixtures small.
+- For Experimental YouTube, test URL/video-ID normalization, observed metadata,
+  explicit unverified/noncanonical status, no byte hash, offline failure, and
+  qualification exclusion. Tauri must reject it until exact CSP/referrer
+  feasibility is proven.
+- Prove CSV and TSV toggles are independent with at least one required. Their
+  canonical rows must have identical columns/order/values/count and differ only
+  in delimiter escaping.
+- Verify create-new output directories and attempt counters never overwrite.
+  Every attempt must contain the settings snapshot, semantic `events.jsonl`,
+  manifest, and selected ratings, all bound to exact settings/plan/stimuli.
+- Test controlled Stop Early, quota/full disk, revoked browser permission,
+  IndexedDB failure, tab/window close, forced termination, crash/power-loss
+  simulation, corrupt-journal isolation, retry, completion durability, and lock
+  release. Recovery must resume only at a safe boundary and restart a partial
+  video from the beginning.
+
+### Timing and responsiveness
+
+Run separate visible 30-minute tests at the 130 Hz default on packaged Windows
+Tauri, current desktop Chrome, and current desktop Edge. Each must show:
+
+- observed sampling rate from 129 through 131 Hz;
+- p95 sample lateness no greater than two configured periods;
+- input-state visibility p95 no greater than two periods in Tauri and three
+  periods in Chrome/Edge;
+- zero silent gaps, fabricated catch-up rows, timestamp backfill, corrupt rows,
+  or unreported scheduler stalls; and
+- explicit timing-gap events for every missed deadline.
+
+Also test representative 1 Hz and 240 Hz bounds, pause/buffering/between-video
+sampling stops, neutral reset, each transition policy, state-anchor age, and
+recorded monotonic/LSL-compatible timestamp and jitter fields.
+
+### Windows and LSL
+
+- Run format/check/clippy/unit/build gates for the exact Rust/Tauri candidate and
+  a real packaged Windows launch with the retained bundle ID, new display/data
+  namespace, narrow root/run commands, and no automatic legacy import.
+- Resolve both outlets with an independent current LSL consumer and LabRecorder.
+  Confirm the eight-channel order/type/rate/timestamps/metadata, semantic event
+  markers, restart, sleep/wake, missing-library error, and clean shutdown.
+- Confirm Chrome/Edge preserves imported LSL values but blocks Start when Enable
+  LSL is true and never presents a browser LSL success state.
+
+### Browser, adversity, accessibility, and frozen containment
+
+- Qualify current stable desktop Chrome and Edge separately in secure contexts:
+  root selection/user activation, permission renewal/revocation, recursive
+  catalogue, dedicated-worker timing, isolated `affect-research/v1` storage,
+  IndexedDB contention/quota/corruption, tab visibility/background/restore,
+  video decode, and recovery materialization.
+- Exercise offline local/repository operation, offline YouTube failure, full
+  disk/quota, unwritable paths, unavailable LSL, missing/corrupt videos, and
+  forced process/browser termination.
+- Test keyboard-only operation, visible focus, semantic labels/status, non-color
+  state, contrast, reduced motion, zoom, feedback hiding, and error/recovery
+  announcements in Setup and Run.
+- Prove exactly two user-visible modes and seven Setup accordions. Active load
+  must not expose or construct WebXR/Quest, VDO/BRSP, Ground Control/Party,
+  Face/Photoatlas, direct Polar, Touch inference, Screen Calibration, Windows 95,
+  phone/Picture-in-Picture, matrix traversal, or macOS/Linux packaging paths.
+
+### Publication boundary
+
+CI may test the static site and unsigned Windows artifact. A web-facing release
+must pass the workflow for the exact commit and be checked at
+`https://GeorgeFejer91.github.io/affect-tracker-research/` with cache bypass.
+Publishing installers/releases, signing, updater/store submission, or handling
+production credentials requires explicit authorization.
+
+## Frozen Playground/history gates
+
+Everything below this marker is preserved verbatim as the former feature-rich
+program's requirements and evidence context. It does not gate Research v1 and
+must not be used to claim that a changed Research runtime is qualified.
+
 ## Universal publication gate
 
 - Every completed, validated in-scope change must be committed and pushed to the canonical GitHub repository as soon as practical. This includes application code, static assets, configuration, tests, and changes confined to `for-ai/`; a local commit is a checkpoint, not a completed handoff.

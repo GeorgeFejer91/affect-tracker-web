@@ -1,9 +1,28 @@
-# Affect Tracker agent entrypoint
+# Affect Tracker Research agent entrypoint
 
-Before inspecting, planning, editing, testing, or publishing this repository, every AI agent MUST read all Markdown files in [`for-ai/`](./for-ai/) in lexical order.
+Before inspecting, planning, editing, testing, or publishing this repository,
+every AI agent MUST read all Markdown files in [`for-ai/`](./for-ai/) in lexical
+order.
 
-The documents in `for-ai/` are the durable product contract. If implementation and documentation disagree, stop, identify the mismatch, and update the implementation or propose a deliberate contract change. Do not silently weaken Pages/desktop/WebXR semantic parity, privacy, accessibility, LSL semantics, native Quest boundaries, or the supported-platform matrix.
+[`for-ai/15-RESEARCH-V1-CHARTER.md`](./for-ai/15-RESEARCH-V1-CHARTER.md) is the
+sole active product and architecture authority. The active product has exactly
+two user-visible modes, **Setting Up the Experiment** and **Running the
+Experiment**, and is qualified only for Tauri on Windows and the static web
+application in current desktop Google Chrome and Microsoft Edge.
 
-[`for-ai/25-MIRRORED-STUDY-ARCHITECTURE.md`](./for-ai/25-MIRRORED-STUDY-ARCHITECTURE.md) is the normative target for the Pages 2D, Tauri desktop, and WebXR study program. Its target language is not implementation evidence; use [`for-ai/40-ROADMAP.md`](./for-ai/40-ROADMAP.md) and the required qualification records to determine what has actually landed.
+The other documents in `for-ai/` refine that charter or preserve historical
+implementation and evidence. Documents marked **Frozen Playground/history**
+are not active requirements, release gates, or permission to widen the product.
+In particular, [`for-ai/25-MIRRORED-STUDY-ARCHITECTURE.md`](./for-ai/25-MIRRORED-STUDY-ARCHITECTURE.md)
+is a superseded historical target. Use [`for-ai/40-ROADMAP.md`](./for-ai/40-ROADMAP.md)
+to distinguish the approved target from implementation that has actually
+landed.
 
-After reading `for-ai/`, follow any more-specific `AGENTS.md` in the subtree being changed.
+If implementation and the active charter disagree, stop, identify the mismatch,
+and either implement the charter deliberately or propose an explicit charter
+change. Do not silently broaden supported platforms, reactivate frozen features,
+change research sampling or record semantics, weaken privacy/accessibility, or
+change outbound LSL semantics.
+
+After reading `for-ai/`, follow any more-specific `AGENTS.md` in the subtree
+being changed.

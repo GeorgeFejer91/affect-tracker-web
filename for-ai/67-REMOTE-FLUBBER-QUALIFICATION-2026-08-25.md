@@ -1,5 +1,11 @@
 # Remote Flubber qualification — 2026-08-25
 
+> **Status — Frozen Playground/history evidence.** The qualification body below
+> is preserved without relabelling its historical build or results. Remote
+> Flubber is not active Research v1 scope and is superseded by
+> [`15-RESEARCH-V1-CHARTER.md`](./15-RESEARCH-V1-CHARTER.md). This record creates
+> no active support, release, or qualification requirement.
+
 ## Decision
 
 This historical qualification covers browser Chrome/Quest endpoints only. It does not qualify the later Tauri settings-WebView Party host/broadcaster roles or smartphone↔Tauri behavior; those require the separate cross-runtime matrix in `30-TESTING-AND-RELEASE.md` and `69-EXPERIMENTAL-FLUBBER-COLLABORATION.md`.

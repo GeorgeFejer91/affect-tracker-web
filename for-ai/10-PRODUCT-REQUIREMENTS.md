@@ -1,153 +1,218 @@
 # Product requirements
 
-## Mirrored-study status
+## Status
 
-[`25-MIRRORED-STUDY-ARCHITECTURE.md`](./25-MIRRORED-STUDY-ARCHITECTURE.md)
-defines the approved target for one `StudyDefinitionV1` across Pages 2D,
-Tauri/Rust desktop, and WebXR. A first implementation slice now includes the
-native/WASM shared core, ordinary 2D Study Studio, Pages runner and IndexedDB
-journal, native Rust authority with app-owned CSV/result-manifest persistence,
-content-addressed imports plus prepare-time fresh hash/length evidence, a fixed
-privacy-bounded study lifecycle LSL projection after durable action success,
-and the separately selected Portable Study WebXR panels and verified local
-media path. The native picker/player, opaque-ID Range route, trusted media
-probe, partial-record recovery UI, and packaged qualification are still open;
-the remote controller is QR-only and interim. None of this is a three-platform
-release claim: the exact partial phases, missing integrations, security gaps,
-and unrun physical/platform gates are recorded in
-[`40-ROADMAP.md`](./40-ROADMAP.md).
+[`15-RESEARCH-V1-CHARTER.md`](./15-RESEARCH-V1-CHARTER.md) is the sole active
+authority. This file restates its user-visible requirements. The former
+feature-rich requirements remain available in Git history and the frozen
+checkpoint; they are not active requirements in this branch.
 
-## Shared affect model
+The documentation describes the target. Current implementation status belongs
+in [`40-ROADMAP.md`](./40-ROADMAP.md).
 
-Both applications represent valence as `x` and arousal as `y`, each clamped to `[-1, 1]`, starting at neutral `(0, 0)`.
+## Product and support boundary
 
-The shared visual mappings are:
+- Desktop name: **Affect Research**.
+- Exactly two modes: **Setting Up the Experiment** and **Running the
+  Experiment**.
+- First qualification targets: Tauri on Windows and the static application in
+  current desktop Google Chrome and Microsoft Edge.
+- Tauri retains bundle ID `io.github.georgefejer91.affecttracker` and legacy
+  app-data compatibility, but new Research data uses a separate namespace and
+  is never populated by automatic legacy import.
+- WebXR, native Quest, remote control, Ground Control, Party/Universe, Remote
+  Flubber, direct Polar, Face/Photoatlas, Touch inference, and the other former
+  Playground surfaces are absent from active navigation and release claims.
+
+## Setting Up the Experiment
+
+Setup uses seven ordered, single-open accordions on the left and a persistent
+live feedback preview on the right.
+
+### Workspace & Libraries
+
+- Choose one parent workspace root.
+- Create or validate `stimuli/`, `settings/`, `outputs/`, and `recovery/`
+  beneath that root.
+- Drop/import complete videos recursively and provide **Rescan**.
+- Load any compatible `settings.json` through strict validation or explicit
+  reported migration.
+- Save the normalized Research document as
+  `settings/<experiment-id>.settings.json`.
+- Windows uses a Rust-owned workspace boundary. Chrome/Edge uses a directly
+  authorized File System Access root plus the isolated `affect-research/v1`
+  IndexedDB/storage namespace.
+
+### Experiment
+
+- Require experiment ID, title, and participant count.
+- Generate `P001` onward, using at least three digits and enough zero-padding
+  for the largest participant number.
+- Continuous rating is always enabled. No continuous toggle, single-summary,
+  or summary-only option is present.
+- Sampling frequency defaults to 130 Hz and accepts only integers 1–240.
+- Between complete videos select fixed duration, deterministic jitter from the
+  entered durations, or participant-controlled **Continue when ready**.
+
+### Stimuli & Counterbalancer
+
+- Every complete video is explicitly a workspace file, checked-in repository
+  asset, or **Experimental YouTube** URL.
+- Each condition column is one video pool. One column containing all videos is
+  the one-hat workflow. Multiple columns are stratified pools; there is no
+  mixed-pool switch.
+- Each pool declares videos per participant. One video belongs to one pool and
+  cannot repeat for one participant.
+- Order defaults to Williams and may be changed to cyclic. Factorial
+  permutations are excluded.
+- `balanced-v1` automatically chooses each slot by lowest total exposure, then
+  lowest exposure at that position, then deterministic seeded-hash tie-break.
+  When feasible, exposure differs by no more than one.
+- Store seed, algorithm version, normalized pools/counts/order, resolved plan,
+  canonical SHA-256 plan hash, and exact stimulus identities.
+- Block Start when participant/slot capacity cannot cover all videos. Name
+  uncovered items and show the exact participant-count or affected-pool-count
+  adjustment.
+- Provide a virtualized participant preview and `assignment-plan.csv` export.
+- Derive **Available**, **Active**, **Partial**, and **Complete** from locks,
+  journals, and manifests. They are not editable flags.
+
+### Input
+
+- Presets: Arrow keys, WASD, IJKL, numpad, pointer/trackpad Grid, mouse
+  buttons/wheel, gamepad D-pad, gamepad left stick, and gamepad right stick.
+- Default: Arrow keys with step `0.1`.
+- Digital step input responds only to physical edge presses and ignores OS key
+  repeat. Pointer and analog presets are continuous/absolute and show step as
+  **N/A**.
+- Custom binding selects a direction, captures one keyboard/mouse/wheel/gamepad
+  action, rejects any conflict, and supports an inert live test.
+
+### Visual
+
+- The preview and Run overlay are in-application feedback at one normalized
+  position; a native transparent desktop overlay is not required.
+- Expose independent Grid and Flubber visibility, Flubber Size as percent of
+  stage, Transparency, Hide Visual Feedback, and draggable normalized position.
+- **Lock position** is the sole Disable Dragging control and is forced on in
+  Run. Hiding visuals never stops sampling.
+- Flubber controls: outline enabled/thickness and halo enabled.
+- Grid controls: line thickness, outline enabled/thickness, and cursor size.
+- Color & Gradient owns four directional VA anchor colors plus idle, outline,
+  halo, and cursor colors. Every color has wheel, hex, and reset. Halo color has
+  no second owner.
+
+### Advanced
+
+LSL fields are Enable LSL, state stream, stream type, marker stream, and source
+ID. LSL is outbound and Tauri/Windows-only. Chrome/Edge preserves imported
+values but blocks Start while Enable LSL is true.
+
+Every mapping has Min, Max, driver (`x-axis`, `y-axis`, `angle`, or `radius`),
+Reverse, and live preview:
+
+| Mapping | Allowed | Defaults | Driver | Reverse |
+| --- | --- | --- | --- | --- |
+| Oscillation Frequency | 0–10 Hz | 0.5–2.5 | `y-axis` | Off |
+| Edge Smoothness | 0–1 | 0–1 | `x-axis` | Off |
+| Projection Amplitude | 0–1 | 0.2–0.4 | `y-axis` | Off |
+| Pulse Synchrony | 0–1 | 0.2–1 | `x-axis` | Off |
+| Wave-size Variation | 0–1 | 0–0.8 | `x-axis` | On |
+| Saturation | 0–1 | 0–1 | `radius` | Off |
+
+Normalize x/y, radius, and angle as specified by the charter; neutral angle is
+zero. Reverse applies `t = 1-t` before linear Min/Max interpolation.
+
+### Review & Start
+
+- Show all preflight results, resolved schedule, output path/formats, settings
+  and plan hashes, input test, stimulus verification, storage estimate, timing,
+  and Windows LSL status.
+- The chooser shows the four derived participant states. A rerun requires a
+  warning and creates a new attempt.
+- Require transient first/last names, age 1–120, enumerated gender, and
+  handedness. Persist no raw name or self-description: only the uppercase code
+  made from the last grapheme of the first name plus first grapheme of the last
+  name, age, gender code `W/M/N/S/X`, and handedness `L/R/A`.
+- CSV and TSV toggles are independent and at least one is required.
+- Start only after every blocking check passes. It freezes settings, bindings,
+  derived demographics, resolved assignment, normalized geometry, output
+  targets, participant lock, and attempt identity.
+
+## Running the Experiment
+
+Run shows only the complete video, configured adjacent Grid/Flubber overlay,
+compact session/timing/write/LSL status, **Pause**, and **Stop Early**. Feedback
+must not cover the video.
+
+Sampling occurs only while video playback is active. Between videos it stops,
+coordinates reset to neutral, and the configured transition runs. Settings,
+bindings, demographics, assignment, and geometry cannot change; position is
+locked.
+
+Stop Early durably finalizes a partial attempt. Crash, power loss, forced
+termination, or storage interruption leaves the journal authoritative.
+Recovery resumes only at a safe video boundary. A partially played video starts
+again at its beginning; mid-video resume and invented samples are prohibited.
+Completion is durable before participant lock release and return to Setup.
+
+## Settings and data products
+
+Use the strict closed-world family `ResearchSettingsV1`,
+`ResolvedAssignmentPlanV1`, `InputBindingV1`, `ResearchSampleV1`,
+`ResearchEventV1`, and `ResearchRunManifestV2`. Unknown fields and invalid
+versions, values, identifiers, paths, hashes, or algorithm tokens reject.
+
+The former portable-settings v1 remains unchanged. Legacy import is explicit,
+one-way, and reports every default/discard; no local storage or app-data is
+silently migrated.
+
+Write each attempt to:
 
 ```text
-frequency = 1.5 + y
-amplitude = 0.3 + 0.1y
-shapeMix = (x + 1) / 2
-disorder = 0.4(1 - x)
+outputs/<experiment-id>/<participant-id>/<session-stem>/
 ```
 
-The SVG uses 192 angular samples, 16 projections, deterministic seeded phase/amplitude offsets, frame-time-based animation, and exponential coordinate smoothing. Both runtimes expose four configurable Up/Down/Left/Right hex colors and an exact 2D blended feature-space picker; neutral remains visually neutral.
+For example:
 
-The shared renderer also exposes an additive `visual.baseShape` envelope with exact tokens `circle`, `heart`, `triangle`, and `square`; omission defaults to `circle` for version-1 compatibility. The envelope is independent of the affect mappings above: all shapes receive the same valence-driven smoothness/disorder and arousal-driven 0.5–2.5 Hz pulse/amplitude. The Heart must therefore remain equally reactive under manual, Polar, remote, WebXR controller, and native Quest input routes without reinterpreting physiology as emotion.
+```text
+P001_EF_A27_GW_HR_20260903T143012482Z_R01
+```
 
-The main web application and desktop settings window additionally expose six selectable local Face + Flubber presentations. The face is left and the canonical Flubber is right. Every engine must receive the same displayed `currentX`, `currentY`, and animation `phase` snapshot for one frame; none may introduce a second coordinate, smoothing, timing, or input authority. The modes are: AFFEC empirical 3D, which uses aggregate perceived-rating locations to position project-authored expression prototypes on the local Vitruvian morph head; AFFEC-guided Photoatlas, which uses those aggregate locations through a separately classified project-authored coordinate binding; MediaPipe-rigged atlas 3D, which uses compact scores extracted once at build time from nine project-owned atlas cells; a continuous project-authored morph; a 21×21 matrix-anchor profile whose 441 exact `0.1` nodes cache only compact morph coefficients and whose off-grid inputs retain continuous anchor interpolation; and Direct-grid Photoatlas, which maps canonical X/Y directly to the atlas for comparison. Photoatlas must expose the original portrait plus eight independently stored fictional synthetic portrait packs through a checked-in, fail-closed catalog. Only entries with passing hash-bound engineering QA may be selectable, and the runtime must request and decode only the selected atlas. The original and first seven synthetic packs must retain their nine owned 3×3 anchors; experimental `photo-synthetic-08` must instead retain 25 newly generated project-owned image-to-image anchors on a 5×5 lattice, including 16 target positions additional to the earlier 3×3 lattice, without claiming byte-for-byte preservation at the nine corresponding positions. Each pack must derive 441 photo cells with an exact neutral center offline through corresponding-landmark warping and premultiplied blending and remain continuously interpolated off-grid. RIKEN supplies only a published 5×5 valence/arousal grid-design lesson, and 4DFAB supplies only a dense-correspondence/synthesis blueprint; no participant media, annotations, restricted-source model, or restricted-source derived data may enter the pack. AFFEC dataset-derived aggregates and project-authored face bindings must be separate, hash-bound artifacts with an exact source-archive lock and reproducible aggregate builder. AFFEC supports aggregate perceived category locations only: the category-to-portrait correspondences, transfer surface, portrait anchors, 441 derived cells, and appearances must remain labeled empirically guided and not perceptually validated. The pack selector is local presentation state, uses neutral stable preset names, and may describe creator-selected masculine-coded, feminine-coded, or androgynous styling; it must never claim exhaustive inclusion or infer a person's sex, gender identity, pronouns, race, ethnicity, ancestry, nationality, culture, or affect. Neither the generated anchors, dense nodes, nor broad appearance coverage may be described as independently validated affect samples or demographic representation. Blinded human ratings of anchors, intermediate cells, and transition paths remain required before a pack or mapping can be called perceived-valence/arousal validated. Detailed rendering uses locally vendored Three.js plus checked-in GLB/textures and degrades locally through the default photo atlas to the canonical SVG face. Its friendly-soft presentation must stay independent from the affect color palette: source sclera coloration and excessive red skin chroma are neutralized, the detailed-model iris uses a calm fixed gray-green treatment, strong specular reflections are restrained, and the SVG fallback keeps neutral-white eyes with dark pupils. This material-only grade must not alter morph weights, geometry, coordinates, or the photoreal atlas. Source/data/asset licensing belongs in `site/assets/affect-face/NOTICE.md` and `70-RESEARCH-PROVENANCE.md`. No runtime camera, face model, recognition, demographic inference, remote asset, or diagnostic authority is permitted. Reduced motion must not change coordinate meaning.
+Create-new directories and attempt counters prevent overwrite. Always retain
+the frozen settings snapshot, semantic `events.jsonl`, and
+`ResearchRunManifestV2`, plus selected rating files. CSV and TSV have identical
+canonical rows, columns, order, values, and count.
 
-The six-mode selector is a main-tracker presentation choice, not a portable study field. In the mirrored study, `faceFlubberComparison` is an optional presentation mode inside an `instruction` block on Pages 2D, desktop, and immersive WebXR. It uses the canonical vector face and canonical Flubber, is not a separate phase, stimulus, trial, or data source, and consumes one exact current-X/current-Y/phase snapshot with the non-diagnostic and reduced-motion contract.
+Local/repository videos require SHA-256, byte length, full duration, and decode
+preflight. Repository videos are small demonstrations. YouTube records URL,
+video ID, and observed metadata without a byte hash; it is noncanonical,
+unverified, offline-failing, and excluded from reproducibility qualification.
+Tauri exposes it only after CSP/referrer feasibility passes.
 
-## Online application
+## Sampling and LSL
 
-- Hosted completely by GitHub Pages under the repository project path.
-- Works without a build step or runtime dependency after static assets load.
-- Fullscreen black study surface with a draggable affect widget.
-- Configurable keyboard, mouse-button, and wheel/trackpad inputs; arrow keys are the defaults. The visible Up/Down/Left/Right pad in Settings is the direction-assignment surface: pressing a direction opens a modal capture prompt for the next physical key, mouse button, or wheel direction. Capturing a wheel direction for one affect direction automatically assigns the polar-opposite wheel direction to the opposite affect direction, subject to the shared collision rules.
-- An advanced menu can optionally bind physical inputs to increase or decrease animation speed, pulse amplitude, shape disorder, transparency, and widget size.
-- Interactive 2D color-space coordinate selection, a persisted four-button Circle/Heart/Triangle/Square envelope picker inside **2D grid & colors**, and four persisted axis colors. Each shape button visually depicts and names its envelope, exposes its pressed state, and remains keyboard operable. Pressing or dragging anywhere on the map immediately places the displayed Flubber at that exact coordinate; selecting the map returns both Polar axes to Manual so a sensor cannot immediately overwrite the chosen point. The map contains the miniature live animated Flubber, shows numeric valence/arousal, and supports arrow-key movement while colors are edited.
-- Continuous and step modes, reset, pause, reduced-motion support, and visible focus.
-- A top-level **Synchronized Face + Flubber** accordion controls visibility, centering, and selection among the six local main-tracker face modes. At desktop widths, the face remains on the main stage to the left of the canonical Flubber after the accordion closes. On smartphones, opening either Affect or Face presents the same live split controller inside the open accordion: face-left/Flubber-right in the upper pane and the 2D touch grid below. Face opens to that live view with one compact, visible **Face** selector in its header; when either Photoatlas mapping is selected, a compact **Portrait** selector must appear there too. Those controls and the detailed selectors in **Face options** bind to the same browser-local `faceEngineMode` and `facePhotoPackId`, update the existing renderer pair, and never create another state, renderer, input path, or clock. **Face options** retains visibility, transition, rate, centering, detailed descriptions, and disclosures, and a return action restores the live view. Every mode renders from the same current browser state and animation-phase snapshot. Mode, portrait pack, and visibility are browser-local preferences excluded from portable settings. Detailed 3D uses the pinned local Three.js modules and checked-in Vitruvian GLB/textures; its local fallback is the default project-created photo atlas and then the canonical SVG face. MediaPipe contributes only checked-in build-time-derived scores, and AFFEC contributes only checked-in aggregate statistics. Runtime makes no camera, recognition-model, dataset, CDN, or other face-network request.
-- **Face options** also exposes an affect-transition selector whose actions enter the canonical browser affect-state path rather than a face renderer. **Smooth continuous** preserves the existing response. **21 × 21 step matrix** is session-only and exposes 441 exact states at `-1.0, -0.9, …, 0.0, …, +0.9, +1.0` per axis, with zero-based center cell `(10,10)` equal to neutral. Any node may target any other through the shortest 8-connected path: move diagonally while both indices differ, then cardinally along the remaining axis. Rate is bounded to `0.5–20` states per second; Stop holds the exact current node and Go to neutral targets exact `(0,0)`. At every node, face and Flubber must consume the same frozen current-X/current-Y/phase snapshot. This browser-only control does not persist, alter the six face-engine selection contract, or extend portable settings, LSL, WebXR, native Quest, or Tauri's separate Rust-owned 11×11 traversal.
-- Browser-only 10,000-record normal-session ring buffer with 20 Hz affect sampling and CSV export. Experiments use an append-only, chunked CSV writer that never rolls over and remains available for retry if export fails.
-- A separate browser-local `inputSource` arms ordinary manual controls or the visibly labelled **Experimental Touch/Trackpad** prototype. Armed Touch/Trackpad control becomes effective only while its own accordion is open or while an experiment lifecycle is active; opening Settings, Polar Stream, or an idle Experiment accordion restores ordinary manual/Polar ownership without forgetting the armed preference. It is not part of portable settings version 1 and has no Tauri/LSL counterpart.
-- In the experimental source, pointer shape maps to valence and pointer speed maps to arousal. Mouse and laptop-touchpad cursor movement uses the OS-accelerated trajectory exposed by the browser and is captured continuously across the active page, including over controls; mouse clicks retain normal UI behavior and do not delimit movement strokes. Touch/pen uses primary-pointer capture on tracking surfaces and page-wide experiment capture. Manual direction controls remain logged but cannot change affect, Reset remains available, and Flubber dragging is disabled.
-- Speed calibration must distinguish evidence from interpretation. Literature-informed cold-start anchors are `0.15 D/s` for a deliberate slow command, approximately `0.44 D/s` for the log-space midpoint/hold command, and `0.80 D/s` for a quick command, where `D` is the current viewport diagonal. Participant p10/p90 adaptation progressively replaces these anchors. UI and documentation must never describe them as universal calm/normal/high-arousal diagnoses; task, device, OS cursor acceleration, and individual differences prevent that inference.
-- Short rapid paths must produce useful arousal feedback after two measured movement segments. For touch/pen input, speed evidence and bounded per-stroke direction summaries persist across distinct strokes beginning within 900 ms, while filters and within-stroke geometry reset and lifted-finger displacement is never measured. Alternating near-opposite strokes and continuous multi-direction V/W-like thumb paths must become live angular evidence. Strong circular evidence must require coherent winding around a non-degenerate center, partial path closure, and structural turn coherence while tolerating translated, rotated, anisotropic ellipses and ordinary mouse-scale micro-jitter. Dominant corners begin at 60° over 0.02-diagonal chords; adjacent vectors contribute only explicit reversal evidence. Within one continuous stroke, equal-distance geometry must retain 512 segments (`2.56D`) so full-surface direction changes coexist.
-- The playground exposes a browser-local feedback behavior independent of `inputSource`: **Gated move-and-hold** is the default and **Continuous live response** remains available for comparison. During a gated movement window, fresh confidence-weighted evidence outside a 0.12 dead zone continuously moves the target at a bounded `0.04..0.4` normalized units per second: slow/fast lowers/raises arousal and angular/circular lowers/raises valence. The participant keeps drawing until the 2D point reaches the desired state. After 400 ms of inactivity, the gate closes, contributes one representative observation to calibration, and freezes the exact reached target without a release-time step or neutral decay. Another gate or Reset changes it. Continuous behavior retains the 1.8-second hold and 3-second release toward a directly mapped instantaneous target.
-- The embedded playground movement map and the optional, locally persisted panel below the Flubber both show the last four seconds as a dynamically, uniformly fitted miniature of the page-wide path. Aspect ratio, segment angles, butt caps, and miter joins are preserved; no interpolation or curve smoothing may change the visible path shape. They are feedback viewports, not constrained drawing surfaces. The floating panel also shows detected pointer type, shape/speed labels, and calibration confidence. A separate browser-local checkbox may hide the mouse cursor over tracking, Flubber, and experiment surfaces while leaving it visible over settings controls so the option remains reversible. The same synchronized checkbox is exposed in Settings under **Appearance & cursor** and in the playground's display options so it is easy to find and reverse.
-- A fixed bottom-right **Windows 95** toggle provides a complete alternate visual/audio skin for the main web application. It must retain the exact same DOM-owned product functions, portable settings, input ownership, affect state, experiment lifecycle, calibration contract, privacy boundaries, and CSV behavior. The skin is a browser-local preference outside portable settings. When enabled, panels, forms, disclosures, dialogs, status feedback, calibration, typography, borders, focus, and colors use an intentionally square-edged Windows 95/Netscape/SPSS-like presentation. Visible status announcements may also appear as non-authoritative classic message windows. Short UI cues begin only from the explicit theme gesture, load only from checked-in CC0 files, remain low-volume, and require no permission or network request. In keeping with the restrained event behavior of period desktop software, sound is reserved for the theme switch, important open/ready prompts, successful completion, and warning/error events; routine buttons, fields, movement, and countdown ticks are silent. The modern theme must be restorable from the same always-visible control.
-- The expanded Settings surface is divided into five task-focused subtoggles: **Input & shortcuts**, **Appearance & cursor**, **2D grid & colors**, **Data**, and **Advanced & integrations**. Normal-session CSV actions belong under Data; LSL metadata, advanced feature bindings, and the Quest session exporter remain progressively disclosed under Advanced & integrations. Portable JSON naming/import/export and remote exchange belong to the separate Ground Control module.
-- Seven stacked, mutually exclusive accordion toggles label the surfaces **Affect Tracker Settings**, **Synchronized Face + Flubber**, **Experiment**, **Screen Calibration**, **Touch/Trackpad Playground**, **Polar Stream**, and **Ground Control**. Both research input modules and Ground Control's public network paths are visibly marked **Experimental**. Synchronized Face + Flubber is a read-only projection of the current canonical affect state; Screen Calibration contains the complete coin-based physical-reference workflow; the playground contains the primary enable/disable tracking switch and live movement feedback; Polar Stream contains an explicit browser-owned H10 connection flow, bounded ECG preview, live metrics, and independent valence/arousal assignment controls; Ground Control contains named local JSON save/load, explicit static-settings and continuous-coordinate broadcast/scan controls, reciprocal **Synch with Universe**, and multi-Flubber **Invite a FLUBBER**.
-- Those seven accordions are product modules, not only presentation groups. Settings owns manual input/customization/local normal-session data; Synchronized Face + Flubber owns only the face visibility/centering controls, its non-diagnostic disclosure, and the smartphone presentation host. The paired renderer stays outside the accordion on desktop, while the smartphone shell reparents the one shared Affect-owned live controller into the open Affect or Face accordion without cloning state, renderers, or inputs; hosting it never gives Face manual-input or coordinate authority. Experiment owns stimulus lifecycle and experiment recording/export and only consumes a validated calibration context; Screen Calibration owns physical-reference selection, screen-scale measurement, validation, and browser-local persistence; Touch/Trackpad owns pointer acquisition, movement analysis, and its feedback/privacy state; Polar Stream owns Bluetooth physiology and sensor-to-axis mapping; Ground Control owns portable-file naming, local JSON import/export, public settings-snapshot discovery, and orchestration of the existing live-coordinate transport. One thin shell owns only mutual exclusion and explicit precedence between modules.
-- Ground Control requires a non-empty operator-entered signal name. The sanitized name determines the local `.json` filename and the public display label for both settings snapshots and live FLUBBER streams; it is browser-local, is not written into portable settings version 1, and must be disclosed as public metadata that should contain no participant identifier. A static settings broadcast freezes one validated portable version-1 snapshot at start and sends it reliably to explicitly connected listeners. A receiving browser must validate the envelope and portable settings and require a separate Apply action. Once the selected snapshot is received and validated, the radar closes automatically and a persistent Ground Control preview exposes the separate Apply action. A continuous live receiver applies every accepted 12-byte X/Y pair immediately, owns both axes until explicit disconnect, and holds the last pair across the existing stale grace; after the first valid live frame proves the selected connection, its radar dialog closes automatically while the persistent Ground Control status remains visible. Optional typed 16-byte normalized-placement packets on that same proven data channel make subsequent sender Flubber drags move the receiver in the same relative viewport direction without an initial jump. They must never silently fall through to manual, Touch, or Polar input.
-- Ordinary Ground Control transport has one browser role at a time: send or receive. Any active JSON/live sender disables both ordinary scanners, and any active JSON/live scanner/receiver disables both ordinary broadcasters. Every Ground Control scan follows one dismissal rule: discovery and selection keep the modal open, but the modal closes automatically as soon as the selected connection reaches its protocol-specific success state—validated snapshot for JSON, first valid frame for ordinary Live and Party, or reciprocal live readiness for Universe. **Synch with Universe** is a deliberate duplex role: two named browsers each advertise local intent and explicitly select the other in the isolated Universe room; reciprocal readiness gives both bounded local X/Y pairs full-scale additive influence over one shared Flubber, with each summed axis saturated to `[-1,1]` rather than averaged. Either participant can therefore reach either axis extreme while the other is neutral. **Invite a FLUBBER** keeps the host Flubber under local control and explicitly adds up to eight selected ordinary live sources as separately labelled rendered companions. Each existing guest data channel is also used in reverse for a bounded host-authored aggregate Party scene, so every invited broadcaster sees the same ordered participants, public labels, X/Y, normalized positions, relative sizes, stale states, visual style, and animation phase; deterministic participant geometry makes the reconstructed canonical SVGs consistent across screens. This reply does not make a guest a scanner, host, or co-controller. After each successful invitation the radar closes and the local Flubber moves to screen center. A pure mathematical implicit-cell SVG field then grows a sinusoidally perturbed daughter lobe from the parent's membrane; outward travel lowers the shared field saddle until marching-squares contour extraction naturally pinches one closed wrapper into two. The two separated contours are arc-length resampled and continuously interpolated onto the same 192-point domains as the live canonical parent and stream-driven guest paths; the ordinary SVG objects are revealed only after those boundaries coincide, so no shape swap is visible. Every guest can then be dragged, pointer-captured, or moved with arrow keys independently of the local Flubber and every other guest; the host's session-only arrangement is mirrored to everyone. Once separated, a guest's sender drag also shifts that guest by the same normalized viewport delta. The receiving browser anchors the first remote placement to the guest's post-birth position, and any later local guest drag reanchors the offset, so remote movement never merges the objects or removes their independent local placement. Reduced-motion preference replaces the birth sequence with the immediate centered final state. The Invite action reopens radar for another guest, and a persistent Stop action disconnects the party. Universe, Party, and ordinary roles are mutually exclusive, session-only, and excluded from Experiment recording.
-- The main-page Polar Stream module works only in a secure desktop Chromium browser with a usable Web Bluetooth chooser. Its fourth accordion must fail closed in stock Meta Quest Browser, unsupported browsers, and insecure contexts. The compact H10 connection module exposes privacy-safe live attempt diagnostics for the secure-context/API, adapter availability, initiating user gesture, chooser result, GATT attempt/stage, bounded full-stream setup attempt, PMD response, first valid ECG frame, and actionable error code; it never exposes a Bluetooth identifier or raw physiology. After one browser-owned device selection, an acknowledged-but-packetless ECG startup receives exactly one full notification/GATT teardown and setup retry inside the same Connect gesture. It never becomes an automatic background connection, adds no steady-state processing, and still fails closed after two setup attempts. The separate metric modules expose direct **X · Valence** / **Y · Arousal** assignment. Choices include the provisional Excite-O-Meter score, the 65/35 activation composite, uncorrected rolling RMSSD/lnRMSSD/SDNN, five-second local ECG power, heart rate, latest RR, ECG RMS, and ECG peak-to-peak; low/high/reverse mapping remains available as fine tuning. H10 connection alone never changes affect. While the Touch/Trackpad protocol is active—its accordion is open or an experiment is running—it takes precedence without disconnecting the H10. Raw ECG is bounded to five seconds in memory and never persisted; 20 Hz/event CSV rows retain connection and per-axis mapping context. This exception does not extend portable settings v1 or the desktop application. The separate WebXR entrypoint and native Quest APK implement their deliberately documented run-only mappings without widening JSON v1.
-- The GitHub Pages application must provide a touch-first smartphone viewer. On a first narrow touch-capable visit, open the **Affect** module's direct phone controller without enabling Experimental Touch/Trackpad tracking. Opening **Face** must present that same controller inside the Face accordion rather than a hidden main-stage preview or a second controller, and its live header must expose the compact six-choice **Face** selector without requiring entry into Face options. Below the compact ≥44 px top tabs, divide the available safe-area-aware `100dvh` sheet into two equal panes: the upper half shows the canonical live animated Flubber, its optional synchronized face, and current valence/arousal; the lower half is a large interactive 2D valence/arousal color field. When the face is visible, treat face-left/Flubber-right as one non-overlapping footprint whose left and right edges traverse the full legal pane span proportionally to the normalized X coordinate; when the face is hidden, Flubber alone reaches both horizontal edges. Both paired and solo presentations reach the vertical edges. The upper Flubber itself is pointer-captured and keyboard-draggable within its pane. Its center maps through the exact inverse phone layout to the main Flubber's normalized movable viewport range, so an explicit live broadcast can reproduce the same relative movement on differently sized receiving screens. In smooth continuous mode, lower-field direct manipulation begins only when the primary pointer starts within the existing marker's ≥44 px grab target, and a tap or press elsewhere must leave the value unchanged. While the browser 21×21 step matrix is selected, a primary tap or drag anywhere in the field targets the nearest exact cell without granting the Face module or renderer coordinate ownership. After a valid smooth grab or matrix target press, pointer capture supports two-axis dragging, clamping, and no page scrolling. Keyboard arrows remain an accessible alternative for both draggable objects. While a Party scene is active, smartphone layouts alone expose a local camera transform: pinch or the semantic range changes zoom from `0.5` through `1.6`, a one-pointer swipe on empty Party space pans the perspective, and Reset restores `1`/center. The inverse transform preserves Flubber drag coordinates; camera state is session-only and is never transmitted or written to settings. A visible Settings or Face options action may temporarily replace the split controller with its ordinary controls, with an equally visible return action. Preserve `viewport-fit=cover`, safe-area insets, dynamic viewport height, and zero horizontal overflow at portrait widths through 600 CSS px and coarse-pointer phone landscape heights through 500 CSS px. The separate experimental Touch Lab remains available from its tab. This is web-only presentation and manual direct input; it does not create a native mobile application, alter Touch/Trackpad signal processing, or change the desktop/portable schema.
-- Screen Calibration owns the optional browser-local physical screen calibration. Its ordinary module exposes one **Calibrate screen** action, status, a compact confirmed result, and a concise explanation of the coin protocol. Its user gesture enters a fullscreen three-step wizard: choose a country/currency and a current circulating coin with an official diameter or maximum outer span; place the physical coin anywhere with clear space; draw, adjust, and confirm a perfect square around its outermost edges. During draw and adjustment, guidance and actions are confined to the upper half while the SVG measuring surface occupies exactly the entire lower half of the fullscreen viewport with no padding or controls over it; the surface reaches the physical left, right, and bottom viewport rims so a coin may be steadied against any of those screen edges. The measuring surface is not presented as a bordered box: only one horizontal separator marks its upper boundary against the otherwise continuous black fullscreen surface. The drawn geometry is an unfilled, high-contrast white square with visible white adjustment points. Step one offers searchable SVG flag-labelled countries plus USD, EUR, JPY, GBP, CNY, CHF, AUD, CAD, HKD, and SGD shortcuts explicitly labelled as the BIS 2025 ten most-traded currencies. Every currency shortcut has a project-authored colorized SVG icon. Selecting a currency removes the shortcut/search/country directory from the active UI; a shared currency exposes only a compact country selector alongside its coins. Circular, polygonal, scalloped, and Spanish-flower coin diagrams communicate relative outer size only and must say they are not physically scaled. Primary Pointer Events and capture support mouse, trackpad, pen, and one-finger touch. The initial drag remains 1:1 in every direction; top/bottom handles translate vertically, left/right handles translate horizontally, and corners resize with the opposite corner fixed. Geometry stays within the lower-half measuring surface and keyboard movement/resizing remains available. Redraw, choose-another-coin, confirm, and cancel are explicit. Fullscreen denial or loss cancels the attempt without replacing the last valid record. A successful confirmation shows a congratulatory approximate-screen result with viewport width, height, and diagonal in centimetres and inches plus width/height expressed in the selected reference coin's outer span.
-- Confirmed calibration uses schema version 2 and protocol `drawn-square-v2`, separately from portable settings. It stores selected country/currency/coin, square side in CSS pixels, `mm/CSS px`, confirmed fullscreen viewport, timestamp, and display signature—never raw pointer trajectories. Version-1 `two-match-v1` records remain readable; the next confirmation replaces them with v2. A change in screen pixel dimensions, device-pixel ratio, or orientation makes either version stale. Missing or stale calibration is clearly reported and does not block an experiment, but it must never emit trusted physical dimensions. The UI and documentation must not imply that the browser knows the manufactured panel size without this physical-reference protocol.
-- Online-only experiment module that requests fullscreen from the Start-button gesture, runs a 3–2–1 countdown, resets to neutral, records an isolated 20 Hz session, protects a centered 16:9 player, keeps the Flubber centered directly beneath the video without overlap, automatically downloads CSV at the selected segment end, and exits fullscreen during cleanup. A declined or unsupported fullscreen request must not prevent the experiment.
-- The preloaded GitHub Pages example is a repository-hosted 1080p H.264/AAC video trimmed at the source's 90-second point. Researchers may alternatively provide any embeddable YouTube URL plus explicit start and finish seconds; this optional connection is disclosed and never changes the desktop app.
-- Experiment CSV rows add experiment/stimulus identity, stimulus time, and screen-calibration status. Valid calibration additionally records protocol/version, selected country code/name, reference coin, confirmed CSS-pixel side, millimetres per CSS pixel, calibrated fullscreen viewport dimensions, and timestamp. The legacy repeatability column is retained but blank for v2; physical values remain blank for missing, invalid, or stale calibration. Acquisition records every physical key press/release, mouse-button press/release, and wheel event without typed text. When—and only when—the experimental source is visibly active, every observed/coalesced pointer point is written as `pointer_raw`, 20 Hz touch features/bounds as `touch_metric`, and displayed coordinates as `sample`.
-- No automatic upload, analytics, account, project backend, or persistent affect history. Network behavior is limited to the disclosed user-selected YouTube source, per-run WebXR webhook, and explicit Ground Control settings-snapshot/live-coordinate VDO.Ninja exceptions. The movement and physiology prototypes expose control signals for feedback; neither is validated emotion recognition or diagnosis.
-- Must remain suitable for placing next to or integrating with browser-based study stimuli.
-- The explicitly labelled legacy Meta Quest WebXR mode offers a pre-entry choice between the bundled Great Dictator flat-theatre clip and eight checked-in CEAP-360VR one-minute silent research excerpts. The CEAP choices use their published start offsets and exact frame counts, render as mono equirectangular full spheres, expose content warnings and dataset attribution, and remain subject to the dataset's noncommercial license. Presentation is selectable between immersive VR, `immersive-ar` passthrough behind the flat video, and `immersive-ar` Flubber-only passthrough with no loaded/rendered video. The canonical animated Flubber stays below the flat screen or appears as a low head-relative overlay for full-sphere content. A pre-entry size control applies at 0.5–2×; optional controller-follow keeps Flubber at a fixed small offset above the selected left/right grip, faces the viewer, and holds the last safe pose across transient tracking loss. The right Touch thumbstick continuously controls valence/arousal, left X resets to neutral, and left Y pauses/resumes the whole study. A pre-entry **Polar Stream — Experimental** menu may request the H10 through Web Bluetooth only when that exact Quest browser exposes `navigator.bluetooth.requestDevice`; connection, first valid ECG, and any metric assignment must happen before immersive entry. Each axis defaults to the right thumbstick. A finite assigned Polar metric overrides only its selected axis through the metric's fixed default range, the other axis remains on the right thumbstick, and disconnect/missing warm-up data returns that axis to manual availability. The same routing applies in virtual and passthrough presentation, and the in-world Flubber HUD identifies a live Polar route. This is a diagnostic capability path, not a supported-platform claim: browsers without the API disable Connect, browser-owned Bluetooth prompts are never requested inside immersive mode, and physical Quest/H10 qualification remains mandatory. The legacy run samples stimulus identity/projection, presentation/rigging configuration, current/target coordinates, controller state, and low-rate Polar mapping/value/normalized context at 20 Hz; it records lifecycle/reset/pause/tracking events and produces a participant-local CSV on completion or early exit. Raw ECG/RR series are never logged. A per-run, non-persisted HTTPS webhook is optional; when supplied, the same completed CSV is posted once with no credentials, and download remains available whether delivery succeeds or fails. This legacy mode has no local-file picker or portable-study authority and remains distinct from Portable Study.
-- The separately selected **Portable Study** WebXR mode loads an immutable published `StudyDefinitionV1` in the ordinary 2D page, binds required local `contentAsset` files by exact size/SHA-256 plus decoded-frame/duration evidence, requires the shared WASM authority and IndexedDB journal, and rejects unsupported storage, input, MIME, projection, stereo, source, or questionnaire capability before the authority starts. In XR it presents portable instruction, all seven questionnaire types, break, completion, and flat/equirectangular-180/equirectangular-360 video blocks with mono, side-by-side-left/right, or top/bottom layout. Media clips report their timeline to the authority; affect samples are accepted only while decoded playback is active, and Continue remains gated until the segment completes. YouTube is rejected as Pages 2D-only. The current code and automated fixtures are not physical Quest playback, controller, storage, recovery, or performance qualification.
-- The browser also exposes the experimental remote-Flubber path in `66-EXPERIMENTAL-REMOTE-FLUBBER.md`. The source sends its final smoothed displayed X/Y and typed normalized Flubber viewport placement through one explicit data-only VDO.Ninja channel; raw pointer trails are never transmitted. Browser receivers anchor the first placement without jumping, then apply subsequent deltas relative to their own viewport and retain a locally draggable offset. WebXR receives X/Y through a separate explicit action before immersive entry and deliberately ignores 2D viewport placement. The desktop Broadcast gesture also opens a browser-owned always-on-top Flubber helper and requests a renewable screen wake lock, keeping the animation-frame-owned smoothing/transmission loop active when the main window is covered; Stop immediately quiesces scheduling and closes active data channels before awaiting signaling teardown, then closes only a helper created by Broadcast. One public source auto-selects after a short discovery window and multiple sources produce controller-friendly buttons. Live or stale remote state owns both Quest axes, bypasses smoothing, disables thumbstick/reset/direct-Polar routing, and holds the final pair with the exact in-world stale warning after a two-second receiver-local grace period. Recovery status requires three consecutive valid frames so one intermittent packet cannot flap the HUD; accepted coordinates remain immediate throughout and are not placed in a delay buffer. Active immersive WebXR plus a renewable screen wake lock is the lowest-latency receiver mode; XR visibility readback distinguishes foreground, system-overlay blur, and hidden state, while an ordinary Quest browser panel may still be deprioritized by Meta. No timestamp or physiology is placed on either the 12-byte affect packet or the 16-byte placement packet. Remote selection and state are session-only, WebSocket fallback is disabled, and the UI discloses public discovery, peer-IP visibility, third-party signaling/STUN/TURN, relay latency, service availability, receiver mode, and receiver-local frame-gap diagnostics.
-- The native Quest launcher's first screen exposes the hosted WebXR mode as a full-width action above the scrollable native-session content, visible even without an authorized session folder. All variable-height session choices, run switches, status text, and explanatory text remain inside that bounded vertical scroll region, while the folder and Start actions stay in a fixed bottom action bar so Start cannot be pushed outside the Quest window. The normal web Experiment panel also exposes a visible link. Opening either link never authorizes data transmission or starts immersive presentation; the wearer must press the WebXR page's explicit start button and separately enter any webhook.
-- In supporting browsers, provide an explicit user-activated Document Picture-in-Picture checkbox that mirrors the live Flubber in an always-on-top browser-owned window. Make every site-controlled surface transparent, borderless, and edge-to-edge; request reduced browser chrome. It must close with the originating page and degrade clearly when unsupported. Never claim the browser-controlled frame or compositor surface is transparent.
+One sampling authority uses the configured 1–240 Hz value, default 130 Hz, for
+rating rows and the Windows regular LSL state outlet. Rendering never owns the
+clock. Missed slots emit a timing-gap event and are never backfilled.
 
-## Desktop companion
+Rows retain LSL-compatible and monotonic timestamps, state-anchor age, observed
+jitter/gaps, current/target x/y, radius, angle, mapped values, and input state.
 
-- Product name: `Affect Tracker Desktop`.
-- Bundle identifier: `io.github.georgefejer91.affecttracker`.
-- Built with Tauri v2, Rust, HTML/CSS, native ES modules, and SVG.
-- Core tracking, settings, overlay, global input, persistence, and LSL run without internet access on Windows, macOS, and Linux. The separately labelled experimental Party feature is an explicit opt-in network exception: it requires VDO.Ninja internet signaling/STUN and may require TURN even when the media-less WebRTC data path selects direct local Wi-Fi.
-- Uses a normal settings window and a separate transparent, borderless, always-on-top overlay window.
-- Overlay is click-through when locked and draggable only in explicit edit-position mode.
-- Provides system-tray controls for settings, overlay visibility/editing, reset, and quit.
-- Closing the main settings window quits the entire application and removes the overlay; it must never leave an orphan floating widget.
-- Native Rust owns affect state, smoothing, timestamps, persisted settings, global raw-input monitoring, and LSL publication.
-- The settings main preview renders the selected one of the same five local face modes left of the canonical Flubber from one Rust snapshot containing the same `currentX`, `currentY`, and `phase`; selecting Photoatlas reveals the same locally persisted neutral portrait-pack choices and only the chosen bundled atlas is decoded. Local default-photo/vector fallbacks remain available. Desktop face and portrait selections are local presentation state, while the transparent always-on-top overlay remains Flubber-only. No renderer owns native timing, state, or LSL sampling.
-- The desktop exposes transient **Continuous** and **11×11 matrix** traversal modes. Continuous mode retains normal Rust target smoothing. Matrix mode provides 121 exact states at `-1.0, -0.8, …, 0.0, …, +0.8, +1.0` on each axis, with center cell `(5,5)` equal to exact neutral. Any state may target any other through the shortest 8-connected path: take diagonal index steps while both axes differ, then cardinal steps along the remaining axis.
-- Matrix traversal rate is bounded to `0.5–10` states per second. Every node must remain observable in the native snapshot stream; Stop holds the current cell, and Reset selects exact neutral. Direct target/nudge controls return to continuous mode rather than maintaining two simultaneous movement authorities.
-- Traversal mode, rate, current/target cells, and queued path are session-only Rust state. They are not persisted and do not extend portable settings version 1. LSL continues to publish the same eight ordered state channels using the engine's actual current/target coordinates; no matrix metadata is added to the wire schema.
-- Users assign positive/negative valence, positive/negative arousal, reset, pause, settings, and overlay editing by clicking a field and physically pressing a key, mouse button, or wheel direction.
-- Optional advanced global bindings adjust animation speed, pulse amplitude, shape disorder, transparency, and overlay size in bounded increments; every assignment remains collision-free across standard and advanced actions.
-- Plain arrow keys are the default affect controls. Assignments remain active while other applications are focused; conflicts and invalid mappings produce actionable errors.
-- Settings include input mode, step size, held-input speed, smoothing response, Circle/Heart/Triangle/Square base envelope, axis colors, overlay size/transparency/position, persisted LSL names/rate/source, and physical input bindings.
-- The canonical native icon is `desktop/icons/app-icon.svg`; regenerate platform PNG, ICO, and ICNS assets with `pnpm desktop:icons` after changing it.
-- Settings persist in the operating system application configuration directory. Affect history does not silently persist.
-- The settings window exposes explicit **Host Party and scan**, **Broadcast desktop Flubber**, and **Stop Party connection** actions. It constructs no VDO.Ninja client on launch. Host mode receives up to eight explicitly invited ordinary public live FLUBBER sources, renders one host-authored scene, and sends that identical bounded aggregate back through every guest's existing channel. Broadcast mode sends the Rust runtime's current displayed X/Y plus session-only normalized scene placement so a smartphone browser Party host can invite the desktop; it accepts only a newer returned aggregate that contains its fresh stream ID and then renders that same logical scene in the desktop Party stage. Remote coordinates never control Rust state or LSL.
-- Desktop Party reuses the checked-in VDO.Ninja v1.5.5 data-only SDK and the version-1 remote/Party codecs. It requests no camera, microphone, audio, browser media capture, popup, QR flow, or general local-network permission. The UI must disclose the public signal name/room, peer-IP visibility, third-party signaling/STUN/TURN, possible relay latency, and hosted-service dependency before activation.
-
-## Portable settings
-
-- `site/settings.json` is the canonical version-1 JSON defaults file and must deserialize as native Rust `Settings` without migration.
-- Web and desktop import and export the same complete JSON object. Base shape, palette, size, opacity, visibility, coordinates, input behavior, bindings, and LSL metadata must round-trip without visual or semantic loss.
-- Version 1 remains the active schema: `visual`, its additive `baseShape`, and `advancedBindings` have defaults, so older version-1 files import safely with Circle, neutral visual multipliers, and no advanced assignments.
-- The user-facing transparency control spans 0% (fully opaque) through 100% (fully transparent); the JSON stores the inverse `overlay.opacity` in `[0,1]`.
-- The web app exposes every portable customization. It preserves LSL metadata for transfer but cannot publish LSL, and global browser bindings only operate while the page is focused.
-- Browser preferences may override bundled defaults for returning users. Replacing `site/settings.json` changes defaults for new/clean browser profiles; importing applies a file immediately.
-- Experiment stimulus source/URL/timing are browser-study configuration, not portable Flubber settings, and are intentionally absent from the desktop-compatible version-1 JSON.
-
-## Meta Quest VR player
-
-- `active-session.json` is the one experiment-wide runtime profile and remains required/default. Its environment, affect, Flubber, controller, controller-model, readout-default, and LSL settings MUST supersede the duplicated settings inside every optional video manifest, so selecting another clip cannot silently change the instrument. A bounded `sessions/` directory MAY provide exact per-video identity plus explicit projection/stereo declarations. Media files without a manifest are also discoverable after stable-copy/hash/metadata validation and explicitly inherit the active video's projection/stereo/loop defaults; the launcher labels this condition. Filenames and aspect ratios MUST NOT be used to infer geometry, so non-default 180/360/stereo content still requires a matching optional manifest. Invalid optional files MUST NOT displace the active session.
-- Product/package identity is `Affect Tracker VR` / `io.github.georgefejer91.affecttracker.vr`, targeting Quest 2, Quest Pro, Quest 3, and Quest 3S on Horizon OS 69 or newer.
-- The APK reads a strict `affect-tracker-vr-session` version-1 envelope from a wearer-authorized `Documents/AffectTrackerVR` tree. The original video remains in `media/`; `active-session.json` is the low-rate activation control. No all-files permission, cloud upload, DRM, heuristic projection guessing, or active-session replacement during playback is permitted.
-- Media3 owns container/codec detection and decoder preparation. JSON owns the explicit `flat`, `equirect-180`, or `equirect-360` projection and `mono`, `side-by-side-left-right`, or `top-bottom` stereo layout.
-- The transparent Flubber is a native in-app alpha-blended spatial panel. It uses the canonical mathematics, including the imported Circle/Heart/Triangle/Square `affectSettings.visual.baseShape`, is placed from the live viewer pose immediately before countdown, is movable in three dimensions with either controller pointer/trigger, remains front-facing, and is bounded to 0.35–5 metres from the wearer. The compositor/grab surface is a tight rectangle: 1.15 times the configured width and 1.12 times that resulting width in height. The maximum permitted amplitude/disorder outline and halo retain at least 4% canvas-radius clearance; a separate lower band fits the optional X/Y readout without clipping or a large invisible panel. The registered panel scene object's complete quad is the grab target. Its native animation clock MUST apply the same arousal mapping as the original Unity prefab and canonical web renderer: `0.5`, `1.5`, and `2.5 Hz` at `y=-1`, `0`, and `+1`, respectively. `vr.flubber.showAffectValues` is an optional version-1 boolean, defaulting to `false`, that draws exactly the two current Flubber coordinates as `X` (valence) and `Y` (arousal), each clamped to `[-1,1]`, at the transparent panel bottom. It does not show target, rate, or raw-stick diagnostics. The web exporter writes the value; the headset Ready screen exposes a transient per-run override initialized from it without rewriting the manifest. The text refreshes at 10 Hz while Flubber animation remains frame-driven.
-- Optional `vr.flubber.controllerFollow` rigging defaults off, uses the left Touch controller by default, places the panel a configurable `0.05–0.6 m` in front of that tracked controller (between controller and wearer) on the wearer-to-controller ray, and recomputes a full viewer-facing orientation from live head/controller poses every frame. The headset Ready screen exposes a per-run follow switch, explicit left/right selection, and an independent followed-controller model visibility switch initialized from the active profile; it does not rewrite JSON. Model visibility MUST NOT remove the controller input/tracking component. When enabled, this tracking authority supersedes world dragging and A-button recentering; both retain their existing behavior when it is disabled. Lost tracking leaves the last safe pose in place and emits one state edge rather than hiding the instrument. The activity keeps its immersive window awake and continues the Spatial controller poll every frame while follow is enabled; physical Touch-controller power sleep remains Quest firmware authority because Spatial SDK exposes no documented application override.
-- Flat video is recentered from that same live viewer pose immediately before countdown, using the tracked yaw while remaining upright at eye height, at a 2.0-metre default distance and 2.2-metre width (about 58° horizontal angular width), then world-anchored for playback.
-- Controller mappings come from the active runtime profile and therefore remain identical across every video choice. Defaults are right thumbstick for valence/arousal, X for reset, Y for whole-session pause/resume, either trigger for Flubber grab, and visible Touch controller models. `vr.controls.showControllerModels` is an optional boolean that defaults to `true`; the headset-only followed-controller visibility override is transient and does not widen JSON v1. The Flubber uses Spatial SDK's ordinary registered-panel plus toolkit `Grabbable` path, which attaches input to the synchronized panel scene object; it MUST NOT overlay giant manual ISDK edge-handle collision widths. The entire tight transparent quad, including its center, visually empty pixels, and corners, is one trigger-grab target. When A is not explicitly assigned to reset or pause by an imported profile, pressing A recenters the Flubber on the current head-gaze ray at its current clamped distance and emits an LSL marker. The configured thumbstick remains routed whenever the visible Flubber entity exists—during preparation, countdown, video playback or Flubber-only passthrough, and whole-session pause—and must not depend on LSL sampling state, rendered controller visibility, or Android panel focus. The same physical stick must not activate teleport, snap-turn, or any screen/world movement; disabling locomotion must preserve Interaction SDK controller-model tracking, pointer/grab behavior, and the controller-state handoff used by the affect engine. Spatial SDK's app controller model is required to preserve tracked pose and pointer presentation when shown, but shell-equivalent button/stick articulation is not an acceptance signal; app-owned numerical and marker receipts are authoritative.
-- A validated session opens discoverable LSL outlets on the Ready screen. Start begins video playback and state samples; first-frame, video, lifecycle, input, reset, pause, and grab events use the irregular marker stream.
-- `vr.environment` accepts `dark` or `passthrough`. Both the web exporter and the headset Ready screen expose a mixed-reality switch; the headset switch is initialized from the active profile and overrides only the upcoming run without rewriting JSON. Passthrough is compositor-owned, allowing flat video and the transparent Flubber to appear over the wearer's normal see-through view. The headset Ready screen additionally exposes a transient **Flubber-only passthrough** run mode. It forces passthrough, does not create a video entity, prepare a decoder, render video, or emit video lifecycle markers, and runs Flubber/controller/LSL after the normal countdown until the wearer exits. A validated staged session remains the settings/session-identity authority, so JSON v1 is unchanged. The APK does not request camera frames, record passthrough, or place passthrough pixels in JSON/LSL; immersive 180°/360° carriers may naturally occlude the background where they render. Hand tracking remains out of scope for v1.
-- The headset Ready screen exposes an explicit native **Polar Stream · H10** module using Polar BLE SDK 8.1.0. Connect requests only Android nearby-device/BLE permission, automatically discovers a nearby H10, starts official-SDK ECG and HR/RR streaming, shows a bounded live waveform, and becomes Ready only after real 130 Hz ECG samples remain stable for three seconds and the newest sample is no more than five seconds old. The same ten browser metrics may be assigned independently to X, Y, both, or neither with explicit low/high/reverse controls. Any assigned run is blocked until Ready; during the running session a finite metric owns only its assigned axis, while every manual, warming, stale, or disconnected axis stays on the configured Touch controller. Sensor targets begin after countdown; pause holds the last target; Reset changes only manual axes. Mappings are application-memory, run-only state outside JSON v1. Raw ECG is limited to the five-second/650-sample metric window plus a 160-sample preview and is never persisted or published through LSL. Low-rate route/value/bounds context may use the existing irregular marker outlet, but the eight ordered state channels and their rate remain unchanged. The native path must work in `dark`, video passthrough, and Flubber-only passthrough, retaining the ability to drive either Flubber axis from every exposed ECG/HRV/vital/composite metric.
-
-## LSL output
-
-The desktop app publishes two outlets automatically for its entire process lifetime:
-
-1. `AffectTracker` (configurable name/type), regular `float32`, default 50 Hz:
-   - `current_valence`
-   - `current_arousal`
-   - `target_valence`
-   - `target_arousal`
-   - `radius`
-   - `angle_degrees`
-   - `animation_active`
-   - `input_active`
-2. `AffectTrackerMarkers`, irregular string markers for every physical key press/release, mouse-button press/release, wheel event, reset, pause/resume, mapping changes, overlay movement, and session lifecycle. Emit physical identifiers, never composed characters or typed text.
-
-Streams include schema/app version, session UUID, coordinate range, units, sample rate, and source identity metadata. LSL operates locally and must never be described as cloud upload.
+The Windows regular Float32 outlet preserves eight ordered channels:
+`current_valence`, `current_arousal`, `target_valence`, `target_arousal`,
+`radius`, `angle_degrees`, `animation_active`, and `input_active`. The irregular
+marker outlet carries bounded semantic lifecycle/stimulus/input/timing/write/
+recovery events without typed text, raw names, paths, settings bodies, or video.
 
 ## Accessibility and privacy
 
-- Keyboard access, semantic controls, labels, visible focus, high contrast, and polite status announcements are required.
-- Respect `prefers-reduced-motion` without disabling affect input.
-- Global monitoring and LSL are core runtime behavior, not optional start/stop toggles. The UI must disclose this clearly.
-- No typed characters, clipboard contents, unrelated window names, or application contents are logged. The web-only experimental source has the narrowly scoped pointer-movement exception documented above; it cannot observe other tabs, browser chrome, or applications. Physical key identifiers and button/wheel events are emitted to local desktop LSL by design.
-- Local recording/export behavior must be explicit and documented.
-- Remote-coordinate controls require semantic buttons, controller-ray-compatible targets, polite status announcements, and no typing, clipboard, QR, popup, microphone, camera, or audio permission. Loading a page must not connect; the public VDO.Ninja path begins only after its exact explicit action and transmits no raw or derived physiology.
-- Settings-beacon controls require semantic buttons, polite status, a keyboard-readable JSON preview, explicit source selection when several beacons exist, and a distinct Apply gesture. The UI must disclose that the room and entire portable JSON—including user-entered LSL metadata—are public to connected listeners and that source labels are not authenticated.
+- Keyboard operation, visible focus, semantic labels, non-color state, high
+  contrast, reduced motion, and polite announcements are required.
+- Hiding feedback cannot hide timing, write/recovery, or LSL status.
+- Store no raw names, self-described gender text, composed input, clipboard,
+  unrelated app/window names, raw pointer trajectories, physiology, face/camera
+  data, or remote identifiers.
+- Research settings, plans, media identity, outputs, journals, and LSL remain
+  local. No active-v1 account, upload, webhook, peer transport, or telemetry is
+  permitted.

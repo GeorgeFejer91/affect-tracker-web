@@ -1,5 +1,12 @@
 # Experimental remote Flubber state
 
+> **Status — Frozen Playground/history.** This body preserves the feature-rich
+> checkpoint contract; remote Flubber transport is not active Research v1 scope
+> and is superseded by
+> [`15-RESEARCH-V1-CHARTER.md`](./15-RESEARCH-V1-CHARTER.md). It creates no
+> active support, release, or qualification requirement. Its safety, privacy,
+> and license constraints remain binding while the legacy code is reachable.
+
 This is the normative contract for the explicit browser-neutral Flubber transport used by browser endpoints and the Tauri settings WebView's Party adapter. It is a narrow network exception to the local-first default, not a physiology transport, remote-recording service, native Quest feature, LAN service, or general integration API.
 
 The latest attended evidence and open physical gate are recorded in [`67-REMOTE-FLUBBER-QUALIFICATION-2026-08-25.md`](./67-REMOTE-FLUBBER-QUALIFICATION-2026-08-25.md).

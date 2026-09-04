@@ -1,5 +1,12 @@
 # Experimental Polar Stream browser and native Quest modules
 
+> **Status — Frozen Playground/history.** This body preserves the feature-rich
+> checkpoint contract; direct Polar acquisition is not active Research v1 scope
+> and is superseded by
+> [`15-RESEARCH-V1-CHARTER.md`](./15-RESEARCH-V1-CHARTER.md). It creates no
+> active support, release, or qualification requirement. Its safety, privacy,
+> and license constraints remain binding while the legacy code is reachable.
+
 ## Scope and support boundary
 
 The fifth top-level **Polar Stream — Experimental** accordion is an opt-in,

@@ -1,5 +1,12 @@
 # Experimental FLUBBER collaboration
 
+> **Status — Frozen Playground/history.** This body preserves the feature-rich
+> checkpoint contract; Universe, Party, and collaboration are not active
+> Research v1 scope and are superseded by
+> [`15-RESEARCH-V1-CHARTER.md`](./15-RESEARCH-V1-CHARTER.md). It creates no
+> active support, release, or qualification requirement. Its safety, privacy,
+> and license constraints remain binding while the legacy code is reachable.
+
 This is the normative contract for Ground Control's reciprocal **Synch with Universe** and multi-source **Invite a FLUBBER** modes plus the Tauri settings WebView's compatible Party host/broadcaster roles. They extend the reviewed 12-byte coordinate transport; they are not chat, accounts, presence storage, experiment recording, physiology exchange, native remote-control authority, or a general networking API.
 
 ## Shared boundary

@@ -1,5 +1,34 @@
 # Mandatory agent workflow and skill routing
 
+> **Research v1 routing override.** Read
+> [`15-RESEARCH-V1-CHARTER.md`](./15-RESEARCH-V1-CHARTER.md) as the sole active
+> product and architecture authority. Where the older workflow below refers to
+> mirrored Pages/desktop/WebXR parity, native Quest, Party, Ground Control,
+> direct Polar, face, remote-control, or another Playground surface, that advice
+> is frozen history and must not be treated as active Research scope.
+
+## Active Research v1 change discipline
+
+- Preserve exactly two product modes: **Setting Up the Experiment** and
+  **Running the Experiment**. Route user-visible Setup work through the seven
+  ordered charter sections; keep Run deliberately narrow.
+- Qualify Windows Tauri plus desktop Chrome and Edge first. A platform or
+  feature outside that matrix requires an explicit charter amendment before it
+  can enter active scope.
+- Treat the strict Research contracts, canonical settings/plan hashes,
+  participant-data minimization, timing-gap semantics, no-overwrite output,
+  and safe-boundary recovery rules as cross-layer boundaries, not UI details.
+- Keep Tauri Rust authoritative for native input, scheduling, timestamps,
+  persistence, and outbound LSL. Keep browser sampling in a dedicated worker
+  with IndexedDB journaling. Rendering cadence must never be the sample clock.
+- Classify every touched feature as active Research, frozen Playground/history,
+  or shared infrastructure. Do not refactor or reactivate frozen features while
+  implementing Research work; containment or removal from the active product is
+  allowed when required by the charter.
+- Use [`30-TESTING-AND-RELEASE.md`](./30-TESTING-AND-RELEASE.md) for active gates
+  and [`40-ROADMAP.md`](./40-ROADMAP.md) for implementation status. A chartered
+  target is not evidence that the implementation or a release is qualified.
+
 ## First actions for every future agent
 
 Before inspecting source, planning changes, editing, testing, or publishing:
