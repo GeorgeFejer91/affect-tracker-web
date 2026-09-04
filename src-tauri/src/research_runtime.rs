@@ -1,6 +1,6 @@
 use crate::research_contracts::*;
 use crate::research_error::{CommandError, ResearchResult};
-use crate::research_input::{NativeDigitalInput, NativeInputMonitor};
+use crate::research_input::{NativeDigitalInput, ResearchInputService};
 use crate::research_lsl::{LslService, LslState};
 use crate::research_native_media::{NativeMediaService, PlaybackMode, PlaybackQualification};
 use crate::research_timing::DeadlineClock;
@@ -8,7 +8,6 @@ use crate::research_workspace::WorkspaceService;
 use fs2::FileExt;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use std::collections::HashSet;
 use std::fs::{self, File, OpenOptions};
 use std::io::{BufRead, BufReader, BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
@@ -35,6 +34,7 @@ pub struct StartRunRequest {
     pub participant: TransientParticipant,
     pub workspace_files: Vec<WorkspaceFileBinding>,
     pub rerun_confirmed: bool,
+    pub input_test_receipt_id: String,
     #[serde(default)]
     pub playback_mode: PlaybackMode,
 }
@@ -47,6 +47,7 @@ pub struct ResumeRunRequest {
     pub settings: ResearchSettingsV1,
     pub assignment_plan: ResolvedAssignmentPlanV1,
     pub workspace_files: Vec<WorkspaceFileBinding>,
+    pub input_test_receipt_id: String,
     #[serde(default)]
     pub playback_mode: PlaybackMode,
 }
@@ -155,15 +156,6 @@ impl RunStatus {
             playback_qualification: None,
         }
     }
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct AffectStateUpdate {
-    pub valence: f64,
-    pub arousal: f64,
-    pub input_active: bool,
-    pub input_kind: InputKindV1,
 }
 
 #[derive(Debug, Clone, Copy, Deserialize)]
@@ -297,6 +289,7 @@ pub struct ParticipantTileStatus {
 pub struct ResearchRuntime {
     workspace: Arc<WorkspaceService>,
     native_media: Arc<NativeMediaService>,
+    input: Arc<ResearchInputService>,
     active: Mutex<Option<ActiveRun>>,
 }
 
@@ -304,14 +297,12 @@ struct ActiveRun {
     sender: SyncSender<RunMessage>,
     status: Arc<Mutex<RunStatus>>,
     worker: Option<JoinHandle<()>>,
-    input_monitor: NativeInputMonitor,
+    input_authority_id: String,
 }
 
 enum RunMessage {
-    Affect(AffectStateUpdate),
     Stimulus(StimulusStateUpdate, mpsc::Sender<ResearchResult<()>>),
     DigitalInput(NativeDigitalInput),
-    GamepadButton(u8, bool, mpsc::Sender<ResearchResult<()>>),
     Finish(FinishOutcome, mpsc::Sender<ResearchResult<FinalizeReceipt>>),
     MediaFailure(
         MediaPlaybackFailureReport,
@@ -323,19 +314,22 @@ enum RunMessage {
 impl ResearchRuntime {
     #[cfg(test)]
     pub fn new(workspace: Arc<WorkspaceService>) -> Self {
-        Self::with_native_media(
+        Self::with_services(
             workspace,
             Arc::new(NativeMediaService::unavailable_for_tests()),
+            Arc::new(ResearchInputService::for_tests()),
         )
     }
 
-    pub fn with_native_media(
+    pub fn with_services(
         workspace: Arc<WorkspaceService>,
         native_media: Arc<NativeMediaService>,
+        input: Arc<ResearchInputService>,
     ) -> Self {
         Self {
             workspace,
             native_media,
+            input,
             active: Mutex::new(None),
         }
     }
@@ -369,11 +363,15 @@ impl ResearchRuntime {
             .clone();
         let (sender, receiver) = mpsc::sync_channel(512);
         let native_sender = sender.clone();
-        let input_monitor = NativeInputMonitor::start(&settings.input, move |input| {
-            let _ = native_sender.try_send(RunMessage::DigitalInput(input));
-        })?;
+        let input_authority_id = self.input.prepare_run(
+            settings.input.clone(),
+            &request.input_test_receipt_id,
+            move |input| {
+                let _ = native_sender.try_send(RunMessage::DigitalInput(input));
+            },
+        )?;
 
-        let prepared = self
+        let prepared = match self
             .workspace
             .with_workspace(&request.workspace_id, |root, _| {
                 PreparedRun::create(
@@ -387,19 +385,31 @@ impl ResearchRuntime {
                     request.playback_mode,
                     playback_qualification,
                 )
-            })?;
+            }) {
+            Ok(prepared) => prepared,
+            Err(error) => {
+                self.input.end_run(&input_authority_id);
+                return Err(error);
+            }
+        };
         let receipt = prepared.receipt.clone();
         let status = Arc::new(Mutex::new(prepared.initial_status()));
         let worker_status = Arc::clone(&status);
-        let worker = thread::Builder::new()
+        let worker = match thread::Builder::new()
             .name("affect-research-writer".to_owned())
             .spawn(move || run_worker(prepared, receiver, worker_status))
-            .map_err(|_| CommandError::io("The native run worker could not start."))?;
+        {
+            Ok(worker) => worker,
+            Err(error) => {
+                self.input.end_run(&input_authority_id);
+                return Err(CommandError::io(error));
+            }
+        };
         *active = Some(ActiveRun {
             sender,
             status,
             worker: Some(worker),
-            input_monitor,
+            input_authority_id,
         });
         Ok(receipt)
     }
@@ -422,7 +432,16 @@ impl ResearchRuntime {
             &settings,
             &request.workspace_files,
         )?;
-        let prepared = self
+        let (sender, receiver) = mpsc::sync_channel(512);
+        let native_sender = sender.clone();
+        let input_authority_id = self.input.prepare_run(
+            settings.input.clone(),
+            &request.input_test_receipt_id,
+            move |input| {
+                let _ = native_sender.try_send(RunMessage::DigitalInput(input));
+            },
+        )?;
+        let prepared = match self
             .workspace
             .with_workspace(&request.workspace_id, |root, _| {
                 PreparedRun::resume(
@@ -433,24 +452,31 @@ impl ResearchRuntime {
                     request.playback_mode,
                     playback_qualification,
                 )
-            })?;
-        let (sender, receiver) = mpsc::sync_channel(512);
-        let native_sender = sender.clone();
-        let input_monitor = NativeInputMonitor::start(&prepared.settings.input, move |input| {
-            let _ = native_sender.try_send(RunMessage::DigitalInput(input));
-        })?;
+            }) {
+            Ok(prepared) => prepared,
+            Err(error) => {
+                self.input.end_run(&input_authority_id);
+                return Err(error);
+            }
+        };
         let receipt = prepared.receipt.clone();
         let status = Arc::new(Mutex::new(prepared.initial_status()));
         let worker_status = Arc::clone(&status);
-        let worker = thread::Builder::new()
+        let worker = match thread::Builder::new()
             .name("affect-research-writer".to_owned())
             .spawn(move || run_worker(prepared, receiver, worker_status))
-            .map_err(|_| CommandError::io("The native recovery worker could not start."))?;
+        {
+            Ok(worker) => worker,
+            Err(error) => {
+                self.input.end_run(&input_authority_id);
+                return Err(CommandError::io(error));
+            }
+        };
         *active = Some(ActiveRun {
             sender,
             status,
             worker: Some(worker),
-            input_monitor,
+            input_authority_id,
         });
         Ok(receipt)
     }
@@ -471,42 +497,36 @@ impl ResearchRuntime {
         status
     }
 
-    pub fn update_affect(&self, update: AffectStateUpdate) -> ResearchResult<()> {
-        validate_affect_update(&update)?;
-        if update.input_kind == InputKindV1::Digital {
-            return Err(CommandError::forbidden(
-                "Digital ratings are owned by native edge capture, not WebView affect updates.",
-            ));
-        }
-        self.send(RunMessage::Affect(update))
-    }
-
     pub fn set_stimulus_state(&self, update: StimulusStateUpdate) -> ResearchResult<()> {
         if !update.media_time_ms.is_finite() || update.media_time_ms < 0.0 {
             return Err(CommandError::invalid_contract(
                 "Stimulus media time must be a finite non-negative number.",
             ));
         }
-        let (reply_sender, reply_receiver) = mpsc::channel();
-        self.send(RunMessage::Stimulus(update, reply_sender))?;
-        reply_receiver
-            .recv_timeout(Duration::from_secs(2))
-            .map_err(|_| CommandError::io("The stimulus lifecycle update timed out."))?
-    }
-
-    /// A bounded bridge for browser-polled gamepad D-pad events. Keyboard, mouse,
-    /// and wheel edges are captured natively and never sent through the WebView.
-    pub fn gamepad_button(&self, button: u8, pressed: bool) -> ResearchResult<()> {
-        if button > 63 {
-            return Err(CommandError::invalid_contract(
-                "Gamepad button indices must be within 0–63.",
-            ));
+        let lifecycle = update.lifecycle;
+        let input_authority_id = self
+            .lock_active()
+            .as_ref()
+            .ok_or_else(CommandError::no_active_run)?
+            .input_authority_id
+            .clone();
+        let begins_sampling = matches!(
+            lifecycle,
+            StimulusLifecycle::Started | StimulusLifecycle::Resumed
+        );
+        if begins_sampling {
+            self.input.ensure_run_ready(&input_authority_id)?;
         }
         let (reply_sender, reply_receiver) = mpsc::channel();
-        self.send(RunMessage::GamepadButton(button, pressed, reply_sender))?;
-        reply_receiver
+        self.send(RunMessage::Stimulus(update, reply_sender))?;
+        let result = reply_receiver
             .recv_timeout(Duration::from_secs(2))
-            .map_err(|_| CommandError::io("The gamepad update timed out."))?
+            .map_err(|_| CommandError::io("The stimulus lifecycle update timed out."))?;
+        if result.is_ok() {
+            self.input
+                .set_run_accepting(&input_authority_id, begins_sampling)?;
+        }
+        result
     }
 
     pub fn finish(&self, outcome: FinishOutcome) -> ResearchResult<FinalizeReceipt> {
@@ -521,7 +541,7 @@ impl ResearchRuntime {
             .is_err()
         {
             if let Some(mut failed) = active.take() {
-                failed.input_monitor.stop();
+                self.input.end_run(&failed.input_authority_id);
                 if let Some(worker) = failed.worker.take() {
                     let _ = worker.join();
                 }
@@ -535,7 +555,7 @@ impl ResearchRuntime {
             .map_err(|_| CommandError::io("The native run did not finalize in time."))?;
         if result.is_ok() {
             let mut run = active.take().expect("active run exists while finalizing");
-            run.input_monitor.stop();
+            self.input.end_run(&run.input_authority_id);
             if let Some(worker) = run.worker.take() {
                 let _ = worker.join();
             }
@@ -568,7 +588,7 @@ impl ResearchRuntime {
             .is_err()
         {
             if let Some(mut failed) = active.take() {
-                failed.input_monitor.stop();
+                self.input.end_run(&failed.input_authority_id);
                 if let Some(worker) = failed.worker.take() {
                     let _ = worker.join();
                 }
@@ -583,7 +603,7 @@ impl ResearchRuntime {
         let mut run = active
             .take()
             .expect("active run exists while interrupting media playback");
-        run.input_monitor.stop();
+        self.input.end_run(&run.input_authority_id);
         if let Some(worker) = run.worker.take() {
             let _ = worker.join();
         }
@@ -624,7 +644,7 @@ impl ResearchRuntime {
         let Some(mut run) = active.take() else {
             return Ok(());
         };
-        run.input_monitor.stop();
+        self.input.end_run(&run.input_authority_id);
         let (reply_sender, reply_receiver) = mpsc::channel();
         if run
             .sender
@@ -967,7 +987,6 @@ fn run_worker(
     loop {
         let timeout = worker.timeout_until_sample();
         match receiver.recv_timeout(timeout) {
-            Ok(RunMessage::Affect(update)) => worker.apply_affect(update),
             Ok(RunMessage::Stimulus(update, reply)) => {
                 let _ = reply.send(worker.apply_stimulus(update));
             }
@@ -976,9 +995,6 @@ fn run_worker(
                     worker.fail("input-edge-invalid");
                     return;
                 }
-            }
-            Ok(RunMessage::GamepadButton(button, pressed, reply)) => {
-                let _ = reply.send(worker.apply_gamepad_button(button, pressed));
             }
             Ok(RunMessage::Finish(outcome, reply)) => {
                 let previous_phase = lock(&worker.status).phase;
@@ -1039,7 +1055,6 @@ struct RunWorker {
     transition_deadline: Option<Instant>,
     ready_for_start: bool,
     native_input_active: bool,
-    held_gamepad_buttons: HashSet<u8>,
     monotonic_offset_ns: u128,
     recovery: RecoverySummaryV1,
     resumed: bool,
@@ -1052,7 +1067,6 @@ struct AffectState {
     target_x: f64,
     target_y: f64,
     anchor: Instant,
-    continuous_input_active: bool,
     impulse_active_until: Instant,
 }
 
@@ -1084,7 +1098,6 @@ impl RunWorker {
                 target_x: 0.0,
                 target_y: 0.0,
                 anchor: now,
-                continuous_input_active: false,
                 impulse_active_until: now,
             },
             active_stimulus: None,
@@ -1096,7 +1109,6 @@ impl RunWorker {
             transition_deadline: None,
             ready_for_start: true,
             native_input_active: false,
-            held_gamepad_buttons: HashSet::new(),
             monotonic_offset_ns: prepared.monotonic_offset_ns,
             recovery: prepared.recovery,
             resumed: prepared.resumed,
@@ -1151,31 +1163,6 @@ impl RunWorker {
             .min(Duration::from_millis(250))
     }
 
-    fn apply_affect(&mut self, update: AffectStateUpdate) {
-        if update.input_kind != self.settings.input.kind {
-            return;
-        }
-        if lock(&self.status).phase != RunPhase::Playing {
-            return;
-        }
-        if matches!(
-            update.input_kind,
-            InputKindV1::Absolute | InputKindV1::Analog
-        ) {
-            let now = Instant::now();
-            self.state.current_x = update.valence.clamp(-1.0, 1.0);
-            self.state.current_y = update.arousal.clamp(-1.0, 1.0);
-            self.state.target_x = self.state.current_x;
-            self.state.target_y = self.state.current_y;
-            self.state.anchor = now;
-            self.state.continuous_input_active = update.input_active;
-            let mut status = lock(&self.status);
-            status.current_valence = self.state.current_x;
-            status.current_arousal = self.state.current_y;
-            status.input_active = update.input_active;
-        }
-    }
-
     fn apply_digital_input(&mut self, input: NativeDigitalInput) -> ResearchResult<()> {
         if self.settings.input.kind != InputKindV1::Digital {
             return Err(CommandError::forbidden(
@@ -1228,38 +1215,6 @@ impl RunWorker {
             None,
             Some(detail.to_owned()),
         )
-    }
-
-    fn apply_gamepad_button(&mut self, button: u8, pressed: bool) -> ResearchResult<()> {
-        let directions = self
-            .settings
-            .input
-            .directions
-            .as_ref()
-            .ok_or_else(|| CommandError::forbidden("This run does not use digital input."))?;
-        let token = DigitalInputTokenV1::GamepadButton { button };
-        let direction = directions.direction_for(&token).ok_or_else(|| {
-            CommandError::forbidden("The gamepad button is not bound in this frozen run.")
-        })?;
-        if lock(&self.status).phase != RunPhase::Playing {
-            return Ok(());
-        }
-        let changed = if pressed {
-            self.held_gamepad_buttons.insert(button)
-        } else {
-            self.held_gamepad_buttons.remove(&button)
-        };
-        if !changed {
-            // Duplicate browser polling notifications are the gamepad equivalent
-            // of OS key repeat and never add another step.
-            return Ok(());
-        }
-        let now = Instant::now();
-        if pressed {
-            self.apply_direction_step(direction, &token.detail_code(), now)?;
-        }
-        self.publish_authoritative_state(now);
-        Ok(())
     }
 
     fn apply_stimulus(&mut self, update: StimulusStateUpdate) -> ResearchResult<()> {
@@ -1453,22 +1408,13 @@ impl RunWorker {
         self.state.target_x = 0.0;
         self.state.target_y = 0.0;
         self.state.anchor = now;
-        self.state.continuous_input_active = false;
         self.state.impulse_active_until = now;
         self.native_input_active = false;
-        self.held_gamepad_buttons.clear();
         self.publish_authoritative_state(now);
     }
 
     fn current_input_active(&self, now: Instant) -> bool {
-        match self.settings.input.kind {
-            InputKindV1::Digital => {
-                self.native_input_active
-                    || !self.held_gamepad_buttons.is_empty()
-                    || now < self.state.impulse_active_until
-            }
-            InputKindV1::Absolute | InputKindV1::Analog => self.state.continuous_input_active,
-        }
+        self.native_input_active || now < self.state.impulse_active_until
     }
 
     fn publish_authoritative_state(&self, now: Instant) {
@@ -1872,24 +1818,6 @@ fn validate_participant_code(code: &str) -> ResearchResult<String> {
         ));
     }
     Ok(normalized)
-}
-
-fn validate_affect_update(update: &AffectStateUpdate) -> ResearchResult<()> {
-    if update.input_kind == InputKindV1::Digital {
-        return Err(CommandError::forbidden(
-            "Digital ratings are owned by native edge capture, not WebView affect updates.",
-        ));
-    }
-    if !update.valence.is_finite()
-        || !update.arousal.is_finite()
-        || !(-1.0..=1.0).contains(&update.valence)
-        || !(-1.0..=1.0).contains(&update.arousal)
-    {
-        return Err(CommandError::invalid_contract(
-            "Affect state coordinates must be finite values within -1..1.",
-        ));
-    }
-    Ok(())
 }
 
 fn transition_duration_ms(
@@ -3419,11 +3347,13 @@ mod tests {
             "stimulusIds":["video-a"]
         }]);
         value["input"] = serde_json::json!({
-            "schema":INPUT_BINDING_SCHEMA,"version":1,"preset":"pointerGrid","kind":"absolute",
-            "stepSize":null,"directions":null,"axes":{
-                "x":{"kind":"pointerAxis","axis":"x","invert":false},
-                "y":{"kind":"pointerAxis","axis":"y","invert":true}
-            }
+            "schema":INPUT_BINDING_SCHEMA,"version":1,"preset":"arrowKeys","kind":"digital",
+            "stepSize":0.1,"directions":{
+                "up":{"kind":"keyboard","code":"ArrowUp"},
+                "down":{"kind":"keyboard","code":"ArrowDown"},
+                "left":{"kind":"keyboard","code":"ArrowLeft"},
+                "right":{"kind":"keyboard","code":"ArrowRight"}
+            },"axes":null
         });
         value["output"] = serde_json::json!({"csv":true,"tsv":true});
         serde_json::from_value::<ResearchSettingsV1>(value)
@@ -3439,6 +3369,14 @@ mod tests {
         ));
         fs::create_dir_all(&path).unwrap();
         path
+    }
+
+    fn fresh_input_receipt(runtime: &ResearchRuntime, settings: &ResearchSettingsV1) -> String {
+        runtime
+            .input
+            .issue_test_receipt_for_tests(settings.input.clone())
+            .unwrap()
+            .receipt_id
     }
 
     #[test]
@@ -3471,31 +3409,6 @@ mod tests {
             "gapEventCount":0,"missedSlotCount":0,"unexpected":true
         });
         assert!(serde_json::from_value::<RecoveryJournalV1>(value).is_err());
-    }
-
-    #[test]
-    fn affect_updates_reject_nan_and_out_of_range_values() {
-        assert!(validate_affect_update(&AffectStateUpdate {
-            valence: f64::NAN,
-            arousal: 0.0,
-            input_active: false,
-            input_kind: InputKindV1::Absolute,
-        })
-        .is_err());
-        assert!(validate_affect_update(&AffectStateUpdate {
-            valence: 0.0,
-            arousal: 0.0,
-            input_active: true,
-            input_kind: InputKindV1::Digital,
-        })
-        .is_err());
-        assert!(validate_affect_update(&AffectStateUpdate {
-            valence: 1.1,
-            arousal: 0.0,
-            input_active: false,
-            input_kind: InputKindV1::Absolute,
-        })
-        .is_err());
     }
 
     #[test]
@@ -3569,6 +3482,7 @@ mod tests {
         let settings = test_settings(&video_hash, &workspace_file_id);
         let plan = test_plan(&settings);
         let runtime = ResearchRuntime::new(Arc::clone(&workspace));
+        let native_input_receipt_id = fresh_input_receipt(&runtime, &settings);
         let qualified = runtime.start_run(StartRunRequest {
             workspace_id: workspace_status.workspace_id.clone().unwrap(),
             settings: settings.clone(),
@@ -3585,6 +3499,7 @@ mod tests {
                 workspace_file_id: workspace_file_id.clone(),
             }],
             rerun_confirmed: false,
+            input_test_receipt_id: native_input_receipt_id.clone(),
             playback_mode: PlaybackMode::NativeLibvlc,
         });
         assert_eq!(qualified.unwrap_err().code, "native_media_unavailable");
@@ -3606,6 +3521,7 @@ mod tests {
                     workspace_file_id: workspace_file_id.clone(),
                 }],
                 rerun_confirmed: false,
+                input_test_receipt_id: native_input_receipt_id,
                 playback_mode: PlaybackMode::UnqualifiedWebview,
             })
             .unwrap();
@@ -3622,15 +3538,14 @@ mod tests {
                 media_time_ms: 0.0,
             })
             .unwrap();
-        runtime
-            .update_affect(AffectStateUpdate {
-                valence: 0.5,
-                arousal: -0.25,
-                input_active: true,
-                input_kind: InputKindV1::Absolute,
-            })
-            .unwrap();
-        thread::sleep(Duration::from_millis(40));
+        let sample_deadline = Instant::now() + Duration::from_secs(2);
+        while runtime.status().sample_count < 2 && Instant::now() < sample_deadline {
+            thread::sleep(Duration::from_millis(5));
+        }
+        assert!(
+            runtime.status().sample_count >= 2,
+            "the authoritative scheduler did not publish two samples before the bounded deadline"
+        );
         let finalized = runtime.finish(FinishOutcome::StopEarly).unwrap();
         assert_eq!(finalized.completion_status, CompletionStatusV1::Partial);
 
@@ -3673,6 +3588,7 @@ mod tests {
         assert_eq!(terminal_tiles[0].state, ParticipantState::Partial);
         assert!(!terminal_tiles[0].recoverable);
 
+        let rerun_input_receipt_id = fresh_input_receipt(&runtime, &settings);
         let rerun = runtime.start_run(StartRunRequest {
             workspace_id: workspace_status.workspace_id.unwrap(),
             settings,
@@ -3689,6 +3605,7 @@ mod tests {
                 workspace_file_id,
             }],
             rerun_confirmed: false,
+            input_test_receipt_id: rerun_input_receipt_id,
             playback_mode: PlaybackMode::UnqualifiedWebview,
         });
         assert!(rerun.is_err());
@@ -3713,6 +3630,7 @@ mod tests {
         );
         let plan = test_plan(&settings);
         let runtime = ResearchRuntime::new(Arc::clone(&workspace));
+        let start_input_receipt_id = fresh_input_receipt(&runtime, &settings);
         let started = runtime
             .start_run(StartRunRequest {
                 workspace_id: workspace_id.clone(),
@@ -3730,6 +3648,7 @@ mod tests {
                     workspace_file_id: workspace_file_id.clone(),
                 }],
                 rerun_confirmed: false,
+                input_test_receipt_id: start_input_receipt_id,
                 playback_mode: PlaybackMode::UnqualifiedWebview,
             })
             .unwrap();
@@ -3791,6 +3710,7 @@ mod tests {
 
         let listing = runtime.list_recoveries(&workspace_id).unwrap();
         assert_eq!(listing.recoveries.len(), 1);
+        let resume_input_receipt_id = fresh_input_receipt(&runtime, &settings);
         let resumed = runtime
             .resume_run(ResumeRunRequest {
                 workspace_id: workspace_id.clone(),
@@ -3801,6 +3721,7 @@ mod tests {
                     stimulus_id: "video-a".to_owned(),
                     workspace_file_id,
                 }],
+                input_test_receipt_id: resume_input_receipt_id,
                 playback_mode: PlaybackMode::UnqualifiedWebview,
             })
             .unwrap();
@@ -3872,6 +3793,7 @@ mod tests {
         );
         let plan = test_plan(&settings);
         let runtime = ResearchRuntime::new(Arc::clone(&workspace));
+        let media_input_receipt_id = fresh_input_receipt(&runtime, &settings);
         let started = runtime
             .start_run(StartRunRequest {
                 workspace_id: workspace_id.clone(),
@@ -3889,6 +3811,7 @@ mod tests {
                     workspace_file_id,
                 }],
                 rerun_confirmed: false,
+                input_test_receipt_id: media_input_receipt_id,
                 playback_mode: PlaybackMode::UnqualifiedWebview,
             })
             .unwrap();

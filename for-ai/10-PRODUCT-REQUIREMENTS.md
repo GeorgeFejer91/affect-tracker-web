@@ -20,9 +20,13 @@ in [`40-ROADMAP.md`](./40-ROADMAP.md).
 - Tauri retains bundle ID `io.github.georgefejer91.affecttracker` and legacy
   app-data compatibility, but new Research data uses a separate namespace and
   is never populated by automatic legacy import.
+- Qualified Windows playback of workspace and repository videos uses the
+  bundled, repository-pinned libVLC 3.0.23 x64 runtime. Affect Research never
+  downloads native media code at runtime or discovers a system VLC install.
 - WebXR, native Quest, remote control, Ground Control, Party/Universe, Remote
   Flubber, direct Polar, Face/Photoatlas, Touch inference, and the other former
-  Playground surfaces are absent from active navigation and release claims.
+  Playground surfaces are absent from the active source, navigation, and
+  release claims. Their source and documentation remain in Playground/history.
 
 ## Setting Up the Experiment
 
@@ -58,6 +62,11 @@ live feedback preview on the right.
 
 - Every complete video is explicitly a workspace file, checked-in repository
   asset, or **Experimental YouTube** URL.
+- On Windows, local and repository sources default to `nativeLibvlc`. A missing,
+  altered, wrong-architecture, or unavailable native runtime blocks qualified
+  Start. The separate `unqualifiedWebview` mode is a deliberate development
+  fallback and is labelled unqualified in status, events, recovery, and the
+  final manifest.
 - Each condition column is one video pool. One column containing all videos is
   the one-hat workflow. Multiple columns are stratified pools; there is no
   mixed-pool switch.
@@ -150,6 +159,11 @@ coordinates reset to neutral, and the configured transition runs. Settings,
 bindings, demographics, assignment, and geometry cannot change; position is
 locked.
 
+For Windows qualified runs, Rust-owned libVLC lifecycle state—not WebView media
+events or animation frames—opens and closes sampling segments. Player pause,
+buffering, end, error, teardown, or loss of the exact media grant fences the
+scheduler and produces bounded semantic evidence.
+
 Stop Early durably finalizes a partial attempt. Crash, power loss, forced
 termination, or storage interruption leaves the journal authoritative.
 Recovery resumes only at a safe video boundary. A partially played video starts
@@ -189,6 +203,12 @@ preflight. Repository videos are small demonstrations. YouTube records URL,
 video ID, and observed metadata without a byte hash; it is noncanonical,
 unverified, offline-failing, and excluded from reproducibility qualification.
 Tauri exposes it only after CSP/referrer feasibility passes.
+
+The Windows native runtime is packaged from the exact checked-in pin and
+verified file manifest, including upstream license notices. Runtime integrity,
+compilation, or staging alone does not qualify playback. The in-process
+dynamic-library/libVLC/child-window actor requires its separately approved and
+audited `unsafe` boundary plus installed-artifact media/lifecycle tests.
 
 ## Sampling and LSL
 

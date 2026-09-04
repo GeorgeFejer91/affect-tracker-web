@@ -10,10 +10,9 @@
   },
   "homepage": "https://GeorgeFejer91.github.io/affect-tracker-research/",
   "scripts": {
-    "test": "node --test test/research-*.test.js",
-    "test:research": "node --test test/research-*.test.js",
-    "test:archive": "node --test",
-    "test:web": "node --test test/research-*.test.js",
+    "test": "node --test test/math.test.js test/research-*.test.js",
+    "test:research": "node --test test/math.test.js test/research-*.test.js",
+    "test:web": "node --test test/math.test.js test/research-*.test.js",
     "build:pages": "node scripts/build-research-pages.js && node scripts/verify-research-build.js pages",
     "serve": "python -m http.server 8000 --directory site",
     "desktop:dev": "vite --config desktop/vite.config.js",

@@ -1,12 +1,54 @@
 import { invoke as tauriInvoke } from "@tauri-apps/api/core";
 
 import {
+  INPUT_PRESET_OPTIONS,
   RESEARCH_UI_EVENTS,
   estimateResearchStorageUse,
 } from "./app.js";
 
 const STATUS_POLL_MS = 100;
 const DECODE_PROBE_MS = 80;
+
+export function nativeInputPresetAvailability(capability) {
+  const supported = new Set(capability?.supportedPresets ?? []);
+  return Object.freeze(Object.fromEntries(INPUT_PRESET_OPTIONS.map(({ id, contractId }) => [
+    id,
+    capability?.nativeAuthorityReady === true && supported.has(contractId),
+  ])));
+}
+
+export function nativeInputBindingSupported(binding, capability) {
+  if (capability?.nativeAuthorityReady !== true || binding?.kind !== "digital") return false;
+  if (!(capability.supportedPresets ?? []).includes(binding.preset)) return false;
+  return Object.values(binding.directions ?? {}).every((token) => (
+    token?.kind === "keyboard" || token?.kind === "mouseButton" || token?.kind === "wheel"
+  ));
+}
+
+export function nativeInputRegionRequest(element, purpose, layoutEpoch, windowObject = globalThis.window) {
+  const bounds = element?.getBoundingClientRect?.();
+  const viewportWidth = Number(windowObject?.innerWidth);
+  const viewportHeight = Number(windowObject?.innerHeight);
+  if (!bounds || [bounds.left, bounds.top, bounds.right, bounds.bottom, bounds.width, bounds.height]
+    .some((value) => !Number.isFinite(value))
+    || !Number.isInteger(layoutEpoch) || layoutEpoch < 1
+    || bounds.width < 8 || bounds.height < 8
+    || !Number.isFinite(viewportWidth) || !Number.isFinite(viewportHeight)
+    || bounds.left < 0 || bounds.top < 0
+    || bounds.right > viewportWidth + 0.5 || bounds.bottom > viewportHeight + 0.5) {
+    throw new Error("The visible native input allow-region is unavailable.");
+  }
+  return Object.freeze({
+    purpose,
+    layoutEpoch,
+    left: bounds.left,
+    top: bounds.top,
+    width: bounds.width,
+    height: bounds.height,
+    viewportWidth,
+    viewportHeight,
+  });
+}
 
 function delay(milliseconds) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
@@ -172,30 +214,37 @@ export class NativeResearchRuntimeBridge {
     this.workspace = null;
     this.sourceCapabilities = null;
     this.nativeMediaCapability = null;
+    this.nativeInputCapability = null;
     this.catalog = new Map();
     this.recoveries = [];
     this.participantStateById = new Map();
     this.storageReadiness = null;
     this.run = null;
     this.pollTimer = null;
+    this.inputPollTimer = null;
+    this.inputLayoutEpoch = 0;
+    this.lastCaptureId = null;
     this.listeners = [];
     this.operation = Promise.resolve();
-    this.pendingAffect = null;
-    this.affectInFlight = false;
   }
 
   async initialize() {
     this.#bind();
     try {
-      const [workspace, sourceCapabilities, nativeMediaCapability, status] = await Promise.all([
+      const [workspace, sourceCapabilities, nativeMediaCapability, inputCapability, inputStatus, status] = await Promise.all([
         this.invoke("research_workspace_status"),
         this.invoke("research_source_capabilities"),
         this.invoke("research_native_media_capability"),
+        this.invoke("research_input_capability"),
+        this.invoke("research_input_status"),
         this.invoke("research_run_status"),
       ]);
       this.sourceCapabilities = sourceCapabilities;
       this.nativeMediaCapability = nativeMediaCapability;
+      this.nativeInputCapability = inputCapability;
       this.#applySourceCapabilities();
+      this.#applyInputCapability();
+      this.root.researchUi?.applyNativeInputStatus?.(inputStatus);
       this.#dispatch(RESEARCH_UI_EVENTS.capabilityStatus, {
         indexedDbReady: true,
         timingWorkerReady: true,
@@ -206,7 +255,10 @@ export class NativeResearchRuntimeBridge {
         nativePlaybackReady: nativeMediaCapability?.qualifiedStartAvailable === true
           && nativeMediaCapability?.playerActorReady === true,
         nativeMediaCapability,
+        nativeInputReady: inputCapability?.nativeAuthorityReady === true,
+        nativeInputPresetReady: nativeInputBindingSupported(this.root.researchUi?.inputBinding, inputCapability),
       });
+      this.#startInputPolling();
       if (workspace?.selected) await this.#adoptWorkspace(workspace, { rescan: true });
       if (status?.active) {
         this.#showSetupError("A native attempt is already active. Restart Affect Research to reconcile it as a recoverable partial before selecting another participant.");
@@ -228,6 +280,7 @@ export class NativeResearchRuntimeBridge {
     }
     this.listeners = [];
     this.#stopPolling();
+    this.#stopInputPolling();
     this.#clearVideo();
   }
 
@@ -274,8 +327,19 @@ export class NativeResearchRuntimeBridge {
     this.#listen(this.root, RESEARCH_UI_EVENTS.pauseRequest, () => this.#queue(() => this.#togglePause()));
     this.#listen(this.root, RESEARCH_UI_EVENTS.stopEarlyRequest, () => this.#queue(() => this.#finish("stopEarly")));
     this.#listen(this.root, RESEARCH_UI_EVENTS.continueRequest, () => this.#queue(() => this.#continueRun({ directGesture: true })));
-    this.#listen(this.root, RESEARCH_UI_EVENTS.inputTestState, (event) => this.#acceptContinuousAffect(event.detail));
-    this.#listen(this.root, RESEARCH_UI_EVENTS.inputEdge, (event) => this.#acceptGamepadButton(event.detail));
+    this.#listen(this.root, RESEARCH_UI_EVENTS.inputBindingChanged, (event) => {
+      this.#queue(() => this.#beginNativeInputTest(event.detail?.binding));
+    });
+    this.#listen(this.root, RESEARCH_UI_EVENTS.inputCaptureRequest, (event) => {
+      event.preventDefault();
+      this.#queue(() => this.#beginNativeCapture(event.detail));
+    });
+    this.#listen(this.root, RESEARCH_UI_EVENTS.inputCaptureCancel, () => {
+      this.#queue(() => this.invoke("research_input_cancel_setup"));
+    });
+    this.#listen(this.window, "resize", () => {
+      this.#queue(() => this.#refreshNativeInputRegion());
+    });
     this.#listen(this.root, "change", (event) => {
       if (event.target?.id === "native-playback-mode" && this.workspace) {
         this.#queue(async () => {
@@ -317,6 +381,91 @@ export class NativeResearchRuntimeBridge {
         option.disabled = !selectable;
       }
     }
+  }
+
+  #applyInputCapability(binding = this.root.researchUi?.inputBinding) {
+    const availability = nativeInputPresetAvailability(this.nativeInputCapability);
+    const select = this.root.querySelector?.("#input-preset");
+    for (const option of select?.querySelectorAll?.("option") ?? []) {
+      if (option.value === "custom") continue;
+      const available = availability[option.value] === true;
+      option.disabled = !available;
+      option.title = available ? "" : "No safe native Tauri backend is available for this preset.";
+    }
+    const presetReady = nativeInputBindingSupported(binding, this.nativeInputCapability);
+    this.#dispatch(RESEARCH_UI_EVENTS.capabilityStatus, {
+      nativeInputReady: this.nativeInputCapability?.nativeAuthorityReady === true,
+      nativeInputPresetReady: presetReady,
+    });
+    return presetReady;
+  }
+
+  async #setNativeInputRegion(selector, purpose) {
+    const element = this.root.querySelector?.(selector);
+    const region = nativeInputRegionRequest(
+      element,
+      purpose,
+      ++this.inputLayoutEpoch,
+      this.window,
+    );
+    return this.invoke("research_input_set_region", { region });
+  }
+
+  async #beginNativeInputTest(binding = this.root.researchUi?.inputBinding) {
+    if (!this.#applyInputCapability(binding)) {
+      await this.invoke("research_input_cancel_setup");
+      return;
+    }
+    const grid = this.root.querySelector?.(".input-test-grid");
+    if (!grid || grid.getClientRects?.().length === 0) return;
+    await this.#setNativeInputRegion(".input-test-grid", "setupTest");
+    const status = await this.invoke("research_input_begin_test", { binding });
+    this.root.researchUi?.applyNativeInputStatus?.(status);
+  }
+
+  async #beginNativeCapture(detail) {
+    const binding = detail?.binding;
+    if (!this.#applyInputCapability(binding)) {
+      throw new Error("This binding cannot be captured by the safe native Tauri backend.");
+    }
+    await this.#setNativeInputRegion("#binding-capture-dialog .dialog-content", "setupCapture");
+    const status = await this.invoke("research_input_begin_capture", {
+      binding,
+      direction: detail.direction,
+    });
+    this.root.researchUi?.applyNativeInputStatus?.(status);
+  }
+
+  async #refreshNativeInputRegion() {
+    if (this.run) {
+      await this.#setNativeInputRegion(".run-feedback-stage", "runFeedback");
+      return;
+    }
+    if (this.root.researchUi?.openSection === "input") {
+      await this.#beginNativeInputTest();
+    }
+  }
+
+  async #pollNativeInputStatus() {
+    const status = await this.invoke("research_input_status");
+    this.root.researchUi?.applyNativeInputStatus?.(status);
+    if (status?.capture?.captureId && status.capture.captureId !== this.lastCaptureId) {
+      this.lastCaptureId = status.capture.captureId;
+      this.root.researchUi?.applyNativeCapture?.(status.capture);
+      await this.#beginNativeInputTest(status.capture.binding);
+    }
+  }
+
+  #startInputPolling() {
+    this.#stopInputPolling();
+    this.inputPollTimer = this.setInterval?.(() => {
+      void this.#pollNativeInputStatus().catch((error) => this.#showRuntimeError(error));
+    }, STATUS_POLL_MS);
+  }
+
+  #stopInputPolling() {
+    if (this.inputPollTimer !== null) this.clearInterval?.(this.inputPollTimer);
+    this.inputPollTimer = null;
   }
 
   #selectedPlaybackMode() {
@@ -521,6 +670,13 @@ export class NativeResearchRuntimeBridge {
     if (this.run) throw new Error("A native Research attempt is already active.");
     const settings = detail?.settings;
     const plan = detail?.resolvedPlan;
+    const inputTestReceiptId = detail?.inputTestReceiptId;
+    if (typeof inputTestReceiptId !== "string" || inputTestReceiptId.length < 8) {
+      throw new Error("A fresh native input-test receipt is required before Start or recovery Resume.");
+    }
+    if (!this.#applyInputCapability(settings?.input)) {
+      throw new Error("The selected input binding has no safe native Tauri authority.");
+    }
     const playbackMode = authorizeDesktopPlaybackMode(detail?.playbackMode, this.nativeMediaCapability);
     await Promise.all([
       this.#refreshReadiness(settings, plan),
@@ -552,6 +708,7 @@ export class NativeResearchRuntimeBridge {
             settings,
             assignmentPlan: plan,
             workspaceFiles,
+            inputTestReceiptId,
             playbackMode,
           },
         });
@@ -569,6 +726,7 @@ export class NativeResearchRuntimeBridge {
           participant: { participantId: detail.participantId, ...detail.participant },
           workspaceFiles,
           rerunConfirmed: detail.rerunConfirmed === true,
+          inputTestReceiptId,
           playbackMode,
         },
       });
@@ -593,7 +751,18 @@ export class NativeResearchRuntimeBridge {
       lastStatus: null,
     };
     this.#dispatch(RESEARCH_UI_EVENTS.runStarted, receipt);
-    await this.#prepareCurrentStimulus({ recovery: receipt.resumed === true });
+    try {
+      const inputStatus = await this.#setNativeInputRegion(".run-feedback-stage", "runFeedback");
+      if (inputStatus?.runReady !== true) {
+        throw new Error("The native Run feedback-stage allow-region is not ready.");
+      }
+      await this.#prepareCurrentStimulus({ recovery: receipt.resumed === true });
+    } catch (error) {
+      await this.invoke("research_finish_run", { outcome: "stopEarly" }).catch(() => {});
+      this.run = null;
+      throw error;
+    }
+    this.#stopInputPolling();
     this.#startPolling();
   }
 
@@ -746,51 +915,13 @@ export class NativeResearchRuntimeBridge {
     this.run.bufferPaused = false;
   }
 
-  #acceptContinuousAffect(detail) {
-    if (!this.run || !detail?.source) return;
-    const inputKind = String(detail.source).startsWith("pointer:")
-      ? "absolute"
-      : String(detail.source).endsWith(":analog") ? "analog" : null;
-    if (!inputKind || this.run.settings.input.kind !== inputKind) return;
-    this.pendingAffect = {
-      valence: detail.x,
-      arousal: detail.y,
-      inputActive: detail.inputActive === true,
-      inputKind,
-    };
-    void this.#drainAffect();
-  }
-
-  async #drainAffect() {
-    if (this.affectInFlight) return;
-    this.affectInFlight = true;
-    try {
-      while (this.pendingAffect && this.run) {
-        const update = this.pendingAffect;
-        this.pendingAffect = null;
-        await this.invoke("research_update_affect_state", { update });
-      }
-    } catch (error) {
-      this.#showRuntimeError(error);
-    } finally {
-      this.affectInFlight = false;
-    }
-  }
-
-  #acceptGamepadButton(detail) {
-    if (!this.run || detail?.action?.kind !== "gamepadButton") return;
-    void this.invoke("research_gamepad_button", {
-      button: detail.action.button,
-      pressed: detail.active === true,
-    }).catch((error) => this.#showRuntimeError(error));
-  }
-
   async #finish(outcome) {
     if (!this.run) return;
     const receipt = await this.invoke("research_finish_run", { outcome });
     this.#stopPolling();
     this.#clearVideo();
     this.run = null;
+    this.#startInputPolling();
     this.root.researchUi?.resetAffect?.("attempt-finished");
     this.#dispatch(RESEARCH_UI_EVENTS.runComplete, {
       status: receipt.completionStatus,
@@ -820,7 +951,7 @@ export class NativeResearchRuntimeBridge {
       this.#stopPolling();
       this.#clearVideo();
       this.run = null;
-      this.pendingAffect = null;
+      this.#startInputPolling();
       this.root.researchUi?.resetAffect?.("media-failure-boundary");
       this.root.researchUi?.setMode?.("setup");
     }

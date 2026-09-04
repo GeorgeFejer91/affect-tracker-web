@@ -83,6 +83,10 @@ export const RESEARCH_UI_EVENTS = Object.freeze({
   planReady: "affect-research:plan-ready",
   inputTestState: "affect-research:input-test-state",
   inputEdge: "affect-research:input-edge",
+  inputBindingChanged: "affect-research:input-binding-changed",
+  inputTestReset: "affect-research:input-test-reset",
+  inputCaptureRequest: "affect-research:input-capture-request",
+  inputCaptureCancel: "affect-research:input-capture-cancel",
   startRequest: "affect-research:start-request",
   pauseRequest: "affect-research:pause-request",
   stopEarlyRequest: "affect-research:stop-early-request",
@@ -206,15 +210,12 @@ function escapeAttribute(value) {
 
 function previewMarkup(label) {
   return `
-    <div class="research-preview-stage" aria-label="${escapeAttribute(label)}">
+    <div class="research-preview-stage" role="img" aria-label="${escapeAttribute(label)}">
       <div
         class="preview-overlay"
         data-preview-overlay
         data-locked="false"
-        role="img"
-        tabindex="0"
-        aria-keyshortcuts="ArrowUp ArrowDown ArrowLeft ArrowRight"
-        aria-label="Feedback position unlocked; drag or use arrow keys to move."
+        aria-hidden="true"
       >
         <canvas class="preview-grid-canvas" data-preview-grid-canvas aria-hidden="true"></canvas>
         <svg data-preview-grid viewBox="0 0 100 100" aria-hidden="true" focusable="false">
@@ -256,7 +257,7 @@ function workspaceSection() {
       <li>outputs/</li>
       <li>recovery/</li>
     </ul>
-    <div id="video-drop-zone" class="drop-zone" tabindex="0" role="button" aria-describedby="video-drop-help" aria-label="Import complete videos">
+    <div id="video-drop-zone" class="drop-zone" role="group" aria-describedby="video-drop-help" aria-label="Complete video import and drop area">
       <p>Drop complete video files or a folder here</p>
       <div class="button-row"><button id="video-import" type="button" disabled>Import videos</button><button id="video-folder-import" type="button" disabled>Import folder</button></div>
       <p id="video-drop-help" class="field-help">Folders are scanned recursively. Affect Research does not create clips or change start and end times.</p>
@@ -381,11 +382,11 @@ function inputSection() {
       <summary>Live input test</summary>
       <div class="disclosure-content">
         <div id="input-test" class="input-test" role="group" aria-label="Live input test">
-          <div class="input-test-grid" tabindex="0" role="application" aria-label="Focus here and use the configured input device"><span class="input-test-cursor" aria-hidden="true"></span></div>
+          <div class="input-test-grid" tabindex="0" role="group" aria-label="Input test surface; focus here and use the configured input device" aria-describedby="input-test-status"><span class="input-test-cursor" aria-hidden="true"></span></div>
           <div>
             <p><strong>Input receipt</strong></p>
             <p id="input-test-status" class="status-text" role="status" aria-live="polite">Focus this test and use the selected device.</p>
-            <p>Valence <output id="input-test-x">+0.000</output> · Arousal <output id="input-test-y">+0.000</output></p>
+            <p>Valence <span id="input-test-x">+0.000</span> · Arousal <span id="input-test-y">+0.000</span></p>
             <button id="input-test-reset" type="button">Reset test to neutral</button>
           </div>
         </div>
@@ -399,7 +400,7 @@ function colorRows() {
       <label for="color-${id}">${label}</label>
       <input id="color-${id}" type="color" value="${value}" aria-label="${label} color wheel">
       <input id="color-${id}-hex" value="${value}" minlength="7" maxlength="7" pattern="#[0-9A-Fa-f]{6}" required spellcheck="false" aria-label="${label} hexadecimal value">
-      <button type="button" data-color-reset="${id}">Reset</button>
+      <button type="button" data-color-reset="${id}" aria-label="Reset ${escapeAttribute(label)}">Reset</button>
     </div>`).join("");
 }
 
@@ -454,15 +455,17 @@ function visualSection() {
 
 function mappingDisclosure(mapping) {
   const step = mapping.allowedMax > 1 ? 0.1 : 0.01;
+  const escapedLabel = escapeAttribute(mapping.label);
+  const unitSuffix = mapping.unit ? ` (${escapeAttribute(mapping.unit)})` : "";
   return `
     <details class="inner-disclosure mapping-disclosure" data-mapping="${mapping.id}">
       <summary>${mapping.label}</summary>
       <div class="disclosure-content mapping-grid">
-        <label class="field"><span>Min${mapping.unit ? ` (${mapping.unit})` : ""}</span><input data-mapping-min type="number" min="${mapping.allowedMin}" max="${mapping.allowedMax}" step="${step}" value="${mapping.min}" required></label>
-        <label class="field"><span>Max${mapping.unit ? ` (${mapping.unit})` : ""}</span><input data-mapping-max type="number" min="${mapping.allowedMin}" max="${mapping.allowedMax}" step="${step}" value="${mapping.max}" required></label>
-        <label class="field"><span>Driven By</span><select data-mapping-driver><option value="x-axis"${mapping.driver === "x-axis" ? " selected" : ""}>x-axis</option><option value="y-axis"${mapping.driver === "y-axis" ? " selected" : ""}>y-axis</option><option value="angle"${mapping.driver === "angle" ? " selected" : ""}>angle</option><option value="radius"${mapping.driver === "radius" ? " selected" : ""}>radius</option></select></label>
-        <label class="check-field"><input data-mapping-reverse type="checkbox"${mapping.reverse ? " checked" : ""}><span>Reverse</span></label>
-        <div class="mapping-output"><span>Live preview <output data-mapping-output>0.000${mapping.unit ? ` ${mapping.unit}` : ""}</output></span><span class="mapping-meter" aria-hidden="true"><span data-mapping-meter></span></span></div>
+        <label class="field"><span>Min${mapping.unit ? ` (${mapping.unit})` : ""}</span><input id="mapping-${mapping.id}-min" data-mapping-min aria-label="${escapedLabel} minimum${unitSuffix}" type="number" min="${mapping.allowedMin}" max="${mapping.allowedMax}" step="${step}" value="${mapping.min}" required></label>
+        <label class="field"><span>Max${mapping.unit ? ` (${mapping.unit})` : ""}</span><input id="mapping-${mapping.id}-max" data-mapping-max aria-label="${escapedLabel} maximum${unitSuffix}" type="number" min="${mapping.allowedMin}" max="${mapping.allowedMax}" step="${step}" value="${mapping.max}" required></label>
+        <label class="field"><span>Driven By</span><select id="mapping-${mapping.id}-driver" data-mapping-driver aria-label="${escapedLabel} driven by"><option value="x-axis"${mapping.driver === "x-axis" ? " selected" : ""}>x-axis</option><option value="y-axis"${mapping.driver === "y-axis" ? " selected" : ""}>y-axis</option><option value="angle"${mapping.driver === "angle" ? " selected" : ""}>angle</option><option value="radius"${mapping.driver === "radius" ? " selected" : ""}>radius</option></select></label>
+        <label class="check-field"><input id="mapping-${mapping.id}-reverse" data-mapping-reverse aria-label="Reverse ${escapedLabel}" type="checkbox"${mapping.reverse ? " checked" : ""}><span>Reverse</span></label>
+        <div class="mapping-output"><span>Live preview <span data-mapping-output>0.000${mapping.unit ? ` ${mapping.unit}` : ""}</span></span><span class="mapping-meter" aria-hidden="true"><span data-mapping-meter></span></span></div>
         <p class="field-help is-wide">Allowed output ${mapping.allowedMin}–${mapping.allowedMax}${mapping.unit ? ` ${mapping.unit}` : ""}.</p>
       </div>
     </details>`;
@@ -511,7 +514,7 @@ function reviewSection() {
       <div class="disclosure-content">
         <p class="field-help">States are reconstructed from workspace locks, recovery journals, and manifests. They are not editable flags.</p>
         <div class="participant-toolbar"><button id="participant-window-previous" type="button" disabled>Previous participants</button><output id="participant-window-status">Showing 1–24 of 24</output><button id="participant-window-next" type="button" disabled>Next participants</button></div>
-        <div id="participant-grid" class="participant-grid" role="listbox" aria-label="Participant state chooser"></div>
+        <div id="participant-grid" class="participant-grid" role="radiogroup" aria-label="Participant state chooser"></div>
         <fieldset id="attempt-disposition" class="check-group attempt-disposition" hidden>
           <legend>Attempt handling</legend>
           <label id="attempt-resume-option" class="radio-field"><input type="radio" name="attemptDisposition" value="resume-compatible" aria-describedby="attempt-disposition-note"><span><strong>Resume compatible partial</strong><br><span class="field-help">Verify the frozen settings and plan hashes, then restart at the last safe stimulus boundary.</span></span></label>
@@ -537,11 +540,12 @@ function reviewSection() {
         </div>
       </div>
     </details>
-    <fieldset class="check-group spaced-check-group">
+    <fieldset id="output-format-group" class="check-group spaced-check-group" aria-describedby="output-format-help output-format-error">
       <legend>Rating output formats</legend>
       <label class="check-field"><input id="output-csv" type="checkbox" checked><span>CSV</span></label>
       <label class="check-field"><input id="output-tsv" type="checkbox"><span>TSV</span></label>
-      <p class="field-help">Both formats serialize the same canonical records with identical columns, order, values, and row count. At least one is required.</p>
+      <p id="output-format-help" class="field-help">Both formats serialize the same canonical records with identical columns, order, values, and row count. At least one is required.</p>
+      <p id="output-format-error" class="field-error" hidden>Select CSV, TSV, or both.</p>
     </fieldset>
     <div class="start-bar">
       <p id="start-status" role="status" aria-live="polite">Resolve all blocking preflight items.</p>
@@ -610,13 +614,13 @@ export function renderResearchUiMarkup(surface = "browser") {
             <aside class="preview-pane" aria-labelledby="preview-title">
               <header class="preview-header">
                 <div><h2 id="preview-title">Live feedback preview</h2><p>Presentation only. Sampling uses the run scheduler.</p></div>
-                <div class="preview-coordinates"><span>Valence</span><output data-preview-x>+0.000</output><span>Arousal</span><output data-preview-y>+0.000</output></div>
+                <div class="preview-coordinates"><span>Valence</span><span data-preview-x>+0.000</span><span>Arousal</span><span data-preview-y>+0.000</span></div>
               </header>
               ${previewMarkup("Live Grid and Flubber settings preview")}
               <footer class="preview-footer">
-                <div class="preview-metric"><span>Position</span><output data-preview-position>0.50, 0.50</output></div>
-                <div class="preview-metric"><span>Input test</span><output id="preview-input-source">Arrow keys</output></div>
-                <div class="preview-metric"><span>Sampling</span><output id="preview-sampling-rate">130 Hz</output></div>
+                <div class="preview-metric"><span>Position</span><span data-preview-position>0.50, 0.50</span></div>
+                <div class="preview-metric"><span>Input test</span><span id="preview-input-source">Arrow keys</span></div>
+                <div class="preview-metric"><span>Sampling</span><span id="preview-sampling-rate">130 Hz</span></div>
               </footer>
             </aside>
           </div>
@@ -628,7 +632,7 @@ export function renderResearchUiMarkup(surface = "browser") {
           </header>
           <div class="run-stage">
             <section class="stimulus-stage" aria-label="Current complete stimulus">
-              <video id="run-video" preload="metadata" playsinline></video>
+              <video id="run-video" preload="metadata" playsinline aria-label="Protocol-controlled current stimulus video"></video>
               <p id="run-stimulus-placeholder" class="stimulus-placeholder">The verified complete video appears here after the run authority starts the attempt.</p>
               <div id="run-youtube-player" class="youtube-player-host run-youtube-player" aria-label="Experimental YouTube stimulus player" hidden></div>
             </section>
@@ -639,12 +643,12 @@ export function renderResearchUiMarkup(surface = "browser") {
           </div>
           <footer class="run-footer">
             <div class="run-status-strip" aria-label="Session status">
-              <p>Stimulus <output id="run-stimulus-status">Waiting</output></p><span class="status-separator" aria-hidden="true">|</span>
-              <p>Timing <output id="run-timing-status">Stopped</output></p><span class="status-separator" aria-hidden="true">|</span>
-              <p>Write / recovery <output id="run-write-status">Journal pending</output></p><span class="status-separator" aria-hidden="true">|</span>
-              <p>LSL <output id="run-lsl-status">Off</output></p>
+              <p>Stimulus <span id="run-stimulus-status">Waiting</span></p><span class="status-separator" aria-hidden="true">|</span>
+              <p>Timing <span id="run-timing-status">Stopped</span></p><span class="status-separator" aria-hidden="true">|</span>
+              <p>Write / recovery <span id="run-write-status">Journal pending</span></p><span class="status-separator" aria-hidden="true">|</span>
+              <p>LSL <span id="run-lsl-status">Off</span></p>
             </div>
-            <p>Valence <output data-preview-x>+0.000</output> · Arousal <output data-preview-y>+0.000</output></p>
+            <p>Valence <span data-preview-x>+0.000</span> · Arousal <span data-preview-y>+0.000</span></p>
           </footer>
           <section id="run-transition" class="run-transition" hidden aria-live="polite">
             <h2>Between videos</h2>
@@ -724,7 +728,11 @@ function bindResearchInteractions(root, { surface }) {
   let inputController = null;
   let gamepadCaptureFrame = null;
   let inputTestPassed = false;
+  let nativeInputReceiptId = null;
+  let nativeCaptureDirection = null;
+  let nativeInputLastSequence = 0;
   let lastInputActive = false;
+  let outputFormatsTouched = false;
   let participantWindowStart = 0;
   let participantTileWindowStart = 0;
   let dispositionContextKey = "";
@@ -747,12 +755,26 @@ function bindResearchInteractions(root, { surface }) {
     storageReady: false,
     repositoryAssetsReady: surface === "browser",
     nativePlaybackReady: surface === "browser",
+    nativeInputReady: surface === "browser",
+    nativeInputPresetReady: surface === "browser",
   };
+
+  function resetInputTest({ notify = true } = {}) {
+    inputTestPassed = false;
+    nativeInputReceiptId = null;
+    if (surface === "tauri" && notify) {
+      root.dispatchEvent(new CustomEvent(RESEARCH_UI_EVENTS.inputBindingChanged, {
+        bubbles: true,
+        detail: Object.freeze({ binding: structuredClone(inputBinding) }),
+      }));
+    }
+  }
   let manifestReadinessMessage = "Output manifests have not been scanned.";
   const pools = [{ id: "condition-1", label: "Condition 1", videosPerParticipant: 1 }];
   const stimuli = [];
   const participantStates = new Map();
   const participantRecoverability = new Map();
+  const touchedValidationControls = new WeakSet();
 
   const setupPreview = createResearchPreview(root.querySelector(".preview-pane"), {
     onPositionChange(position) {
@@ -799,6 +821,80 @@ function bindResearchInteractions(root, { surface }) {
     if (element instanceof HTMLInputElement) element.checked = Boolean(nextValue);
   }
 
+  function isValidationControl(element) {
+    return element instanceof HTMLInputElement
+      || element instanceof HTMLSelectElement
+      || element instanceof HTMLTextAreaElement;
+  }
+
+  function validationMessage(control) {
+    if (control.validity.valueMissing) return "This field is required.";
+    if (control.validity.rangeUnderflow) return `Enter a value of at least ${control.min}.`;
+    if (control.validity.rangeOverflow) return `Enter a value no greater than ${control.max}.`;
+    if (control.validity.stepMismatch) return `Enter a value using increments of ${control.step}.`;
+    if (control.validity.patternMismatch) return "Enter a value in the required format.";
+    if (control.validity.tooLong) return `Use no more than ${control.maxLength} characters.`;
+    if (control.validity.tooShort) return `Use at least ${control.minLength} characters.`;
+    if (control.validity.badInput || control.validity.typeMismatch) return "Enter a valid value.";
+    return control.validationMessage || "Correct this field before starting.";
+  }
+
+  function setErrorReference(control, errorId, enabled) {
+    const ids = new Set((control.getAttribute("aria-describedby") ?? "").split(/\s+/u).filter(Boolean));
+    if (enabled) ids.add(errorId);
+    else ids.delete(errorId);
+    if (ids.size > 0) control.setAttribute("aria-describedby", [...ids].join(" "));
+    else control.removeAttribute("aria-describedby");
+  }
+
+  function syncControlValidation(control, { force = false } = {}) {
+    if (!isValidationControl(control) || !control.id || !control.willValidate || control.disabled) return true;
+    const inactive = control.closest("#fixed-duration-field[hidden], #jitter-durations-field[hidden]") !== null;
+    const invalid = !inactive && !control.checkValidity();
+    const errorId = `${control.id}-error`;
+    let error = query(`#${errorId}`);
+    if (!invalid) {
+      control.removeAttribute("aria-invalid");
+      control.removeAttribute("aria-errormessage");
+      setErrorReference(control, errorId, false);
+      if (error instanceof HTMLElement) error.hidden = true;
+      return true;
+    }
+    if (!force && !touchedValidationControls.has(control)) return false;
+    if (!(error instanceof HTMLElement)) {
+      error = document.createElement("span");
+      error.id = errorId;
+      error.className = "field-error";
+      (control.closest(".field") ?? control.parentElement)?.append(error);
+    }
+    error.textContent = validationMessage(control);
+    error.hidden = false;
+    control.setAttribute("aria-invalid", "true");
+    control.setAttribute("aria-errormessage", errorId);
+    setErrorReference(control, errorId, true);
+    return false;
+  }
+
+  function syncOutputFormatValidation({ force = false } = {}) {
+    const valid = checked("output-csv") || checked("output-tsv");
+    const group = query("#output-format-group");
+    const error = query("#output-format-error");
+    if (group instanceof HTMLElement) {
+      if (valid) group.removeAttribute("aria-invalid");
+      else if (force || outputFormatsTouched) group.setAttribute("aria-invalid", "true");
+    }
+    if (error instanceof HTMLElement) error.hidden = valid || (!force && !outputFormatsTouched);
+    return valid;
+  }
+
+  function syncFieldValidation({ force = false } = {}) {
+    let valid = true;
+    root.querySelectorAll("input, select, textarea").forEach((control) => {
+      if (!syncControlValidation(control, { force })) valid = false;
+    });
+    return syncOutputFormatValidation({ force }) && valid;
+  }
+
   function announce(message) {
     if (announcer instanceof HTMLElement) announcer.textContent = String(message);
   }
@@ -831,6 +927,12 @@ function bindResearchInteractions(root, { surface }) {
       }
       if (panel instanceof HTMLElement) panel.hidden = !isOpen;
     });
+    if (surface === "tauri" && openSection === "input") {
+      queueMicrotask(() => root.dispatchEvent(new CustomEvent(RESEARCH_UI_EVENTS.inputBindingChanged, {
+        bubbles: true,
+        detail: Object.freeze({ binding: structuredClone(inputBinding) }),
+      })));
+    }
   }
 
   function colorValues() {
@@ -1008,7 +1110,7 @@ function bindResearchInteractions(root, { surface }) {
       selected.contractId,
       selected.digital ? Math.max(0.001, Math.min(1, numberValue("input-step-size", 0.1))) : 0.1,
     ));
-    inputTestPassed = false;
+    resetInputTest();
     inputController?.setBinding(inputBinding);
     renderBindings();
     schedulePlanRefresh();
@@ -1101,9 +1203,8 @@ function bindResearchInteractions(root, { surface }) {
       button.className = "participant-tile";
       button.dataset.participantId = id;
       button.dataset.participantState = state;
-      button.setAttribute("role", "option");
-      button.setAttribute("aria-selected", String(id === selectedParticipant));
-      button.setAttribute("aria-pressed", String(id === selectedParticipant));
+      button.setAttribute("role", "radio");
+      button.setAttribute("aria-checked", String(id === selectedParticipant));
       button.tabIndex = id === selectedParticipant ? 0 : -1;
       const strong = document.createElement("strong");
       strong.textContent = id;
@@ -1288,7 +1389,7 @@ function bindResearchInteractions(root, { surface }) {
       youtubePreflight: null,
     })));
     inputBinding = structuredClone(normalized.input);
-    inputTestPassed = false;
+    resetInputTest();
     setInputValue("input-preset", UI_PRESET_IDS[inputBinding.preset] ?? "custom");
     if (inputBinding.kind === "digital") setInputValue("input-step-size", inputBinding.stepSize);
     inputController?.setBinding(inputBinding);
@@ -1423,7 +1524,22 @@ function bindResearchInteractions(root, { surface }) {
               : poolCapacity.message,
       },
       { id: "plan", result: plan && settingsHash ? "pass" : "block", label: "Resolved plan", message: plan ? `balanced-v1 ${plan.planHashSha256}` : (planError ?? "Resolve a valid deterministic assignment plan") },
-      { id: "input", result: bindingValid && inputTestPassed ? "pass" : "block", label: "Input", message: !bindingValid ? "Resolve binding conflicts" : inputTestPassed ? `${selectedPreset().label} binding and live input test passed` : `Perform a live ${selectedPreset().label} input test` },
+      {
+        id: "input",
+        result: bindingValid && inputTestPassed && capabilities.nativeInputReady && capabilities.nativeInputPresetReady ? "pass" : "block",
+        label: "Input",
+        message: !bindingValid
+          ? "Resolve binding conflicts"
+          : !capabilities.nativeInputReady
+            ? "The native input authority is unavailable"
+            : !capabilities.nativeInputPresetReady
+              ? `${selectedPreset().label} has no safe native Tauri backend`
+              : inputTestPassed
+                ? `${selectedPreset().label} binding and ${surface === "tauri" ? "fresh native" : "live"} input test passed`
+                : surface === "tauri"
+                  ? `Exercise every direction in a fresh ${selectedPreset().label} native input test`
+                  : `Perform a live ${selectedPreset().label} input test`,
+      },
       { id: "output", result: outputValid ? "pass" : "block", label: "Output", message: outputValid ? [checked("output-csv") && "CSV", checked("output-tsv") && "TSV"].filter(Boolean).join(" + ") : "Select CSV, TSV, or both" },
       {
         id: "participant",
@@ -2191,7 +2307,7 @@ function bindResearchInteractions(root, { surface }) {
 
   function updateInputPoint(x, y, receipt, { fromInput = false, inputActive = false, source = null } = {}) {
     inputPoint = { x: Math.max(-1, Math.min(1, x)), y: Math.max(-1, Math.min(1, y)) };
-    if (fromInput) inputTestPassed = true;
+    if (fromInput && surface !== "tauri") inputTestPassed = true;
     const grid = query(".input-test-grid");
     if (grid instanceof HTMLElement) {
       grid.style.setProperty("--input-left", `${((inputPoint.x + 1) / 2) * 100}%`);
@@ -2219,8 +2335,53 @@ function bindResearchInteractions(root, { surface }) {
     refreshProjection();
   }
 
+  function applyNativeInputStatus(status) {
+    if (surface !== "tauri" || !status) return;
+    const observation = status.lastInput;
+    if (mode === "setup" && Number.isInteger(observation?.sequence)
+      && observation.sequence > nativeInputLastSequence) {
+      nativeInputLastSequence = observation.sequence;
+      if (observation.applyStep === true && inputBinding.kind === "digital") {
+        const step = inputBinding.stepSize;
+        const delta = {
+          up: [0, step], down: [0, -step], left: [-step, 0], right: [step, 0],
+        }[observation.direction] ?? [0, 0];
+        updateInputPoint(
+          inputPoint.x + delta[0],
+          inputPoint.y + delta[1],
+          `Native ${observation.direction} edge accepted.`,
+          { inputActive: observation.inputActive, source: observation.detail },
+        );
+      }
+    }
+    nativeInputReceiptId = status.receipt?.receiptId ?? null;
+    inputTestPassed = Boolean(nativeInputReceiptId);
+    const output = query("#input-test-status");
+    if (output && mode === "setup") {
+      if (status.receipt) {
+        output.textContent = `Native test passed for device epoch ${status.receipt.deviceEpoch}.`;
+        output.dataset.state = "ready";
+      } else if (Array.isArray(status.remainingDirections)) {
+        output.textContent = status.remainingDirections.length
+          ? `Native test: exercise ${status.remainingDirections.join(", ")}.`
+          : "Run a fresh native input test.";
+        output.dataset.state = "warning";
+      }
+    }
+    renderReview();
+  }
+
   function beginBindingCapture(direction) {
     const receipt = query("#binding-capture-receipt");
+    if (surface === "tauri") {
+      nativeCaptureDirection = direction;
+      inputController.cancelCapture();
+      root.dispatchEvent(new CustomEvent(RESEARCH_UI_EVENTS.inputCaptureRequest, {
+        bubbles: true,
+        detail: Object.freeze({ direction, binding: structuredClone(inputBinding) }),
+      }));
+      return;
+    }
     const complete = (result) => {
       if (!result.ok) {
         if (receipt) {
@@ -2230,7 +2391,7 @@ function bindResearchInteractions(root, { surface }) {
         return;
       }
       inputBinding = structuredClone(result.binding);
-      inputTestPassed = false;
+      resetInputTest({ notify: false });
       inputController.setBinding(inputBinding);
       inputController.cancelCapture();
       if (gamepadCaptureFrame !== null) cancelAnimationFrame(gamepadCaptureFrame);
@@ -2291,6 +2452,29 @@ function bindResearchInteractions(root, { surface }) {
     inputController.cancelCapture();
     if (gamepadCaptureFrame !== null) cancelAnimationFrame(gamepadCaptureFrame);
     gamepadCaptureFrame = null;
+    if (surface === "tauri" && nativeCaptureDirection) {
+      nativeCaptureDirection = null;
+      root.dispatchEvent(new CustomEvent(RESEARCH_UI_EVENTS.inputCaptureCancel, { bubbles: true }));
+    }
+  }
+
+  function applyNativeCapture(result) {
+    if (surface !== "tauri" || !result?.binding || !result?.action) return false;
+    inputBinding = structuredClone(validateInputBindingV1(result.binding));
+    resetInputTest({ notify: false });
+    nativeCaptureDirection = null;
+    inputController.setBinding(inputBinding);
+    setInputValue("input-preset", "custom");
+    renderBindings();
+    schedulePlanRefresh();
+    const receipt = query("#binding-capture-receipt");
+    if (receipt) {
+      receipt.textContent = `${describeInputToken(result.action)} assigned to ${result.direction} by native capture.`;
+      receipt.dataset.state = "ready";
+    }
+    closeDialog("binding-capture-dialog");
+    refreshProjection();
+    return true;
   }
 
   function closeDialog(id) {
@@ -2328,21 +2512,21 @@ function bindResearchInteractions(root, { surface }) {
 
   const runInputHandlers = {
     keydown(event) {
-      if (mode === "run") inputController.handleKeyDown(event);
+      if (surface !== "tauri" && mode === "run") inputController.handleKeyDown(event);
     },
     keyup(event) {
-      if (mode === "run") inputController.handleKeyUp(event);
+      if (surface !== "tauri" && mode === "run") inputController.handleKeyUp(event);
     },
     mousedown(event) {
-      if (mode === "run" && event.target instanceof Element && event.target.closest(".run-stage")) {
+      if (surface !== "tauri" && mode === "run" && event.target instanceof Element && event.target.closest(".run-stage")) {
         inputController.handleMouseDown(event);
       }
     },
     mouseup(event) {
-      if (mode === "run") inputController.handleMouseUp(event);
+      if (surface !== "tauri" && mode === "run") inputController.handleMouseUp(event);
     },
     wheel(event) {
-      if (mode === "run" && event.target instanceof Element && event.target.closest(".run-stage")) {
+      if (surface !== "tauri" && mode === "run" && event.target instanceof Element && event.target.closest(".run-stage")) {
         inputController.handleWheel(event);
       }
     },
@@ -2352,7 +2536,7 @@ function bindResearchInteractions(root, { surface }) {
   }
   const runFeedbackStage = query(".run-feedback-stage");
   const handleRunPointer = (event) => {
-    if (mode !== "run" || !(runFeedbackStage instanceof HTMLElement)) return;
+    if (surface === "tauri" || mode !== "run" || !(runFeedbackStage instanceof HTMLElement)) return;
     inputController.handlePointer(event, runFeedbackStage.getBoundingClientRect());
   };
   runFeedbackStage?.addEventListener("pointerdown", handleRunPointer);
@@ -2363,8 +2547,15 @@ function bindResearchInteractions(root, { surface }) {
 
   function requestStart() {
     const blocking = preflightItems().filter(({ result }) => result === "block");
-    if (blocking.length > 0) {
-      openSetupSection("review");
+    const fieldsValid = syncFieldValidation({ force: true });
+    if (blocking.length > 0 || !fieldsValid) {
+      const invalid = query('[aria-invalid="true"]');
+      const sectionId = invalid?.closest("[data-setup-section]")?.getAttribute("data-setup-section") ?? "review";
+      openSetupSection(sectionId);
+      const focusTarget = isValidationControl(invalid)
+        ? invalid
+        : invalid?.querySelector?.("input, select, textarea, button");
+      queueMicrotask(() => focusTarget?.focus());
       announce("Start blocked. Resolve the preflight list.");
       return;
     }
@@ -2384,6 +2575,7 @@ function bindResearchInteractions(root, { surface }) {
     const resolvedPlan = plan;
     const preflight = Object.freeze({
       inputTestPassed,
+      nativeInputReceiptId: surface === "tauri" ? nativeInputReceiptId : null,
       verifiedStimulusIds: Object.freeze(stimuli.filter(({ verification }) => verification === "verified").map(({ id }) => id)),
       directoryPermission: capabilities.directoryPermission,
       indexedDbReady: capabilities.indexedDbReady,
@@ -2405,7 +2597,10 @@ function bindResearchInteractions(root, { surface }) {
       preflight,
       outputFormats: { csv: checked("output-csv"), tsv: checked("output-tsv") },
       preview: Object.freeze(previewState({ locked: true })),
-      ...(surface === "tauri" ? { playbackMode: value("native-playback-mode", "nativeLibvlc") } : {}),
+      ...(surface === "tauri" ? {
+        playbackMode: value("native-playback-mode", "nativeLibvlc"),
+        inputTestReceiptId: nativeInputReceiptId,
+      } : {}),
     };
     youtubePreflightAdapter?.destroy();
     youtubePreflightAdapter = null;
@@ -2480,7 +2675,7 @@ function bindResearchInteractions(root, { surface }) {
       closeDialog("binding-capture-dialog");
     }
     if (target.id === "input-test-reset") {
-      inputTestPassed = false;
+      resetInputTest();
       inputController.resetNeutral("input-test-reset");
       updateInputPoint(0, 0, "Input test reset to neutral.");
     }
@@ -2558,6 +2753,7 @@ function bindResearchInteractions(root, { surface }) {
       closeDialog("completion-dialog");
       setMode("setup");
       openSetupSection("review", { focus: true });
+      resetInputTest();
     }
     if (target.id === "import-report-close") closeDialog("import-report-dialog");
     if (target.id === "run-continue") root.dispatchEvent(new CustomEvent(RESEARCH_UI_EVENTS.continueRequest, { bubbles: true }));
@@ -2576,10 +2772,13 @@ function bindResearchInteractions(root, { surface }) {
       try {
         inputBinding = structuredClone(validateInputBindingV1({ ...inputBinding, stepSize: Number(target.value) }));
         inputController.setBinding(inputBinding);
-        inputTestPassed = false;
+        resetInputTest();
       } catch {
         // Native HTML validation and the blocking preflight expose the invalid interim value.
       }
+    }
+    if (isValidationControl(target) && touchedValidationControls.has(target)) {
+      syncControlValidation(target);
     }
     refreshProjection();
     schedulePlanRefresh();
@@ -2587,9 +2786,12 @@ function bindResearchInteractions(root, { surface }) {
 
   root.addEventListener("change", (event) => {
     const target = event.target;
+    if (target instanceof HTMLInputElement && ["output-csv", "output-tsv"].includes(target.id)) {
+      outputFormatsTouched = true;
+      syncOutputFormatValidation();
+    }
     if (target instanceof HTMLSelectElement && target.id === "input-preset") {
       resetBindingsToPreset();
-      inputTestPassed = false;
       inputController.resetNeutral("preset-change");
     }
     if (target instanceof HTMLSelectElement && target.id === "stimulus-source") updateStimulusDialogSource();
@@ -2608,16 +2810,24 @@ function bindResearchInteractions(root, { surface }) {
       if (pool) pool.videosPerParticipant = Math.max(1, Math.trunc(Number(target.value) || 1));
       renderPools();
     }
+    if (isValidationControl(target)) syncControlValidation(target);
     refreshProjection();
     schedulePlanRefresh();
   });
 
+  root.addEventListener("focusout", (event) => {
+    const control = event.target;
+    if (!isValidationControl(control)) return;
+    touchedValidationControls.add(control);
+    syncControlValidation(control);
+  });
+
   root.addEventListener("keydown", (event) => {
-    if (inputController.captureDirection) {
+    if (inputController.captureDirection || nativeCaptureDirection) {
       if (event.key === "Escape") {
         cancelBindingCapture();
         closeDialog("binding-capture-dialog");
-      } else routeCaptureEvent(event);
+      } else if (surface !== "tauri") routeCaptureEvent(event);
       return;
     }
     const tile = event.target instanceof Element ? event.target.closest("[data-participant-id]") : null;
@@ -2687,13 +2897,6 @@ function bindResearchInteractions(root, { surface }) {
       announce(error instanceof Error ? error.message : String(error));
     }
   });
-  dropZone?.addEventListener("keydown", (event) => {
-    if (event.key === "Enter" || event.key === " ") {
-      event.preventDefault();
-      requestVideoImport();
-    }
-  });
-
   query("#video-file-input")?.addEventListener("change", async (event) => {
     await ingestBrowserFiles(event.target.files);
     event.target.value = "";
@@ -2818,13 +3021,23 @@ function bindResearchInteractions(root, { surface }) {
     }
     const transition = query("#run-transition");
     if (transition instanceof HTMLElement && typeof detail.transitionActive === "boolean") {
+      const transitionWasHidden = transition.hidden;
       transition.hidden = !detail.transitionActive;
       const message = query("#run-transition-message");
       if (message && detail.transitionMessage) message.textContent = String(detail.transitionMessage);
       const proceed = query("#run-continue");
-      if (proceed instanceof HTMLButtonElement) proceed.hidden = detail.transitionMode !== "continueWhenReady";
+      if (proceed instanceof HTMLButtonElement) {
+        const proceedWasHidden = proceed.hidden;
+        proceed.hidden = detail.transitionMode !== "continueWhenReady";
+        if (!transition.hidden && !proceed.hidden && (transitionWasHidden || proceedWasHidden)) {
+          queueMicrotask(() => proceed.focus());
+        }
+      }
     }
     const video = query("#run-video");
+    if (video instanceof HTMLVideoElement && typeof detail.stimulus === "string" && detail.stimulus.trim()) {
+      video.setAttribute("aria-label", `Protocol-controlled stimulus: ${detail.stimulus.trim()}`);
+    }
     if (video instanceof HTMLVideoElement && typeof detail.videoUrl === "string" && detail.videoUrl) {
       if (video.src !== detail.videoUrl) video.src = detail.videoUrl;
       video.hidden = false;
@@ -2895,6 +3108,8 @@ function bindResearchInteractions(root, { surface }) {
     get plan() { return plan; },
     get storageEstimate() { return estimateResearchStorageUse(settingsSnapshot, plan); },
     get inputController() { return inputController; },
+    get inputBinding() { return structuredClone(inputBinding); },
+    get nativeInputReceiptId() { return nativeInputReceiptId; },
     getYouTubePreflight(stimulusId) {
       const record = stimuli.find(({ id }) => id === stimulusId)?.youtubePreflight;
       return record ? structuredClone(record) : null;
@@ -2915,6 +3130,8 @@ function bindResearchInteractions(root, { surface }) {
       root.dispatchEvent(new CustomEvent(RESEARCH_UI_EVENTS.capabilityStatus, { detail: next }));
     },
     setAffect(x, y, receipt = "Authoritative input received.") { updateInputPoint(x, y, receipt); },
+    applyNativeInputStatus,
+    applyNativeCapture,
     resetAffect(reason = "safe-boundary") {
       inputController.resetNeutral(reason);
       return Object.freeze({ x: inputController.state.x, y: inputController.state.y, inputActive: inputController.state.inputActive });

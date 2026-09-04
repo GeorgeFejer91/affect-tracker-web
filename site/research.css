@@ -174,6 +174,13 @@ h3 {
   background: var(--page);
 }
 
+.research-shell > main {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr);
+  min-height: 0;
+  overflow: hidden;
+}
+
 .app-bar {
   display: grid;
   grid-template-columns: minmax(11rem, 0.7fr) auto minmax(11rem, 0.7fr);
@@ -233,15 +240,25 @@ h3 {
   overflow: hidden;
 }
 
+.setup-mode {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr);
+  height: 100%;
+}
+
 .setup-layout {
   display: grid;
   grid-template-columns: minmax(34rem, 1.25fr) minmax(23rem, 0.75fr);
+  min-height: 0;
   height: 100%;
 }
 
 .setup-pane {
   min-width: 0;
+  min-height: 0;
+  max-height: 100%;
   overflow-y: auto;
+  overscroll-behavior: contain;
   border-right: 1px solid var(--border);
   scrollbar-color: #4e554b #181a17;
 }
@@ -349,6 +366,21 @@ h3 {
 
 .field-help {
   margin: 0.35rem 0 0;
+}
+
+.field-error {
+  display: block;
+  margin: 0.25rem 0 0;
+  color: var(--danger);
+  font-size: 0.82rem;
+  font-weight: 620;
+}
+
+input[aria-invalid="true"],
+select[aria-invalid="true"],
+textarea[aria-invalid="true"],
+fieldset[aria-invalid="true"] {
+  border-color: var(--danger);
 }
 
 .field-grid {
@@ -926,7 +958,7 @@ tbody tr:last-child td {
   text-align: left;
 }
 
-.participant-tile[aria-pressed="true"] {
+.participant-tile[aria-checked="true"] {
   border-color: var(--accent);
   background: #2b281e;
 }
@@ -1385,6 +1417,37 @@ dialog::backdrop {
     height: auto;
   }
 
+  .research-shell {
+    grid-template-rows: auto auto;
+    min-height: 100dvh;
+  }
+
+  .research-shell > main {
+    display: block;
+    overflow: visible;
+  }
+
+  .app-bar {
+    gap: 0.65rem;
+    padding: 0.75rem 1rem;
+  }
+
+  .product-block,
+  .surface-status {
+    justify-self: start;
+    text-align: left;
+  }
+
+  .mode-navigation {
+    width: 100%;
+  }
+
+  .mode-navigation button {
+    flex: 1 1 10rem;
+    min-height: var(--control-height);
+    padding: 0.55rem 0.75rem;
+  }
+
   .app-bar,
   .setup-layout,
   .run-stage {
@@ -1401,6 +1464,7 @@ dialog::backdrop {
   .preview-pane {
     max-height: none;
     overflow: visible;
+    overscroll-behavior: auto;
   }
 }
 
@@ -1412,5 +1476,42 @@ dialog::backdrop {
     transition-duration: 0.001ms !important;
     animation-duration: 0.001ms !important;
     animation-iteration-count: 1 !important;
+  }
+}
+
+@media (forced-colors: active) {
+  :root {
+    --page: Canvas;
+    --surface: Canvas;
+    --surface-raised: Canvas;
+    --surface-quiet: Canvas;
+    --border: CanvasText;
+    --border-strong: CanvasText;
+    --text: CanvasText;
+    --muted: CanvasText;
+    --accent: Highlight;
+    --accent-strong: Highlight;
+    --focus: Highlight;
+    --success: CanvasText;
+    --warning: CanvasText;
+    --danger: CanvasText;
+  }
+
+  button,
+  input,
+  select,
+  textarea,
+  .participant-tile,
+  .research-preview-stage {
+    border-color: CanvasText;
+  }
+
+  :focus-visible {
+    outline-color: Highlight;
+  }
+
+  .research-preview-stage canvas,
+  .research-preview-stage svg {
+    forced-color-adjust: none;
   }
 }

@@ -189,9 +189,9 @@ export function createResearchPreview(root, options = {}) {
     flubberOutline.style.strokeWidth = String(state.flubber.outlineThickness);
     flubberHalo.hidden = !state.flubber.showHalo;
     flubberHalo.style.strokeWidth = String(Math.max(1, state.flubber.outlineThickness * 3));
-    overlay.setAttribute(
+    stage.setAttribute(
       "aria-label",
-      `Feedback position ${Math.round(state.position.x * 100)} percent across and ${Math.round(state.position.y * 100)} percent down. ${state.lockPosition ? "Position locked." : "Position unlocked; drag or use arrow keys to move."}`,
+      `Visual feedback preview. Position ${Math.round(state.position.x * 100)} percent across and ${Math.round(state.position.y * 100)} percent down. ${state.lockPosition ? "Position locked." : "Pointer dragging is available; keyboard users can set the two normalized position fields."}`,
     );
     root.querySelectorAll("[data-preview-x]").forEach((output) => { output.textContent = formatCoordinate(state.x); });
     root.querySelectorAll("[data-preview-y]").forEach((output) => { output.textContent = formatCoordinate(state.y); });
@@ -250,31 +250,10 @@ export function createResearchPreview(root, options = {}) {
     if (overlay.hasPointerCapture(event.pointerId)) overlay.releasePointerCapture(event.pointerId);
   }
 
-  function onKeyDown(event) {
-    if (state.lockPosition) return;
-    const deltas = {
-      ArrowLeft: [-0.01, 0],
-      ArrowRight: [0.01, 0],
-      ArrowUp: [0, -0.01],
-      ArrowDown: [0, 0.01],
-    };
-    const delta = deltas[event.key];
-    if (!delta) return;
-    const position = {
-      x: clamp(state.position.x + delta[0], 0, 1),
-      y: clamp(state.position.y + delta[1], 0, 1),
-    };
-    state = normalizedState({ ...state, position });
-    options.onPositionChange?.(position);
-    renderStatic();
-    event.preventDefault();
-  }
-
   overlay.addEventListener("pointerdown", onPointerDown);
   overlay.addEventListener("pointermove", onPointerMove);
   overlay.addEventListener("pointerup", finishPointer);
   overlay.addEventListener("pointercancel", finishPointer);
-  overlay.addEventListener("keydown", onKeyDown);
 
   renderStatic();
   frameId = requestAnimationFrame(renderFrame);
@@ -293,7 +272,6 @@ export function createResearchPreview(root, options = {}) {
       overlay.removeEventListener("pointermove", onPointerMove);
       overlay.removeEventListener("pointerup", finishPointer);
       overlay.removeEventListener("pointercancel", finishPointer);
-      overlay.removeEventListener("keydown", onKeyDown);
     },
   });
 }

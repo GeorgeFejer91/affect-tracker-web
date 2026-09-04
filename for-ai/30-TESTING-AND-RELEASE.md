@@ -1,306 +1,230 @@
 # Testing and release gates
 
-> **Active authority:** Only the Research v1 gates in this status block are
-> active. [`15-RESEARCH-V1-CHARTER.md`](./15-RESEARCH-V1-CHARTER.md) is the sole
-> product authority. All pre-existing sections after the explicit **Frozen
-> Playground/history gates** marker are retained as historical evidence and are
-> not active release requirements.
+## Status
 
-## Active Research v1 gates
+These gates apply only to Affect Research v1. The feature-rich application's
+tests and physical receipts remain historical evidence in Playground and do
+not qualify the changed Research runtime.
 
-The first internal target is `0.4.0-alpha.1`. Documentation, compilation, unit
-tests, historical evidence, or one successful adapter never establish a stable
-or research-ready claim.
+The first internal target is `0.4.0-alpha.1`. Documentation, schemas, mocks,
+compilation, a staged native runtime, or one successful adapter never establish
+a stable or research-ready claim. Acceptance evidence must bind the exact Git
+commit, settings/plan contract versions, built artifact hashes, OS/browser
+versions, hardware, and test receipt.
 
-### Contract and settings
+## Automated candidate gates
 
-- Round-trip every `ResearchSettingsV1`, `ResolvedAssignmentPlanV1`,
+Run the repository's exact commands from a clean candidate checkout:
+
+```powershell
+pnpm install --frozen-lockfile
+pnpm test
+pnpm build:pages
+pnpm desktop:build
+pnpm audit --audit-level=moderate
+cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
+cargo check --manifest-path src-tauri/Cargo.toml --locked --all-features
+cargo test --manifest-path src-tauri/Cargo.toml --locked --all-features
+cargo test --manifest-path src-tauri/Cargo.toml --locked --no-default-features
+cargo clippy --manifest-path src-tauri/Cargo.toml --locked --all-targets --all-features -- -D warnings
+```
+
+Build the unsigned NSIS candidate only after staging and verifying the required native-media runtime.
+Inspect the resulting installer and installed application rather than treating
+the bundler exit code as runtime evidence.
+
+### Contracts and settings
+
+- Round-trip `ResearchSettingsV1`, `ResolvedAssignmentPlanV1`,
   `InputBindingV1`, `ResearchSampleV1`, `ResearchEventV1`, and
-  `ResearchRunManifestV2` fixture through Rust and browser readers.
+  `ResearchRunManifestV2` through Rust and browser readers.
 - Reject unknown fields, duplicate keys/IDs, wrong schemas/versions/algorithms,
-  invalid colors/enums/paths, non-finite/out-of-range numbers, oversized or
-  deeply nested inputs, and settings/plan/stimulus hash drift.
-- Prove canonical JSON and SHA-256 equality across Rust/browser implementations.
-- Exercise explicit legacy settings import and show every default/discard. Prove
-  that neither existing app data nor browser storage migrates automatically.
-- Verify all seven Setup accordions, exact ordering/single-open behavior, the
-  persistent right preview, complete load/save round-trip, 1–240 Hz bounds with
-  130 Hz default, always-enabled continuous rating, and complete absence of a
-  summary-rating option.
+  invalid enums/colors/paths, non-finite/out-of-range numbers, excessive
+  counts/depth/bytes, and settings/plan/stimulus hash drift.
+- Prove canonical JSON and SHA-256 equality across Rust and browser fixtures.
+- Exercise explicit legacy import, reporting every default and discard. Prove
+  that existing app data and browser storage never migrate automatically.
+- Verify all seven Setup accordions, their exact order and single-open state,
+  persistent preview, settings load/save, 1–240 Hz bounds with 130 Hz default,
+  always-on continuous rating, and absence of summary-only acquisition.
 
-### Counterbalancing and participant plan
+### Counterbalancing and participant identity
 
-- Property-test one-hat and multi-pool designs across participant/video/count
-  bounds. Prove one-pool ownership, no participant duplicate, deterministic
-  Williams and cyclic ordering, and no factorial-permutation path.
-- Prove `balanced-v1` chooses lowest total exposure, then lowest position
-  exposure, then seeded hash; identical inputs reproduce the same plan/hash;
-  exposure differs by no more than one whenever constraints permit it.
-- Cover insufficient capacity, name every uncovered item, and verify the exact
+- Property-test one-hat and multi-pool plans across participant/video/count
+  bounds. Prove unique pool ownership, no within-participant duplicate,
+  deterministic Williams/cyclic order, and no factorial-permutation path.
+- Prove `balanced-v1` selects lowest total exposure, then lowest position
+  exposure, then seeded hash. Identical normalized inputs must reproduce the
+  same plan and hash, with exposure differing by no more than one whenever the
+  constraints make that feasible.
+- For every capacity failure, name all uncovered stimuli and show the exact
   participant-count or affected-pool-count adjustment.
-- Test virtualized previews, `assignment-plan.csv`, atomic locks, concurrent
-  starts, rerun/new-attempt behavior, and reconstruction of Available/Active/
-  Partial/Complete exclusively from locks, journals, and manifests.
-- Cover Unicode extended grapheme derivation and uppercasing. Verify raw names
-  and self-description never reach storage, outputs, markers, logs, or crash
-  state; age and gender/handedness codes remain exact.
+- Test virtualized preview, `assignment-plan.csv`, concurrent starts,
+  lock/journal/manifest reconstruction, reruns, and create-new attempt numbers.
+- Cover Unicode extended-grapheme participant codes and uppercase expansion.
+  Prove raw names and self-description never reach storage, output, filenames,
+  markers, logs, crash state, or IPC after derivation.
 
-### Input, visual, and mappings
+### Input, visual feedback, and mappings
 
-- Exercise every keyboard, pointer/trackpad, mouse/wheel, D-pad, and analog-stick
-  preset plus custom capture, global conflict rejection, inert live test, OS
-  key-repeat suppression, default Arrow/0.1 behavior, and **N/A** step display
-  for continuous/absolute inputs.
+- Golden-test Arrow, WASD, IJKL, numpad, pointer/trackpad, mouse button/wheel,
+  gamepad D-pad, left stick, and right stick presets plus custom capture.
+- Prove conflict rejection, input-test receipt invalidation after any binding or
+  device change, OS key-repeat suppression, Arrow/0.1 defaults, and Step Size
+  **N/A** for continuous/absolute inputs.
+- On Windows, require the Rust input authority to own capture, test, run
+  preparation, device epochs, and the allowed input region. WebView controls
+  such as Pause and Stop Early must never be interpreted as rating input.
 - Verify Grid and Flubber independently/together, Size %, Transparency, hidden
-  feedback without stopped sampling, normalized drag bounds, sole Lock-position
-  ownership, forced Run lock, Flubber/Grid dimensions, and color wheel/hex/reset.
-- Golden-test all six exact mapping labels, allowed ranges, defaults, drivers,
-  Reverse values, neutral angle zero, driver normalization, and interpolation.
-  Ensure Color & Gradient is the sole halo-color owner.
+  feedback without stopped acquisition, normalized drag bounds, sole Lock
+  position ownership, forced Run lock, outline/halo/cursor geometry, and every
+  color wheel/hex/reset path.
+- Golden-test all six mapping labels, bounds, defaults, drivers, Reverse,
+  neutral angle zero, axes/corners, min=max, and interpolation.
 
-### Media, records, and recovery
+### Browser workspace, recording, and recovery
 
-- For workspace/repository media, prove exact bytes/hash/length, complete-video
-  duration, decode readiness, recursive import/rescan, and changed/missing-file
-  failure. Keep repository fixtures small.
-- For Experimental YouTube, test URL/video-ID normalization, observed metadata,
-  explicit unverified/noncanonical status, no byte hash, offline failure, and
-  qualification exclusion. Tauri must reject it until exact CSP/referrer
-  feasibility is proven.
-- Prove CSV and TSV toggles are independent with at least one required. Their
-  canonical rows must have identical columns/order/values/count and differ only
-  in delimiter escaping.
+- Exercise secure-context/user-activation directory selection, exact handle
+  retention, permission renewal/revocation, recursive import/rescan bounds, and
+  isolated `affect-research/v1` IndexedDB/local-storage keys.
+- Prove workspace readiness with actual create/read/delete probes. Validate
+  settings, journals, events, ratings, and manifests strictly; reject path
+  traversal, malformed JSON, stale hashes, missing/extra output tails, and
+  conflicting attempt artifacts.
+- Prove worker session/command/provenance epochs prevent stale rows from being
+  relabelled across stimulus, pause, resume, recovery, or later attempts.
+- Test accepted-batch journaling before acknowledgement, explicit timing gaps,
+  pending finalization, byte-identical retry, evidence quarantine, and
+  finalization after reload without restarting media or sampling.
+- Verify CSV/TSV toggles are independent with at least one selected. Both files
+  must serialize the same canonical rows, columns, ordering, values, and count.
+
+## Native Windows media gate
+
+Qualified workspace/repository playback uses the bundled libVLC 3.0.23 x64
+runtime and no other VLC installation.
+
+### Supply-chain and package evidence
+
+- Verify the official archive SHA-256
+  `992d19dbd0b8a7cde9167d2f7780b1ef6f92acc8a71acfa736101a21f35181e1`
+  and source SHA-256
+  `e891cae6aa3ccda69bf94173d5105cbc55c7a7d9b1d21b9b21666e69eff3e7e0`
+  against `src-tauri/native-media/libvlc-runtime-v1.json`.
+- Stage only the required DLLs, plugin tree, and upstream notices. Verify the
+  complete generated file-hash manifest and reject links, traversal, extra,
+  missing, modified, or wrong-architecture files.
+- Package with `AFFECT_RESEARCH_REQUIRE_LIBVLC_RUNTIME=1`; prove the build fails
+  closed when the tree is absent or altered. The running app must not inspect a
+  system VLC, `%PATH%`, registry location, or runtime download URL.
+- Retain applicable source-offer/license obligations and use libVLC only as a
+  descriptive dependency name; Affect Research must not adopt VLC branding.
+
+### Player-actor security and lifecycle evidence
+
+The in-process actor cannot be accepted until the explicit user approval for
+its contained `unsafe` dynamic-library/libVLC/Win32 boundary is recorded. Audit
+the implementation for exact ABI/symbol versions, pointer ownership, one-thread
+affinity, bounded callbacks, stale-generation fencing, panic containment,
+child-window ownership, and callbacks-after-teardown prevention.
+
+- Revalidate opaque media identity, root generation, hash, byte length,
+  duration, and decode evidence immediately before Prepare. No WebView path or
+  arbitrary native handle may cross IPC.
+- Prove only native decoded Playing opens sampling. Pause, buffering, end,
+  error, actor loss, window close, and teardown must fence sampling before UI
+  projection and retain an authoritative recovery boundary.
+- Test Prepare/Play/Pause/Resume/Stop/End/Error, stimulus transition, rerun,
+  recovery restart from zero, rapid command races, stale callbacks, and clean
+  repeated shutdown.
+- Test supported containers/codecs, corrupt/truncated/zero-length/renamed files,
+  missing plugins, audio present/absent, output device changes, mute/volume
+  policy, seek prohibition, multi-monitor movement, resize, minimize/restore,
+  and 100/125/150/200% display scaling.
+- Exercise native-library load and symbol failure without process crash. Run
+  leak/handle-growth and forced-termination checks on the packaged candidate.
+- Prove `unqualifiedWebview` is an explicit opt-in, never an automatic fallback,
+  and that status, first event, journal, receipt, and manifest all retain the
+  unqualified label. Its media errors must still stop native sampling.
+
+Runtime staging, a verified capability response, or successful unit tests alone
+do not satisfy this gate.
+
+## Persistence and adversity gates
+
 - Verify create-new output directories and attempt counters never overwrite.
-  Every attempt must contain the settings snapshot, semantic `events.jsonl`,
-  manifest, and selected ratings, all bound to exact settings/plan/stimuli.
-- Test controlled Stop Early, quota/full disk, revoked browser permission,
-  IndexedDB failure, tab/window close, forced termination, crash/power-loss
-  simulation, corrupt-journal isolation, retry, completion durability, and lock
-  release. Recovery must resume only at a safe boundary and restart a partial
-  video from the beginning.
+  Every terminal attempt contains the frozen settings snapshot, semantic
+  `events.jsonl`, `ResearchRunManifestV2`, and selected rating files, all bound
+  to exact settings/plan/stimulus identity.
+- Test controlled Stop Early as terminal Partial separately from crash/write
+  recovery. Resume is offered only for a valid recoverable journal and only at
+  a safe boundary; a partially viewed stimulus restarts from the beginning.
+- Exercise quota/full disk, read-only/unwritable workspace, revoked browser
+  permission, unavailable IndexedDB, process/tab termination, power-loss
+  simulation, corrupt/truncated journals, manifest/output disagreement,
+  finalization interruption, and idempotent retry.
+- Prove accepted evidence is never silently discarded, backfilled, relabelled,
+  overwritten, or called Complete before durable finalization and lock release.
 
-### Timing and responsiveness
+## Timing qualification
 
-Run separate visible 30-minute tests at the 130 Hz default on packaged Windows
-Tauri, current desktop Chrome, and current desktop Edge. Each must show:
+Run separate visible 30-minute tests at 130 Hz on the exact packaged Windows
+Tauri candidate, current desktop Chrome, and current desktop Edge. Each receipt
+must show:
 
-- observed sampling rate from 129 through 131 Hz;
-- p95 sample lateness no greater than two configured periods;
-- input-state visibility p95 no greater than two periods in Tauri and three
-  periods in Chrome/Edge;
-- zero silent gaps, fabricated catch-up rows, timestamp backfill, corrupt rows,
-  or unreported scheduler stalls; and
-- explicit timing-gap events for every missed deadline.
+- mean steady-state rate from 129 through 131 Hz;
+- p95 scheduler lateness no greater than two configured periods;
+- input-to-authoritative-state p95 no greater than two periods in Tauri and
+  three periods in Chrome/Edge;
+- zero silent sequence gaps, invented catch-up rows, timestamp backfill,
+  corrupt rows, or unreported stalls; and
+- one explicit timing-gap event for every missed slot.
 
-Also test representative 1 Hz and 240 Hz bounds, pause/buffering/between-video
-sampling stops, neutral reset, each transition policy, state-anchor age, and
-recorded monotonic/LSL-compatible timestamp and jitter fields.
-
-### Windows and LSL
-
-- Run format/check/clippy/unit/build gates for the exact Rust/Tauri candidate and
-  a real packaged Windows launch with the retained bundle ID, new display/data
-  namespace, narrow root/run commands, and no automatic legacy import.
-- Resolve both outlets with an independent current LSL consumer and LabRecorder.
-  Confirm the eight-channel order/type/rate/timestamps/metadata, semantic event
-  markers, restart, sleep/wake, missing-library error, and clean shutdown.
-- Confirm Chrome/Edge preserves imported LSL values but blocks Start when Enable
-  LSL is true and never presents a browser LSL success state.
-
-### Browser, adversity, accessibility, and frozen containment
-
-- Qualify current stable desktop Chrome and Edge separately in secure contexts:
-  root selection/user activation, permission renewal/revocation, recursive
-  catalogue, dedicated-worker timing, isolated `affect-research/v1` storage,
-  IndexedDB contention/quota/corruption, tab visibility/background/restore,
-  video decode, and recovery materialization.
-- Exercise offline local/repository operation, offline YouTube failure, full
-  disk/quota, unwritable paths, unavailable LSL, missing/corrupt videos, and
-  forced process/browser termination.
-- Test keyboard-only operation, visible focus, semantic labels/status, non-color
-  state, contrast, reduced motion, zoom, feedback hiding, and error/recovery
-  announcements in Setup and Run.
-- Prove exactly two user-visible modes and seven Setup accordions. Active load
-  must not expose or construct WebXR/Quest, VDO/BRSP, Ground Control/Party,
-  Face/Photoatlas, direct Polar, Touch inference, Screen Calibration, Windows 95,
-  phone/Picture-in-Picture, matrix traversal, or macOS/Linux packaging paths.
-
-### Publication boundary
-
-CI may test the static site and unsigned Windows artifact. A web-facing release
-must pass the workflow for the exact commit and be checked at
-`https://GeorgeFejer91.github.io/affect-tracker-research/` with cache bypass.
-Publishing installers/releases, signing, updater/store submission, or handling
-production credentials requires explicit authorization.
-
-## Frozen Playground/history gates
-
-Everything below this marker is preserved verbatim as the former feature-rich
-program's requirements and evidence context. It does not gate Research v1 and
-must not be used to claim that a changed Research runtime is qualified.
-
-## Universal publication gate
-
-- Every completed, validated in-scope change must be committed and pushed to the canonical GitHub repository as soon as practical. This includes application code, static assets, configuration, tests, and changes confined to `for-ai/`; a local commit is a checkpoint, not a completed handoff.
-- Treat the user's standing project direction as authorization for routine commit and push publication. Do not pause after validation merely to request ordinary push approval again. Follow the repository's normal branch policy, preserve unrelated work, and never rewrite shared history.
-- After each pushed commit, wait for the standard GitHub Pages workflow associated with that exact commit and verify its result. For any web-facing change, open the public project-path URL with a cache-busting request and verify the changed behavior or asset in the deployed build before calling the work complete. For repository-only changes, verify the public commit and a healthy Pages run without claiming that non-site files are served by Pages.
-- If validation fails, credentials or CI are unavailable, ownership is ambiguous, or the user explicitly requests local-only/no-push work, stop publication and report the exact blocker. Resume and publish as soon as the blocker is resolved.
-- This standing rule covers repository and GitHub Pages publication only. It does not authorize signed/notarized installers, public package releases, app-store submissions, production credentials, or other release actions that retain an explicit authorization requirement below.
-
-## Mirrored-study gates
-
-The target in [`25-MIRRORED-STUDY-ARCHITECTURE.md`](./25-MIRRORED-STUDY-ARCHITECTURE.md)
-is not release-qualified by the existing browser, desktop, or Quest tests. The
-current automated slice covers strict native/WASM contracts and fixtures,
-Studio/Pages runner and journal behavior, native authority/result persistence,
-portable WebXR panel/media logic, and deterministic QR-controller primitives.
-It does not replace real-browser, packaged-Tauri, hostile-network, or physical
-Quest evidence. Add the following evidence incrementally and keep every unrun
-row explicitly open:
-
-- Native Rust and browser WASM must produce byte-identical canonical study
-  hashes, deterministic shuffled orders, Williams matrices, action outcomes,
-  revisions, and event fixtures for the same protocol/seed/condition.
-- Desktop, Pages 2D, and physical WebXR must execute the same portable study
-  into reconstructable equivalent block progression, committed answers,
-  affect meaning, realized order, completion state, CSV, and result manifest.
-  Exercise the optional instruction-block Face + Flubber presentation on all
-  three from the exact same current X/Y/phase state; it must not become a
-  separate phase or stimulus.
-- Contract tests must reject malformed/oversized definitions, unknown required
-  fields, duplicate IDs, invalid references, wrong asset hashes, unsupported
-  codecs/projections/questionnaire capabilities, quota exhaustion, and storage
-  interruption. Crash/close every phase and prove completed versus partial
-  finalization without fabricated samples or mid-stimulus resume.
-- Desktop asset tests must bind hashing/probing/playback to the same staged
-  bytes, preserve content-addressed identity, keep native paths out of the
-  WebView, support bounded Range reads, and atomically commit/finalize. Browser
-  tests must match user-selected files by digest and recover bounded IndexedDB
-  journals. A YouTube study must be visibly Pages 2D-only and fail the universal
-  compatibility badge.
-- Authenticated control tests must cover no network before explicit enable;
-  no state before authentication/scope/grant/snapshot sync; QR expiry,
-  one-time consumption, and fragment removal; OPAQUE RFC and Rust/browser
-  interoperability, wrong files, replay/reflection, uniform error/rate limits;
-  passwordless local rejection; stale generations/epochs; scope denial; lease
-  expiry/revocation; and absence of arbitrary path, IPC, shell, input, upload,
-  or ungranted data access.
-- Applied-but-acknowledgement-lost retries must reuse the same command ID and
-  produce at-most-once Start/Stop/advance/answer/export effects. Duplicate IDs
-  with different bodies reject. Current public state is projected afresh rather
-  than replaying a historical snapshot.
-- Saturate the digest-verified record-export lane while issuing Start/Stop and
-  state queries. Reliable control must remain ordered and bounded; bulk transfer
-  cannot starve it. Verify full app-owned records only under `data.read` and
-  `data.export`, with no raw external ECG or arbitrary-file widening.
-- Exercise direct and independently observed forced-TURN routes, signaling and
-  TURN failure, browser background/foreground, network changes, sleep/wake,
-  WebView destruction, reconnect, old-callback fencing, and remote loss during
-  an active stimulus. Record route and command-to-applied p50/p95/p99/worst;
-  initial regression ceilings are 15 seconds to control-ready and 2 seconds to
-  acknowledgement, not performance guarantees.
-- Qualify packaged Windows WebView2, macOS WKWebView, and Linux WebKitGTK
-  independently. If the exact Linux runtime lacks required WebRTC, qualify the
-  narrowly scoped pinned Chromium helper as a distinct packaged adapter rather
-  than relabelling WebKitGTK as passing. Physical Quest 2/3/3S WebXR evidence
-  remains separate from responsive emulation and from the native Quest APK.
-
-## Web gates
-
-- Run the Node built-in unit suite.
-- Preserve mapping extrema/midpoint, profile normalization, seeded repeatability, finite/closed paths, coordinate input, ring-buffer, CSV, dragging, and sampling tests. Exercise Circle, Heart, Triangle, and Square as distinct bounded closed paths across affect extrema, visual multipliers, reduced motion, and legacy omitted-shape defaults; unknown shapes must fail closed.
-- Verify the project-path GitHub Pages URL and absence of unexpected runtime requests after deployment.
-- Verify the deployed **Synchronized Face + Flubber** accordion enables, disables, centers, and selects among exactly the six declared local main-tracker engines. At desktop widths, the face remains on the main stage after the accordion closes. At phone widths, Face must open directly to the same live split controller used by Affect and expose all six modes through the ≥44 px **Face** header selector; switch every mode there and prove the detailed Face-options selector mirrors it both ways through one canonical `faceEngineMode` path. Then **Face options** and its return action must swap between that preview and the advanced controls without duplicate IDs, renderers, clocks, input state, or affect-transition mutation. At desktop and phone widths, prove face-left/Flubber-right order, bounded non-overlapping layout, and visibility suppression during Experiment, hidden-Flubber, and Picture-in-Picture states. Exercise AFFEC empirical weights against the checked-in aggregate metadata derived from all 5,807 valid observations, both AFFEC-guided and Direct-grid Photoatlas mappings, MediaPipe-atlas weights against the checked-in build-time signal table, continuous project-authored morphs, matrix anchors, and photo-atlas bilinear blending. Reproduce the AFFEC evidence from the exact locked archive, verify the evidence and authoring-binding hashes, prove the evidence artifact contains no face binding or participant/trial data, and prove the UI cannot call the portrait pixels or transfer surface calibrated or validated. Sample the AFFEC-guided field densely for bounds, exact neutral, continuity, positive finite-difference Jacobian, and separation of canonical `currentX/currentY` from presentation-only `atlasX/atlasY`. The photo path must map `[-1,+1]` to all 441 exact 21×21 cells, keep neutral at `(10,10)`, interpolate off-grid, accumulate the four premultiplied weights without source-over order bias, and restore canvas state after each frame. Verify each pack's metadata source/output hashes, 160 px cell size, offline-only landmark-warp declaration, and declared source-anchor lattice. The original and first seven synthetic packs must retain nine unchanged 3×3 anchors; `photo-synthetic-08` must declare 25 newly generated 5×5 anchors and 16 additional target positions, and its authoring manifest must explicitly deny byte preservation at the nine corresponding reference positions. Reproduce each checked-in QA report and verify all 441 cells are detected, expected and observed landmark topology have zero folds, landmark/neighbor-continuity bounds pass, every declared source anchor preserves alpha and meets the applicable RGB-PSNR floor against that pack's source, report/script hashes match, and the report disclaims perceived or validated VA. Verify the new authoring record binds the project-owned fictional source and generated sheet and contains no RIKEN, 4DFAB, AFEW-VA, Aff-Wild2, AffectNet, DISFA/DISFA+, BP4D/BP4D+, or other participant/restricted media, annotation, model, or derived data. Every mode must receive the same immutable current-coordinate/phase snapshot as the canonical Flubber and own no input/clock. Verify lazy local Three.js/GLB/texture loading, exact pinned asset URLs, deterministic morph bounds, context/loader failure through photo-atlas then vector fallback, browser-local mode persistence, disclosure, and checked-in NOTICE/license coverage. For the detailed friendly-soft material treatment, verify it cannot inherit red/yellow affect colors, the measured linear-light iris range receives the grade while deepest pupil blacks remain protected, the shader preserves texture alpha, excess skin red is bounded, eye/skin reflections and tearline color remain restrained, and changing presentation never changes morph or coordinate results. Confirm the SVG fallback remains neutral-white/dark, the legacy photo anchors remain unmodified, and photo-atlas pixels are never affect-tinted. A clean network trace must show no camera, runtime recognition model, dataset, CDN, or remote face-asset request. Automated rendering tests are not empirical-expression validity or physical-platform qualification; blinded human ratings of anchors, intermediate cells, and transition paths remain required before perceived-valence/arousal validation may be claimed.
-- Verify the `matrix-anchors` face profile contains exactly 441 unique row-major coefficient records with coordinates `(index - 10) / 10`, exact endpoints `-1/+1`, and neutral at zero-based `(10,10)`. Every exact node must resolve to its cached coefficient record; off-grid snapshots must use the continuous anchor calculation, and `facs-continuous` must remain observably continuous for nearby off-grid inputs. Neither profile may quantize or mutate the shared snapshot.
-- Verify the separate GitHub Pages affect transition defaults to **Smooth continuous** and offers a session-only **21 × 21 step matrix** from Face options. Cover all 441 exact nodes, nearest-cell targeting, shortest diagonal-then-cardinal routes, `0.5–20` rate bounds, Stop, Go to neutral, and one identical frozen current-X/current-Y/phase snapshot consumed by face and Flubber at every step. On real portrait and short-landscape smartphones, select the mode through Face options, return to the visible shared preview, tap and drag directly to arbitrary cells, verify the target/current indicators and accessible status, then switch back and verify smooth off-grid movement. Confirm no duplicate controller/renderer/clock, no persistence after reload, and no portable-settings, LSL, WebXR, Quest, or desktop-traversal schema change.
-- Verify shared settings normalization, desktop-compatible JSON round-trips, `visual.baseShape` round-trips/default/rejection, opacity/transparency endpoints, imports, exports, and checked-in `site/settings.json` defaults.
-- Verify Settings exposes the five task-focused disclosures, keeps the keyboard-operable illustrated Circle/Heart/Triangle/Square buttons and their programmatic pressed state with the live preview and palette inside **2D grid & colors**, keeps normal CSV actions inside **Data**, keeps advanced/native-transfer options progressively disclosed, and exposes one synchronized cursor-visibility preference under both Appearance and the Touch/Trackpad display options. Verify portable JSON import/export appears in Ground Control.
-- Verify the fixed bottom-right Windows 95 toggle has an accessible pressed state and remains usable in both skins; persists only its browser-local boolean; restores before first paint; never enters portable settings; and leaves all application behavior, input, logging, calibration, and experiment contracts unchanged. Static tests must retain the shared DOM, classic CSS token/scope, reversible modern state, visual message window, deterministic selective cue mapping, silence for unclassified/routine/countdown events, pinned local audio paths, packaged CC0 notice/license, and absence of Microsoft assets. In a real browser, exercise both themes at desktop and narrow touch sizes, reload persistence, the binding dialog, calibration overlay, one success and one error/status message, selective audio playback after the explicit theme gesture, clean console/network state, and focus/contrast/readability.
-- Verify the seven top-level accordions declare distinct Settings/Synchronized-Face-and-Flubber/Experiment/Screen-Calibration/Touch/Polar/Ground-Control protocol identities, one shared shell keeps them mutually exclusive, and each protocol retains its own responsibility list, project folder where applicable, assets, and focused tests. The paired face/Flubber surface must remain a read-only projection of canonical browser affect state. Reject module-specific face mapping, calibration, Bluetooth, pointer-analysis, experiment-lifecycle, portable-settings, network-protocol, or native-authority rules migrating into a generic accordion controller. When a frontend product module needs backend/native authority, test that it uses a matching narrow named adapter/service rather than a generic backend; browser-only Screen Calibration must remain entirely local and static.
-- Verify Ground Control requires and normalizes one browser-local public name; uses that name for a safe `.json` filename and public static/live labels; freezes a validated version-1 settings snapshot at broadcast start; bounds and validates the reliable settings envelope; constructs no VDO client on page load; exposes explicit start/stop and scan/disconnect actions; lists one or many named sources in controller-sized controls; and requires an explicit Apply after receipt. For JSON, Live, Universe, and Party, verify the radar stays open through discovery/selection/connecting and closes automatically only at the mode's successful state: validated snapshot, first valid ordinary frame, reciprocal live readiness, or first valid frame from the newly invited guest. Persistent Ground Control surfaces must retain JSON preview/Apply, live connection/disconnect, Universe state, and Party roster/stop after dismissal. Verify live input delegates to the exact remote-Flubber codec/rate/staleness transport, owns both current and target axes while enabled, holds stale values, and releases only on explicit disconnect. For Party, verify the versioned aggregate scene is ≤8 KiB, requires 1–9 unique participants and exactly one host, fans the identical bounded scene back to every invited broadcaster at ≤30 Hz with a 250 ms unchanged heartbeat and zero backlog, rejects older/malformed/foreign-roster messages, and expires after two receiver-local seconds. In two or more real browsers verify the same roster order, labels, X/Y, normalized positions, relative sizes, stale flags, palette, base shape, opacity, animation phase, and deterministic per-stream geometry appear on every screen while each guest's own motion travels guest→host→all. Exercise active animated SVG states, polite announcements, dialog keyboard behavior, reduced-motion fallback, and public-name/IP/signaling/STUN/TURN/aggregate-scene disclosure.
-- Verify ordinary Ground Control never reaches simultaneous send and receive roles: active JSON/live sending gates both ordinary scanners, active JSON/live discovery/receive gates both ordinary broadcasters, and stopping restores the opposite role. In two real browser instances, start **Synch with Universe** on both, verify isolated named discovery, explicit reciprocal selection, commutative full-scale addition with independent X/Y saturation, either participant reaching each `-1`/`+1` extreme while the other is neutral, stable mutual listener state, success dismissal, and teardown from either side. For **Invite a FLUBBER**, verify explicit one/many source invitations, dismissal after each newly selected guest reaches live, and the one-shot implicit cellular SVG birth: a single finite sinusoidal wrapper during lobe growth, a narrowing field saddle, then exactly two closed contours. Verify both contours are resampled/aligned and visibly morph without a jump into the current 192-point canonical parent and stream-driven guest boundaries before the vector wrapper disappears. Verify its immediate centered reduced-motion fallback and independent pointer/pen/touch dragging plus keyboard movement of each separated guest without moving the local Flubber or another guest. Verify pointer capture, viewport bounds, session-only positions, reopening Invite for subsequent guests, the eight-guest cap, per-guest incoming X/Y rendering, local main-axis ownership, labels, stale holds, remove/persistent-stop cleanup, and no experiment start while either collaboration mode is active. Exercise active/reduced-motion SVG states and foreground-helper degradation/restoration for Universe.
-- Verify the separate Screen Calibration accordion and `site/screen-calibration/` module keep unique identifiers, country/currency mappings, shared-currency collections, supported shape tokens, plausible official diameters/outer spans, HTTPS authority sources, verification dates, and the exact BIS shortcut order `USD,EUR,JPY,GBP,CNY,CHF,AUD,CAD,HKD,SGD`. Tests must cover all ten shortcut currencies, representative round/polygonal/scalloped entries, SVG currency/flag construction, and the invariant that selecting a currency hides the directory while shared currencies retain a compact country selector. Unit-test square creation in all drag directions, viewport clamping, axis-only edge translation, opposite-corner resizing, perfect-square invariants, pointer cancellation, centimetre/inch/diagonal/coin-span derivation, v1 read compatibility, v2 tamper rejection, and stale signatures. Static/UI tests must retain the compact action, searchable accessible country/coin choices, relative-not-physical coin notice, official-source link, fullscreen three-step flow, Pointer Events/capture, SVG geometry, keyboard adjustment, all four participant actions, congratulatory approximate-screen result, and fullscreen-loss cleanup. In a real fullscreen browser at desktop, portrait-touch, and short-landscape sizes, prove that draw and adjust reserve exactly the lower `50dvh` as a `100vw` SVG surface whose left, right, and bottom bounds equal the fullscreen viewport bounds, while every instruction, readout, error, and action remains wholly in the upper half. The lower surface must remain continuous black with only a horizontal upper separator; its unfilled white square and white adjustment points must remain high contrast in both themes. Exercise square creation and adjustment with geometry touching each of those three physical screen rims, then verify the result reports width, height, and diagonal in centimetres and inches plus width/height in the selected coin's outer span. Experiment CSV must always include calibration status/protocol/version/country columns, leave v2 repeatability blank, and include physical dimensions only for a currently valid signature. Exercise desktop and touch-emulated flows in a real browser, manually compare with a €1 coin when hardware is available, verify persistence after reload, and keep the console clean.
-- Verify each visible direction button opens the modal key/mouse-button/wheel capture prompt, never acts as an on-screen affect nudge, preserves cross-core/advanced collision rejection, and updates its accessible current-assignment label. Capturing wheel Up/Down/Left/Right for a core direction must atomically bind the opposite wheel direction to the polar-opposite affect action and log both mapping changes; keyboard and mouse-button capture must update only the selected action.
-- Verify optional advanced bindings, cross-grid collision rejection, legacy version-1 defaults, bounded feature adjustments, and finite modified SVG geometry. Run the deterministic 108,000-frame/30-minute-at-60-Hz all-shape stress harness and inspect all four envelopes in a real browser with a clean console.
-- Verify local and YouTube experiment configuration, URL parsing, start/finish validation, user-activated fullscreen entry and automatic exit (including declined/unsupported fallback), exact neutral reset, countdown, player shielding, centered 16:9 layout, the Flubber centered directly below the video without overlap, physical-input markers, stimulus timestamps, automatic end/export, and cleanup. Confirm the checked-in video stays below GitHub's 100 MB per-file limit and plays in current Chrome, Firefox, Safari, and Edge.
-- Verify Document Picture-in-Picture feature detection, checkbox open/close lifecycle, live shape/color/opacity mirroring, origin-page restoration, and the unsupported-browser message in a real browser.
-- Verify synthetic stationary, straight, short arc, circle, corner, sinusoid, compact zigzag, full-surface zigzag, bowed V/W thumb path, anisotropic thumb ellipse, mouse-jittered ellipse, and exact backtracking paths; translation/rotation/scale and 30/60/120/240 Hz invariance; equal-distance interpolation; timestamp gaps; duplicate rejection; finite output; 1€ ground-truth values; adaptive bounds, bootstrap, minimum spans, asymmetric response, confidence, inactivity, and reset. Angular/random paths must produce dominant-corner/directional-disorder evidence even when their legs curve. Strong circular evidence must require coherent structural turns, partial closure, and winding, accept ellipses, and remain stronger than angular evidence under mouse-scale micro-jitter.
-- Verify the literature-informed speed priors are exactly `0.15` and `0.80 D/s`, their log-feature midpoint is approximately `0.4387 D/s`, the analyzer exposes their `log1p` bounds at cold start, and participant adaptation can replace rather than permanently clamp to those priors. UI wording must present lower/hold/higher-arousal commands and a normalized D/s value without claiming emotional diagnosis.
-- Verify a three-point rapid swipe reaches full speed confidence and high mapped arousal; repeated two-point touch micro-strokes within 900 ms share speed evidence, retain only bounded on-surface direction summaries, reset within-stroke geometry, and exclude lifted-finger displacement; a longer gap clears both continuity contexts. An up/down/up sequence must reach strong jagged evidence during the third active stroke, while repeated same-direction strokes must not. In continuous behavior the target must approach its maximum during the post-movement hold, and inactivity uses the documented 1.8-second hold plus gradual 3-second release instead of a rapid reset.
-- Verify gated move-and-hold behavior is the default, immediately updates live features from incoming points, suppresses evidence through 0.12, maps stronger evidence to bounded `0.04..0.4` units/second signed motion, integrates independently of frame rate while movement is fresh, renders the target without a second smoothing lag, and can reach either extreme during one sustained gate. Slow/fast must lower/raise arousal and angular/circular must lower/raise valence. Touch/pen pointer-up must stop live integration immediately and mouse/touchpad motion must stop after the 80 ms freshness allowance. A gate closes after 400 ms of inactivity without adding a release-time step, then persists without decay until another gesture or Reset. Short and long gates must each contribute exactly one adaptive sample, gated calibration must blend over 20 qualified windows with 120-window bounded storage, and experiment finalization must commit an open terminal gate before the final metric/sample.
-- Verify hover-driven mouse/touchpad movement is continuous across every active-page target including controls, mouse clicks still operate controls without creating stroke boundaries, primary touch/pen capture remains restricted away from other native controls, coalesced-event fallback, unsupported multitouch logging, Flubber drag suppression, manual-event logging without affect changes, and the strict raw-movement privacy boundary.
-- Verify the **Touch/Trackpad Playground** accordion is visibly experimental, mutually exclusive with the other three top-level surfaces, exposes an unambiguous tracking switch and theoretical angular/circular examples, accepts touch/pen movement over its practice surface plus page-wide mouse movement, and mirrors live pointer type, shape, speed, confidence, a fitted page-wide miniature, and displayed coordinates in a labelled angular↔circular/slow↔fast color map without storing practice coordinates.
-- Verify the fourth **Polar Stream** accordion displays the Polar Stream icon, compact H10 connector, its screen-reader-associated pre-chooser checklist for worn/moistened electrodes, close range, and release from competing apps/watches/equipment/tabs, metric-module X/Y assignment buttons, advanced mapping controls, and privacy-safe live browser diagnostics for API/adapter/user-activation/chooser/GATT/full-stream-setup/live-recovery/PMD/error state; it must stay inert until a user-triggered Connect action, reject insecure/unsupported/stock Quest Browser paths honestly, and never silently change affect on connection. `requestDevice()` must be invoked before another asynchronous browser API and chooser filters must admit either the H10 name prefix or advertised heart-rate service while keeping PMD/heart-rate/battery accessible. The compact ECG port directly below the connector must remain hidden until a valid live frame and disappear on disconnect. Unit-test PMD signed-24-bit ECG and heart-rate/RR framing, the exact four-attempt/0.75-1.5-3-second transient GATT retry bound, one chooser plus exactly two full setups when an acknowledged startup produces no first packet, complete listener/notification/GATT cleanup between those setups, exact successful/rejected/missing PMD start responses, explicit rejection, valid-frame confirmation when only the success indication is omitted, first-frame readiness/timeout, stage-specific GATT failure text, chooser cancellation versus browser/policy block classification, a two-minute 130 Hz sustained stream with bounded five-second ECG and 300-RR windows, local ECG power, rolling HRV, both experimental composite warm-up/formulas, finite mapping validation, clamping, reversal, quick unassignment, manual-axis retention, Reset semantics, disconnect fallback, and Touch/Trackpad precedence. The post-readiness watchdog must rearm on fresh frames, release axis ownership after five seconds of silence, perform exactly one same-device teardown/restart without another chooser, require first-frame proof again, and fail closed on a second silence instead of looping. Verify diagnostics contain no identifier or physiology, CSV connection/mapping/value/normalized context, and the absence of raw ECG fields. In current desktop Chrome and Edge/Chromium, test chooser cancellation, permission denial, H10 connect/start/stop, the automatic one-time startup and live-stall recovery paths, waveform/sample count, competing Polar app/tab recovery, battery/optional-service fallback, at least two minutes of live rate/gap evidence, range loss, reconnect, and console cleanliness. A physical H10 acceptance pass is mandatory before research use; the main-page accordion must remain disabled in stock Meta Quest Browser even if its API feature-detects. This does not prohibit the WebXR page's separate explicit diagnostic override.
-- Verify the smartphone viewer at 360×800 and 390×844 portrait sizes plus a short landscape viewport: compact seven-way top tabs are at least 44 px high, safe-area/dynamic-height rules are active, the sheet has zero horizontal overflow, and both Affect and Face expose the same controller divided into equal upper/lower panes. Face opens to the live view with a visible ≥44 px compact selector containing all six canonical face modes; Face options replaces it with the advanced controls, and Back restores it. Exercise both selectors in both directions, reload persistence, immediate live rendering, unchanged coordinates/transition, and no header/value/preview overlap in portrait or short landscape. The upper pane must show the canonical live animated Flubber, optional synchronized face, and exact coordinates; the lower pane must fill with the 2D color field and one ≥44 px marker target. A clean narrow touch-capable visit opens Affect exactly once without enabling Touch/Trackpad tracking. With the face visible, prove the ordered pair translates proportionally across the full legal horizontal span, with the face flush to the left endpoint and Flubber flush to the right endpoint, while both reach the vertical endpoints. With the face hidden, prove solo Flubber reaches every pane edge. Prove forward/inverse normalized round trips at endpoints and intermediate positions, pointer capture, arrow-key movement, and unchanged live-broadcast normalized semantics. Prove separately that a press away from the lower marker leaves current/target values unchanged, a primary press beginning on that marker captures and drags it continuously in both axes, endpoints clamp to `[-1,1]`, and release does not respawn or add a step. With an active Party, verify phone-only pinch and semantic-range zoom across `0.5`–`1.6`, empty-space swipe pan, centroid anchoring, Reset, inverse-projected object dragging, and no change to transmitted scene coordinates; confirm the camera is hidden/inert without a Party and on desktop. Verify the Settings/back actions, both arrow-key alternatives, Polar-to-Manual release, remote-input refusal, no field scrolling, and live upper-pane response. Retain the separate Touch Lab's existing swipe, coalesced/fallback, multitouch-ignore, resize/orientation reset, and privacy checks on current iOS Safari and Android Chrome.
-- Verify the Settings feature-space marker is the live canonical Flubber path, changes color with the palette, and immediately applies the exact pressed/dragged coordinate to target and displayed state without page scrolling; verify the arrow-key path has the same immediate exact-state behavior. Opening Settings makes an armed Touch/Trackpad source ineffective. A grid pointer or arrow-key selection returns both Polar axes to Manual before applying the exact two-axis state so no optional input module can ignore or overwrite it.
-- Verify both synchronized cursor checkboxes are disabled outside touch mode, persist one browser-local preference, hide the pointer over movement/Flubber/experiment areas only while active, keep the pointer visible over settings for reversal, and record the effective `cursor_hidden` condition plus toggle events.
-- Verify both four-second high-DPI trace canvases dynamically and uniformly fit the full recent page-wide path with 8% padding, preserve aspect ratio, segment angles, stroke boundaries, butt caps, and miter joins, and apply no interpolation or curve smoothing. Separately verify degenerate paths, fading/reduced-motion behavior, mobile layout order, and no video/Flubber/trace overlap.
-- Verify `pointer_raw`, `touch_metric`, `sample`, and `event` rows are chronological and distinguishable; `speed_continuity_active` records the micro-stroke carry decision and `direction_reversal` records within/cross-stroke reversal evidence; touch feedback mode, gate identity/open state/duration/commit sequence, live-active state, signed rates, accumulated live deltas, and calibration counts are reconstructable; each gate emits one `gate-commit` event; append-only experiment storage does not roll over; active time pauses during buffering; final/partial export and retry retain all rows; long-trial warnings remain non-blocking.
-- Run a 240 Hz, 30-minute synthetic analyzer workload before research release and keep average ingest/update cost below 1 ms with bounded buffers and finite values.
-- Verify the experimental WebXR page uses only checked-in media and local modules; exposes one flat Great Dictator choice plus exactly eight attributed/content-warned CEAP-360VR choices; loads only the selected media; and locks selection during a run. Confirm every CEAP file is below 99,000,000 bytes and matches the declared start offset, frame count, frame rate, hash, H.264/yuv420p format, and approximately one-minute duration. Detect both `immersive-vr` and `immersive-ar`; request `local-floor` plus `viewer` reference spaces from a direct wearer gesture; render the flat choice on a non-overlapping 16:9 video quad; render CEAP choices on a correctly oriented full equirectangular sphere; and keep the canonical Flubber available as a low stereo-correct HUD during 360° viewing. Verify flat-video passthrough uses an alpha XR layer, Flubber-only passthrough unloads media and draws no video, and unsupported AR disables passthrough entry with actionable text. Verify 0.5–2× Flubber sizing in fixed/HUD/controller modes and selected-hand grip tracking at the fixed 0.16 m vertical offset, including viewer-facing orientation, last-pose hold, and acquired/lost edge logging. The Polar menu must be visible before entry, capability-test the exact browser, keep Connect disabled with an explanation when `requestDevice` is absent, require an explicit chooser and first ECG frame before an assigned run, hide its ECG port until live data exists, disable connection/mapping controls while immersed, and preserve one foreground-tab connection rather than requesting Bluetooth from inside XR. Unit-test fixed-default normalization, finite-value gating, clamping, one-axis Polar/one-axis thumbstick arbitration, disconnect fallback, and absence of raw physiology fields. Remain static, locally vendored, and GitHub Pages-compatible with no CDN or project backend. On a physical Quest, verify seam/orientation/poles for every CEAP clip, right-thumbstick axis direction/dead zone, left X reset, left Y whole-session pause/resume, controller disconnect neutrality, countdown, silent CEAP versus audible flat playback, video completion, system-driven early exit, passthrough composition, and repeat runs. Separately record the Quest model, OS/browser version, whether the chooser appears, H10 ECG sample count/rate before entry, at least two minutes of retained streaming in `immersive-vr` and `immersive-ar`, both single- and dual-axis metric routing, in-world `POLAR STREAM • LIVE`/X/Y feedback, range loss, early exit, disconnect, reconnect, and console errors. Failure or missing chooser leaves this path unqualified rather than broadening the supported-platform matrix.
-- Verify WebXR CSV columns/order, presentation mode, Flubber size/follow hand/tracking state, selected stimulus identity/title/collection/projection/source offset/frame count/pilot ratings (blank with projection `none` for Flubber-only), 20 Hz sample cadence, media and monotonic timestamps, controller hand/axes, current/target coordinates, Polar connected/metric/value/normalized context, reset/pause/lifecycle/tracking events, stimulus-specific and Flubber-only completed versus partial filenames, automatic download attempt, and visible manual download retry. Confirm raw ECG samples, ECG arrays, and RR series never appear. Verify an empty webhook causes zero network requests; non-HTTPS or malformed URLs reject before XR entry; a CORS-enabled HTTPS endpoint receives byte-identical CSV without credentials; redirect/CORS/HTTP failure leaves the CSV downloadable and produces an actionable status.
-- Verify remote Flubber's exact little-endian codecs: the 12-byte `sequence/currentX/currentY` affect packet clamped to `[-1,1]`, and the magic-tagged 16-byte `FVP1/sequence/viewportX/viewportY` placement packet clamped to `[0,1]`. Prove an older affect-only receiver ignores the unfamiliar 16-byte packet and a new receiver accepts the former 12-byte `flubberpositionv1` auxiliary packet from a cached sender. Cover finite rejection, independent unsigned duplicate/older/wraparound ordering, same-channel typed dispatch, normalized/denormalized placement across unequal viewport and Flubber sizes, relative-anchor movement without a first-frame jump, receiver-local reanchoring after pointer or keyboard movement, ideal-deadline 60 Hz changed-value caps, bounded early-frame jitter tolerance without alternating-frame collapse, long-run high-rate caller enforcement, the affect stream's 100 ms unchanged heartbeat, adjacent affect/placement delivery through the one proven channel, unordered zero-retry channel options, and latest-only nonzero-backlog behavior. Placement packets must not establish, recover, or extend affect liveness. Retain 300 ms single/multiple-source discovery, departure/switch/teardown/retry errors, two-second stale grace, three-consecutive-frame recovery hysteresis, and bounded receiver-local gap diagnostics with injectable timers and SDK mocks. A delayed mock SDK disconnect must prove that Stop has already entered its non-broadcasting phase, closed the data channel, and emitted no further heartbeat or placement. Test that live and stale receiver snapshots directly own both `target` and `current` axes, bypass smoothing, defeat controller/Polar/reset fallback, apply returning coordinates immediately during status hysteresis, hold the final coordinates, and release only after explicit disconnect; WebXR must ignore optional 2D placement. Static tests must retain both exact remote start labels plus the foreground-restore label, revisioned local v1.5.5 feature modules and SDK hashes, zero automatic connection, data-only `audio:false`/`video:false`, no microphone/media request, no raw-pointer transport, the sender's user-gesture-owned Document Picture-in-Picture frame owner, degraded-mode warning/restore path, and renewable wake-lock lifecycle, accessible state/source/timing/receiver-mode controls, Quest wake-lock handling plus visible/visible-blurred/hidden XR readback, exact in-world stale warning, and additive remote CSV fields/events without raw physiology or per-packet rows. The explicit `?mock-polar=1` fixture must generate deterministic finite ECG-like samples at a self-correcting 130 Hz, use the real bounded metric/mapping/broadcast path, stop cleanly, and never enable itself without the query flag. The separate `?remote-force-turn=1` qualification flag must be exact, non-persisted, inert before a remote button press, pass the SDK's `forceTURN` option, label both endpoints, and never count as a relay receipt unless peer-quality readback reports TURN.
-- Verify the independent settings beacon round-trips every field emitted by **Export settings JSON**, captures an immutable start-time snapshot, uses the default reliable ordered VDO data channel, has no interval/heartbeat/currentX/currentY/`flubberxyv1` dependency, and disables WebSocket fallback. Unit/mock coverage must include exact request/snapshot envelopes, 64 KiB limit, version/schema/unknown-field/source-spoof rejection, inert construction, request replay of the same snapshot, 300 ms single-source auto-selection, multi-source manual choice, source departure, switching, SDK failure, and complete teardown. Static/UI coverage must retain **Broadcast settings JSON**, **Find settings beacons**, and **Apply received settings**, local SDK loading, visible public/unauthenticated-source disclosure, keyboard-readable preview, and no automatic start or apply. In two fresh public Pages tabs, customize every portable field, compare the received preview with the normalized exported file, apply explicitly, verify all portable controls and Flubber presentation, then test stop/restart/reload idle behavior.
-- Before research use, smoke-test current desktop Chromium against current Meta Quest Browser with one source, two source-selection buttons, manual and Polar-driven desktop coordinates, no typing, pre-XR connection blocking, source loss/recovery, and congestion without obsolete backlog. Cover the main Chrome window while its broadcast-created floating Flubber remains visible and verify sequence/frame progress continues. Run and record a two-minute direct-Wi-Fi soak plus a forced TURN/relay pass with route, RTT, stale transitions, sender backpressure drops, and Quest XR visibility state. Confirm receiver software visibility by the next XR frame and no more than one 60 Hz sender interval beyond network latency. These hardware receipts cannot be replaced by mocks or static tests.
-
-- Regression-test an explicit data-channel close and selected-source departure separately from a silent packet gap: both must retain live/held coordinates until the same two-second packet-age deadline, a repaired channel inside that grace must produce no stale transition or HUD flash, and a real continued loss must produce exactly one stale transition at the deadline.
-
-## Desktop gates
-
-- `pnpm audit --audit-level=moderate`
-- `cargo fmt --all -- --check`
-- `cargo check --manifest-path src-tauri/Cargo.toml`
-- `cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings`
-- `cargo test --manifest-path src-tauri/Cargo.toml`
-- Production Vite build.
-- At least one real Tauri launch/build smoke test on every supported OS before calling a release cross-platform.
-
-Pure Rust tests cover affect math, direct-coordinate and directional clamping, smoothing, opposite-action cancellation, settings validation/migration, binding collisions, physical token naming, LSL sample schema, marker generation, and lifecycle state. Frontend tests cover the shared renderer, four-anchor color mapping, and typed IPC adapter behavior.
-
-Focused face tests must separately cover (a) the six-mode main-tracker selector and (b) the portable-study canonical vector comparison. Main-tracker coverage includes engine normalization/selection, all four detailed-model profiles, separate AFFEC evidence and authoring-binding schema/hash/privacy checks, bounded authored RBF weights, AFFEC-guided versus Direct-grid Photoatlas hot-switching, MediaPipe build-time signal interpolation, continuous morph weights, the 21×21 exact-node matrix coefficient cache plus continuous off-grid fallback, local model/texture material mapping, the detailed-model friendly eye grade, the 21×21 photo-atlas nodes and continuous bilinear cells, generated-asset integrity, lazy load/context loss, and the detailed → default-photo → vector fallback chain. The Photoatlas catalog gate must reject unsafe paths, duplicate/unstable IDs, non-neutral public labels, unavailable defaults, malformed hashes/sizes/quality, missing artifacts, metadata or QA hash drift, and any entry without passing engineering QA. Every optional pack must reproduce its applicable cell-local soft-alpha preparation exactly, preserve straight soft-edge RGB without amplification, detect all 441 cells, validate its declared source lattice—nine anchors for the first seven optional packs and 25 for `photo-synthetic-08`—retain zero alpha error and the applicable foreground-anchor PSNR floor, remain fold-free, and meet its locked landmark and neighbor-continuity thresholds. The 5×5 pack must additionally bind all 25 newly generated anchors, the 16 additional target positions, and the no-byte-preservation boundary in its authoring manifest. Visual contact-sheet review must cover corners, center, mid-axes, and added 5×5 positions for identity drift, expression order, seams, black-matte clipping/halos, eye coloration, and obvious generation artifacts; automated QA is not perceived-affect or representational validation, and blinded human VA ratings remain a separate release gate.
-
-Static/UI tests must retain one canonical selected mode and one stable portrait-pack ID across the phone quick selectors, detailed Face-options selectors, main/phone presentation, and desktop's local selection. Unavailable packs must never be exposed; changing packs must retire stale image callbacks, use the catalog hash as its cache token on Pages, and load/decode only the selected atlas. The phone controls must update the existing two renderers without another state or clock. Retain the one-frame shared snapshot, non-exhaustive/no-demographic-inference disclosures, accessible labels, exact project-path assets, and local Three.js/asset notices. Portable-study tests must prove `faceFlubberComparison` uses the canonical vector face and canonical Flubber from one exact current-X/current-Y/phase snapshot across Pages, desktop, and WebXR and never becomes a phase, stimulus, input, or record source.
-
-Focused desktop traversal tests must cover all 121 exact cells, center `(5,5) = (0,0)`, axis/index round-trips, shortest 8-connected diagonal/cardinal paths, exact-node holds, `0.5–10` rate validation, Stop, Reset, and returning to continuous mode on direct movement. Paired-renderer tests must prove that face and Flubber receive the same immutable snapshot object and `currentX/currentY/phase`, never target coordinates or a renderer-owned clock. Static/UI tests must retain face-left/Flubber-right layout, keyboard-operable matrix cells, current/target state, and a Flubber-only overlay. Rust tests must confirm traversal metadata stays transient and the existing eight-channel LSL sample order is unchanged.
-
-Desktop Party frontend tests must cover bounded deterministic orbit/relative placement and host reanchoring; projection of the Rust snapshot into the one host scene; public-label normalization; returned-scene local-stream membership; live-peer binding; duplicate/older/wraparound ordering; stale-peer reconnection; explicit host/broadcast/stop controls; local pinned SDK packaging; public data-only disclosure; and the CSP's exact VDO signaling plus TURN-credential allowlist. A production build must prove the pinned SDK is copied into desktop assets and no client starts on app launch.
-
-Before calling desktop/smartphone Party qualified, run a real Tauri settings window against current Android Chrome and iOS Safari over the same Wi-Fi in both directions: desktop hosts and invites the phone, then the phone hosts and invites the desktop. Verify guest→host→all X/Y and placement, identical roster/order/labels/logical normalized layout/shared styling on both screens, phone-only local camera zoom/pan without wire changes, host-side reanchoring, direct-route and forced-relay status where supported, two-second stale/reconnect behavior including a new peer ID, explicit Stop/reload cleanup, no camera/microphone prompt, and no mutation of native target/current state or LSL. Repeat the Tauri role smoke on Windows WebView2, macOS WKWebView, and Linux WebKitGTK before a cross-platform release. Mock/unit/build evidence does not replace these physical receipts.
-
-Advanced feature actions must be tested for bounded animation speed, amplitude, disorder, opacity, and size changes; global actions must remain observable in marker output and persist without corrupting in-progress affect state.
-
-Rust tests must deserialize and validate `site/settings.json`. Any portable settings schema change requires coordinated browser tests, Rust tests, documentation, and an explicit schema-version decision.
+Also test 1 Hz and 240 Hz, pause, native/browser buffering, visibility loss,
+minimize/restore, sleep/wake, every between-video policy, neutral reset,
+state-anchor age, clock mapping, and recorded monotonic/LSL-compatible time and
+jitter. Rendering must never control the scheduler.
 
 ## LSL qualification
 
-- Resolve both streams using an independent LSL consumer.
-- Record with current LabRecorder.
-- Confirm the marker stream receives every physical key/button press and release plus wheel direction while another application is focused, without typed-character payloads.
-- Confirm channel count/type/order, nominal rate tolerance, timestamps, metadata, markers, restart behavior, sleep/wake, and clean shutdown.
-- Test missing or incompatible native LSL dependencies and report a useful status rather than crashing.
+- Resolve the regular state and irregular marker outlets with an independent
+  current receiver and LabRecorder.
+- Confirm eight Float32 channels in exact order, configured nominal rate,
+  source metadata, LSL/monotonic timestamp relationship, lifecycle markers,
+  restart, disconnect/reconnect, sleep/wake, gap reporting, and clean shutdown.
+- Verify missing or incompatible LSL fails Start with a useful bounded status,
+  and Chrome/Edge preserves imported values but blocks Start when LSL is enabled.
+- Confirm markers contain no raw names, typed text, arbitrary error/path data,
+  settings bodies, or video data. Do not claim clock identity with independently
+  running Polar software.
 
-## Quest gates
+## Accessibility, containment, and deployed evidence
 
-- Regenerate the JavaScript golden fixture and require Kotlin parity for Circle, Heart, Triangle, and Square, including an excited Heart case. Strictly parse all four `affectSettings.visual.baseShape` tokens, default an omitted token to Circle, and reject unknown values. Exercise maximum amplitude/disorder without non-finite vertices or clipping before the separate physical-device performance/visual gates.
-- Multi-video acceptance includes: the active manifest remains selected by default; selection survives Ready-screen rescans; every optional choice retains its own exact video/projection/stereo/loop but receives the active affect/Flubber/controller/LSL profile; changing the active profile invalidates optional cached fingerprints; and a video choice cannot change the configured stick. Fully validated unmanifested media appears with an explicit active-default-layout label, while optional copy-in-progress/hash/layout/session-ID failures remain visible and do not block the active session. Test that incorrect default geometry is never inferred or silently corrected. A physical headset playback check is required for at least one flat stereo sample and one mono equirectangular 360° sample.
-- Run web manifest tests and Kotlin renderer/engine/strict-parser tests before any APK or headset step. Verify omitted `showAffectValues` and controller-follow remain false, controller-follow defaults to left/0.18 m, explicit booleans and `dark`/`passthrough` round-trip, invalid types/enums/ranges fail closed, the default stick is right, and the optional readout formats exactly the current bounded `X` and `Y` values with locale-stable decimal points at no more than 10 Hz. Verify the headset Ready screen visibly exposes mixed reality, Flubber-only passthrough, and controller-follow controls; initializes persisted values from the active profile; supports left/right follow selection and followed-controller visibility; applies them to only the armed run; and does not rewrite or broaden the JSON contract. In Flubber-only mode, verify no video entity is created, no decoder is prepared, no video markers are emitted, and controller/Flubber/LSL remain active after countdown until exit. Verify the native animation clock maps arousal to `0.5–2.5 Hz` exactly like the original Unity prefab and canonical web renderer.
-- Build the pinned Spatial SDK project with JDK 17, Android SDK 34, an arm64 NDK, and the locked Rust LSL library. Inspect the APK identity, supported-device metadata, permissions (network/multicast plus Meta-scoped hand-tracking/render-model capabilities), ABI contents, and absence of broad storage/cleartext authority.
-- Unit-test the native Polar catalog against all ten browser metric IDs/default ranges, exact normalization/clamping/reversal, 650-ECG/300-RR bounds, ECG power/RMS/peak-to-peak, RMSSD/lnRMSSD/SDNN, both composite warmups, exact 130 Hz/three-second/five-second-age readiness, and partial-axis fallback. Static/compiled checks must retain SDK 8.1.0, optional BLE hardware, nearby-device permissions without location/storage/camera expansion, the launcher Connect/Disconnect/Retry/waveform/X/Y/low/high/reverse controls, an assigned-run readiness block, application-scoped manager ownership, and no raw-physiology file or LSL path. Inspect the APK for the Polar SDK license asset. The attended `verify-readiness.ps1 -Gate Polar` smoke must bind the exact Host-admitted APK, clear stale logs before launch, require increasing privacy-safe ten-second health receipts within one unchanged anonymous stream epoch for at least two minutes, configured 130 Hz/14-bit ECG, 120–140 Hz observed rate, ECG sample age no greater than five seconds, HR/RR observations no older than ten seconds, all ten finite metric IDs, and one dual-axis live route in Flubber-only passthrough; its logs and summary must contain no ECG values, RR series, metric values, or device identifier. On a worn physical H10 and each supported headset, additionally record permission denial/recovery, Bluetooth-off recovery, nearby auto-connect, real 130 Hz/14-bit ECG and HR/RR, three-second readiness, two-minute sample-rate/gap evidence, all ten metric values, waveform, disconnect/reconnect/range loss, and explicit disconnect/stream termination. In both video passthrough and Flubber-only passthrough, exercise every metric as X and Y plus one-axis mixed Touch control, verify pre-countdown neutrality, pause hold, manual-only Reset, readiness-loss fallback, `POLAR STREAM • LIVE`, bounded one-hertz marker context, unchanged eight-channel LSL state order, and absence of raw ECG/RR arrays. The focused gate does not replace this full attended matrix, and Host success never substitutes for either sensor/headset gate.
-- On physical Quest 2/Pro/3/3S, validate SAF grant recovery, partial-copy/hash failures, flat/180/360 × mono/SBS/top-bottom carriers, primary-decoder failure plus compatible-decoder fallback, final decoder failures, focus loss, real Touch controller axes/buttons, JSON-controlled controller-model visibility, trigger grab including depth, distance clamping, and first-frame markers. Verify the flat screen and Flubber are derived from the live viewer pose before countdown. Require one in-app controller owner with Spatial locomotion registered only as the ISDK input bridge and read back in its disabled state, no teleport ray or snap/world movement during a full physical-stick sweep, a completed Flubber canvas draw, and a post-thumbstick draw receipt from an app-owned physical route: nonzero Spatial `Controller` state, accepted hand-matched ISDK scroll input, or a pinned Spatial `VrActivity` game-controller MotionEvent. The same receipt must include changed target and smoothed current valence/arousal while the panel itself has no Android focus. With `showAffectValues=true`, visually confirm that the displayed `X`/`Y` pair is the smoothed current valence/arousal state, remains within `[-1,1]`, and responds under the configured continuous or step mode. Exercise the maximum amplitude/disorder settings and confirm the path, halo, outline, and readout fit inside the tight panel. Physical trigger grabs must work from the center, each visually empty quadrant, and all four corners through the toolkit-managed registered-panel input route, with no giant manual ISDK edge colliders. Press an unassigned A button after looking elsewhere and verify a gaze-centered transform plus app/LSL recenter receipt at the preserved clamped distance. Repeat thumbstick input during countdown, playback, and pause. The debug diagnostic CLI may prove joystick→engine→canvas wiring before an attended run, but synthetic, ADB, or `/dev/input` observation never qualifies as controller evidence.
-- Verify the native launcher WebXR button remains available without an authorized SAF folder, resolves the exact canonical HTTPS URL through a browsable `ACTION_VIEW` intent, opens Meta Quest Browser on each supported headset, and reports an actionable fallback if no browser can handle the intent. Confirm the variable-height catalog, switches, summary, and explanatory copy scroll as one bounded region at the minimum supported launcher height, while the folder and Start actions remain visible in a fixed bottom bar. This link is not evidence that the WebXR study itself passed its separate browser/device gates.
-- With controller-follow enabled, move the configured left and right Touch controller through translation/depth and confirm the panel remains the configured distance in front of that hand, between hand and wearer, faces the live viewer in pitch/yaw, preserves joystick affect input, emits tracking acquired/lost edges, and does not fight grab or A-recenter transform authority. Toggle the followed model visible and invisible and confirm both states preserve tracked pose, thumbstick input, the per-frame polling receipt, and the keep-screen-on lifecycle flag; explicitly record that physical controller sleep/wake remains firmware-controlled. Validate both `dark` and compositor-passthrough environments plus Flubber-only passthrough. Confirm flat MR exposes passthrough around the video, Flubber-only creates no video surface/decoder, and no camera permission/frame path is added; record that immersive carriers occlude passthrough where they render.
-- Exit and relaunch the immersive Activity after every physical interaction pass. Reject any native `DataModel` assertion, teardown exception, or entity-destruction race; scene entities are owned and destroyed by `AppSystemActivity` during runtime teardown.
-- Resolve both outlets using independent LabRecorder and pylsl consumers on a same-LAN access point that permits multicast/client traffic. Verify exact channel order/rate, marker lifecycle, reconnect, and the router-isolation failure message.
-- Use Quest 2 as the performance floor: no steady-state Flubber allocations, <2 ms p95 Flubber CPU drawing, no sustained regression from a video-only baseline, and a 30-minute video/LSL soak without OOM, thermal failure, or outlet loss.
-- Grant and verify macOS Accessibility permission; test Linux raw input under X11 and clearly report Wayland limitations.
-- Perform an extended soak test before a research release.
+- Complete Setup and Run using only the keyboard. Verify visible focus,
+  semantic labels/status, polite announcements, non-color meaning, contrast,
+  200% zoom/reflow, and reduced-motion behavior.
+- Test exact two-mode navigation and seven Setup accordions in the real Pages
+  build and packaged Tauri application. Hiding feedback must not hide timing,
+  write/recovery, or LSL status.
+- Verify the allowlisted Pages and desktop build closures contain no WebXR,
+  Quest, remote/VDO/BRSP, Party/Ground Control, direct Polar, face, touch,
+  calibration, retro, phone/Picture-in-Picture, or legacy media assets/routes.
+- Qualify current Chrome and Edge separately against the exact deployed commit,
+  including cache-bypassed loading at
+  `https://GeorgeFejer91.github.io/affect-tracker-research/`.
+- Test Experimental YouTube URL/video-ID normalization, metadata, unverified
+  status, no byte hash, offline/blocked behavior, and qualification exclusion.
+  Tauri must reject it until its CSP/referrer/player feasibility has a separate
+  receipt.
 
 ## Release boundary
 
-CI should test pull requests and build unsigned artifacts on Windows, macOS, and Linux. Publishing installers, creating a public GitHub release, enabling an updater, signing, notarizing, or store submission requires explicit authorization. Build each production artifact on the matching OS and preserve lockfiles, checksums, attribution, and license notices.
+CI may validate the static artifact and unsigned Windows candidate. The internal
+`0.4.0-alpha.1` label remains non-stable and non-research-ready until every
+applicable automated, installed-artifact, timing, media, recovery, input, LSL,
+accessibility, and physical workflow gate above passes for one exact candidate.
 
-The `desktop-release.yml` workflow is the canonical packaging path. A `desktop-v*` tag produces Windows x64 NSIS, Linux x64 AppImage/DEB, and universal macOS DMG artifacts from one commit. Do not publish a release unless every matrix job completes successfully.
-
-## Definition of parity
-
-For portable `StudyDefinitionV1` behavior, the three primary parity surfaces are Pages 2D, Tauri/Rust desktop, and WebXR. A change to coordinates, mappings, smoothing defaults, study actions, pause/reset semantics, seed/order handling, questionnaire meaning, accessibility language, or shared record meaning must be assessed on all three or fail closed behind an explicit capability exception. The canonical vector Face + Flubber comparison remains an optional presentation inside an instruction block and does not import the main tracker's five-engine selector into the protocol or replace/extend the native Quest Flubber. The session-only Pages 21×21 browser traversal and the Rust-owned desktop 11×11 traversal are distinct main-tracker capabilities, not portable-study parity fields; neither changes WebXR, native Quest, portable settings, or the LSL schema. The desktop overlay remains Flubber-only. Platform-only features such as global input, click-through overlays, immersive placement, and LSL require an explicit capability counterpart or documented exception. YouTube, Touch/Trackpad acquisition, and platform-specific Polar adapters remain deliberate capability exceptions. The native Quest APK is a specialized fourth form with its own gates until a later adapter is implemented.
+Publishing or signing an installer, creating a public GitHub Release, enabling
+an updater, submitting to a store, or handling production credentials requires
+explicit authorization. Test the exact artifact before promotion; never rebuild
+after approval and call it the same release.

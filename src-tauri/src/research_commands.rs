@@ -1,11 +1,16 @@
-use crate::research_contracts::{ResearchSettingsV1, ResolvedAssignmentPlanV1};
+use crate::research_contracts::{
+    DirectionV1, InputBindingV1, ResearchSettingsV1, ResolvedAssignmentPlanV1,
+};
 use crate::research_error::{CommandError, ResearchResult};
+use crate::research_input::{
+    NativeInputCapability, NativeInputRegionRequest, NativeInputStatus, ResearchInputService,
+};
 use crate::research_lsl::{probe_readiness, LslReadiness};
 use crate::research_native_media::{NativeMediaCapability, NativeMediaService};
 use crate::research_runtime::{
-    AffectStateUpdate, FinalizeReceipt, FinishOutcome, MediaPlaybackFailureReceipt,
-    MediaPlaybackFailureReport, ParticipantTileStatus, RecoveryListing, ResearchRuntime,
-    ResumeRunRequest, RunStatus, StartRunReceipt, StartRunRequest, StimulusStateUpdate,
+    FinalizeReceipt, FinishOutcome, MediaPlaybackFailureReceipt, MediaPlaybackFailureReport,
+    ParticipantTileStatus, RecoveryListing, ResearchRuntime, ResumeRunRequest, RunStatus,
+    StartRunReceipt, StartRunRequest, StimulusStateUpdate,
 };
 use crate::research_workspace::{
     source_capabilities, AssignmentPlanExportReceipt, DecodeAttestationRequest,
@@ -41,6 +46,72 @@ pub fn research_native_media_capability(
 ) -> ResearchResult<NativeMediaCapability> {
     authorize(&window)?;
     Ok(native_media.capability())
+}
+
+#[tauri::command]
+pub fn research_input_capability(
+    window: WebviewWindow,
+    input: State<'_, Arc<ResearchInputService>>,
+) -> ResearchResult<NativeInputCapability> {
+    authorize(&window)?;
+    Ok(input.capability())
+}
+
+#[tauri::command]
+pub fn research_input_set_region(
+    window: WebviewWindow,
+    input: State<'_, Arc<ResearchInputService>>,
+    region: NativeInputRegionRequest,
+) -> ResearchResult<NativeInputStatus> {
+    authorize(&window)?;
+    let origin = window.inner_position().map_err(CommandError::io)?;
+    let size = window.inner_size().map_err(CommandError::io)?;
+    input.set_region(
+        region,
+        f64::from(origin.x),
+        f64::from(origin.y),
+        f64::from(size.width),
+        f64::from(size.height),
+    )
+}
+
+#[tauri::command]
+pub fn research_input_begin_test(
+    window: WebviewWindow,
+    input: State<'_, Arc<ResearchInputService>>,
+    binding: InputBindingV1,
+) -> ResearchResult<NativeInputStatus> {
+    authorize(&window)?;
+    input.begin_test(binding)
+}
+
+#[tauri::command]
+pub fn research_input_begin_capture(
+    window: WebviewWindow,
+    input: State<'_, Arc<ResearchInputService>>,
+    binding: InputBindingV1,
+    direction: DirectionV1,
+) -> ResearchResult<NativeInputStatus> {
+    authorize(&window)?;
+    input.begin_capture(binding, direction)
+}
+
+#[tauri::command]
+pub fn research_input_status(
+    window: WebviewWindow,
+    input: State<'_, Arc<ResearchInputService>>,
+) -> ResearchResult<NativeInputStatus> {
+    authorize(&window)?;
+    Ok(input.status())
+}
+
+#[tauri::command]
+pub fn research_input_cancel_setup(
+    window: WebviewWindow,
+    input: State<'_, Arc<ResearchInputService>>,
+) -> ResearchResult<NativeInputStatus> {
+    authorize(&window)?;
+    Ok(input.cancel_setup())
 }
 
 #[tauri::command]
@@ -331,16 +402,6 @@ pub fn research_run_status(
 }
 
 #[tauri::command]
-pub fn research_update_affect_state(
-    window: WebviewWindow,
-    runtime: State<'_, Arc<ResearchRuntime>>,
-    update: AffectStateUpdate,
-) -> ResearchResult<()> {
-    authorize(&window)?;
-    runtime.update_affect(update)
-}
-
-#[tauri::command]
 pub fn research_set_stimulus_state(
     window: WebviewWindow,
     runtime: State<'_, Arc<ResearchRuntime>>,
@@ -348,17 +409,6 @@ pub fn research_set_stimulus_state(
 ) -> ResearchResult<()> {
     authorize(&window)?;
     runtime.set_stimulus_state(update)
-}
-
-#[tauri::command]
-pub fn research_gamepad_button(
-    window: WebviewWindow,
-    runtime: State<'_, Arc<ResearchRuntime>>,
-    button: u8,
-    pressed: bool,
-) -> ResearchResult<()> {
-    authorize(&window)?;
-    runtime.gamepad_button(button, pressed)
 }
 
 #[tauri::command]
@@ -413,6 +463,12 @@ mod tests {
             "research_choose_workspace",
             "research_source_capabilities",
             "research_native_media_capability",
+            "research_input_capability",
+            "research_input_set_region",
+            "research_input_begin_test",
+            "research_input_begin_capture",
+            "research_input_status",
+            "research_input_cancel_setup",
             "research_workspace_status",
             "research_load_settings",
             "research_rescan_stimuli",
@@ -426,9 +482,7 @@ mod tests {
             "research_start_run",
             "research_resume_run",
             "research_run_status",
-            "research_update_affect_state",
             "research_set_stimulus_state",
-            "research_gamepad_button",
             "research_finish_run",
             "research_report_media_failure",
             "research_recoveries",

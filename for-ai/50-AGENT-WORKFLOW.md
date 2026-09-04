@@ -1,108 +1,133 @@
 # Mandatory agent workflow and skill routing
 
-> **Research v1 routing override.** Read
-> [`15-RESEARCH-V1-CHARTER.md`](./15-RESEARCH-V1-CHARTER.md) as the sole active
-> product and architecture authority. Where the older workflow below refers to
-> mirrored Pages/desktop/WebXR parity, native Quest, Party, Ground Control,
-> direct Polar, face, remote-control, or another Playground surface, that advice
-> is frozen history and must not be treated as active Research scope.
+## First actions
 
-## Active Research v1 change discipline
-
-- Preserve exactly two product modes: **Setting Up the Experiment** and
-  **Running the Experiment**. Route user-visible Setup work through the seven
-  ordered charter sections; keep Run deliberately narrow.
-- Qualify Windows Tauri plus desktop Chrome and Edge first. A platform or
-  feature outside that matrix requires an explicit charter amendment before it
-  can enter active scope.
-- Treat the strict Research contracts, canonical settings/plan hashes,
-  participant-data minimization, timing-gap semantics, no-overwrite output,
-  and safe-boundary recovery rules as cross-layer boundaries, not UI details.
-- Keep Tauri Rust authoritative for native input, scheduling, timestamps,
-  persistence, and outbound LSL. Keep browser sampling in a dedicated worker
-  with IndexedDB journaling. Rendering cadence must never be the sample clock.
-- Classify every touched feature as active Research, frozen Playground/history,
-  or shared infrastructure. Do not refactor or reactivate frozen features while
-  implementing Research work; containment or removal from the active product is
-  allowed when required by the charter.
-- Use [`30-TESTING-AND-RELEASE.md`](./30-TESTING-AND-RELEASE.md) for active gates
-  and [`40-ROADMAP.md`](./40-ROADMAP.md) for implementation status. A chartered
-  target is not evidence that the implementation or a release is qualified.
-
-## First actions for every future agent
-
-Before inspecting source, planning changes, editing, testing, or publishing:
+Before inspecting source, planning, editing, testing, or publishing:
 
 1. locate the Git root with `git rev-parse --show-toplevel`;
 2. read the root `AGENTS.md`;
-3. read **every** Markdown file in `for-ai/` completely, in lexical filename order, then inspect `for-ai/references.bib` when research provenance is relevant;
-4. inspect `git status --short`, the active branch, remotes, and recent relevant history;
-5. preserve unrelated user or agent changes and identify any contract/implementation mismatch before proceeding;
-6. inspect the relevant manifests, lockfiles, entry points, configuration, capabilities, tests, and workflows before choosing commands or dependencies; and
-7. run a proportionate baseline check when feasible so pre-existing failures are distinguishable from regressions.
+3. read every Markdown file in `for-ai/` completely and in lexical order, then
+   read `for-ai/references.bib` when provenance is relevant;
+4. inspect branch, remotes, recent relevant history, and `git status --short`;
+5. preserve unrelated user/agent changes and identify contract mismatches;
+6. inspect the relevant manifests, lockfiles, entrypoints, capabilities,
+   workflows, and tests before choosing commands or dependencies; and
+7. run a proportionate baseline so pre-existing failures are distinguishable
+   from regressions.
 
-Do not rely on chat history as the only source of truth. This directory is the durable handoff between people and future agents.
+Do not rely on chat history as the only authority. The charter describes the
+target; the roadmap and exact test/qualification receipts describe reality.
 
-## Required skill routing
+## Active change discipline
 
-Use the smallest applicable skill set and read each selected skill's complete instructions before acting.
+- Preserve exactly two modes: **Setting Up the Experiment** and **Running the
+  Experiment**. Setup follows the seven ordered charter sections; Run stays
+  deliberately narrow.
+- Qualify only Windows Tauri and desktop Chrome/Edge unless the user explicitly
+  amends the charter.
+- Treat strict schemas, settings/plan hashes, transient-name erasure,
+  no-overwrite output, timing gaps, and safe-boundary recovery as cross-layer
+  contracts rather than UI details.
+- Tauri Rust owns native workspace, input, playback, scheduler, timestamps,
+  persistence, and outbound LSL. Browser sampling lives in a dedicated worker
+  with IndexedDB journaling. Rendering never owns the sample clock.
+- Keep qualified Windows media behind the opaque, Rust-owned native-media
+  boundary. Never pass arbitrary filesystem paths or native handles to/from the
+  WebView; never discover a system VLC or download native runtime code in-app.
+- Do not restore deleted Playground features into the active tree. Historical
+  WebXR/Quest, remote, Party/Ground Control, direct Polar, face, touch,
+  calibration, retro, phone, and legacy study work belongs in
+  [`affect-tracker-playground`](https://github.com/GeorgeFejer91/affect-tracker-playground)
+  and Git history unless a new charter explicitly reactivates a bounded slice.
 
-- For any Tauri, Rust, `src-tauri`, Cargo, IPC, capability, permission, CSP, native window, tray, overlay, global-input, sidecar, persistence, packaging, or desktop-release task, use **`tauri-rust-developer`**. The mirrored-study architecture is pinned to the MIT-licensed skill source at [`3accda94db2fe6becd851a0f81498a69b0a8c591`](https://github.com/GeorgeFejer91/tauri-rust-developer-skill/tree/3accda94db2fe6becd851a0f81498a69b0a8c591); update the pin only through an explicit source/provenance and behavior review.
-- For authority, contract, module/adapter, data/control/media-plane, observability, or validation design, use **`system-engineering`** and keep concise entrypoint routing synchronized with the detailed normative file.
-- For authenticated browser/phone-to-desktop study observation or control, BRSP envelopes, VDO.Ninja data-only transport, scopes, revisions, duplicate outcomes, leases, reconnects, or remote qualification, use **`browser-remote-sync-protocol`**. Implement against the MIT-licensed exact source [`e6a5eef86d4b3c7422ace08706df5deb82338808`](https://github.com/GeorgeFejer91/browser-remote-sync-protocol/tree/e6a5eef86d4b3c7422ace08706df5deb82338808); architecture similarity is not conformance.
-- For any new or changed HTML/CSS/frontend study, designer, controller, or questionnaire UI, use **`uncodixfy`** while preserving Affect Tracker's established accessible identity. The guidance source is MIT-licensed and pinned at [`e0e028058b5259debdd94b78147c6d6c77bf7da2`](https://github.com/cyxzdev/uncodixfy/tree/e0e028058b5259debdd94b78147c6d6c77bf7da2); it is design guidance, not an application runtime dependency.
-- For real browser interaction or visual/behavioral verification of the GitHub Pages app, use the available browser-control skill and test the actual page rather than only static code.
-- For GitHub inspection, commits, branches, Actions, releases, or publishing, use the available GitHub skill and follow its branch/status/diff safeguards.
-- For current or uncertain external facts, APIs, standards, compatibility, or research evidence, use the available multi-source web-search skill and prefer official primary sources for technical decisions.
-- Use specialized document/media skills only when the requested artifact requires them; do not add tools or dependencies merely because they are available.
+## Required skills
 
-The local skill name is stable; its installation path is not. Never hard-code a machine-specific Codex skill path into application code or build configuration.
+Use the smallest applicable set and read each selected skill completely before
+acting.
 
-## How to approach changes
+- Use **`tauri-rust-developer`** for Tauri/Rust, Cargo, IPC, capabilities, CSP,
+  native windows, input, filesystem/persistence, libVLC/native libraries,
+  packaging, or release work. Read its security, networking/FFI, persistence,
+  latency, and verification references as the task requires.
+- Use **`system-engineering`** for authority, contracts, lifecycle, media/data/
+  control planes, recovery, observability, and qualification design.
+- Use **`uncodixfy`** for any generated or changed HTML/CSS/frontend UI while
+  preserving this product's accessibility and restrained instrument identity.
+- Use the available browser-control skill for real browser visual/behavioral
+  checks. Static inspection alone is not runtime evidence.
+- Use the available multi-source web-search skill for current or uncertain
+  APIs, standards, licenses, compatibility, or research claims, preferring
+  official primary sources for technical decisions.
 
-1. Restate the requested user-visible outcome and determine whether it affects web, desktop, shared behavior, settings, logging/LSL, privacy, accessibility, packaging, or release semantics.
-2. Check the parity contract. Implement every affected delivery form when behavior is shared, or record a deliberate platform-specific exception.
-3. Define cross-layer ownership before coding: Rust owns native authority and durable validation; frontends own presentation and transient UI; research sampling must not depend on rendering cadence.
-4. Preserve UI-to-code module correspondence and keep each top-level product surface in an owning project folder with its code and assets. Frontend and backend modularity must correspond: identify each surface's named protocol/controller, owned state and data, privacy boundary, and matching narrow named backend/native adapter when privileged authority is required. Keep the common shell limited to navigation, shared rendering, and documented precedence; do not place unrelated module protocols in one catch-all handler or expose generic native authority. Do not invent a backend counterpart for a browser-only module.
-5. Prefer the smallest coherent vertical change. Avoid unrelated framework migrations, dependency updates, broad permissions, or refactors.
-6. Add or update focused tests, then run the broader applicable gates from `30-TESTING-AND-RELEASE.md`.
-7. Verify user-visible web or desktop behavior in a real runtime when practical. Never claim a platform or package was tested when it was not.
-8. Update documentation, this durable brief, and release notes when behavior or constraints change.
+Skill names are stable; installation paths are not. Never put a machine-local
+skill path into source or build configuration.
 
-## Maintain this directory continuously
+## Mandatory pause points
 
-Update `for-ai/` in the same change whenever:
+Stop and request explicit user direction before:
 
-- the user adds, removes, or clarifies a project requirement;
-- an architectural or privacy/security decision changes;
-- cross-delivery parity gains an exception;
-- a portable settings, CSV, marker, LSL, or IPC schema changes;
-- supported platforms, release gates, or known limitations change; or
-- testing/debugging reveals a reusable lesson that would prevent future mistakes.
+- adding `unsafe` Rust/FFI when a safe implementation is not already approved;
+- enabling remote WebView content or broad filesystem, shell, process, network,
+  or capability authority;
+- changing Tauri major version, Rust edition, package manager, bundle identity,
+  updater/release channel, or signing identity;
+- destructive data/configuration migration or automatic legacy import; or
+- signing, publishing installers/releases, store submission, or using
+  production credentials.
 
-Record durable lessons, not temporary narration. Avoid dates, transient branch names, machine-specific output paths, one-off command logs, or speculative ideas unless they are genuinely relevant project metadata or an approved roadmap item. Consolidate duplicate or stale guidance instead of appending contradictions forever.
+The current libVLC design needs one small dynamic-library/libVLC/Win32 `unsafe`
+adapter. Runtime pins, staging, validation, types, tests, and documentation may
+progress safely; loading DLLs, binding symbols, registering callbacks, or
+creating the child HWND must wait for explicit approval. After approval,
+confine the adapter, document every invariant, test malformed/missing native
+state, and never unwind a panic across FFI.
 
-Before merging any source-derived algorithm, API behavior, or compatibility decision, add its citation and exact adopted idea to `70-RESEARCH-PROVENANCE.md`; add publications to `references.bib`. Record license and code-reuse status. Reviewing an example is not code reuse, and independent implementation must be stated accurately.
+## Change workflow
 
-## Git hygiene and regular checkpoints
+1. State the user-visible outcome and affected browser, desktop, shared,
+   settings, record, LSL, privacy, accessibility, packaging, and qualification
+   surfaces.
+2. Define one owner for each changed parameter and state transition. Keep UI
+   handlers as typed adapters, not hidden business logic.
+3. Specify request/response/event types, lifetimes, generations, cancellation,
+   overload/error behavior, and observability before widening an IPC or native
+   boundary.
+4. Prefer the smallest coherent vertical slice. Avoid unrelated framework,
+   dependency, permission, or formatting churn.
+5. Add focused success, rejection, stale-generation, interruption, and cleanup
+   tests, then run the broader applicable gates in
+   [`30-TESTING-AND-RELEASE.md`](./30-TESTING-AND-RELEASE.md).
+6. Verify user-visible behavior in a real browser or packaged desktop runtime
+   when practical. Never infer physical/platform qualification from mocks or a
+   build.
+7. Update this durable brief whenever requirements, authority, contracts,
+   privacy, data fields, media, LSL, platform support, or gates change.
 
-- Inspect status and diff before and after edits. Never discard, overwrite, stage, or reformat unrelated work.
-- Keep one coherent concern per commit where practical. Stage explicit paths; do not blindly stage the entire worktree.
-- Create a tested checkpoint after each meaningful, coherent milestone and before risky migrations or lengthy platform work.
-- Completing any validated in-scope change—not only a new feature—carries standing project authorization to create a tested coherent commit and push it to the canonical GitHub repository as soon as practical, so the public remote never lags behind finished local work. This includes source, assets, configuration, tests, and `for-ai/` documentation. Do not stop at a local commit or ask again for routine push permission. Skip publication only when the user explicitly requests local-only or no-push work, validation fails, credentials or CI are unavailable, or ownership/scope is too ambiguous to stage safely; report the exact blocker instead of silently leaving completed work local.
-- After every push, wait for the standard GitHub Pages workflow for that exact commit and verify the relevant Actions result. For every web-facing change, open the public project-path URL with cache bypass and verify the deployed behavior or asset. For repository-only changes, verify that the commit is public and Pages remains healthy without claiming that non-site files are web-served. Do not call work complete merely because the push succeeded.
-- Follow the repository's normal branch/PR policy and verify relevant GitHub Actions after pushing. Do not bypass failing checks or rewrite shared history.
-- Before handoff, consolidate the working tree: commit and push completed in-scope work; leave unrelated work untouched; clearly report any intentional uncommitted files, failing checks, or unpushed commits.
-- A clean working tree is a goal, not permission to absorb someone else's changes. If ownership or intent is ambiguous, stop and ask rather than hiding the dirt in an unrelated commit.
-- Do not push merely because a read-only review or diagnosis was requested. The standing publication rule applies to completed implementation work, not inspection-only tasks or unrelated local changes.
+## Provenance and dependency discipline
 
-## Completion report
+Record every adopted source-derived algorithm, API behavior, compatibility
+decision, runtime dependency, and license boundary in
+[`70-RESEARCH-PROVENANCE.md`](./70-RESEARCH-PROVENANCE.md). Put publications in
+`references.bib`. State accurately whether code or binaries are copied,
+vendored, dynamically linked, or independently implemented.
 
-Every implementation handoff should state:
+Pin native/runtime artifacts to exact versions and hashes, preserve notices and
+source obligations, and distinguish supply-chain integrity from runtime
+qualification. A successful transport call, capability response, build, or
+staging step proves only that step.
 
-- the outcome and affected web/desktop/shared layers;
-- important design or security decisions;
-- exact verification performed and its result;
-- untested platforms or remaining limitations;
-- commit/release/deployment identifiers when publication was authorized; and
-- whether the local and remote working states are synchronized and clean.
+## Git and handoff discipline
+
+- Inspect status and diff before and after edits. Never discard, absorb,
+  reformat, or stage unrelated work.
+- Keep coherent concerns separable and stage explicit paths. Create tested
+  checkpoints before risky migration or lengthy platform work when requested.
+- Commit, push, merge, deploy, or publish only within the user's requested
+  workflow and repository safeguards. Never rewrite shared history or bypass a
+  failing check.
+- After an authorized push, verify the exact remote commit and applicable CI.
+  For a web-facing deployment, use a cache-bypassed check of the exact Pages
+  project URL. A push or green build alone is not deployed behavior evidence.
+- Before handoff, report exact checks, untested platforms, remaining blockers,
+  publication/deployment identifiers, and whether the local/remote states are
+  synchronized. Do not hide intentional dirt or ambiguous ownership.

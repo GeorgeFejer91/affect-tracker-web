@@ -221,6 +221,10 @@ test("the UI bridge names are explicit and stable", () => {
     planReady: "affect-research:plan-ready",
     inputTestState: "affect-research:input-test-state",
     inputEdge: "affect-research:input-edge",
+    inputBindingChanged: "affect-research:input-binding-changed",
+    inputTestReset: "affect-research:input-test-reset",
+    inputCaptureRequest: "affect-research:input-capture-request",
+    inputCaptureCancel: "affect-research:input-capture-cancel",
     startRequest: "affect-research:start-request",
     pauseRequest: "affect-research:pause-request",
     stopEarlyRequest: "affect-research:stop-early-request",
@@ -318,9 +322,9 @@ test("all six Flubber mapping outputs materially control the renderer", () => {
 test("programmatic binding, color, and overlay changes invalidate the frozen protocol", async () => {
   const source = await read("site/src/research/app.js");
   assert.match(source, /onPositionChange\(position\)[\s\S]*?refreshProjection\(\);\s*schedulePlanRefresh\(\);/u);
-  assert.match(source, /function resetBindingsToPreset\(\)[\s\S]*?inputTestPassed = false;[\s\S]*?renderBindings\(\);\s*schedulePlanRefresh\(\);/u);
-  assert.match(source, /inputBinding = structuredClone\(result\.binding\);\s*inputTestPassed = false;[\s\S]*?renderBindings\(\);\s*schedulePlanRefresh\(\);/u);
-  assert.match(source, /function applyResearchSettings\(settings\)[\s\S]*?inputBinding = structuredClone\(normalized\.input\);\s*inputTestPassed = false;/u);
+  assert.match(source, /function resetBindingsToPreset\(\)[\s\S]*?resetInputTest\(\);[\s\S]*?renderBindings\(\);\s*schedulePlanRefresh\(\);/u);
+  assert.match(source, /inputBinding = structuredClone\(result\.binding\);\s*resetInputTest\(\{ notify: false \}\);[\s\S]*?renderBindings\(\);\s*schedulePlanRefresh\(\);/u);
+  assert.match(source, /function applyResearchSettings\(settings\)[\s\S]*?inputBinding = structuredClone\(normalized\.input\);\s*resetInputTest\(\);/u);
   assert.match(source, /if \(target\.dataset\.colorReset\)[\s\S]*?refreshProjection\(\);\s*schedulePlanRefresh\(\);/u);
   assert.match(source, /function schedulePlanRefresh\(\)[\s\S]*?settingsSnapshot = null;[\s\S]*?plan = null;[\s\S]*?capabilities\.manifestReady = false;/u);
 });
@@ -351,4 +355,36 @@ test("the Research stylesheet passes the compact Uncodixfy guardrails", async ()
   assert.match(css, /@media \(prefers-reduced-motion: reduce\)/u);
   assert.match(css, /@media \(max-width: 759px\)/u);
   assert.match(css, /grid-template-columns: minmax\(34rem, 1\.25fr\) minmax\(23rem, 0\.75fr\)/u);
+});
+
+test("Setup remains scrollable on desktop and the mobile header owns intrinsic height", async () => {
+  const css = await read("site/research.css");
+  assert.match(css, /\.research-shell\s*>\s*main\s*\{[\s\S]*?display:\s*grid;[\s\S]*?grid-template-rows:\s*minmax\(0, 1fr\);[\s\S]*?min-height:\s*0;[\s\S]*?overflow:\s*hidden;/u);
+  assert.match(css, /\.setup-mode\s*\{[\s\S]*?display:\s*grid;[\s\S]*?grid-template-rows:\s*minmax\(0, 1fr\);[\s\S]*?height:\s*100%;/u);
+  assert.match(css, /\.setup-layout\s*\{[\s\S]*?min-height:\s*0;[\s\S]*?height:\s*100%;/u);
+  assert.match(css, /\.setup-pane\s*\{[\s\S]*?min-height:\s*0;[\s\S]*?max-height:\s*100%;[\s\S]*?overflow-y:\s*auto;/u);
+  assert.match(css, /@media \(max-width: 759px\)[\s\S]*?\.research-shell\s*\{[\s\S]*?grid-template-rows:\s*auto auto;[\s\S]*?min-height:\s*100dvh;/u);
+  assert.match(css, /@media \(max-width: 759px\)[\s\S]*?\.research-shell\s*>\s*main\s*\{[\s\S]*?display:\s*block;[\s\S]*?overflow:\s*visible;/u);
+});
+
+test("custom research controls expose one coherent accessible interaction model", async () => {
+  const [markup, source, preview, css] = await Promise.all([
+    Promise.resolve(renderResearchUiMarkup("browser")),
+    read("site/src/research/app.js"),
+    read("site/src/research/preview.js"),
+    read("site/research.css"),
+  ]);
+  assert.match(markup, /id="video-drop-zone"[^>]*role="group"/u);
+  assert.doesNotMatch(markup, /id="video-drop-zone"[^>]*(?:tabindex|role="button")/u);
+  assert.doesNotMatch(markup, /role="application"/u);
+  assert.match(markup, /id="participant-grid"[^>]*role="radiogroup"/u);
+  assert.match(source, /button\.setAttribute\("role", "radio"\);[\s\S]*?button\.setAttribute\("aria-checked"/u);
+  assert.doesNotMatch(source, /button\.setAttribute\("aria-selected"/u);
+  assert.match(markup, /data-color-reset="halo" aria-label="Reset Halo color"/u);
+  assert.match(markup, /aria-label="Oscillation Frequency minimum \(Hz\)"/u);
+  assert.match(markup, /id="run-video"[^>]*aria-label="Protocol-controlled current stimulus video"/u);
+  assert.match(source, /syncControlValidation[\s\S]*?aria-invalid[\s\S]*?aria-errormessage/u);
+  assert.match(source, /queueMicrotask\(\(\) => proceed\.focus\(\)\)/u);
+  assert.doesNotMatch(preview, /addEventListener\("keydown"/u);
+  assert.match(css, /@media \(forced-colors: active\)/u);
 });

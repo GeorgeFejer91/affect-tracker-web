@@ -29,17 +29,47 @@ The approved target is an ordered, keyboard-accessible Setup instrument with a p
 
 One condition column containing every video is the supported **one-hat** workflow. Multiple columns form stratified pools. The target assignment uses deterministic `balanced-v1` allocation with Williams counterbalancing by default and cyclic rotation as the alternative.
 
-The target Run mode freezes settings, participant code, assignment, bindings, and overlay geometry. Sampling is independent of rendering, never invents catch-up rows, and records explicit timing gaps. Outputs are create-new attempts containing a frozen settings snapshot, resolved assignment plan, semantic events, manifest, and selected CSV and/or TSV rating tables. Interrupted runs retain authoritative recovery evidence and restart a partially viewed video from the beginning.
+The target Run mode freezes settings, participant code, assignment, bindings,
+and overlay geometry. Sampling is independent of rendering, never invents
+catch-up rows, and records explicit timing gaps. Outputs are create-new attempts
+containing a frozen settings snapshot, semantic events, manifest, and selected
+CSV and/or TSV rating tables; the manifest binds the canonical assignment-plan
+hash and exact stimulus identities. Interrupted runs retain authoritative
+recovery evidence and restart a partially viewed video from the beginning.
 
-The supported qualification targets for v1 are Windows Tauri and visible desktop Chrome/Edge. LSL is a Tauri-only capability. Experimental YouTube sources remain explicitly unverified and outside research qualification.
+The supported qualification targets for v1 are Windows Tauri and visible
+desktop Chrome/Edge. Qualified Windows local/repository playback targets the
+bundled, repository-pinned libVLC 3.0.23 x64 runtime; the app never downloads
+native media code or discovers a system VLC. LSL is a Tauri-only capability.
+Experimental YouTube sources remain explicitly unverified and outside research
+qualification.
 
-The durable product contract is [`for-ai/15-RESEARCH-V1-CHARTER.md`](./for-ai/15-RESEARCH-V1-CHARTER.md). Historical architecture documents are retained as history but are not active Research requirements.
+The durable product contract is
+[`for-ai/15-RESEARCH-V1-CHARTER.md`](./for-ai/15-RESEARCH-V1-CHARTER.md).
+Historical architecture and source remain in Playground and Git history, not
+in the active Research tree.
 
 ### Current implementation status
 
-Branch `research/video-protocol-v1` contains the implementation candidate: isolated Research-only Pages and desktop build boundaries, strict browser/Rust contracts and canonical hashes, deterministic assignment logic, the two-mode UI, browser worker sampling and recovery persistence, and narrow Tauri workspace/run modules. Automated tests and builds are implementation evidence only. They do not establish scheduler performance, crash durability, LSL interoperability, accessibility, media compatibility, or physical workflow qualification.
+Branch `research/video-protocol-v1` contains the implementation candidate: isolated Research-only Pages and desktop build boundaries, strict browser/Rust contracts and canonical hashes, deterministic assignment logic, the two-mode UI, browser worker sampling and recovery persistence, narrow Tauri workspace/run modules, and a Rust-owned native digital-input service. The Tauri service currently enables keyboard, mouse-button, and wheel bindings; it disables absolute pointer and gamepad presets until safe native backends exist. Automated tests and builds are implementation evidence only. They do not establish scheduler performance, crash durability, LSL interoperability, accessibility, media compatibility, or physical workflow qualification.
 
 The candidate remains under development. The exact open software and qualification gates are tracked in [`for-ai/40-ROADMAP.md`](./for-ai/40-ROADMAP.md) and [`for-ai/30-TESTING-AND-RELEASE.md`](./for-ai/30-TESTING-AND-RELEASE.md). The Pages deployment target is <https://GeorgeFejer91.github.io/affect-tracker-research/>.
+
+### Windows native-player status
+
+The safe native-media groundwork is present: an exact libVLC archive/source
+pin, deterministic staging and runtime-tree verification, build-time package
+gate, path-free capability response, and explicit qualified/unqualified receipt
+fields. It deliberately does not yet load the DLL or create the native player
+window. That final in-process actor needs one contained, audited Rust
+dynamic-library/libVLC/Win32 `unsafe` boundary and therefore awaits explicit
+approval before implementation.
+
+Until that actor lands and passes installed Windows qualification,
+`nativeLibvlc` fails closed. Researchers may deliberately choose the WebView
+player for development, but the attempt remains labelled
+`unqualifiedWebview` in status, events, recovery, and its final receipt. Staging
+the native runtime or completing a desktop build is not playback qualification.
 
 ## Local development
 
@@ -70,6 +100,12 @@ Build the unsigned internal alpha installer with:
 ```powershell
 pnpm desktop:bundle
 ```
+
+Native-media staging instructions and the exact runtime pin are in
+[`src-tauri/native-media/README.md`](./src-tauri/native-media/README.md). A
+candidate intended for native playback must be built with the required runtime
+gate and must pass the installed-artifact media tests; ordinary local builds may
+exercise the explicit unavailable/unqualified paths.
 
 The displayed product version is `0.4.0-alpha.1`; it must not be described as stable or research-ready until the automated, timing, recovery, LSL, accessibility, and physical workflow gates in the charter pass.
 

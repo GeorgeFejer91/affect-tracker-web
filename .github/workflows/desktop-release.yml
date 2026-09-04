@@ -12,6 +12,8 @@ jobs:
   package-windows-alpha:
     name: Validate and package unsigned Windows alpha
     runs-on: windows-latest
+    env:
+      AFFECT_RESEARCH_REQUIRE_LIBVLC_RUNTIME: "1"
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
@@ -30,6 +32,12 @@ jobs:
         run: pnpm test
       - name: Build focused desktop WebView
         run: pnpm desktop:build
+      - name: Stage pinned libVLC 3.0.23 runtime
+        shell: pwsh
+        run: |
+          $archive = Join-Path $env:RUNNER_TEMP 'vlc-3.0.23-win64.zip'
+          Invoke-WebRequest -Uri 'https://download.videolan.org/pub/videolan/vlc/3.0.23/win64/vlc-3.0.23-win64.zip' -OutFile $archive
+          ./src-tauri/native-media/stage-libvlc-runtime.ps1 -ArchivePath $archive
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@1.96.0
         with:

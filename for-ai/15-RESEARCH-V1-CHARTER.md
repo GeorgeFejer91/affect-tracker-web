@@ -3,8 +3,8 @@
 ## Status and precedence
 
 This file is the sole active product and architecture authority for Affect
-Tracker Research v1. It supersedes the former mirrored-study target and every
-document marked **Frozen Playground/history**.
+Tracker Research v1. It supersedes the former feature-rich program, whose
+complete source and documentation remain in Playground and Git history.
 
 This is a target contract, not implementation or qualification evidence.
 [`40-ROADMAP.md`](./40-ROADMAP.md) records what has actually landed, and
@@ -35,7 +35,7 @@ Qualify these surfaces first and only:
 
 | Surface | Active role | Capability boundary |
 | --- | --- | --- |
-| Tauri on Windows | Setup and Run, workspace ownership, native input, durable records, sampling clock, and outbound LSL | Rust authority behind narrow typed commands; packaged Windows/WebView2 evidence required |
+| Tauri on Windows | Setup and Run, workspace ownership, native input, bundled native media, durable records, sampling clock, and outbound LSL | Rust authority behind narrow typed commands; packaged Windows/WebView2/libVLC evidence required |
 | Static web in desktop Google Chrome | Setup and Run using a user-authorized workspace root and browser-local journal | Current stable desktop Chrome against the exact static/deployed build |
 | Static web in desktop Microsoft Edge | Same browser contract, qualified separately | Current stable desktop Edge against the exact static/deployed build |
 
@@ -44,6 +44,14 @@ Safari, mobile, WebXR, and native Quest are not active-v1 support targets. The
 static application may be served by GitHub Pages under the renamed project path
 but must not require a backend, account, CDN, remote runtime asset, or silent
 third-party API.
+
+Qualified Windows playback for workspace and repository video uses the pinned,
+bundled libVLC 3.0.23 x64 runtime. The application never downloads native media
+at runtime, searches `%PATH%` or the registry, or treats a system VLC install as
+an acceptable dependency. Missing, modified, extra, symlinked,
+wrong-architecture, or unavailable native media fails closed. The WebView video
+element is available only as an explicitly selected `unqualifiedWebview`
+development mode whose attempt evidence remains permanently unqualified.
 
 ## Setting Up the Experiment
 
@@ -69,6 +77,26 @@ discarding valid edits.
   secure context through a direct user gesture, renew access when browser
   permission requires it, and keep journal/lock metadata in the isolated
   `affect-research/v1` IndexedDB/storage namespace.
+
+For Windows qualified playback, Rust revalidates a selected local/repository
+source against its opaque identity before issuing a bounded native media grant.
+One Rust-owned actor owns the libVLC instance, media, player, callbacks, and
+teardown on its required thread. It renders into an application-owned child
+window attached to the Run stage. The WebView may send only a validated viewport
+rectangle and receives an opaque media-session ID plus bounded state; it never
+receives or supplies a native filesystem path.
+
+Native player state is authoritative for sampling segments. Decoded Playing
+opens a segment; pause, buffering, end, error, teardown, media-grant failure, or
+loss of the actor fences sampling before status is projected to the WebView.
+Rendering cadence and WebView media events never authorize native samples.
+
+The native runtime is built from the exact repository pin and deterministic
+file-hash manifest, with upstream license notices retained. The unavoidable
+dynamic-library/libVLC/Win32 FFI is confined to a small adapter with documented
+ownership, callback, panic, and teardown invariants. Adding that `unsafe`
+adapter requires explicit user approval; the existing safe pin/stager/
+capability groundwork is not equivalent to the actor or qualification.
 
 ### 2. Experiment
 
@@ -247,10 +275,11 @@ Run displays only:
 Setup controls are unavailable. Settings, bindings, derived demographics,
 assignment, and geometry remain frozen for the attempt. The overlay is locked.
 
-Sampling runs only while a video is actively playing. Between videos it stops,
-the affect state resets to neutral, and the configured fixed, deterministic-
-jitter, or participant-controlled transition runs. Visual feedback never
-covers the video; it remains adjacent within the run stage.
+Sampling runs only while a video is actively playing. On Windows qualified
+runs, only Rust-owned libVLC lifecycle state may establish that fact. Between
+videos sampling stops, the affect state resets to neutral, and the configured
+fixed, deterministic-jitter, or participant-controlled transition runs. Visual
+feedback never covers the video; it remains adjacent within the run stage.
 
 **Stop Early** is controlled termination and finalizes an explicitly partial
 attempt. A crash, power loss, forced termination, or storage interruption leaves
@@ -369,33 +398,21 @@ qualified reproducibility claims. It must fail honestly when offline. Tauri may
 offer it only after exact CSP and referrer feasibility is implemented and
 qualified; otherwise the Tauri preflight rejects it.
 
-## Frozen Playground/history boundary
+## Historical lineage boundary
 
-The following remain frozen and outside active navigation, schemas, support,
-qualification, and release claims:
-
-- the former mirrored Pages/Tauri/WebXR `StudyDefinitionV1` program and
-  authenticated browser-to-desktop controller;
-- all WebXR and native Meta Quest media, passthrough, controller, LSL, and
-  direct-Polar behavior;
-- Remote Flubber, VDO.Ninja, settings beacons, Ground Control, BRSP, Universe,
-  Party, webhooks, and every remote browser/phone path;
-- all Face engines, vector/detailed faces, Photoatlas assets/mappings, and
-  `faceFlubberComparison`;
-- browser/Quest direct Polar H10, physiology metrics, and replay fixtures;
-- Touch/Trackpad affect inference, Screen Calibration, Windows 95 skin/audio,
-  phone-first UI, Picture-in-Picture, and matrix traversals; and
-- macOS/Linux desktop release support and packaging claims.
-
-Historical source, assets, notices, evidence, and provenance remain available.
-Frozen code must be inert from the active workflow: loading Research must not
-construct its clients, request permissions, load its remote assets, or expose
-it as a supported surface. If frozen code remains reachable during migration,
-its prior safety, privacy, attribution, and license requirements still apply.
+WebXR and native Quest, the mirrored-study program, remote/VDO/BRSP and
+Party/Ground Control, direct Polar, Face/Photoatlas, Touch inference, Screen
+Calibration, retro/phone/Picture-in-Picture presentation, and cross-platform
+desktop packaging are absent from the active Research source and product.
+Their source, documentation, notices, evidence, and full Git graph are
+preserved in
+[`GeorgeFejer91/affect-tracker-playground`](https://github.com/GeorgeFejer91/affect-tracker-playground)
+and this repository's history.
 
 Reactivation requires an explicit charter amendment, named authority/data
-boundary, schema and platform decision, new tests, and qualification on the
-changed build. Historical evidence cannot qualify a changed Research runtime.
+boundary, schema and platform decision, source/licensing review, new tests, and
+qualification on the changed build. Historical evidence cannot qualify a
+changed Research runtime.
 
 ## Privacy, accessibility, and observability
 
@@ -435,6 +452,12 @@ including:
 - independent LSL receiver qualification; and
 - adverse visibility, permission, IndexedDB, tab, forced-termination, full-disk,
   LSL, video, and offline-YouTube tests plus accessibility review.
+
+Windows acceptance additionally requires an integrity-verified packaged
+libVLC runtime, the separately approved and audited native player actor, exact
+player-to-scheduler lifecycle fencing, and installed-artifact playback, error,
+resize/DPI, audio, shutdown, and recovery tests. A staged runtime or successful
+build alone is not playback evidence.
 
 Landing this documentation changes no runtime and satisfies none of those
 implementation or qualification gates.

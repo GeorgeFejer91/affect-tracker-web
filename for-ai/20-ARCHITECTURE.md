@@ -4,8 +4,9 @@
 
 This file refines the sole active authority in
 [`15-RESEARCH-V1-CHARTER.md`](./15-RESEARCH-V1-CHARTER.md). It describes the
-target architecture; it is not evidence that the current feature-rich runtime
-already conforms. Delivery status belongs in `40-ROADMAP.md`.
+target architecture; it is not evidence that the current implementation
+candidate conforms or is qualified. Delivery status belongs in
+[`40-ROADMAP.md`](./40-ROADMAP.md).
 
 ## Authority map
 
@@ -17,14 +18,16 @@ already conforms. Delivery status belongs in `40-ROADMAP.md`.
 | Assignment | Pure deterministic `balanced-v1` resolver producing `ResolvedAssignmentPlanV1` | Virtualized preview, `assignment-plan.csv`, run preparation |
 | Participant/attempt state | Locks, journals, and `ResearchRunManifestV2` | Four-state chooser projection; never editable flags |
 | Run lifecycle | One run authority per attempt | Setup Start, Run Pause/Stop Early, recovery |
+| Native media | One Windows Rust actor over a pinned bundled libVLC runtime | Opaque media grants/session IDs and child-window viewport projection |
 | Affect state | One bounded current/target x/y engine | Inputs, Grid/Flubber renderer, recorder, Windows LSL |
 | Sampling | Run-owned monotonic scheduler | Canonical rows and Windows regular LSL outlet |
 | Recording | Canonical typed sample/event model | CSV, TSV, `events.jsonl`, manifest, recovery journal |
 | Presentation | In-app normalized Grid/Flubber renderer | Persistent Setup preview and adjacent Run feedback; never a clock |
 | LSL | Windows Rust outbound adapter | Regular eight-channel state plus irregular semantic markers |
 
-No UI handler, renderer, WebView, video player, or LSL adapter creates a second
-settings, allocation, affect, lifecycle, timestamp, or record authority.
+No UI handler, renderer, WebView, browser video fallback, or LSL adapter creates
+a second settings, allocation, affect, lifecycle, timestamp, playback, or
+record authority.
 
 ## Contract family
 
@@ -78,6 +81,44 @@ arbitrary native path.
 Tauri Rust owns root selection, safe child creation, staged copy/import,
 recursive rescan, streaming hashes, media probes, create-new output ownership,
 locks, and atomic file finalization behind narrow typed root/run commands.
+
+### Windows native-media boundary
+
+Qualified local/repository playback uses only the packaged libVLC 3.0.23 x64
+tree described by `src-tauri/native-media/libvlc-runtime-v1.json`. The app does
+not search `%PATH%`, the registry, a system VLC installation, or the network.
+The build/runtime verifier rejects an absent, unexpected, modified, symlinked,
+or wrong-architecture tree. Staging preserves the applicable upstream notices
+and generates a complete file-hash manifest.
+
+The native media service is one serialized Rust actor. Before Prepare, the
+workspace service revalidates the opaque stimulus identity, hash, byte length,
+duration/decode evidence, and root generation; only then may it resolve a path
+inside Rust. The actor owns the dynamic libraries, one libVLC instance, media,
+player, event callbacks, application child window, and deterministic teardown.
+The WebView receives no path or native handle. It exchanges a bounded media
+session ID, playback commands, status, and a validated stage rectangle used to
+position the child window.
+
+The actor translates native Playing, Paused, Buffering, Ended, Error, and
+teardown events into the run lifecycle before projecting UI status. Playing may
+open a sampling segment only after the exact grant is prepared. Every other
+non-playing state fences the sampler first; actor loss is a run failure with a
+durable recovery boundary. Callback messages are bounded and generation-
+fenced so stale media/player callbacks cannot affect a later attempt.
+
+Direct dynamic-library/libVLC/Win32 interop is the only intended `unsafe`
+surface. It must live in a small adapter with documented ABI, pointer lifetime,
+thread affinity, callback-after-teardown prevention, child-window ownership,
+and no-panic-across-FFI invariants. Explicit user approval is required before
+adding it. Until that actor lands, the safe runtime verifier and capability
+service truthfully report native playback unavailable and qualified Start fails
+closed.
+
+`unqualifiedWebview` is a separately chosen development path, never an
+automatic fallback. Its receipt, journal, events, and manifest remain labelled
+unqualified. A WebView media failure is still reported to Rust and fences the
+native sampling/run authority.
 
 Chrome and Edge obtain one File System Access directory handle in a secure
 context from an immediate user activation. They retain the handle only through
@@ -141,6 +182,17 @@ gamepad sticks supply continuous/absolute values and have no step-size meaning.
 Custom capture observes exactly the next allowed physical action, then validates
 global conflicts before replacing the binding.
 
+On Tauri, one Rust `ResearchInputService` owns Setup capture/testing and Run
+input. A fresh input test exercises all four directions and yields a one-use,
+15-minute receipt bound to the canonical binding hash and device epoch. Focus,
+binding, device, and Setup-state changes invalidate evidence. Keyboard input is
+focus-fenced; mouse-button and wheel input are additionally restricted to
+native client-coordinate allow-regions for the visible test/capture/feedback
+surface. The active safe backend supports digital keyboard, mouse-button, and
+wheel bindings only. Absolute pointer and gamepad presets remain disabled in
+Tauri and must never fall back to WebView-originated Run input. Chrome/Edge keep
+their browser-owned pointer and Gamepad adapters.
+
 The affect engine clamps current and target x/y to `[-1,1]`. Radius and angle
 derive from the same snapshot. Mapping drivers normalize x/y, radius, or angle;
 Reverse transforms `t` before linear interpolation. The six labels, bounds,
@@ -170,10 +222,11 @@ regular LSL state stream. A missed slot creates one `ResearchEventV1` timing-gap
 record. There is no catch-up row, retrospective timestamp, or later-state
 backfill.
 
-Sampling runs only during active decoded video playback. Pause, buffering,
-between-video transition, recovery, and terminal states create explicit gaps.
-Between videos the state returns to neutral and the configured transition
-owner runs.
+Sampling runs only during active decoded video playback. For qualified Windows
+runs, Rust-owned libVLC lifecycle is the only playback authority. Pause,
+buffering, between-video transition, recovery, error, and terminal states close
+the active segment. Between videos the state returns to neutral and the
+configured transition owner runs.
 
 Every sample records wall and monotonic timestamps, LSL-compatible timestamp,
 state-anchor age, nominal rate, observable jitter/gap context, exact stimulus
@@ -230,23 +283,21 @@ lifecycle, stimulus, input-edge, pause/resume, timing-gap, write/recovery, and
 terminal events. It excludes raw names, composed characters, arbitrary error
 text, settings bodies, native paths, and video data.
 
-## Frozen code boundary
+## Historical source boundary
 
-The active build must make frozen WebXR/Quest, remote/VDO/BRSP, Face/Photoatlas,
-direct Polar, Touch inference, Ground Control/Party, Screen Calibration,
-Windows 95, phone/Picture-in-Picture, matrix traversal, and cross-platform
-packaging paths inert and absent from active navigation. Loading Research must
-not construct their clients, request their permissions, or fetch their assets.
-
-Historical code and provenance may remain during reduction. If reachable, its
-existing privacy, security, attribution, and licensing constraints still bind.
-No historical test, build, or physical receipt qualifies the changed Research
-runtime.
+Superseded WebXR/Quest, remote/VDO/BRSP, Face/Photoatlas, direct Polar, Touch,
+Ground Control/Party, calibration, retro/phone presentation, and cross-platform
+packaging source is not part of the active tree or artifact closure. It remains
+recoverable from Playground and Git history only. Build verification must fail
+if those surfaces, assets, routes, permissions, or dependencies re-enter an
+active Research artifact without an explicit charter change.
 
 ## Platform expectations
 
 - Package and qualify Tauri on Windows first. Retain the bundle ID while using
-  the new product/data namespace.
+  the new product/data namespace. A qualified package contains the exact pinned
+  libVLC runtime and approved native actor; package integrity alone does not
+  prove playback behavior.
 - Qualify desktop Chrome and Edge independently, including File System Access,
   permission renewal, worker timing, IndexedDB recovery, video playback, and
   offline behavior.

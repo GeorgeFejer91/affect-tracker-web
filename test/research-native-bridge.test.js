@@ -5,9 +5,33 @@ import { readFile } from "node:fs/promises";
 import {
   authorizeDesktopPlaybackMode,
   mediaFailureReport,
+  nativeInputBindingSupported,
+  nativeInputPresetAvailability,
+  nativeInputRegionRequest,
   participantStateDetail,
   probeAndAttestNativeVideo,
 } from "../site/src/research/native-bridge.js";
+
+test("Tauri exposes only implemented native input presets and bounded client regions", () => {
+  const capability = {
+    nativeAuthorityReady: true,
+    supportedPresets: ["arrowKeys", "wasd", "ijkl", "numpad", "mouseButtonsWheel", "custom"],
+  };
+  const availability = nativeInputPresetAvailability(capability);
+  assert.equal(availability["arrow-keys"], true);
+  assert.equal(availability["pointer-grid"], false);
+  assert.equal(availability["gamepad-dpad"], false);
+  assert.equal(nativeInputBindingSupported({
+    preset: "custom", kind: "digital",
+    directions: { up: { kind: "gamepadButton", button: 0 } },
+  }, capability), false);
+  assert.deepEqual(nativeInputRegionRequest({
+    getBoundingClientRect: () => ({ left: 10, top: 20, right: 110, bottom: 220, width: 100, height: 200 }),
+  }, "runFeedback", 7, { innerWidth: 800, innerHeight: 600 }), {
+    purpose: "runFeedback", layoutEpoch: 7, left: 10, top: 20, width: 100, height: 200,
+    viewportWidth: 800, viewportHeight: 600,
+  });
+});
 
 test("desktop playback defaults qualified and requires an explicit unqualified fallback", () => {
   const unavailable = {
@@ -151,6 +175,11 @@ test("desktop entrypoint activates only the path-free Research native bridge", a
     "research_rescan_stimuli",
     "research_import_stimuli",
     "research_native_media_capability",
+    "research_input_capability",
+    "research_input_set_region",
+    "research_input_begin_test",
+    "research_input_begin_capture",
+    "research_input_status",
     "research_storage_readiness",
     "research_start_run",
     "research_resume_run",
@@ -160,5 +189,6 @@ test("desktop entrypoint activates only the path-free Research native bridge", a
   ]) assert.match(source, new RegExp(`"${command}"`, "u"));
   assert.match(source, /selectionEnabled/u);
   assert.match(source, /playbackMode/u);
+  assert.doesNotMatch(source, /research_update_affect_state|research_gamepad_button/u);
   assert.doesNotMatch(source, /invoke\([^\n]+(?:filePath|rootPath|outputPath)/u);
 });
