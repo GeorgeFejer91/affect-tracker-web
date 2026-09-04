@@ -8521,7 +8521,18 @@ mod tests {
                 media_time_ms: 0.0,
             })
             .unwrap();
-        thread::sleep(Duration::from_millis(300));
+        let durable_sample_threshold =
+            (u64::from(settings.experiment.sampling_frequency_hz) / 4).max(1);
+        let sample_deadline = Instant::now() + Duration::from_secs(5);
+        while runtime.status().sample_count < durable_sample_threshold
+            && Instant::now() < sample_deadline
+        {
+            thread::sleep(Duration::from_millis(5));
+        }
+        assert!(
+            runtime.status().sample_count >= durable_sample_threshold,
+            "the scheduler did not publish a journal-checkpointed sample prefix before the bounded deadline"
+        );
         let live_recovery = runtime.list_recoveries(&workspace_id).unwrap();
         assert!(live_recovery.recoveries[0].partial_sample_count > 0);
         runtime.shutdown();
