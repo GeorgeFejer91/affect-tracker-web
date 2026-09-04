@@ -1,27 +1,33 @@
 [package]
-name = "affect-tracker-desktop"
-version = "0.3.0"
-description = "Offline Tauri companion for the Affect Tracker"
+name = "affect-research"
+version = "0.4.0-alpha.1"
+description = "Local-first video affect research instrument"
 authors = ["George Fejer"]
 edition = "2021"
 license = "BSD-3-Clause"
-repository = "https://github.com/GeorgeFejer91/affect-tracker-web"
+repository = "https://github.com/GeorgeFejer91/affect-tracker-research"
 
 [lib]
-name = "affect_tracker_desktop"
+name = "affect_research"
 crate-type = ["lib", "cdylib", "staticlib"]
 
 [build-dependencies]
+sha2 = "0.10"
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-affect-tracker-study-core = { path = "../crates/study-core" }
+fs2 = "0.4"
 labstream = { version = "0.1.0", optional = true }
 monio = "0.1.1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10"
-tauri = { version = "2", features = ["macos-private-api", "tray-icon"] }
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+time = { version = "0.3", features = ["formatting", "macros"] }
+unicode-normalization = "0.1"
+unicode-segmentation = "1"
+url = "2"
 uuid = { version = "1", features = ["serde", "v4"] }
 
 [features]

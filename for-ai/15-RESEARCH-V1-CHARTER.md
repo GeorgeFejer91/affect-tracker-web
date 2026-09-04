@@ -303,6 +303,12 @@ state under earlier timestamps.
 
 Each row records both LSL-compatible and monotonic timing, anchor age, and
 observable jitter/gap context so cadence can be audited rather than inferred.
+Each uninterrupted sampling segment schedules its first row one full period
+after the authoritative stimulus-start or resume boundary. Scheduler lateness
+is the non-negative delay from that row's own deadline; scheduler jitter is the
+signed change in lateness from the previous accepted row in the same segment,
+and is exactly zero for the segment's first row. `animationActive` is true only
+while Flubber is enabled and its acquisition segment is actively playing.
 
 ## Outbound LSL
 

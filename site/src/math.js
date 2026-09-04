@@ -229,7 +229,12 @@ function hexToRgb(value) {
   return match ? match.slice(1).map((component) => Number.parseInt(component, 16)) : null;
 }
 
-export function affectPaletteColor(x, y, palette = DEFAULT_AFFECT_PALETTE) {
+export function affectPaletteColor(
+  x,
+  y,
+  palette = DEFAULT_AFFECT_PALETTE,
+  saturation = Math.hypot(x, y),
+) {
   const anchors = {
     up: hexToRgb(palette.up) ?? hexToRgb(DEFAULT_AFFECT_PALETTE.up),
     down: hexToRgb(palette.down) ?? hexToRgb(DEFAULT_AFFECT_PALETTE.down),
@@ -247,7 +252,7 @@ export function affectPaletteColor(x, y, palette = DEFAULT_AFFECT_PALETTE) {
   if (total <= Number.EPSILON) return `rgb(${neutral.join(" ")})`;
   const directional = neutral.map((_, component) => Object.entries(weights)
     .reduce((sum, [name, weight]) => sum + anchors[name][component] * weight, 0) / total);
-  const intensity = clamp(Math.hypot(x, y), 0, 1);
+  const intensity = clamp(saturation, 0, 1);
   const result = neutral.map((value, component) => Math.round(mix(value, directional[component], intensity)));
   return `rgb(${result.join(" ")})`;
 }
@@ -261,12 +266,28 @@ export function buildFlubberPath({
   palette,
   amplitudeScale = 1,
   disorderScale = 1,
+  projectionAmplitude = null,
+  edgeSmoothness = null,
+  pulseSynchrony = null,
+  amplitudeVariation = null,
+  colorSaturation = null,
   baseShape = DEFAULT_FLUBBER_BASE_SHAPE,
   reducedMotion = false,
 }) {
   const parameters = affectParameters(x, y);
-  const adjustedAmplitude = parameters.amplitude * clamp(amplitudeScale, 0, 2);
+  const adjustedAmplitude = projectionAmplitude === null
+    ? parameters.amplitude * clamp(amplitudeScale, 0, 2)
+    : clamp(projectionAmplitude, 0, 1);
   const adjustedDisorder = parameters.disorder * clamp(disorderScale, 0, 2);
+  const smoothness = edgeSmoothness === null
+    ? parameters.shapeMix
+    : clamp(edgeSmoothness, 0, 1);
+  const synchrony = pulseSynchrony === null
+    ? clamp(1 - adjustedDisorder, 0, 1)
+    : clamp(pulseSynchrony, 0, 1);
+  const sizeVariation = amplitudeVariation === null
+    ? adjustedDisorder
+    : clamp(amplitudeVariation, 0, 1);
   const { vertexCount, waveCount, pointy, rounded, baseShapes } = profiles;
   const baseProfile = baseShapes?.[baseShape];
   if (!baseProfile || !FLUBBER_BASE_SHAPES.includes(baseShape)) {
@@ -279,9 +300,9 @@ export function buildFlubberPath({
 
   for (let index = 0; index < vertexCount; index += 1) {
     const waveIndex = Math.floor((index + verticesPerWave / 2) / verticesPerWave) % waveCount;
-    const shape = pointy[index] * (1 - parameters.shapeMix) + rounded[index] * parameters.shapeMix;
-    const wave = 0.5 + oscillationDepth * Math.sin(phase + adjustedDisorder * offsets.phases[waveIndex]);
-    const asymmetry = 1 + adjustedDisorder * offsets.amplitudes[waveIndex];
+    const shape = pointy[index] * (1 - smoothness) + rounded[index] * smoothness;
+    const wave = 0.5 + oscillationDepth * Math.sin(phase + (1 - synchrony) * offsets.phases[waveIndex]);
+    const asymmetry = 1 + sizeVariation * offsets.amplitudes[waveIndex];
     const deformation = (1 + shape * adjustedAmplitude * wave * asymmetry) * scale;
     const px = deformation * baseProfile.x[index];
     const py = deformation * baseProfile.y[index];
@@ -291,7 +312,9 @@ export function buildFlubberPath({
 
   return {
     path: pathParts.join(""),
-    color: palette ? affectPaletteColor(x, y, palette) : affectColor(parameters.angle01, parameters.saturation),
+    color: palette
+      ? affectPaletteColor(x, y, palette, colorSaturation ?? parameters.saturation)
+      : affectColor(parameters.angle01, colorSaturation ?? parameters.saturation),
     parameters,
   };
 }

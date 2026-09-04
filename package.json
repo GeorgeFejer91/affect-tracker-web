@@ -1,26 +1,29 @@
 {
-  "name": "affect-tracker-web",
-  "version": "1.0.0",
+  "name": "affect-tracker-research",
+  "version": "0.4.0-alpha.1",
   "private": true,
   "type": "module",
-  "description": "A browser-only 2D affect tracker inspired by AffectTracker.",
+  "description": "Local-first continuous video affect research instrument.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/GeorgeFejer91/affect-tracker-research.git"
+  },
+  "homepage": "https://GeorgeFejer91.github.io/affect-tracker-research/",
   "scripts": {
-    "test": "node --test",
-    "test:web": "node --test",
-    "stress:flubber-shapes": "node scripts/stress-flubber-shapes.js",
-    "build:study-core-wasm": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-study-core-wasm.ps1",
+    "test": "node --test test/research-*.test.js",
+    "test:research": "node --test test/research-*.test.js",
+    "test:archive": "node --test",
+    "test:web": "node --test test/research-*.test.js",
+    "build:pages": "node scripts/build-research-pages.js && node scripts/verify-research-build.js pages",
     "serve": "python -m http.server 8000 --directory site",
     "desktop:dev": "vite --config desktop/vite.config.js",
-    "desktop:build": "vite build --config desktop/vite.config.js",
+    "desktop:build": "vite build --config desktop/vite.config.js && node scripts/verify-research-build.js desktop",
     "desktop:preview": "vite preview --config desktop/vite.config.js",
     "desktop:icons": "tauri icon desktop/icons/app-icon.svg -o src-tauri/icons",
     "desktop:bundle": "tauri build --bundles nsis"
   },
   "engines": {
     "node": ">=22.12.0"
-  },
-  "dependencies": {
-    "three": "0.184.0"
   },
   "devDependencies": {
     "@tauri-apps/api": "2.11.1",

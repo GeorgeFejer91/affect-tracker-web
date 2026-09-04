@@ -2,20 +2,55 @@ use std::env;
 use std::path::Path;
 use std::process::Command;
 
+#[path = "native-media/runtime_manifest.rs"]
+mod runtime_manifest;
+
 const BUILD_COMMIT_OVERRIDE: &str = "AFFECT_TRACKER_BUILD_COMMIT";
+const REQUIRE_NATIVE_MEDIA_RUNTIME: &str = "AFFECT_RESEARCH_REQUIRE_LIBVLC_RUNTIME";
 
 fn main() {
     println!("cargo:rerun-if-env-changed={BUILD_COMMIT_OVERRIDE}");
+    println!("cargo:rerun-if-env-changed={REQUIRE_NATIVE_MEDIA_RUNTIME}");
+    println!("cargo:rerun-if-changed=native-media");
     println!("cargo:rerun-if-changed=../.git/HEAD");
     println!("cargo:rerun-if-changed=../.git/index");
     println!("cargo:rerun-if-changed=src");
-    println!("cargo:rerun-if-changed=../crates/study-core");
     println!("cargo:rerun-if-changed=../desktop");
 
     let manifest_dir = env::var("CARGO_MANIFEST_DIR").expect("Cargo must provide its manifest dir");
+    verify_required_native_media_runtime(Path::new(&manifest_dir));
     let build_commit = resolve_build_commit(Path::new(&manifest_dir));
     println!("cargo:rustc-env=AFFECT_TRACKER_BUILD_COMMIT={build_commit}");
     tauri_build::build()
+}
+
+fn verify_required_native_media_runtime(manifest_dir: &Path) {
+    if env::var(REQUIRE_NATIVE_MEDIA_RUNTIME).ok().as_deref() != Some("1") {
+        return;
+    }
+    assert_eq!(
+        env::var("CARGO_CFG_TARGET_OS").ok().as_deref(),
+        Some("windows"),
+        "required native media runtime supports only the pinned Windows target"
+    );
+    assert_eq!(
+        env::var("CARGO_CFG_TARGET_ARCH").ok().as_deref(),
+        Some("x86_64"),
+        "required native media runtime supports only the pinned x64 target"
+    );
+    let root = manifest_dir.join(runtime_manifest::RUNTIME_RELATIVE_ROOT);
+    runtime_manifest::verify_runtime_tree(&root).unwrap_or_else(|error| {
+        panic!(
+            "required native media runtime failed closed: {}",
+            error.code.as_str()
+        )
+    });
+    let _pins = (
+        runtime_manifest::PINNED_LIBVLC_VERSION,
+        runtime_manifest::PINNED_TARGET,
+        runtime_manifest::PINNED_ARCHIVE_SHA256,
+        runtime_manifest::PINNED_SOURCE_SHA256,
+    );
 }
 
 fn resolve_build_commit(manifest_dir: &Path) -> String {

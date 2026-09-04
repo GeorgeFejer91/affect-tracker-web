@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Affect Tracker Desktop",
-  "version": "0.3.0",
+  "productName": "Affect Research",
+  "version": "0.4.0-alpha.1",
   "identifier": "io.github.georgefejer91.affecttracker",
   "build": {
     "beforeDevCommand": "pnpm desktop:dev",
@@ -10,30 +10,29 @@
     "frontendDist": "../desktop/dist"
   },
   "app": {
-    "macOSPrivateApi": true,
     "windows": [
       {
-        "label": "settings",
-        "title": "Affect Tracker Desktop",
+        "label": "research",
+        "title": "Affect Research",
         "url": "index.html",
-        "width": 980,
-        "height": 820,
-        "minWidth": 680,
-        "minHeight": 620,
+        "width": 1280,
+        "height": 860,
+        "minWidth": 900,
+        "minHeight": 640,
         "center": true,
         "visible": true
       }
     ],
     "security": {
-      "csp": "default-src 'self'; connect-src ipc: http://ipc.localhost wss://wss.vdo.ninja https://turnservers.vdo.ninja; img-src 'self' data:; style-src 'self'; script-src 'self'"
+      "csp": "default-src 'self'; base-uri 'self'; connect-src ipc: http://ipc.localhost; img-src 'self' data: blob:; media-src 'self' blob: http://research-media.localhost research-media:; object-src 'none'; frame-src 'none'; style-src 'self'; script-src 'self'"
     }
   },
   "bundle": {
     "active": true,
     "targets": "all",
-    "category": "HealthcareAndFitness",
-    "shortDescription": "Floating valence-arousal tracker with local LSL streaming",
-    "longDescription": "A cross-platform offline affect tracker that mirrors the GitHub Pages application and publishes local Lab Streaming Layer streams.",
+    "category": "Education",
+    "shortDescription": "Local-first continuous video affect research instrument",
+    "longDescription": "A focused Windows research application for configuring and running continuous valence-arousal video studies with durable local records and optional outbound Lab Streaming Layer streams.",
     "copyright": "Copyright 2026 George Fejer",
     "icon": [
       "icons/32x32.png",
@@ -41,6 +40,10 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
+    ],
+    "resources": [
+      "native-media/libvlc-runtime-v1.json",
+      "native-media/runtime/**/*"
     ]
   }
 }

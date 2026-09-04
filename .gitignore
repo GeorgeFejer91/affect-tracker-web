@@ -2,6 +2,7 @@
 Thumbs.db
 .codex-remote-attachments/
 node_modules/
+dist-pages/
 desktop/dist/
 src-tauri/target/
 crates/*/target/

@@ -5,7 +5,7 @@ const desktopRoot = resolve(import.meta.dirname);
 
 export default defineConfig({
   root: desktopRoot,
-  publicDir: resolve(desktopRoot, "../site/vendor"),
+  publicDir: false,
   clearScreen: false,
   server: {
     port: 1420,
@@ -13,14 +13,10 @@ export default defineConfig({
     fs: { allow: [resolve(desktopRoot, "..")] },
   },
   build: {
-    target: ["es2021", "chrome105", "safari13"],
+    target: ["es2021", "chrome105"],
     emptyOutDir: true,
     rollupOptions: {
-      input: {
-        settings: resolve(desktopRoot, "index.html"),
-        overlay: resolve(desktopRoot, "overlay.html"),
-        study: resolve(desktopRoot, "study.html"),
-      },
+      input: { research: resolve(desktopRoot, "index.html") },
     },
   },
 });

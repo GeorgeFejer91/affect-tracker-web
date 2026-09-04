@@ -7,38 +7,106 @@
 
 ## Active Research v1 status
 
-The charter is an approved target, not implementation evidence. `main` retains
-the feature-rich implementation history through `5df1e53`; it is not yet
-Research-v1-compliant, research-ready, or stable. The exact feature-rich freeze
-remains branch `checkpoint/feature-rich-2026-09-03` and annotated tag
-`checkpoint-2026-09-03-feature-rich`, both at `34a137d9d6d0f33a8e5ebef6c04bf8bc0219fd86`.
-The separate `GeorgeFejer91/affect-tracker-playground` repository preserves the
-post-checkpoint source on branch `history/post-checkpoint-source-main` at exact
-commit `5df1e5365aacd2e59cd36347d752b003f1af432d`; that branch does not redefine the
-Research checkpoint refs.
+The charter is an approved target, not implementation or qualification
+evidence. The first internal candidate is `0.4.0-alpha.1`; it is neither stable
+nor research-ready.
 
-The first internal Research build is `0.4.0-alpha.1`. Deliver it in these
-coherent phases, preserving strict contracts and qualification evidence at each
-boundary:
+### Repository transition — verified
 
-1. **Authority and storage:** add the strict Research contracts, canonical
-   hashing, explicit legacy-settings importer, Research storage namespace, and
-   narrow Tauri/browser workspace adapters.
-2. **Setup instrument:** implement the seven ordered single-open accordions,
-   persistent preview, full video catalogue, input binding/capture, visual and
-   color controls, exact affect mappings, and Research-only LSL settings.
-3. **Assignment and preflight:** implement one-hat and stratified pools,
-   Williams/cyclic ordering, deterministic `balanced-v1`, participant-plan
-   preview/export/hash, reconstructed participant states, demographics
-   minimization, and all blocking capacity/media/input/output checks.
-4. **Run and evidence:** implement the narrowed Run surface, scheduler and input
-   ownership, CSV/TSV parity, semantic events, manifests, no-overwrite attempts,
-   controlled partial finalization, crash journals, and safe-boundary recovery.
-5. **Qualification:** pass the exact Windows Tauri and visible desktop
-   Chrome/Edge timing, persistence, failure, accessibility, media, and
-   independent LSL receiver gates in
-   [`30-TESTING-AND-RELEASE.md`](./30-TESTING-AND-RELEASE.md), and verify that no
-   frozen Playground surface remains reachable from the Research product.
+- Research retains the feature-rich source history through exact commit
+  `5df1e5365aacd2e59cd36347d752b003f1af432d`. The active implementation branch
+  `research/video-protocol-v1` was cut from Research charter commit
+  `8a3df6fbb2be0cc20ebc4635ba85e4104a56a934`.
+- Branch `checkpoint/feature-rich-2026-09-03` and annotated tag
+  `checkpoint-2026-09-03-feature-rich` both resolve to exact approved commit
+  `34a137d9d6d0f33a8e5ebef6c04bf8bc0219fd86` in Research and Playground.
+- `GeorgeFejer91/affect-tracker-playground` preserves the mirrored branch/tag
+  graph. Its `main` has exactly one checkpoint descendant, relocation-only
+  commit `5d1f5fa3d30f93b3f2797a74b02e1f336acb7bc3`. The complete later source
+  lineage is retained separately on `history/post-checkpoint-source-main` at
+  exact commit `5df1e5365aacd2e59cd36347d752b003f1af432d`.
+- None of the Research implementation work changes the checkpoint branch/tag or
+  turns that checkpoint into a release or qualification claim.
+
+### Current automated implementation evidence
+
+The `research/video-protocol-v1` candidate currently contains:
+
+- focused Research-only Pages and desktop entrypoints, allowlisted artifact
+  builders, and tests intended to prevent legacy Playground surfaces or assets
+  from entering active bundles;
+- strict JavaScript and Rust Research contracts, canonical JSON/SHA-256
+  utilities, explicit legacy-import reporting, deterministic Williams/cyclic
+  `balanced-v1` assignment, plan hashing, and tabular output utilities;
+- the two-mode Setup/Run presentation, seven ordered Setup accordions,
+  persistent feedback preview, participant planning, input configuration,
+  appearance/color/mapping controls, and blocking preflight presentation;
+- browser workspace/catalogue handling, dedicated-worker sampling, explicit
+  timing-gap records, IndexedDB attempt journals, CSV/TSV materialization, and
+  partial/final attempt paths; and
+- narrow Rust workspace, contract, input, timing, run, persistence, and LSL
+  modules for the Windows Tauri authority.
+
+The Research workflows build the isolated Pages artifact and Windows Tauri
+candidate. The internal packaging workflow is manual-only, repeats frontend and
+Rust format/check/test/clippy gates, uploads an unsigned workflow artifact, and
+has no tag or GitHub Release path.
+
+These items are code and automated-test evidence only. Until the exact candidate
+is committed, pushed, passes CI, and produces the receipts below, they do not
+prove installed-app integration, durable recovery, real media decoding,
+scheduler performance, LSL interoperability, accessibility, or physical study
+operation.
+
+### Software evidence still required before candidate acceptance
+
+- Prove the packaged desktop WebView drives only the narrow Rust workspace/run
+  commands, including readiness, lifecycle, native input, LSL, finalization,
+  and safe-boundary crash recovery.
+- Prove durable sample/journal watermarks, CSV/TSV prefix parity, create-new
+  concurrency, corrupt-journal quarantine, quota/full-disk behavior, revoked
+  directory permissions, forced termination, and idempotent recovery
+  materialization in both adapters.
+- Prove actual local/repository video bytes, duration, and decode readiness on a
+  clean Windows installation and current Chrome/Edge. Keep YouTube explicitly
+  unverified/noncanonical and block it wherever the declared platform path is
+  not feasible.
+- Close browser/Rust schema-domain differences and run shared canonical-hash,
+  assignment, input, mapping, sample/event/manifest, and legacy-import fixtures
+  through both authorities.
+- Add end-to-end keyboard, focus, error-announcement, Setup-to-Run, Stop Early,
+  completion, rerun, and recovery tests in addition to static/unit coverage.
+
+### Qualification receipts — all pending
+
+No physical or installed-artifact qualification receipt exists yet for Research
+v1. Before any research-ready or stable claim, record all of the following for
+the exact candidate:
+
+1. Separate visible 30-minute runs at 130 Hz on declared Windows hardware in
+   packaged Tauri, current Chrome, and current Edge: observed rate 129–131 Hz;
+   p95 lateness no more than two periods; input-state p95 no more than two
+   periods in Tauri and three in browsers; zero silent gaps, backfill, or corrupt
+   rows; and an explicit event for every missed slot.
+2. Representative 1 Hz and 240 Hz runs plus pause, buffering, visibility loss,
+   each between-video policy, neutral reset, permission renewal/loss, crash,
+   power interruption, unavailable IndexedDB, quota/full disk, and safe-boundary
+   resume.
+3. Independent LSL receiver and LabRecorder evidence for channel order,
+   metadata, nominal rate, monotonic/LSL timestamps, lifecycle markers,
+   disconnect/reconnect, gap reporting, and clean shutdown.
+4. Real keyboard, mouse, wheel, pointer/trackpad, and gamepad checks; a complete
+   keyboard-only Setup and Run; visible focus, labels/statuses, non-color
+   meaning, zoom/contrast, announcements, and reduced-motion behavior.
+5. Cache-bypassed verification of the exact deployed Pages commit at
+   `https://GeorgeFejer91.github.io/affect-tracker-research/` and a real launch
+   of the exact unsigned Windows installer artifact. Experimental YouTube stays
+   outside research qualification; Tauri support additionally requires its own
+   CSP/referrer feasibility receipt.
+
+Until those receipts exist, retain the internal, non-research-ready
+`0.4.0-alpha.1` label and do not create a public GitHub Release, signed
+installer, auto-updater, store submission, or stable-release claim.
 
 ## Frozen Playground/history roadmap
 

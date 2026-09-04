@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "research-window",
+  "description": "Run the local Affect Research command surface in the sole Research window.",
+  "windows": ["research"],
+  "permissions": []
+}

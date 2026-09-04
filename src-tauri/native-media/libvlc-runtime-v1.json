@@ -1,0 +1,21 @@
+{
+  "schema": "affect-research-native-media-runtime-pin",
+  "version": 1,
+  "backend": "libvlc",
+  "runtimeVersion": "3.0.23",
+  "target": "win-x64",
+  "archive": {
+    "fileName": "vlc-3.0.23-win64.zip",
+    "url": "https://download.videolan.org/pub/videolan/vlc/3.0.23/win64/vlc-3.0.23-win64.zip",
+    "sha256": "992d19dbd0b8a7cde9167d2f7780b1ef6f92acc8a71acfa736101a21f35181e1"
+  },
+  "source": {
+    "fileName": "vlc-3.0.23.tar.xz",
+    "url": "https://download.videolan.org/pub/videolan/vlc/3.0.23/vlc-3.0.23.tar.xz",
+    "sha256": "e891cae6aa3ccda69bf94173d5105cbc55c7a7d9b1d21b9b21666e69eff3e7e0"
+  },
+  "apiDocumentation": "https://videolan.videolan.me/vlc-3.0/",
+  "licenseDocumentation": "https://www.videolan.org/press/lgpl-libvlc.html",
+  "productName": "Affect Research",
+  "trademarkBoundary": "The dependency is identified descriptively as libVLC. Affect Research does not use VLC or VideoLAN branding as its product identity."
+}
