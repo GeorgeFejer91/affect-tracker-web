@@ -1,5 +1,6 @@
 export const BROWSER_WORKER_DIAGNOSTIC_SCHEMA = "affect-research-browser-worker-diagnostic";
-export const BROWSER_WORKER_DIAGNOSTIC_VERSION = 1;
+export const BROWSER_WORKER_DIAGNOSTIC_VERSION = 2;
+export const BROWSER_STATE_UPDATE_INTERVAL_MS = 2_000;
 
 function finiteNumber(value, label) {
   if (!Number.isFinite(value)) throw new TypeError(`${label} must be finite.`);
@@ -23,6 +24,38 @@ function rounded(value, digits = 6) {
   return value === null ? null : Number(value.toFixed(digits));
 }
 
+export function stateUpdateHasObservationWindow({
+  elapsedMs,
+  requestedDurationSeconds,
+  frequencyHz,
+}) {
+  const elapsed = finiteNumber(elapsedMs, "elapsedMs");
+  const requestedSeconds = finiteNumber(requestedDurationSeconds, "requestedDurationSeconds");
+  const frequency = positiveInteger(frequencyHz, "frequencyHz", 240);
+  if (elapsed < 0) throw new RangeError("elapsedMs must not be negative.");
+  if (requestedSeconds <= 0 || requestedSeconds > 1_800) {
+    throw new RangeError("requestedDurationSeconds must be in (0, 1800].");
+  }
+  const observationWindowMs = Math.max(50, 4 * (1_000 / frequency));
+  return requestedSeconds * 1_000 - elapsed > observationWindowMs;
+}
+
+export function plannedStateUpdateCount({
+  requestedDurationSeconds,
+  frequencyHz,
+  intervalMs = BROWSER_STATE_UPDATE_INTERVAL_MS,
+}) {
+  const requestedSeconds = finiteNumber(requestedDurationSeconds, "requestedDurationSeconds");
+  const frequency = positiveInteger(frequencyHz, "frequencyHz", 240);
+  const interval = positiveInteger(intervalMs, "intervalMs");
+  if (requestedSeconds <= 0 || requestedSeconds > 1_800) {
+    throw new RangeError("requestedDurationSeconds must be in (0, 1800].");
+  }
+  const observationWindowMs = Math.max(50, 4 * (1_000 / frequency));
+  const dispatchWindowMs = requestedSeconds * 1_000 - observationWindowMs;
+  return dispatchWindowMs > 0 ? Math.ceil(dispatchWindowMs / interval) : 0;
+}
+
 function sampleIsValid(sample, frequencyHz, stimulusId, stimulusEpoch) {
   if (!sample || typeof sample !== "object" || Array.isArray(sample)) return false;
   return Number.isSafeInteger(sample.sequence)
@@ -37,7 +70,8 @@ function sampleIsValid(sample, frequencyHz, stimulusId, stimulusEpoch) {
     && Math.abs(sample.latenessMs - Math.max(0, sample.observedMonotonicMs - sample.scheduledMonotonicMs)) <= 0.001
     && Number.isFinite(sample.currentValence)
     && Number.isFinite(sample.currentArousal)
-    && Number.isFinite(sample.anchorAgeMs);
+    && Number.isFinite(sample.anchorAgeMs)
+    && sample.anchorAgeMs >= 0;
 }
 
 function gapIsValid(gap, frequencyHz, stimulusId, stimulusEpoch) {
@@ -125,8 +159,10 @@ export class BrowserWorkerTimingAccumulator {
     this.maximumLatenessMs = this.maximumLatenessMs === null
       ? sample.latenessMs
       : Math.max(this.maximumLatenessMs, sample.latenessMs);
+    const reconstructedAnchorMonotonicMs = sample.observedMonotonicMs - sample.anchorAgeMs;
     if (this.pendingStateUpdate
-      && Math.abs(sample.currentValence - this.pendingStateUpdate.currentValence) <= Number.EPSILON) {
+      && Math.abs(sample.currentValence - this.pendingStateUpdate.currentValence) <= Number.EPSILON
+      && Math.abs(reconstructedAnchorMonotonicMs - this.pendingStateUpdate.anchorMonotonicMs) <= 0.001) {
       this.stateLatencyValues.push(Math.max(0, sample.observedMonotonicMs - this.pendingStateUpdate.anchorMonotonicMs));
       this.matchedStateUpdateCount += 1;
       this.pendingStateUpdate = null;
@@ -173,14 +209,19 @@ export class BrowserWorkerTimingAccumulator {
     const overAccountedSlotCount = Math.max(0, accountedSlotCount - expectedSlotCount);
     const p95LatenessMs = percentile(this.latenessValues, 0.95);
     const p95StateLatencyMs = percentile(this.stateLatencyValues, 0.95);
+    const plannedControllerStateUpdateCount = plannedStateUpdateCount({
+      requestedDurationSeconds: requestedSeconds,
+      frequencyHz: this.frequencyHz,
+    });
     const thresholds = {
       thirtyMinuteWindow: requestedSeconds === 1_800 && actualMs >= 1_800_000,
       frequency130Hz: this.frequencyHz === 130,
       meanRate129To131Hz: meanRateHz !== null && meanRateHz >= 129 && meanRateHz <= 131,
       p95LatenessAtMostTwoPeriods: p95LatenessMs !== null && p95LatenessMs <= 2 * periodMs,
       controllerStateToSampleAtMostThreePeriods: p95StateLatencyMs !== null && p95StateLatencyMs <= 3 * periodMs,
-      everyControllerStateUpdateObserved: this.stateUpdateCount > 0
-        && this.matchedStateUpdateCount === this.stateUpdateCount,
+      everyControllerStateUpdateObserved: plannedControllerStateUpdateCount > 0
+        && this.stateUpdateCount === plannedControllerStateUpdateCount
+        && this.matchedStateUpdateCount === plannedControllerStateUpdateCount,
       visibleForEntireRun: environment?.visibilityLossCount === 0
         && environment?.hiddenDurationMs === 0,
       noSilentOrCorruptEvidence: this.sequenceErrorCount === 0
@@ -218,6 +259,7 @@ export class BrowserWorkerTimingAccumulator {
         accountedSlotCount,
         unaccountedSlotCount,
         overAccountedSlotCount,
+        plannedControllerStateUpdateCount,
         controllerStateUpdateCount: this.stateUpdateCount,
         matchedControllerStateUpdateCount: this.matchedStateUpdateCount,
         unmatchedControllerStateUpdateCount: this.stateUpdateCount - this.matchedStateUpdateCount,

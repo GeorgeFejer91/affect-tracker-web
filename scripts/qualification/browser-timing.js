@@ -1,4 +1,8 @@
-import { BrowserWorkerTimingAccumulator } from "./browser-timing-metrics.js";
+import {
+  BROWSER_STATE_UPDATE_INTERVAL_MS,
+  BrowserWorkerTimingAccumulator,
+  stateUpdateHasObservationWindow,
+} from "./browser-timing-metrics.js";
 
 const query = (selector) => document.querySelector(selector);
 const frequencyField = query("#frequency-hz");
@@ -106,6 +110,12 @@ function stateRecord(currentValence) {
 }
 
 function sendMeasuredState() {
+  if (!worker || stopping || startedMonotonicMs === null || requestedDurationSeconds === null) return;
+  if (!stateUpdateHasObservationWindow({
+    elapsedMs: performance.now() - startedMonotonicMs,
+    requestedDurationSeconds,
+    frequencyHz: accumulator.frequencyHz,
+  })) return;
   statePolarity *= -1;
   const state = stateRecord(statePolarity * 0.25);
   accumulator.noteStateUpdate(state);
@@ -214,7 +224,7 @@ function handleWorkerMessage({ data }) {
       setControls(true, true);
       setStatus(`Running at ${accumulator.frequencyHz} Hz for ${requestedDurationSeconds} seconds. Keep this browser window visible.`, "running");
       sendMeasuredState();
-      stateTimer = setInterval(sendMeasuredState, 2_000);
+      stateTimer = setInterval(sendMeasuredState, BROWSER_STATE_UPDATE_INTERVAL_MS);
       stopTimer = setTimeout(requestStop, requestedDurationSeconds * 1_000);
     } else if (commandType === "stimulus-stop") {
       workerCommand("stop");

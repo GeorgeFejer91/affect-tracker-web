@@ -266,8 +266,9 @@ operator-supplied, unverified candidate SHA plus the observed environment. Its
 receipt is deliberately labelled worker-only: it does not replace
 the required visible full-application runs, physical input, media, persistence,
 LSL, Chrome/Edge separation, or installed-artifact evidence.
-The worker-only threshold also requires full requested-window slot accounting,
-every diagnostic state update to appear in a sample, and zero visibility loss.
+The version 2 worker-only threshold also requires full requested-window slot
+accounting, the complete planned two-second state-probe schedule, exact
+state-anchor provenance for every matched probe, and zero visibility loss.
 
 ## LSL qualification
 

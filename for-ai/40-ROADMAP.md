@@ -43,8 +43,9 @@ The current `research/video-protocol-v1` working candidate contains:
 - browser worker clock-origin mapping, session/command/provenance fencing, and
   fail-closed media-to-sampler behavior intended to prevent stale rows from
   crossing stimulus or recovery boundaries, plus a non-production worker-only
-  diagnostic that exposes trailing silence, unmatched state updates, and
-  visibility loss without claiming full-application qualification;
+  diagnostic that exposes trailing silence, missing or unmatched planned state
+  probes, exact-anchor mismatches, and visibility loss without claiming
+  full-application qualification;
 - Rust Research contract, workspace, runtime, scheduler, persistence, input,
   LSL, participant-state, and narrow Tauri command modules, including exact
   run-ID binding for renderer lifecycle/finalization commands, selected-library
@@ -54,7 +55,7 @@ The current `research/video-protocol-v1` working candidate contains:
   strict Start/Resume/terminal receipt binding, explicit unknown-outcome
   reconciliation, and a reachable acquisition-free finalization action.
 
-The latest recorded combined local run passed 203/203 JavaScript tests. The
+The latest recorded combined local run passed 206/206 JavaScript tests. The
 Rust all-feature and no-default-feature matrices both passed 112/112 tests;
 format, both-matrix check and clippy, dependency audit, Pages/desktop builds,
 Research-only artifact closure, and the required-runtime NSIS bundle gate also
