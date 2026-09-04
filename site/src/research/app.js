@@ -2399,7 +2399,16 @@ function bindResearchInteractions(root, { surface }) {
     if (mode === "setup" && Number.isInteger(observation?.sequence)
       && observation.sequence > nativeInputLastSequence) {
       nativeInputLastSequence = observation.sequence;
-      if (observation.applyStep === true && inputBinding.kind === "digital") {
+      if (inputBinding.kind !== "digital"
+        && Number.isFinite(observation.x)
+        && Number.isFinite(observation.y)) {
+        updateInputPoint(
+          observation.x,
+          observation.y,
+          `Native ${observation.detail} accepted.`,
+          { inputActive: observation.inputActive, source: observation.detail },
+        );
+      } else if (observation.applyStep === true && inputBinding.kind === "digital") {
         const step = inputBinding.stepSize;
         const delta = {
           up: [0, step], down: [0, -step], left: [-step, 0], right: [step, 0],

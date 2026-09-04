@@ -71,12 +71,13 @@ face/touch experiments are outside active v1.
 - New Research data is never populated by automatic import from legacy
   application data.
 - Windows qualified local/repository media targets a pinned bundled libVLC
-  3.0.23 x64 runtime. Runtime verification is present; the audited actor remains
-  unavailable until its explicit `unsafe` approval and implementation land.
-- Tauri digital keyboard, mouse-button, and wheel input is owned by one safe
-  Rust service with focus/region fencing and one-use binding/device receipts.
-  Absolute pointer and gamepad presets remain disabled in Tauri until safe
-  native backends exist; this does not reduce the browser input contract.
+  3.0.23 x64 runtime. Runtime verification is present; the actor remains
+  unavailable until explicit `unsafe` approval, implementation, and audit land.
+- Tauri keyboard, mouse-button/wheel, absolute pointer/trackpad, and XInput
+  gamepad input is owned by one safe Rust service with focus/region fencing,
+  one-use binding/device receipts, and a bounded fail-closed Run mailbox.
+  Gamepad presets are advertised only when that backend starts; no preset may
+  fall back to WebView-originated Run input.
 - LSL is outbound, Windows-only, and shares the configured sampling rate; it
   does not imply clock synchronization with independent Polar software.
 - Signing, installer publication, updater/store work, production credentials,

@@ -24,9 +24,11 @@ pnpm desktop:build
 pnpm audit --audit-level=moderate
 cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
 cargo check --manifest-path src-tauri/Cargo.toml --locked --all-features
+cargo check --manifest-path src-tauri/Cargo.toml --locked --no-default-features
 cargo test --manifest-path src-tauri/Cargo.toml --locked --all-features
 cargo test --manifest-path src-tauri/Cargo.toml --locked --no-default-features
 cargo clippy --manifest-path src-tauri/Cargo.toml --locked --all-targets --all-features -- -D warnings
+cargo clippy --manifest-path src-tauri/Cargo.toml --locked --all-targets --no-default-features -- -D warnings
 ```
 
 Build the unsigned NSIS candidate only after staging and verifying the required native-media runtime.
@@ -41,6 +43,9 @@ the bundler exit code as runtime evidence.
 - Reject unknown fields, duplicate keys/IDs, wrong schemas/versions/algorithms,
   invalid enums/colors/paths, non-finite/out-of-range numbers, excessive
   counts/depth/bytes, and settings/plan/stimulus hash drift.
+- Require every nullable wire member to be present explicitly, reject
+  noncanonical frozen IDs/detail codes/URLs rather than rewriting them, and
+  enforce cross-field counts identically in Rust and JavaScript.
 - Prove canonical JSON and SHA-256 equality across Rust and browser fixtures.
 - Exercise explicit legacy import, reporting every default and discard. Prove
   that existing app data and browser storage never migrate automatically.
@@ -75,6 +80,22 @@ the bundler exit code as runtime evidence.
 - On Windows, require the Rust input authority to own capture, test, run
   preparation, device epochs, and the allowed input region. WebView controls
   such as Pause and Stop Early must never be interpreted as rating input.
+- Prove native callback ordering across keyboard/mouse and XInput sources,
+  absolute-pointer rejection outside the registered physical region, gamepad
+  device exclusivity/disconnect loss, the exact 128-edge queue bound,
+  authority-loss priority, continuous latest-state coalescing and its bounded
+  observable counter, Start/Resume handoff, Pause/terminal barriers, and
+  durable safe-boundary recovery after overflow or authority loss.
+- Prove the native dispatch barrier cannot be overtaken by Pause/Stop, the
+  digital FIFO fails closed rather than dropping an accepted edge, authority
+  loss outranks queued input, continuous coalescing remains bounded and
+  observable, and Start/Resume applies every accepted post-playback update
+  exactly once before the next authoritative sample.
+- Prove Pause, focus loss, and layout invalidation publish inactive state while
+  preserving the current rating coordinates without rearming held keys;
+  persistence failures during an input edge must stop
+  write-unhealthy without a recursive event; interrupt timeout must retain the
+  worker handle and input authority for later cleanup.
 - Verify Grid and Flubber independently/together, Size %, Transparency, hidden
   feedback without stopped acquisition, normalized drag bounds, sole Lock
   position ownership, forced Run lock, outline/halo/cursor geometry, and every
@@ -210,6 +231,10 @@ do not satisfy this gate.
   without demographics or acquisition preflights and bind its receipt to the
   exact durable run, participant, attempt, outcome, settings, plan, and playback
   provenance.
+- Inject every terminal write/sync/rename boundary, including a nonempty partial
+  final-manifest write. Across process reload, prove every exact canonical
+  manifest prefix is append-retryable and every divergent prefix is preserved
+  unchanged and quarantined.
 - Prove accepted evidence is never silently discarded, backfilled, relabelled,
   overwritten, or called Complete before durable finalization and lock release.
 
@@ -231,6 +256,18 @@ Also test 1 Hz and 240 Hz, pause, native/browser buffering, visibility loss,
 minimize/restore, sleep/wake, every between-video policy, neutral reset,
 state-anchor age, clock mapping, and recorded monotonic/LSL-compatible time and
 jitter. Rendering must never control the scheduler.
+
+The non-production worker diagnostic at
+`scripts/qualification/browser-timing.html` can be served with
+`pnpm qualification:browser:serve`. It exercises the exact browser sampling
+Worker, accounts every explicit missed slot, measures scheduler lateness and
+controller-state-to-sample latency, and emits a JSON record containing an
+operator-supplied, unverified candidate SHA plus the observed environment. Its
+receipt is deliberately labelled worker-only: it does not replace
+the required visible full-application runs, physical input, media, persistence,
+LSL, Chrome/Edge separation, or installed-artifact evidence.
+The worker-only threshold also requires full requested-window slot accounting,
+every diagnostic state update to appear in a sample, and zero visibility loss.
 
 ## LSL qualification
 

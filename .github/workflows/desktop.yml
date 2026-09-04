@@ -60,12 +60,16 @@ jobs:
         run: cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
       - name: Check native Research backend
         run: cargo check --locked --manifest-path src-tauri/Cargo.toml --all-features
+      - name: Check native Research backend without optional features
+        run: cargo check --locked --manifest-path src-tauri/Cargo.toml --no-default-features
       - name: Test native Research backend with all features
         run: cargo test --locked --manifest-path src-tauri/Cargo.toml --all-features
       - name: Test native Research backend without optional features
         run: cargo test --locked --manifest-path src-tauri/Cargo.toml --no-default-features
       - name: Lint native Research backend
         run: cargo clippy --locked --manifest-path src-tauri/Cargo.toml --all-targets --all-features -- -D warnings
+      - name: Lint native Research backend without optional features
+        run: cargo clippy --locked --manifest-path src-tauri/Cargo.toml --all-targets --no-default-features -- -D warnings
       - name: Build unsigned internal Windows alpha
         run: pnpm desktop:bundle
       - name: Record exact artifact identity

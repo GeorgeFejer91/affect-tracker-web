@@ -1,6 +1,7 @@
 mod research_commands;
 mod research_contracts;
 mod research_error;
+mod research_gamepad;
 mod research_input;
 mod research_lsl;
 mod research_native_media;
@@ -60,6 +61,13 @@ pub fn run() {
         })
         .on_window_event(|window, event| {
             if window.label() == "research" {
+                if matches!(event, WindowEvent::Destroyed) {
+                    if let Some(runtime) = window.try_state::<Arc<ResearchRuntime>>() {
+                        // The runtime must close its input-acceptance barrier and
+                        // checkpoint recovery before native input authority stops.
+                        runtime.shutdown();
+                    }
+                }
                 if let Some(input) = window.try_state::<Arc<ResearchInputService>>() {
                     match event {
                         WindowEvent::Moved(_) => {
@@ -78,11 +86,6 @@ pub fn run() {
                         WindowEvent::Focused(focused) => input.set_window_focused(*focused),
                         WindowEvent::Destroyed => input.shutdown(),
                         _ => {}
-                    }
-                }
-                if matches!(event, WindowEvent::Destroyed) {
-                    if let Some(runtime) = window.try_state::<Arc<ResearchRuntime>>() {
-                        runtime.shutdown();
                     }
                 }
             }

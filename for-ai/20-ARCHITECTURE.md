@@ -241,9 +241,30 @@ binding, device, and Setup-state changes invalidate evidence. Keyboard input is
 focus-fenced; mouse-button and wheel input are additionally restricted to
 native client-coordinate allow-regions for the visible test/capture/feedback
 surface. The active safe backend supports digital keyboard, mouse-button, and
-wheel bindings only. Absolute pointer and gamepad presets remain disabled in
-Tauri and must never fall back to WebView-originated Run input. Chrome/Edge keep
-their browser-owned pointer and Gamepad adapters.
+wheel bindings plus absolute pointer/trackpad input. A Windows-only, force-
+feedback-disabled XInput adapter supplies gamepad D-pad and stick events when
+its backend starts; otherwise those presets remain truthfully unavailable.
+The first active gamepad is locked for the attempt, stick values use the
+declared deadzone/orientation, and disconnect fails the run to its recovery
+boundary. None of these presets may fall back to WebView-originated Run input.
+Chrome/Edge keep their separate browser-owned pointer and Gamepad adapters.
+
+Native callbacks pass through one dispatch barrier so Pause, Stop, focus, and
+sink replacement cannot overtake already accepted input. The Run worker owns a
+separate mailbox: digital edges are FIFO-bounded and overflow fails closed;
+absolute/analog updates retain only the latest physical state while exposing a
+safe-integer coalescing count. Authority loss has priority. The worker drains
+accepted input before sampling and before any lifecycle boundary that stops
+acquisition. Physical observation time anchors input-to-state latency, while
+semantic records remain monotonically ordered at persistence time.
+Pause, focus loss, and layout invalidation publish a semantic inactive state
+that preserves the current rating coordinates through the same barrier while
+retaining held-key signatures until their
+physical release, so an OS repeat cannot become a new edge after resume. An
+input-origin contract fault may write a recovery interruption; an event,
+journal, or LSL persistence fault instead stops write-unhealthy without trying
+to append a second event. Interrupt timeouts retain the worker handle and input
+authority for a later cleanup attempt rather than detaching a live writer.
 
 The affect engine clamps current and target x/y to `[-1,1]`. Radius and angle
 derive from the same snapshot. Mapping drivers normalize x/y, radius, or angle;
@@ -331,6 +352,10 @@ that calls the Rust finalize-only command before demographics, input, timing,
 media, storage, or playback gates and does not start acquisition. Ordinary
 Tauri Setup initialization still performs its normal workspace rescan/WebView
 attestation and input-status polling before that action is selected.
+If a crash leaves `manifest.json` as any exact byte prefix of the frozen
+canonical pending manifest, reload may append only the exact remaining suffix,
+sync it, and verify complete identity. A divergent byte is never overwritten and
+the recovery remains quarantined.
 
 ## Outbound LSL boundary
 

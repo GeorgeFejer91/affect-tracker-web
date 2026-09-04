@@ -834,6 +834,10 @@ class FakeSamplingWorker extends EventTarget {
     } }));
   }
 
+  emitError(type = "error") {
+    this.dispatchEvent(new Event(type));
+  }
+
   terminate() { this.terminated = true; }
 }
 
@@ -944,6 +948,81 @@ test("browser run controller freezes one assignment and writes parity artifacts"
   assert.doesNotMatch(JSON.stringify(workspace.artifacts), /Emil|Fischer/u);
   assert.equal((await journal.getAttempt(receipt.runId)).status, "complete");
   assert.equal(controller.snapshot().mode, "setup");
+});
+
+test("browser worker message failure terminates acquisition, flushes accepted evidence, and preserves recovery", async () => {
+  const settings = oneVideoSettings();
+  const plan = await resolveAssignmentPlan(settings);
+  const journal = new MemoryResearchJournal();
+  const markInterrupted = journal.markInterrupted.bind(journal);
+  let resolveInterruption;
+  const interruption = new Promise((resolve) => { resolveInterruption = resolve; });
+  journal.markInterrupted = async (input) => {
+    const partial = await markInterrupted(input);
+    resolveInterruption(partial);
+    return partial;
+  };
+  const workspace = {
+    workspaceId: "11111111-1111-4111-8111-111111111111",
+    async createAttemptDirectory() { return { kind: "directory", name: "attempt" }; },
+    async openAttemptDirectory() { return { kind: "directory", name: "attempt" }; },
+    async writeAttemptArtifacts() { return []; },
+    async quarantineIncompleteAttemptArtifacts() { return []; },
+  };
+  const worker = new FakeSamplingWorker();
+  let id = 1;
+  const controller = new BrowserResearchRunController({
+    journal,
+    workspace,
+    workerFactory: () => worker,
+    cryptoObject: { randomUUID: () => `00000000-0000-4000-8000-${String(id++).padStart(12, "0")}` },
+    platform: "chrome",
+    now: () => Date.parse("2026-09-03T14:30:12.482Z"),
+    monotonicNow: () => 10,
+    flushIntervalMs: 1_000_000,
+  });
+  const runtimeErrors = [];
+  controller.addEventListener("runtimeerror", ({ detail }) => runtimeErrors.push(detail.code));
+  await controller.initialize();
+  await controller.start({
+    settings,
+    plan,
+    participantId: "P001",
+    participant: { participantCode: "LF", age: 27, gender: "W", handedness: "R" },
+    attemptNumber: 1,
+    preflight: {
+      inputTestPassed: true,
+      verifiedStimulusIds: ["video-1"],
+      directoryPermission: true,
+      indexedDbReady: true,
+      timingWorkerReady: true,
+      storageReady: true,
+      manifestReady: true,
+    },
+  });
+  await controller.startStimulus(0);
+  controller.updateAffect({ currentValence: 0.25, currentArousal: 0, mediaTimeMs: 500 });
+  worker.emitSample();
+  await new Promise((resolve) => setImmediate(resolve));
+
+  worker.emitError("messageerror");
+  const partial = await interruption;
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.equal(worker.terminated, true);
+  assert.equal(controller.snapshot().mode, "setup");
+  assert.deepEqual(runtimeErrors, ["sampling-worker"]);
+  assert.equal(partial.status, "partial");
+  assert.equal(partial.recoverable, true);
+  assert.equal(partial.interruption.reason, "sampling-worker-failed");
+  assert.equal(partial.interruption.restartStimulusIndex, 0);
+  assert.equal(partial.interruption.interruptedStimulusIndex, 0);
+  const samples = await journal.readRecords(partial.runId, { kind: "samples" });
+  assert.equal(samples.length, 1, "the sample accepted before the Worker error remains durable");
+  assert.equal(samples[0].currentValence, 0.25);
+  assert.deepEqual(await journal.participantStates(settings.experiment.id, ["P001"]), [
+    { participantId: "P001", state: "Partial", attempts: 1 },
+  ]);
 });
 
 test("browser controller fences on append failure, preserves accepted evidence, and records explicit recovery", async () => {

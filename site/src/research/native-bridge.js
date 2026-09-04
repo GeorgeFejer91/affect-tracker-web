@@ -24,11 +24,34 @@ export function nativeInputPresetAvailability(capability) {
 }
 
 export function nativeInputBindingSupported(binding, capability) {
-  if (capability?.nativeAuthorityReady !== true || binding?.kind !== "digital") return false;
+  if (capability?.nativeAuthorityReady !== true || !binding || typeof binding !== "object") return false;
   if (!(capability.supportedPresets ?? []).includes(binding.preset)) return false;
-  return Object.values(binding.directions ?? {}).every((token) => (
-    token?.kind === "keyboard" || token?.kind === "mouseButton" || token?.kind === "wheel"
-  ));
+  if (binding.kind === "absolute") {
+    return capability.supportsAbsolutePointer === true
+      && binding.preset === "pointerGrid"
+      && binding.axes?.x?.kind === "pointerAxis"
+      && binding.axes?.y?.kind === "pointerAxis";
+  }
+  if (binding.kind === "analog") {
+    return capability.supportsGamepad === true
+      && ["gamepadLeftStick", "gamepadRightStick"].includes(binding.preset)
+      && binding.axes?.x?.kind === "gamepadAxis"
+      && binding.axes?.y?.kind === "gamepadAxis";
+  }
+  if (binding.kind !== "digital") return false;
+  const directions = binding.directions ?? {};
+  if (Object.keys(directions).length !== 4) return false;
+  return ["up", "down", "left", "right"].every((direction) => {
+    const token = directions[direction];
+    if (token?.kind === "keyboard") return capability.supportsCustomKeyboard === true;
+    if (token?.kind === "mouseButton") return capability.supportsCustomMouseButtons === true;
+    if (token?.kind === "wheel") return capability.supportsCustomWheel === true;
+    if (token?.kind === "gamepadButton") {
+      return capability.supportsGamepad === true
+        && capability.supportsCustomGamepadButtons === true;
+    }
+    return false;
+  });
 }
 
 export function nativeInputRegionRequest(element, purpose, layoutEpoch, windowObject = globalThis.window) {
@@ -297,6 +320,7 @@ export function nativeRunStatusHandshake(status) {
     || !nonNegativeInteger(status.eventCount)
     || !nonNegativeInteger(status.gapEventCount)
     || !nonNegativeInteger(status.missedSlotCount)
+    || !nonNegativeInteger(status.coalescedInputUpdateCount)
     || !Number.isFinite(status.currentValence) || status.currentValence < -1 || status.currentValence > 1
     || !Number.isFinite(status.currentArousal) || status.currentArousal < -1 || status.currentArousal > 1
     || typeof status.inputActive !== "boolean"
@@ -333,6 +357,7 @@ export function nativeRunStatusHandshake(status) {
     && status.eventCount === 0
     && status.gapEventCount === 0
     && status.missedSlotCount === 0
+    && status.coalescedInputUpdateCount === 0
     && status.currentValence === 0
     && status.currentArousal === 0
     && status.inputActive === false
@@ -1992,7 +2017,7 @@ export class NativeResearchRuntimeBridge {
         : `Sampling is stopped and the rating is neutral. Next video in ${(status.transitionRemainingMs / 1_000).toFixed(1)} seconds.`;
     this.#dispatch(RESEARCH_UI_EVENTS.runStatus, {
       stimulus: `${run.index + 1}/${run.assignment.slots.length} · ${stimulus.title}`,
-      timing: `${status.sampleCount} rows · ${status.gapEventCount} gap events · ${status.missedSlotCount} missed slots`,
+      timing: `${status.sampleCount} rows · ${status.gapEventCount} gap events · ${status.missedSlotCount} missed slots · ${status.coalescedInputUpdateCount} coalesced input updates`,
       write: status.writeHealthy ? "Native journal synced" : `Write failure: ${status.failureCode ?? "unknown"}`,
       lsl: status.lslEnabled ? "Streaming" : "Off",
       x: status.currentValence,

@@ -42,7 +42,9 @@ The current `research/video-protocol-v1` working candidate contains:
   partial/final paths, pending-finalization recovery, and evidence quarantine;
 - browser worker clock-origin mapping, session/command/provenance fencing, and
   fail-closed media-to-sampler behavior intended to prevent stale rows from
-  crossing stimulus or recovery boundaries;
+  crossing stimulus or recovery boundaries, plus a non-production worker-only
+  diagnostic that exposes trailing silence, unmatched state updates, and
+  visibility loss without claiming full-application qualification;
 - Rust Research contract, workspace, runtime, scheduler, persistence, input,
   LSL, participant-state, and narrow Tauri command modules, including exact
   run-ID binding for renderer lifecycle/finalization commands, selected-library
@@ -52,14 +54,15 @@ The current `research/video-protocol-v1` working candidate contains:
   strict Start/Resume/terminal receipt binding, explicit unknown-outcome
   reconciliation, and a reachable acquisition-free finalization action.
 
-The latest recorded full JavaScript run passed 138/138 tests. The Rust
-all-feature and no-default-feature matrices both passed 78/78 tests; format,
-all-feature check, both-matrix clippy, dependency audit, Pages/desktop builds,
-Research-only artifact closure, and the required-runtime build gate also
-passed. These are local automated evidence only; installed-artifact and
-physical gates still require exact-candidate qualification before publication.
+The latest recorded combined local run passed 203/203 JavaScript tests. The
+Rust all-feature and no-default-feature matrices both passed 112/112 tests;
+format, both-matrix check and clippy, dependency audit, Pages/desktop builds,
+Research-only artifact closure, and the required-runtime NSIS bundle gate also
+passed. These dirty-tree/local automated results are not an exact committed-
+candidate or installed-artifact receipt; physical gates still require
+exact-candidate qualification before publication.
 
-## Native input status — safe digital authority implemented
+## Native input status — safe pointer and gamepad authority implemented
 
 Implemented:
 
@@ -67,18 +70,29 @@ Implemented:
   Run input without adding a local `unsafe` surface;
 - test receipts are one-use, expire after 15 minutes, and bind all four tested
   directions to the canonical binding hash and device epoch;
-- OS repeat is suppressed, capture conflicts fail closed, focus loss clears
-  held input, and Setup focus/binding/device changes invalidate evidence;
+- OS repeat is suppressed, capture conflicts fail closed, Pause/focus/layout
+  barriers publish inactive state without changing rating coordinates or
+  rearming held keys, and Setup
+  focus/binding/device changes invalidate evidence;
 - mouse-button and wheel actions are restricted to native client-coordinate
   regions for the visible test, capture, and Run-feedback surfaces; and
+- Pointer Grid projects only normalized coordinates after an inside-region
+  primary-button press, and a Windows-only XInput adapter supplies D-pad,
+  left-stick, right-stick, and custom gamepad-button semantics without exposing
+  dependency device identities;
+- a serialized callback barrier, bounded 128-edge FIFO, latest-state continuous
+  coalescing with an observable safe-integer counter, authority-loss priority,
+  persistence-failure classification, timeout-safe worker ownership, and durable
+  fail-closed recovery prevent silent native-input loss; and
 - Tauri no longer accepts WebView affect-state or gamepad-button updates as Run
   authority. Browser input behavior remains separate and unchanged.
 
-The current Tauri backend enables Arrow keys, WASD, IJKL, numpad,
-mouse-button/wheel, and compatible custom digital bindings. Pointer/trackpad
-Grid and all gamepad presets are truthfully disabled until safe native absolute
-pointer/gamepad backends land. Hardware, DPI, multi-monitor, focus, latency, and
-Pause/Stop-region qualification remains pending.
+The Tauri backend now enables Arrow keys, WASD, IJKL, numpad,
+mouse-button/wheel, Pointer Grid, gamepad D-pad/sticks, and compatible custom
+bindings when their native backends are available. This closes the software
+adapter portion of the former native-input roadmap item. Hardware, DPI,
+multi-monitor, focus, disconnect, latency, and Pause/Stop-region qualification
+remains pending and no physical-device claim is made from automated tests.
 
 ## Native libVLC status — safe groundwork only
 
@@ -121,8 +135,9 @@ Not implemented or qualified:
 The capability therefore reports `playerActorReady: false` and
 `qualifiedStartAvailable: false`; `nativeLibvlc` is the default but qualified
 Start fails closed. Implementing the remaining direct FFI/Win32 adapter requires
-explicit approval for the contained audited `unsafe` boundary. Staging the DLLs
-does not remove that gate and is not playback qualification.
+explicit approval for the contained `unsafe` boundary, followed by focused
+audit. Staging the DLLs does not remove that gate and is not playback
+qualification.
 
 ## Open software work before candidate acceptance
 
@@ -130,19 +145,15 @@ does not remove that gate and is not playback qualification.
    child-window adapter, connect player lifecycle atomically to the scheduler,
    and pass the security/lifecycle gates in
    [`30-TESTING-AND-RELEASE.md`](./30-TESTING-AND-RELEASE.md).
-2. Add safe native absolute-pointer and gamepad adapters before enabling those
-   presets in Tauri; until then they remain browser-only and explicitly blocked
-   by native preflight.
-3. Finish shared Rust/browser fixture parity, native libVLC-owned
-   duration/decode preflight, and platform capability truth for every source and
-   input preset.
-4. Extend the current retry-safe finalization tests with deterministic failures
-   after every write/sync/rename step, strict complete-record corruption
-   quarantine, worker-failure cleanup, input-queue overflow accounting, and
-   real-runtime Setup-to-Run/recovery tests.
-5. Re-run every JavaScript/Rust/build/advisory gate; inspect the isolated
-   artifacts; build and launch the exact unsigned Windows installer.
-6. Publish the validated implementation branch through normal repository
+2. Implement native libVLC-owned duration/decode preflight and exact lifecycle
+   authority for workspace/repository sources after the actor exists.
+3. Extend persistence injection to initial-session, streaming, and journal-
+   before-sync boundaries; exercise real full-disk/power-loss and directory-
+   entry durability; and add packaged Setup-to-Run/recovery tests.
+4. Commit the combined safe candidate, re-run every JavaScript/Rust/build/
+   advisory gate in CI, inspect its isolated artifacts, and launch the exact
+   unsigned Windows installer.
+5. Publish the validated implementation branch through normal repository
    safeguards, verify CI, merge deliberately, deploy Research Pages, and bind
    all later qualification receipts to the exact resulting candidate.
 

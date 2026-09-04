@@ -1,0 +1,837 @@
+{
+  "schema": "affect-research-cross-runtime-fixture",
+  "version": 1,
+  "canonical": {
+    "value": {
+      "z": [
+        3,
+        {
+          "b": -0,
+          "a": "é"
+        }
+      ],
+      "a": true
+    },
+    "json": "{\"a\":true,\"z\":[3,{\"a\":\"é\",\"b\":0}]}",
+    "sha256": "64507e2899171bc16f8ded1e6653b73f7dec1e307583558e822f6111f5786822"
+  },
+  "canonicalNumbers": {
+    "value": {
+      "tiny": 1e-7,
+      "threshold": 0.000001,
+      "largeDecimal": 100000000000000000000,
+      "largeExponent": 1e21,
+      "precise": 1.2345678901234567,
+      "minPositive": 5e-324,
+      "maxFinite": 1.7976931348623157e308,
+      "negativeMin": -5e-324,
+      "negativeMax": -1.7976931348623157e308,
+      "belowTiny": 9.999999999999997e-7,
+      "belowLarge": 999999999999999900000,
+      "aboveLarge": 1.2345678901234568e21,
+      "safeMax": 9007199254740991,
+      "nextInteger": 9007199254740992
+    },
+    "json": "{\"aboveLarge\":1.2345678901234568e+21,\"belowLarge\":999999999999999900000,\"belowTiny\":9.999999999999997e-7,\"largeDecimal\":100000000000000000000,\"largeExponent\":1e+21,\"maxFinite\":1.7976931348623157e+308,\"minPositive\":5e-324,\"negativeMax\":-1.7976931348623157e+308,\"negativeMin\":-5e-324,\"nextInteger\":9007199254740992,\"precise\":1.2345678901234567,\"safeMax\":9007199254740991,\"threshold\":0.000001,\"tiny\":1e-7}",
+    "sha256": "8272983c0f315d5b9c6ce1034330282ca6338e5d736cfbda0e892299f0a8bb33"
+  },
+  "youtubeUrl": {
+    "canonical": "https://www.youtube.com/watch?v=abc123def45",
+    "noncanonical": "https://www.youtube.com",
+    "normalized": "https://www.youtube.com/",
+    "videoId": "abc123def45"
+  },
+  "textNormalization": {
+    "input": "\uFEFFStudy\uFEFF",
+    "normalized": "Study",
+    "settingsCanonicalSha256": "4a394a0415fcac014ff2f87d1f168dbb2fc6d076d35855811f9d611606350f05"
+  },
+  "valid": {
+    "settings": {
+      "value": {
+        "schema": "affect-research-settings",
+        "version": 1,
+        "experiment": {
+          "id": "video-affect-study",
+          "title": "Video Affect Study",
+          "participantCount": 1,
+          "samplingFrequencyHz": 130,
+          "betweenVideos": {
+            "mode": "fixed",
+            "durationMs": 5000
+          }
+        },
+        "stimuli": {
+          "allocationAlgorithm": "balanced-v1",
+          "conditionOrder": "williams",
+          "seed": "00112233445566778899aabbccddeeff",
+          "items": [
+            {
+              "stimulusId": "calm-01",
+              "title": "Calm 01",
+              "source": {
+                "kind": "workspaceFile",
+                "relativePath": "stimuli/calm-01.mp4",
+                "mimeType": "video/mp4",
+                "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+                "byteLength": 1024,
+                "durationMs": 60000
+              }
+            }
+          ],
+          "pools": [
+            {
+              "poolId": "pool-calm",
+              "label": "Calm",
+              "videosPerParticipant": 1,
+              "stimulusIds": [
+                "calm-01"
+              ]
+            }
+          ]
+        },
+        "input": {
+          "schema": "affect-research-input-binding",
+          "version": 1,
+          "preset": "arrowKeys",
+          "kind": "digital",
+          "stepSize": 0.1,
+          "directions": {
+            "up": {
+              "kind": "keyboard",
+              "code": "ArrowUp"
+            },
+            "down": {
+              "kind": "keyboard",
+              "code": "ArrowDown"
+            },
+            "left": {
+              "kind": "keyboard",
+              "code": "ArrowLeft"
+            },
+            "right": {
+              "kind": "keyboard",
+              "code": "ArrowRight"
+            }
+          },
+          "axes": null
+        },
+        "visual": {
+          "gridEnabled": true,
+          "flubberEnabled": true,
+          "sizePercent": 32,
+          "transparency": 0.05,
+          "hideFeedback": false,
+          "overlayPosition": {
+            "x": 0.72,
+            "y": 0.5
+          },
+          "lockPosition": false,
+          "flubber": {
+            "showOutline": true,
+            "outlineThickness": 2,
+            "showHalo": true
+          },
+          "grid": {
+            "lineThickness": 1,
+            "showOutline": true,
+            "outlineThickness": 2,
+            "cursorSize": 14
+          },
+          "colors": {
+            "up": "#f2c94c",
+            "down": "#2f80ed",
+            "left": "#eb5757",
+            "right": "#27ae60",
+            "idle": "#9ca3af",
+            "outline": "#f8fafc",
+            "halo": "#93c5fd",
+            "cursor": "#ffffff"
+          }
+        },
+        "advanced": {
+          "lsl": {
+            "enabled": false,
+            "stateStream": "AffectResearch",
+            "streamType": "Affect",
+            "markerStream": "AffectResearchMarkers",
+            "sourceId": "affect-research"
+          },
+          "mappings": {
+            "oscillationFrequency": {
+              "min": 0.5,
+              "max": 2.5,
+              "drivenBy": "y-axis",
+              "reverse": false
+            },
+            "edgeSmoothness": {
+              "min": 0,
+              "max": 1,
+              "drivenBy": "x-axis",
+              "reverse": false
+            },
+            "projectionAmplitude": {
+              "min": 0.2,
+              "max": 0.4,
+              "drivenBy": "y-axis",
+              "reverse": false
+            },
+            "pulseSynchrony": {
+              "min": 0.2,
+              "max": 1,
+              "drivenBy": "x-axis",
+              "reverse": false
+            },
+            "waveSizeVariation": {
+              "min": 0,
+              "max": 0.8,
+              "drivenBy": "x-axis",
+              "reverse": true
+            },
+            "saturation": {
+              "min": 0,
+              "max": 1,
+              "drivenBy": "radius",
+              "reverse": false
+            }
+          }
+        },
+        "output": {
+          "csv": true,
+          "tsv": false
+        }
+      },
+      "canonicalSha256": "6703f9be353fd11aa91b1728c915e83566bcbbb24224f30912ef8d60a1a9b22a"
+    },
+    "plan": {
+      "value": {
+        "schema": "affect-research-assignment-plan",
+        "version": 1,
+        "algorithmVersion": "balanced-v1",
+        "seed": "00112233445566778899aabbccddeeff",
+        "conditionOrder": "williams",
+        "settingsSha256": "6703f9be353fd11aa91b1728c915e83566bcbbb24224f30912ef8d60a1a9b22a",
+        "participantIds": [
+          "P001"
+        ],
+        "stimuli": [
+          {
+            "stimulusId": "calm-01",
+            "title": "Calm 01",
+            "source": {
+              "kind": "workspaceFile",
+              "relativePath": "stimuli/calm-01.mp4",
+              "mimeType": "video/mp4",
+              "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+              "byteLength": 1024,
+              "durationMs": 60000
+            }
+          }
+        ],
+        "pools": [
+          {
+            "poolId": "pool-calm",
+            "label": "Calm",
+            "videosPerParticipant": 1,
+            "stimulusIds": [
+              "calm-01"
+            ]
+          }
+        ],
+        "assignments": [
+          {
+            "participantId": "P001",
+            "conditionOrder": [
+              "pool-calm"
+            ],
+            "slots": [
+              {
+                "position": 1,
+                "poolId": "pool-calm",
+                "poolPosition": 1,
+                "stimulusId": "calm-01"
+              }
+            ]
+          }
+        ],
+        "exposureCounts": [
+          {
+            "stimulusId": "calm-01",
+            "total": 1,
+            "positionCounts": [
+              1
+            ]
+          }
+        ],
+        "planHashSha256": "2732bd8a1b300e78fbbd9a49b50445f84846c079be3de7b85dc09f96e95dc1b4"
+      },
+      "canonicalSha256": "8f2aad7f8976d4117ffb11abdddaa071cafb4811cdf540437ea0425578ec24e4"
+    },
+    "sample": {
+      "value": {
+        "schema": "affect-research-sample",
+        "version": 1,
+        "sequence": 1,
+        "runId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        "participantId": "P001",
+        "attemptNumber": 1,
+        "settingsSha256": "6703f9be353fd11aa91b1728c915e83566bcbbb24224f30912ef8d60a1a9b22a",
+        "assignmentPlanSha256": "2732bd8a1b300e78fbbd9a49b50445f84846c079be3de7b85dc09f96e95dc1b4",
+        "stimulusPosition": 1,
+        "stimulusIdentity": {
+          "kind": "workspaceFile",
+          "stimulusId": "calm-01",
+          "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "byteLength": 1024,
+          "durationMs": 60000,
+          "url": null,
+          "videoId": null
+        },
+        "wallTimeUtc": "2026-09-03T14:30:12.482Z",
+        "monotonicTimeNs": "123456789",
+        "lslTimeSeconds": null,
+        "sampleRateHz": 130,
+        "scheduledElapsedMs": 100,
+        "observedElapsedMs": 100.5,
+        "schedulerLatenessMs": 0.5,
+        "schedulerJitterMs": -0.1,
+        "stateAnchorAgeMs": 1.2,
+        "missedSlotsBefore": 0,
+        "mediaTimeMs": 100.5,
+        "currentValence": 0.3,
+        "currentArousal": 0.4,
+        "targetValence": 0.25,
+        "targetArousal": 0.5,
+        "radius": 0.5,
+        "angleDegrees": 53.13010235415598,
+        "oscillationFrequency": 1.5,
+        "edgeSmoothness": 0.65,
+        "projectionAmplitude": 0.35,
+        "pulseSynchrony": 0.7,
+        "waveSizeVariation": 0.2,
+        "saturation": 0.5,
+        "animationActive": true,
+        "inputActive": true,
+        "inputKind": "digital",
+        "feedbackVisible": true
+      },
+      "canonicalSha256": "adaa3018c6f0d5c60972f4a3f467943767ab67a95d7a5acde48691a55939c538"
+    },
+    "event": {
+      "value": {
+        "schema": "affect-research-event",
+        "version": 1,
+        "sequence": 2,
+        "runId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        "participantId": "P001",
+        "attemptNumber": 1,
+        "settingsSha256": "6703f9be353fd11aa91b1728c915e83566bcbbb24224f30912ef8d60a1a9b22a",
+        "assignmentPlanSha256": "2732bd8a1b300e78fbbd9a49b50445f84846c079be3de7b85dc09f96e95dc1b4",
+        "wallTimeUtc": "2026-09-03T14:30:12.490Z",
+        "monotonicTimeNs": "123456800",
+        "type": "timingGap",
+        "stimulusIdentity": {
+          "kind": "workspaceFile",
+          "stimulusId": "calm-01",
+          "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "byteLength": 1024,
+          "durationMs": 60000,
+          "url": null,
+          "videoId": null
+        },
+        "stimulusPosition": 1,
+        "mediaTimeMs": 108,
+        "missedSlotCount": 2,
+        "detailCode": "scheduler-late"
+      },
+      "canonicalSha256": "3ef67a283be98e8c68153382f413fbc820e99d2a6ad5031de54cca688cf5061a"
+    },
+    "manifest": {
+      "value": {
+        "schema": "affect-research-run-manifest",
+        "version": 2,
+        "runId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        "experimentId": "video-affect-study",
+        "participantId": "P001",
+        "participantCode": "EF",
+        "age": 27,
+        "gender": "W",
+        "handedness": "R",
+        "attemptNumber": 1,
+        "sessionStem": "P001_EF_A27_GW_HR_20260903T143012482Z_R01",
+        "completionStatus": "partial",
+        "playbackMode": "unqualifiedWebview",
+        "playbackQualification": "unqualified",
+        "settingsSha256": "6703f9be353fd11aa91b1728c915e83566bcbbb24224f30912ef8d60a1a9b22a",
+        "assignmentPlanSha256": "2732bd8a1b300e78fbbd9a49b50445f84846c079be3de7b85dc09f96e95dc1b4",
+        "stimuli": [
+          {
+            "kind": "workspaceFile",
+            "stimulusId": "calm-01",
+            "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "byteLength": 1024,
+            "durationMs": 60000,
+            "url": null,
+            "videoId": null
+          }
+        ],
+        "timing": {
+          "sampleRateHz": 130,
+          "sampleCount": 1,
+          "eventCount": 2,
+          "gapEventCount": 1,
+          "missedSlotCount": 2,
+          "startedAt": "2026-09-03T14:30:12.482Z",
+          "finalizedAt": "2026-09-03T14:31:12.482Z"
+        },
+        "outputs": [
+          {
+            "kind": "settings",
+            "fileName": "settings.snapshot.json",
+            "sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "byteLength": 100,
+            "rowCount": null
+          },
+          {
+            "kind": "events",
+            "fileName": "events.jsonl",
+            "sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+            "byteLength": 200,
+            "rowCount": null
+          },
+          {
+            "kind": "csv",
+            "fileName": "ratings.csv",
+            "sha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+            "byteLength": 300,
+            "rowCount": 1
+          }
+        ],
+        "recovery": {
+          "resumed": false,
+          "sourceRunId": null,
+          "restartedStimulusIds": []
+        },
+        "build": {
+          "platform": "tauri-windows",
+          "appVersion": "0.4.0-alpha.1",
+          "buildCommit": "34a137d"
+        }
+      },
+      "canonicalSha256": "897f0a30bfcb2af01fe1e892851c95f13d539af96766869facdd1748f46d06c4"
+    }
+  },
+  "invalid": [
+    {
+      "id": "settings-unknown-field",
+      "contract": "settings",
+      "mutations": [
+        { "path": ["visual", "surprise"], "value": true }
+      ]
+    },
+    {
+      "id": "settings-no-output-format",
+      "contract": "settings",
+      "mutations": [
+        { "path": ["output", "csv"], "value": false }
+      ]
+    },
+    {
+      "id": "settings-missing-required-field",
+      "contract": "settings",
+      "mutations": [
+        { "path": ["experiment", "participantCount"], "operation": "remove" }
+      ]
+    },
+    {
+      "id": "settings-control-character",
+      "contract": "settings",
+      "mutations": [
+        { "path": ["experiment", "title"], "value": "Video\nAffect Study" }
+      ]
+    },
+    {
+      "id": "settings-c1-control-character",
+      "contract": "settings",
+      "mutations": [
+        { "path": ["experiment", "title"], "value": "\u0085Study\u0085" }
+      ]
+    },
+    {
+      "id": "settings-missing-explicit-null-input-axis",
+      "contract": "settings",
+      "mutations": [
+        { "path": ["input", "axes"], "operation": "remove" }
+      ]
+    },
+    {
+      "id": "settings-youtube-missing-explicit-null-observation",
+      "contract": "settings",
+      "mutations": [
+        {
+          "path": ["stimuli", "items", 0, "source"],
+          "value": {
+            "kind": "youtube",
+            "url": "https://www.youtube.com/watch?v=abc123def45",
+            "videoId": "abc123def45",
+            "observedDurationMs": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "settings-youtube-url-too-long",
+      "contract": "settings",
+      "mutations": [
+        {
+          "path": ["stimuli", "items", 0, "source"],
+          "value": {
+            "kind": "youtube",
+            "url": "https://www.youtube.com/watch?v=abc123def45",
+            "videoId": "abc123def45",
+            "observedTitle": null,
+            "observedDurationMs": null
+          }
+        },
+        {
+          "path": ["stimuli", "items", 0, "source", "url"],
+          "repeatedText": {
+            "prefix": "https://www.youtube.com/",
+            "unit": "a",
+            "count": 2048
+          }
+        }
+      ]
+    },
+    {
+      "id": "plan-unknown-field",
+      "contract": "plan",
+      "mutations": [
+        { "path": ["assignments", 0, "surprise"], "value": true }
+      ]
+    },
+    {
+      "id": "plan-tampered-hash",
+      "contract": "plan",
+      "mutations": [
+        { "path": ["planHashSha256"], "value": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff" }
+      ]
+    },
+    {
+      "id": "plan-unsupported-condition-order",
+      "contract": "plan",
+      "mutations": [
+        { "path": ["conditionOrder"], "value": "factorial" }
+      ]
+    },
+    {
+      "id": "sample-unknown-field",
+      "contract": "sample",
+      "mutations": [
+        { "path": ["surprise"], "value": true }
+      ]
+    },
+    {
+      "id": "sample-radius-mismatch",
+      "contract": "sample",
+      "mutations": [
+        { "path": ["radius"], "value": 0.75 }
+      ]
+    },
+    {
+      "id": "sample-lateness-mismatch",
+      "contract": "sample",
+      "mutations": [
+        { "path": ["schedulerLatenessMs"], "value": 1.5 }
+      ]
+    },
+    {
+      "id": "sample-noncanonical-timestamp",
+      "contract": "sample",
+      "mutations": [
+        { "path": ["wallTimeUtc"], "value": "2026-09-03T14:30:12Z" }
+      ]
+    },
+    {
+      "id": "sample-whitespace-wrapped-canonical-timestamp",
+      "contract": "sample",
+      "mutations": [
+        { "path": ["wallTimeUtc"], "value": " 2026-09-03T14:30:12.482Z " }
+      ]
+    },
+    {
+      "id": "sample-missing-required-field",
+      "contract": "sample",
+      "mutations": [
+        { "path": ["feedbackVisible"], "operation": "remove" }
+      ]
+    },
+    {
+      "id": "sample-missing-explicit-null-lsl-time",
+      "contract": "sample",
+      "mutations": [
+        { "path": ["lslTimeSeconds"], "operation": "remove" }
+      ]
+    },
+    {
+      "id": "sample-identity-missing-explicit-null-url",
+      "contract": "sample",
+      "mutations": [
+        { "path": ["stimulusIdentity", "url"], "operation": "remove" }
+      ]
+    },
+    {
+      "id": "sample-noncanonical-run-id",
+      "contract": "sample",
+      "mutations": [
+        { "path": ["runId"], "value": "AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA" }
+      ]
+    },
+    {
+      "id": "sample-noncanonical-stimulus-id",
+      "contract": "sample",
+      "mutations": [
+        { "path": ["stimulusIdentity", "stimulusId"], "value": "Calm-01" }
+      ]
+    },
+    {
+      "id": "sample-youtube-noncanonical-url",
+      "contract": "sample",
+      "mutations": [
+        { "path": ["stimulusIdentity", "kind"], "value": "youtube" },
+        { "path": ["stimulusIdentity", "stimulusId"], "value": "youtube-demo" },
+        { "path": ["stimulusIdentity", "sha256"], "value": null },
+        { "path": ["stimulusIdentity", "byteLength"], "value": null },
+        { "path": ["stimulusIdentity", "url"], "value": "https://www.youtube.com" },
+        { "path": ["stimulusIdentity", "videoId"], "value": "abc123def45" }
+      ]
+    },
+    {
+      "id": "sample-youtube-url-too-long",
+      "contract": "sample",
+      "mutations": [
+        { "path": ["stimulusIdentity", "kind"], "value": "youtube" },
+        { "path": ["stimulusIdentity", "stimulusId"], "value": "youtube-demo" },
+        { "path": ["stimulusIdentity", "sha256"], "value": null },
+        { "path": ["stimulusIdentity", "byteLength"], "value": null },
+        {
+          "path": ["stimulusIdentity", "url"],
+          "repeatedText": {
+            "prefix": "https://www.youtube.com/",
+            "unit": "a",
+            "count": 2048
+          }
+        },
+        { "path": ["stimulusIdentity", "videoId"], "value": "abc123def45" }
+      ]
+    },
+    {
+      "id": "event-unknown-field",
+      "contract": "event",
+      "mutations": [
+        { "path": ["surprise"], "value": true }
+      ]
+    },
+    {
+      "id": "event-gap-without-count",
+      "contract": "event",
+      "mutations": [
+        { "path": ["missedSlotCount"], "value": null }
+      ]
+    },
+    {
+      "id": "event-media-without-stimulus",
+      "contract": "event",
+      "mutations": [
+        { "path": ["type"], "value": "inputEdge" },
+        { "path": ["stimulusIdentity"], "value": null },
+        { "path": ["stimulusPosition"], "value": null },
+        { "path": ["missedSlotCount"], "value": null }
+      ]
+    },
+    {
+      "id": "event-noncanonical-monotonic-time",
+      "contract": "event",
+      "mutations": [
+        { "path": ["monotonicTimeNs"], "value": "00123456800" }
+      ]
+    },
+    {
+      "id": "event-whitespace-wrapped-canonical-timestamp",
+      "contract": "event",
+      "mutations": [
+        { "path": ["wallTimeUtc"], "value": "\t2026-09-03T14:30:12.490Z" }
+      ]
+    },
+    {
+      "id": "event-missing-explicit-nullable-field",
+      "contract": "event",
+      "mutations": [
+        { "path": ["detailCode"], "operation": "remove" }
+      ]
+    },
+    {
+      "id": "event-noncanonical-run-id",
+      "contract": "event",
+      "mutations": [
+        { "path": ["runId"], "value": "AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA" }
+      ]
+    },
+    {
+      "id": "event-noncanonical-detail-code",
+      "contract": "event",
+      "mutations": [
+        { "path": ["detailCode"], "value": " Scheduler-Late " }
+      ]
+    },
+    {
+      "id": "manifest-unknown-field",
+      "contract": "manifest",
+      "mutations": [
+        { "path": ["timing", "surprise"], "value": true }
+      ]
+    },
+    {
+      "id": "manifest-rating-row-mismatch",
+      "contract": "manifest",
+      "mutations": [
+        { "path": ["outputs", 2, "rowCount"], "value": 2 }
+      ]
+    },
+    {
+      "id": "manifest-output-missing-explicit-null-row-count",
+      "contract": "manifest",
+      "mutations": [
+        { "path": ["outputs", 0, "rowCount"], "operation": "remove" }
+      ]
+    },
+    {
+      "id": "manifest-recovery-missing-explicit-null-source",
+      "contract": "manifest",
+      "mutations": [
+        { "path": ["recovery", "sourceRunId"], "operation": "remove" }
+      ]
+    },
+    {
+      "id": "manifest-restarted-stimulus-id-noncanonical-case",
+      "contract": "manifest",
+      "mutations": [
+        { "path": ["recovery", "restartedStimulusIds"], "value": ["CALM-01"] }
+      ]
+    },
+    {
+      "id": "manifest-noncanonical-run-id",
+      "contract": "manifest",
+      "mutations": [
+        { "path": ["runId"], "value": "AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA" }
+      ]
+    },
+    {
+      "id": "manifest-gap-count-mismatch",
+      "contract": "manifest",
+      "mutations": [
+        { "path": ["timing", "gapEventCount"], "value": 0 }
+      ]
+    },
+    {
+      "id": "manifest-gap-count-exceeds-event-count",
+      "contract": "manifest",
+      "mutations": [
+        { "path": ["timing", "gapEventCount"], "value": 3 }
+      ]
+    },
+    {
+      "id": "manifest-session-stem-mismatch",
+      "contract": "manifest",
+      "mutations": [
+        { "path": ["sessionStem"], "value": "P001_WRONG" }
+      ]
+    },
+    {
+      "id": "manifest-participant-code-noncanonical-whitespace",
+      "contract": "manifest",
+      "mutations": [
+        { "path": ["participantCode"], "value": " EF " }
+      ]
+    },
+    {
+      "id": "manifest-participant-code-noncanonical-nfc",
+      "contract": "manifest",
+      "mutations": [
+        { "path": ["participantCode"], "value": "A\u0301B" },
+        { "path": ["sessionStem"], "value": "P001_ÁB_A27_GW_HR_20260903T143012482Z_R01" }
+      ]
+    },
+    {
+      "id": "manifest-session-stem-noncanonical-whitespace",
+      "contract": "manifest",
+      "mutations": [
+        { "path": ["sessionStem"], "value": " P001_EF_A27_GW_HR_20260903T143012482Z_R01 " }
+      ]
+    },
+    {
+      "id": "manifest-session-stem-noncanonical-nfc",
+      "contract": "manifest",
+      "mutations": [
+        { "path": ["participantCode"], "value": "ÁB" },
+        { "path": ["sessionStem"], "value": "P001_A\u0301B_A27_GW_HR_20260903T143012482Z_R01" }
+      ]
+    },
+    {
+      "id": "manifest-app-version-noncanonical-whitespace",
+      "contract": "manifest",
+      "mutations": [
+        { "path": ["build", "appVersion"], "value": " 0.4.0-alpha.1 " }
+      ]
+    },
+    {
+      "id": "manifest-app-version-noncanonical-nfc",
+      "contract": "manifest",
+      "mutations": [
+        { "path": ["build", "appVersion"], "value": "re\u0301search" }
+      ]
+    },
+    {
+      "id": "manifest-build-commit-noncanonical-whitespace",
+      "contract": "manifest",
+      "mutations": [
+        { "path": ["build", "buildCommit"], "value": " 34a137d " }
+      ]
+    },
+    {
+      "id": "manifest-build-commit-noncanonical-nfc",
+      "contract": "manifest",
+      "mutations": [
+        { "path": ["build", "buildCommit"], "value": "re\u0301vision" }
+      ]
+    },
+    {
+      "id": "manifest-output-file-name-noncanonical-whitespace",
+      "contract": "manifest",
+      "mutations": [
+        { "path": ["outputs", 2, "fileName"], "value": " ratings.csv " }
+      ]
+    },
+    {
+      "id": "manifest-output-file-name-noncanonical-nfc",
+      "contract": "manifest",
+      "mutations": [
+        { "path": ["outputs", 2, "fileName"], "value": "ra\u0301tings.csv" }
+      ]
+    },
+    {
+      "id": "manifest-output-file-name-c1-control",
+      "contract": "manifest",
+      "mutations": [
+        { "path": ["outputs", 2, "fileName"], "value": "ratings\u0085.csv" }
+      ]
+    },
+    {
+      "id": "manifest-finalization-before-start",
+      "contract": "manifest",
+      "mutations": [
+        { "path": ["timing", "finalizedAt"], "value": "2026-09-03T13:31:12.482Z" }
+      ]
+    }
+  ]
+}

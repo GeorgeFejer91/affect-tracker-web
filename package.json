@@ -15,6 +15,7 @@
     "test:web": "node --test test/math.test.js test/research-*.test.js",
     "build:pages": "node scripts/build-research-pages.js && node scripts/verify-research-build.js pages",
     "serve": "python -m http.server 8000 --directory site",
+    "qualification:browser:serve": "python -m http.server 8013 --bind 127.0.0.1 --directory .",
     "desktop:dev": "vite --config desktop/vite.config.js",
     "desktop:build": "vite build --config desktop/vite.config.js && node scripts/verify-research-build.js desktop",
     "desktop:preview": "vite preview --config desktop/vite.config.js",

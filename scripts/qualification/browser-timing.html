@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Affect Research browser timing diagnostic</title>
+    <link rel="stylesheet" href="./browser-timing.css">
+  </head>
+  <body>
+    <header>
+      <h1>Affect Research browser timing diagnostic</h1>
+      <p>Runs the candidate sampling Worker in this browser. It does not qualify media, persistence, physical input, LSL, or the full application.</p>
+    </header>
+    <main>
+      <form id="diagnostic-form">
+        <fieldset>
+          <legend>Candidate and environment</legend>
+          <label>
+            Operator-entered candidate commit
+            <input id="candidate-commit" name="candidateCommit" required pattern="[0-9a-f]{40}" maxlength="40" autocomplete="off" spellcheck="false" placeholder="40-character lowercase Git SHA">
+          </label>
+          <label>
+            Hardware record
+            <input id="hardware-record" name="hardwareRecord" required maxlength="240" autocomplete="off" placeholder="Machine model or qualification inventory ID">
+          </label>
+        </fieldset>
+        <p class="field-note">The diagnostic records this SHA as an operator-supplied label; it does not verify the served Worker against Git.</p>
+        <fieldset>
+          <legend>Timing run</legend>
+          <label>
+            Sampling frequency (Hz)
+            <input id="frequency-hz" name="frequencyHz" type="number" min="1" max="240" step="1" value="130" required>
+          </label>
+          <label>
+            Duration (seconds)
+            <input id="duration-seconds" name="durationSeconds" type="number" min="5" max="1800" step="1" value="60" required>
+          </label>
+          <p class="field-note">Use 1800 seconds for the required 30-minute window. Shorter runs are diagnostics only.</p>
+        </fieldset>
+        <div class="actions">
+          <button id="start-run" type="button">Start timing run</button>
+          <button id="stop-run" type="button" disabled>Stop diagnostic</button>
+          <button id="download-receipt" type="button" disabled>Download JSON receipt</button>
+        </div>
+      </form>
+
+      <section aria-labelledby="status-heading">
+        <h2 id="status-heading">Status</h2>
+        <output id="run-status" role="status" aria-live="polite">Ready.</output>
+        <dl class="evidence-list">
+          <div><dt>Samples</dt><dd id="sample-count">0</dd></div>
+          <div><dt>Gap events</dt><dd id="gap-count">0</dd></div>
+          <div><dt>Missed slots</dt><dd id="missed-count">0</dd></div>
+          <div><dt>Sequence / corrupt evidence</dt><dd id="corrupt-count">0</dd></div>
+        </dl>
+      </section>
+
+      <section aria-labelledby="receipt-heading">
+        <h2 id="receipt-heading">Worker-only receipt</h2>
+        <pre id="receipt-json">No receipt yet.</pre>
+      </section>
+    </main>
+    <script type="module" src="./browser-timing.js"></script>
+  </body>
+</html>

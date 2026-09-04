@@ -1,8 +1,10 @@
 use crate::research_error::{CommandError, ResearchResult};
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use time::format_description::well_known::Rfc3339;
+use time::OffsetDateTime;
 use unicode_normalization::UnicodeNormalization;
 use unicode_segmentation::UnicodeSegmentation;
 use url::Url;
@@ -20,6 +22,14 @@ pub const MAX_PARTICIPANTS: usize = 100_000;
 pub const MAX_STIMULI: usize = 10_000;
 pub const MAX_POOLS: usize = 256;
 pub const MAX_SAFE_INTEGER: u64 = 9_007_199_254_740_991;
+
+fn deserialize_required_option<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
+where
+    D: Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    Option::<T>::deserialize(deserializer)
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -121,7 +131,9 @@ pub enum StimulusSourceV1 {
     Youtube {
         url: String,
         video_id: String,
+        #[serde(deserialize_with = "deserialize_required_option")]
         observed_title: Option<String>,
+        #[serde(deserialize_with = "deserialize_required_option")]
         observed_duration_ms: Option<f64>,
     },
 }
@@ -142,8 +154,11 @@ pub struct InputBindingV1 {
     pub version: u32,
     pub preset: InputPresetV1,
     pub kind: InputKindV1,
+    #[serde(deserialize_with = "deserialize_required_option")]
     pub step_size: Option<f64>,
+    #[serde(deserialize_with = "deserialize_required_option")]
     pub directions: Option<DigitalDirectionsV1>,
+    #[serde(deserialize_with = "deserialize_required_option")]
     pub axes: Option<InputAxesV1>,
 }
 
@@ -383,10 +398,14 @@ pub struct StimulusExposureV1 {
 pub struct SampleStimulusIdentityV1 {
     pub kind: StimulusSourceKindV1,
     pub stimulus_id: String,
+    #[serde(deserialize_with = "deserialize_required_option")]
     pub sha256: Option<String>,
+    #[serde(deserialize_with = "deserialize_required_option")]
     pub byte_length: Option<u64>,
     pub duration_ms: f64,
+    #[serde(deserialize_with = "deserialize_required_option")]
     pub url: Option<String>,
+    #[serde(deserialize_with = "deserialize_required_option")]
     pub video_id: Option<String>,
 }
 
@@ -413,6 +432,7 @@ pub struct ResearchSampleV1 {
     pub stimulus_identity: SampleStimulusIdentityV1,
     pub wall_time_utc: String,
     pub monotonic_time_ns: String,
+    #[serde(deserialize_with = "deserialize_required_option")]
     pub lsl_time_seconds: Option<f64>,
     pub sample_rate_hz: u16,
     pub scheduled_elapsed_ms: f64,
@@ -477,10 +497,15 @@ pub struct ResearchEventV1 {
     pub monotonic_time_ns: String,
     #[serde(rename = "type")]
     pub event_type: ResearchEventTypeV1,
+    #[serde(deserialize_with = "deserialize_required_option")]
     pub stimulus_identity: Option<SampleStimulusIdentityV1>,
+    #[serde(deserialize_with = "deserialize_required_option")]
     pub stimulus_position: Option<u32>,
+    #[serde(deserialize_with = "deserialize_required_option")]
     pub media_time_ms: Option<f64>,
+    #[serde(deserialize_with = "deserialize_required_option")]
     pub missed_slot_count: Option<u64>,
+    #[serde(deserialize_with = "deserialize_required_option")]
     pub detail_code: Option<String>,
 }
 
@@ -568,6 +593,7 @@ pub struct RunOutputV1 {
     pub file_name: String,
     pub sha256: String,
     pub byte_length: u64,
+    #[serde(deserialize_with = "deserialize_required_option")]
     pub row_count: Option<u64>,
 }
 
@@ -584,6 +610,7 @@ pub enum RunOutputKindV1 {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct RecoverySummaryV1 {
     pub resumed: bool,
+    #[serde(deserialize_with = "deserialize_required_option")]
     pub source_run_id: Option<String>,
     pub restarted_stimulus_ids: Vec<String>,
 }
@@ -794,6 +821,7 @@ impl StimulusSourceV1 {
                 observed_title,
                 observed_duration_ms,
             } => {
+                *url = normalize_text(url, 1, 2_048, "youtube.url")?;
                 let parsed = Url::parse(url).map_err(|_| {
                     contract_error("Experimental YouTube sources require an absolute HTTPS URL.")
                 })?;
@@ -1542,7 +1570,13 @@ pub fn resolve_assignment_plan_v1(
 
 impl SampleStimulusIdentityV1 {
     pub fn validate(&self) -> ResearchResult<()> {
-        normalize_identifier(&self.stimulus_id, "stimulusIdentity.stimulusId")?;
+        if normalize_identifier(&self.stimulus_id, "stimulusIdentity.stimulusId")?
+            != self.stimulus_id
+        {
+            return Err(contract_error(
+                "A stimulus identity must use its canonical identifier spelling.",
+            ));
+        }
         validate_finite_range(self.duration_ms, 1.0, 86_400_000.0, "stimulus duration")?;
         match self.kind {
             StimulusSourceKindV1::Youtube => {
@@ -1555,6 +1589,24 @@ impl SampleStimulusIdentityV1 {
                         "A YouTube identity must be URL-bound and have no byte digest.",
                     ));
                 }
+                let url = Url::parse(self.url.as_deref().unwrap_or_default())
+                    .map_err(|_| contract_error("A YouTube identity URL is invalid."))?;
+                let url_value = self.url.as_deref().unwrap_or_default();
+                if normalize_text(url_value, 1, 2_048, "stimulusIdentity.url")? != url_value
+                    || url.as_str() != url_value
+                    || url.scheme() != "https"
+                    || !is_youtube_host(url.host_str())
+                    || normalize_text(
+                        self.video_id.as_deref().unwrap_or_default(),
+                        6,
+                        32,
+                        "stimulusIdentity.videoId",
+                    )? != self.video_id.as_deref().unwrap_or_default()
+                {
+                    return Err(contract_error(
+                        "A YouTube identity requires an HTTPS YouTube URL and video ID.",
+                    ));
+                }
             }
             StimulusSourceKindV1::WorkspaceFile | StimulusSourceKindV1::RepositoryAsset => {
                 let Some(hash) = &self.sha256 else {
@@ -1563,12 +1615,222 @@ impl SampleStimulusIdentityV1 {
                     ));
                 };
                 validate_sha256(hash, "stimulusIdentity.sha256")?;
-                if self.byte_length.is_none() || self.url.is_some() || self.video_id.is_some() {
+                if self
+                    .byte_length
+                    .is_none_or(|length| length == 0 || length > MAX_SAFE_INTEGER)
+                    || self.url.is_some()
+                    || self.video_id.is_some()
+                {
                     return Err(contract_error(
                         "A local stimulus identity must be byte-bound without a URL.",
                     ));
                 }
             }
+        }
+        Ok(())
+    }
+}
+
+#[allow(dead_code)]
+impl ResearchSampleV1 {
+    pub fn validate(&self) -> ResearchResult<()> {
+        if self.schema != RESEARCH_SAMPLE_SCHEMA || self.version != 1 {
+            return Err(contract_error(
+                "ResearchSampleV1 schema or version is unsupported.",
+            ));
+        }
+        validate_record_identity(
+            self.sequence,
+            &self.run_id,
+            &self.participant_id,
+            self.attempt_number,
+            &self.settings_sha256,
+            &self.assignment_plan_sha256,
+            &self.wall_time_utc,
+            &self.monotonic_time_ns,
+            "ResearchSampleV1",
+        )?;
+        if self.stimulus_position == 0 || self.stimulus_position as usize > MAX_STIMULI {
+            return Err(contract_error(
+                "ResearchSampleV1 stimulus position is invalid.",
+            ));
+        }
+        self.stimulus_identity.validate()?;
+        if self
+            .lsl_time_seconds
+            .is_some_and(|value| !value.is_finite() || value < 0.0)
+            || !(1..=240).contains(&self.sample_rate_hz)
+            || self.missed_slots_before > 1_000_000
+        {
+            return Err(contract_error(
+                "ResearchSampleV1 timing metadata is invalid.",
+            ));
+        }
+        validate_finite_range(
+            self.scheduled_elapsed_ms,
+            0.0,
+            MAX_SAFE_INTEGER as f64,
+            "ResearchSampleV1.scheduledElapsedMs",
+        )?;
+        validate_finite_range(
+            self.observed_elapsed_ms,
+            0.0,
+            MAX_SAFE_INTEGER as f64,
+            "ResearchSampleV1.observedElapsedMs",
+        )?;
+        validate_finite_range(
+            self.scheduler_lateness_ms,
+            0.0,
+            3_600_000.0,
+            "ResearchSampleV1.schedulerLatenessMs",
+        )?;
+        validate_finite_range(
+            self.scheduler_jitter_ms,
+            -3_600_000.0,
+            3_600_000.0,
+            "ResearchSampleV1.schedulerJitterMs",
+        )?;
+        validate_finite_range(
+            self.state_anchor_age_ms,
+            0.0,
+            3_600_000.0,
+            "ResearchSampleV1.stateAnchorAgeMs",
+        )?;
+        validate_finite_range(
+            self.media_time_ms,
+            0.0,
+            self.stimulus_identity.duration_ms,
+            "ResearchSampleV1.mediaTimeMs",
+        )?;
+        for (value, label) in [
+            (self.current_valence, "ResearchSampleV1.currentValence"),
+            (self.current_arousal, "ResearchSampleV1.currentArousal"),
+            (self.target_valence, "ResearchSampleV1.targetValence"),
+            (self.target_arousal, "ResearchSampleV1.targetArousal"),
+        ] {
+            validate_finite_range(value, -1.0, 1.0, label)?;
+        }
+        validate_finite_range(self.radius, 0.0, 1.0, "ResearchSampleV1.radius")?;
+        if !self.angle_degrees.is_finite()
+            || self.angle_degrees < 0.0
+            || self.angle_degrees >= 360.0
+        {
+            return Err(contract_error(
+                "ResearchSampleV1.angleDegrees must be within 0–<360.",
+            ));
+        }
+        validate_finite_range(
+            self.oscillation_frequency,
+            0.0,
+            10.0,
+            "ResearchSampleV1.oscillationFrequency",
+        )?;
+        for (value, label) in [
+            (self.edge_smoothness, "ResearchSampleV1.edgeSmoothness"),
+            (
+                self.projection_amplitude,
+                "ResearchSampleV1.projectionAmplitude",
+            ),
+            (self.pulse_synchrony, "ResearchSampleV1.pulseSynchrony"),
+            (
+                self.wave_size_variation,
+                "ResearchSampleV1.waveSizeVariation",
+            ),
+            (self.saturation, "ResearchSampleV1.saturation"),
+        ] {
+            validate_finite_range(value, 0.0, 1.0, label)?;
+        }
+        let expected_lateness = self.observed_elapsed_ms - self.scheduled_elapsed_ms;
+        if expected_lateness < -0.001
+            || (self.scheduler_lateness_ms - expected_lateness.max(0.0)).abs() > 0.001
+        {
+            return Err(contract_error(
+                "ResearchSampleV1 scheduler lateness is inconsistent.",
+            ));
+        }
+        let expected_radius = self.current_valence.hypot(self.current_arousal).min(1.0);
+        if (self.radius - expected_radius).abs() > 1e-9 {
+            return Err(contract_error(
+                "ResearchSampleV1 radius does not match its affect coordinates.",
+            ));
+        }
+        let expected_angle = if expected_radius == 0.0 {
+            0.0
+        } else {
+            self.current_arousal
+                .atan2(self.current_valence)
+                .to_degrees()
+                .rem_euclid(360.0)
+        };
+        let raw_angle_error = (self.angle_degrees - expected_angle).abs();
+        if raw_angle_error.min(360.0 - raw_angle_error) > 1e-6 {
+            return Err(contract_error(
+                "ResearchSampleV1 angle does not match its affect coordinates.",
+            ));
+        }
+        Ok(())
+    }
+}
+
+#[allow(dead_code)]
+impl ResearchEventV1 {
+    pub fn validate(&self) -> ResearchResult<()> {
+        if self.schema != RESEARCH_EVENT_SCHEMA || self.version != 1 {
+            return Err(contract_error(
+                "ResearchEventV1 schema or version is unsupported.",
+            ));
+        }
+        validate_record_identity(
+            self.sequence,
+            &self.run_id,
+            &self.participant_id,
+            self.attempt_number,
+            &self.settings_sha256,
+            &self.assignment_plan_sha256,
+            &self.wall_time_utc,
+            &self.monotonic_time_ns,
+            "ResearchEventV1",
+        )?;
+        if self.stimulus_identity.is_some() != self.stimulus_position.is_some() {
+            return Err(contract_error(
+                "ResearchEventV1 stimulus identity and position must be present together.",
+            ));
+        }
+        if let Some(identity) = &self.stimulus_identity {
+            identity.validate()?;
+        }
+        if self
+            .stimulus_position
+            .is_some_and(|position| position == 0 || position as usize > MAX_STIMULI)
+        {
+            return Err(contract_error(
+                "ResearchEventV1 stimulus position is invalid.",
+            ));
+        }
+        if self.media_time_ms.is_some() && self.stimulus_identity.is_none() {
+            return Err(contract_error(
+                "ResearchEventV1 media time requires a stimulus identity.",
+            ));
+        }
+        if let Some(media_time_ms) = self.media_time_ms {
+            let maximum = self
+                .stimulus_identity
+                .as_ref()
+                .map_or(86_400_000.0, |identity| identity.duration_ms);
+            validate_finite_range(media_time_ms, 0.0, maximum, "ResearchEventV1.mediaTimeMs")?;
+        }
+        let is_timing_gap = self.event_type == ResearchEventTypeV1::TimingGap;
+        if is_timing_gap != self.missed_slot_count.is_some()
+            || self
+                .missed_slot_count
+                .is_some_and(|count| count == 0 || count > 1_000_000)
+        {
+            return Err(contract_error(
+                "ResearchEventV1 timing-gap count is inconsistent.",
+            ));
+        }
+        if let Some(detail_code) = &self.detail_code {
+            validate_semantic_code(detail_code, "ResearchEventV1.detailCode")?;
         }
         Ok(())
     }
@@ -1597,12 +1859,10 @@ impl ResearchRunManifestV2 {
             || !source_run_id_is_valid
             || !experiment_id_is_canonical
             || self.attempt_number == 0
+            || self.attempt_number > 999_999
             || self.age == 0
             || self.age > 120
             || self.session_stem.is_empty()
-            || !self
-                .session_stem
-                .starts_with(&format!("{}_", self.participant_id))
         {
             return Err(contract_error("ResearchRunManifestV2 identity is invalid."));
         }
@@ -1632,7 +1892,13 @@ impl ResearchRunManifestV2 {
                 RunPlaybackQualificationV1::Browser
             )
         );
-        if UnicodeSegmentation::graphemes(self.participant_code.as_str(), true).count() != 2
+        if normalize_text(
+            &self.participant_code,
+            1,
+            32,
+            "ResearchRunManifestV2.participantCode",
+        )? != self.participant_code
+            || UnicodeSegmentation::graphemes(self.participant_code.as_str(), true).count() != 2
             || self.participant_code.to_uppercase() != self.participant_code
             || self
                 .participant_code
@@ -1641,14 +1907,46 @@ impl ResearchRunManifestV2 {
             || self.timing.sample_rate_hz == 0
             || self.timing.sample_rate_hz > 240
             || self.timing.gap_event_count > self.timing.event_count
-            || (self.timing.gap_event_count == 0 && self.timing.missed_slot_count != 0)
-            || self.timing.started_at.is_empty()
-            || self.timing.finalized_at.is_empty()
+            || (self.timing.gap_event_count == 0) != (self.timing.missed_slot_count == 0)
+            || self.timing.sample_count > MAX_SAFE_INTEGER
+            || self.timing.event_count > MAX_SAFE_INTEGER
+            || self.timing.gap_event_count > MAX_SAFE_INTEGER
+            || self.timing.missed_slot_count > MAX_SAFE_INTEGER
             || !playback_contract_is_valid
         {
             return Err(contract_error("ResearchRunManifestV2 metadata is invalid."));
         }
-        if self.stimuli.is_empty() {
+        let started_at = parse_canonical_utc_timestamp(
+            &self.timing.started_at,
+            "ResearchRunManifestV2.timing.startedAt",
+        )?;
+        let finalized_at = parse_canonical_utc_timestamp(
+            &self.timing.finalized_at,
+            "ResearchRunManifestV2.timing.finalizedAt",
+        )?;
+        if finalized_at < started_at {
+            return Err(contract_error(
+                "ResearchRunManifestV2 finalization precedes its start.",
+            ));
+        }
+        if self.session_stem != expected_session_stem(self, &self.timing.started_at)
+            || normalize_text(
+                &self.session_stem,
+                1,
+                240,
+                "ResearchRunManifestV2.sessionStem",
+            )? != self.session_stem
+            || self.session_stem.chars().count() > 240
+            || self
+                .session_stem
+                .chars()
+                .any(is_reserved_filename_character)
+        {
+            return Err(contract_error(
+                "ResearchRunManifestV2 session stem is inconsistent or unsafe.",
+            ));
+        }
+        if self.stimuli.is_empty() || self.stimuli.len() > MAX_STIMULI {
             return Err(contract_error(
                 "ResearchRunManifestV2 requires frozen stimulus identities.",
             ));
@@ -1662,15 +1960,27 @@ impl ResearchRunManifestV2 {
                 ));
             }
         }
+        if !(3..=4).contains(&self.outputs.len()) {
+            return Err(contract_error(
+                "ResearchRunManifestV2 output receipt count is invalid.",
+            ));
+        }
         let mut output_kinds = HashSet::new();
         for output in &self.outputs {
             if !output_kinds.insert(output.kind)
-                || output.file_name.is_empty()
-                || output
-                    .file_name
-                    .chars()
-                    .any(|character| matches!(character, '/' | '\\'))
+                || normalize_text(
+                    &output.file_name,
+                    1,
+                    240,
+                    "ResearchRunManifestV2.outputs.fileName",
+                )? != output.file_name
+                || output.file_name.chars().count() > 240
+                || output.file_name.chars().any(is_reserved_filename_character)
                 || output.byte_length == 0
+                || output.byte_length > MAX_SAFE_INTEGER
+                || output
+                    .row_count
+                    .is_some_and(|count| count > MAX_SAFE_INTEGER)
             {
                 return Err(contract_error(
                     "ResearchRunManifestV2 contains an invalid output receipt.",
@@ -1710,11 +2020,59 @@ impl ResearchRunManifestV2 {
                 .map(String::as_str),
             "Manifest recovery repeats a restarted stimulus.",
         )?;
-        if self.build.app_version.is_empty() || self.build.build_commit.is_empty() {
+        if self.recovery.restarted_stimulus_ids.len() > MAX_STIMULI
+            || self.recovery.restarted_stimulus_ids.iter().any(|id| {
+                !normalize_identifier(id, "ResearchRunManifestV2.recovery.restartedStimulusIds")
+                    .is_ok_and(|normalized| normalized == *id)
+                    || !stimulus_ids.contains(id.as_str())
+            })
+        {
+            return Err(contract_error(
+                "Manifest recovery stimuli must belong to the frozen assignment.",
+            ));
+        }
+        if normalize_text(
+            &self.build.app_version,
+            1,
+            40,
+            "ResearchRunManifestV2.build.appVersion",
+        )? != self.build.app_version
+            || normalize_text(
+                &self.build.build_commit,
+                1,
+                64,
+                "ResearchRunManifestV2.build.buildCommit",
+            )? != self.build.build_commit
+        {
             return Err(contract_error("Manifest build provenance is incomplete."));
         }
         Ok(())
     }
+}
+
+fn is_reserved_filename_character(character: char) -> bool {
+    character.is_control()
+        || matches!(
+            character,
+            '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*'
+        )
+}
+
+fn expected_session_stem(manifest: &ResearchRunManifestV2, started_at: &str) -> String {
+    let compact_timestamp: String = started_at
+        .chars()
+        .filter(|character| !matches!(character, '-' | ':' | '.'))
+        .collect();
+    format!(
+        "{}_{}_A{}_G{:?}_H{:?}_{}_R{:02}",
+        manifest.participant_id,
+        manifest.participant_code,
+        manifest.age,
+        manifest.gender,
+        manifest.handedness,
+        compact_timestamp,
+        manifest.attempt_number,
+    )
 }
 
 fn manifest_run_id_is_valid(platform: ResearchPlatformV1, value: &str, label: &str) -> bool {
@@ -1764,7 +2122,7 @@ fn write_canonical_value(value: &Value, output: &mut String) -> ResearchResult<(
                 if !value.is_finite() {
                     return Err(contract_error("Canonical JSON rejects non-finite numbers."));
                 }
-                output.push_str(&normalize_zero(value).to_string());
+                output.push_str(&javascript_number(value));
             } else {
                 return Err(contract_error(
                     "Canonical JSON encountered an invalid number.",
@@ -1805,6 +2163,81 @@ fn write_canonical_value(value: &Value, output: &mut String) -> ResearchResult<(
         }
     }
     Ok(())
+}
+
+/// Formats a finite IEEE-754 value with the exponent thresholds and spelling
+/// used by ECMAScript JSON.stringify. The shortest-decimal conversion supplies
+/// ECMAScript-compatible significant digits; this layer applies JavaScript's
+/// fixed/scientific thresholds and positive-exponent sign so browser and native
+/// canonical hashes remain byte-identical.
+fn javascript_number(value: f64) -> String {
+    if value == 0.0 {
+        return "0".to_owned();
+    }
+    let negative = value.is_sign_negative();
+    let absolute = value.abs();
+    let representation = zmij::Buffer::new().format_finite(absolute).to_owned();
+    let (mantissa, explicit_exponent) = representation.split_once(['e', 'E']).map_or(
+        (representation.as_str(), 0_i32),
+        |(mantissa, exponent)| {
+            (
+                mantissa,
+                exponent
+                    .parse::<i32>()
+                    .expect("finite float exponents are valid decimal integers"),
+            )
+        },
+    );
+    let decimal_index = mantissa.find('.').unwrap_or(mantissa.len());
+    let raw_digits = mantissa.replace('.', "");
+    let first_significant = raw_digits
+        .bytes()
+        .position(|digit| digit != b'0')
+        .expect("a non-zero float has a significant digit");
+    let last_significant = raw_digits
+        .bytes()
+        .rposition(|digit| digit != b'0')
+        .expect("a non-zero float has a significant digit");
+    let digits = &raw_digits[first_significant..=last_significant];
+    let scientific_exponent =
+        explicit_exponent + decimal_index as i32 - first_significant as i32 - 1;
+
+    let mut output = String::new();
+    if negative {
+        output.push('-');
+    }
+    if !(1e-6..1e21).contains(&absolute) {
+        output.push(digits.as_bytes()[0] as char);
+        if digits.len() > 1 {
+            output.push('.');
+            output.push_str(&digits[1..]);
+        }
+        output.push('e');
+        if scientific_exponent >= 0 {
+            output.push('+');
+        }
+        output.push_str(&scientific_exponent.to_string());
+        return output;
+    }
+
+    let decimal_position = scientific_exponent + 1;
+    if decimal_position <= 0 {
+        output.push_str("0.");
+        output.extend(std::iter::repeat_n('0', -decimal_position as usize));
+        output.push_str(digits);
+    } else if decimal_position as usize >= digits.len() {
+        output.push_str(digits);
+        output.extend(std::iter::repeat_n(
+            '0',
+            decimal_position as usize - digits.len(),
+        ));
+    } else {
+        let decimal_position = decimal_position as usize;
+        output.push_str(&digits[..decimal_position]);
+        output.push('.');
+        output.push_str(&digits[decimal_position..]);
+    }
+    output
 }
 
 fn validate_transition(transition: &BetweenVideosV1) -> ResearchResult<()> {
@@ -1971,6 +2404,101 @@ fn preset_axes(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
+#[allow(dead_code)]
+fn validate_record_identity(
+    sequence: u64,
+    run_id: &str,
+    participant_id: &str,
+    attempt_number: u32,
+    settings_sha256: &str,
+    assignment_plan_sha256: &str,
+    wall_time_utc: &str,
+    monotonic_time_ns: &str,
+    label: &str,
+) -> ResearchResult<()> {
+    if sequence == 0 || sequence > MAX_SAFE_INTEGER {
+        return Err(contract_error(format!(
+            "{label}.sequence is outside the exact JSON integer range."
+        )));
+    }
+    if normalize_identifier(run_id, &format!("{label}.runId"))? != run_id {
+        return Err(contract_error(format!(
+            "{label}.runId must use its canonical identifier spelling."
+        )));
+    }
+    validate_participant_id(participant_id)?;
+    if attempt_number == 0 || attempt_number > 999_999 {
+        return Err(contract_error(format!("{label}.attemptNumber is invalid.")));
+    }
+    validate_sha256(settings_sha256, &format!("{label}.settingsSha256"))?;
+    validate_sha256(
+        assignment_plan_sha256,
+        &format!("{label}.assignmentPlanSha256"),
+    )?;
+    parse_canonical_utc_timestamp(wall_time_utc, &format!("{label}.wallTimeUtc"))?;
+    if monotonic_time_ns.is_empty()
+        || monotonic_time_ns.len() > 30
+        || !monotonic_time_ns.bytes().all(|byte| byte.is_ascii_digit())
+        || (monotonic_time_ns.len() > 1 && monotonic_time_ns.starts_with('0'))
+    {
+        return Err(contract_error(format!(
+            "{label}.monotonicTimeNs must be an unsigned decimal string."
+        )));
+    }
+    Ok(())
+}
+
+fn parse_canonical_utc_timestamp(value: &str, label: &str) -> ResearchResult<OffsetDateTime> {
+    let bytes = value.as_bytes();
+    let shape_is_canonical = bytes.len() == 24
+        && bytes[4] == b'-'
+        && bytes[7] == b'-'
+        && bytes[10] == b'T'
+        && bytes[13] == b':'
+        && bytes[16] == b':'
+        && bytes[19] == b'.'
+        && bytes[23] == b'Z'
+        && bytes.iter().enumerate().all(|(index, byte)| {
+            matches!(index, 4 | 7 | 10 | 13 | 16 | 19 | 23) || byte.is_ascii_digit()
+        });
+    if !shape_is_canonical {
+        return Err(contract_error(format!(
+            "{label} must be a canonical UTC ISO-8601 timestamp."
+        )));
+    }
+    OffsetDateTime::parse(value, &Rfc3339).map_err(|_| {
+        contract_error(format!(
+            "{label} must be a canonical UTC ISO-8601 timestamp."
+        ))
+    })
+}
+
+#[allow(dead_code)]
+fn validate_semantic_code(value: &str, label: &str) -> ResearchResult<()> {
+    if normalize_text(value, 1, 128, label)? != value {
+        return Err(contract_error(format!(
+            "{label} must use its canonical spelling."
+        )));
+    }
+    let mut characters = value.chars();
+    let Some(first) = characters.next() else {
+        return Err(contract_error(format!("{label} is empty.")));
+    };
+    if (!first.is_ascii_lowercase() && !first.is_ascii_digit())
+        || !characters.all(|character| {
+            character.is_ascii_lowercase()
+                || character.is_ascii_digit()
+                || matches!(character, '_' | '.' | ':' | '-')
+        })
+    {
+        return Err(contract_error(format!(
+            "{label} must be a bounded semantic code."
+        )));
+    }
+    Ok(())
+}
+
 fn normalize_identifier(value: &str, label: &str) -> ResearchResult<String> {
     let normalized = normalize_text(value, 1, 128, label)?.to_lowercase();
     let mut characters = normalized.chars();
@@ -2000,14 +2528,39 @@ fn normalize_text(
     maximum: usize,
     label: &str,
 ) -> ResearchResult<String> {
-    let normalized: String = value.trim().nfc().collect();
-    let count = normalized.chars().count();
-    if count < minimum || count > maximum || normalized.contains('\0') {
+    let normalized: String = value
+        .trim_matches(is_ecmascript_trim_character)
+        .nfc()
+        .collect();
+    // JavaScript String#length counts UTF-16 code units; use the same bound so
+    // browser and native validators cannot disagree at a text-size boundary.
+    let count = normalized.encode_utf16().count();
+    if count < minimum || count > maximum || normalized.chars().any(char::is_control) {
         return Err(contract_error(format!(
             "{label} must contain {minimum}–{maximum} safe characters."
         )));
     }
     Ok(normalized)
+}
+
+fn is_ecmascript_trim_character(character: char) -> bool {
+    matches!(
+        character,
+        '\u{0009}'
+            | '\u{000a}'
+            | '\u{000b}'
+            | '\u{000c}'
+            | '\u{000d}'
+            | '\u{0020}'
+            | '\u{00a0}'
+            | '\u{1680}'
+            | '\u{2028}'
+            | '\u{2029}'
+            | '\u{202f}'
+            | '\u{205f}'
+            | '\u{3000}'
+            | '\u{feff}'
+    ) || ('\u{2000}'..='\u{200a}').contains(&character)
 }
 
 pub fn normalize_relative_path(value: &str, required_root: Option<&str>) -> ResearchResult<String> {
@@ -2045,10 +2598,11 @@ pub fn normalize_relative_path(value: &str, required_root: Option<&str>) -> Rese
 }
 
 pub fn validate_participant_id(value: &str) -> ResearchResult<()> {
-    if value.len() < 4
-        || !value.starts_with('P')
-        || !value[1..].bytes().all(|byte| byte.is_ascii_digit())
-        || value[1..].len() < 3
+    let digits = value.strip_prefix('P').unwrap_or_default();
+    let number = digits.parse::<usize>().ok();
+    if !(3..=6).contains(&digits.len())
+        || !digits.bytes().all(|byte| byte.is_ascii_digit())
+        || number.is_none_or(|number| number == 0 || number > MAX_PARTICIPANTS)
     {
         return Err(contract_error(
             "Participant IDs must be P-prefixed and zero padded.",
@@ -2135,6 +2689,96 @@ fn contract_error(message: impl Into<String>) -> CommandError {
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
+
+    fn parity_fixture() -> Value {
+        serde_json::from_str(include_str!(
+            "../../test/fixtures/research-contract-parity-v1.json"
+        ))
+        .expect("the shared JS/Rust contract fixture must be valid JSON")
+    }
+
+    fn mutate_fixture(mut value: Value, mutations: &[Value]) -> Value {
+        for mutation in mutations {
+            let path = mutation["path"]
+                .as_array()
+                .expect("fixture mutation path must be an array");
+            let remove = mutation["operation"].as_str() == Some("remove");
+            let replacement = if let Some(repeated) = mutation.get("repeatedText") {
+                let prefix = repeated["prefix"].as_str().unwrap_or_default();
+                let unit = repeated["unit"]
+                    .as_str()
+                    .expect("fixture repeated text requires a unit");
+                let count = repeated["count"]
+                    .as_u64()
+                    .expect("fixture repeated text requires an unsigned count")
+                    as usize;
+                let suffix = repeated["suffix"].as_str().unwrap_or_default();
+                Value::String(format!("{prefix}{}{suffix}", unit.repeat(count)))
+            } else {
+                mutation["value"].clone()
+            };
+            let mut target = &mut value;
+            for segment in &path[..path.len() - 1] {
+                target = match segment {
+                    Value::String(key) => target
+                        .as_object_mut()
+                        .and_then(|object| object.get_mut(key))
+                        .expect("fixture object path must exist"),
+                    Value::Number(index) => &mut target
+                        .as_array_mut()
+                        .expect("fixture array path must exist")[index
+                        .as_u64()
+                        .expect("fixture array index must be unsigned")
+                        as usize],
+                    _ => panic!("fixture path segments must be strings or indexes"),
+                };
+            }
+            match path.last().expect("fixture mutation path cannot be empty") {
+                Value::String(key) => {
+                    let object = target
+                        .as_object_mut()
+                        .expect("fixture mutation parent must be an object");
+                    if remove {
+                        object.remove(key);
+                    } else {
+                        object.insert(key.clone(), replacement);
+                    }
+                }
+                Value::Number(index) => {
+                    let array = target
+                        .as_array_mut()
+                        .expect("fixture mutation parent must be an array");
+                    let index = index
+                        .as_u64()
+                        .expect("fixture array index must be unsigned")
+                        as usize;
+                    if remove {
+                        array.remove(index);
+                    } else {
+                        array[index] = replacement;
+                    }
+                }
+                _ => panic!("fixture path segments must be strings or indexes"),
+            }
+        }
+        value
+    }
+
+    fn fixture_contract_is_valid(contract: &str, value: Value, settings_sha256: &str) -> bool {
+        match contract {
+            "settings" => serde_json::from_value::<ResearchSettingsV1>(value)
+                .is_ok_and(|settings| settings.normalize_and_validate().is_ok()),
+            "plan" => serde_json::from_value::<ResolvedAssignmentPlanV1>(value)
+                .is_ok_and(|plan| plan.validate(settings_sha256).is_ok()),
+            "sample" => serde_json::from_value::<ResearchSampleV1>(value)
+                .is_ok_and(|sample| sample.validate().is_ok()),
+            "event" => serde_json::from_value::<ResearchEventV1>(value)
+                .is_ok_and(|event| event.validate().is_ok()),
+            "manifest" => serde_json::from_value::<ResearchRunManifestV2>(value)
+                .is_ok_and(|manifest| manifest.validate().is_ok()),
+            _ => panic!("unknown fixture contract {contract}"),
+        }
+    }
 
     fn default_settings_json() -> Value {
         serde_json::json!({
@@ -2312,12 +2956,12 @@ pub(crate) mod tests {
             run_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa".to_owned(),
             experiment_id: "experiment".to_owned(),
             participant_id: "P001".to_owned(),
-            participant_code: "A\u{301}B".to_owned(),
+            participant_code: "\u{c1}B".to_owned(),
             age: 20,
             gender: GenderCodeV1::X,
             handedness: HandednessCodeV1::R,
             attempt_number: 1,
-            session_stem: "P001_ÁB_A20_GX_HR_20260904T000000000Z_R01".to_owned(),
+            session_stem: "P001_ÁB_A20_GX_HR_20260904T000000000Z_R01".to_owned(),
             completion_status: CompletionStatusV1::Completed,
             playback_mode: RunPlaybackModeV1::UnqualifiedWebview,
             playback_qualification: RunPlaybackQualificationV1::Unqualified,
@@ -2338,8 +2982,8 @@ pub(crate) mod tests {
                 event_count: 0,
                 gap_event_count: 0,
                 missed_slot_count: 0,
-                started_at: "2026-09-04T00:00:00Z".to_owned(),
-                finalized_at: "2026-09-04T00:00:01Z".to_owned(),
+                started_at: "2026-09-04T00:00:00.000Z".to_owned(),
+                finalized_at: "2026-09-04T00:00:01.000Z".to_owned(),
             },
             outputs: vec![
                 RunOutputV1 {
@@ -2467,65 +3111,167 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn balanced_v1_matches_the_shared_javascript_golden_fixture() {
-        let mut value = default_settings_json();
-        value["experiment"]["participantCount"] = serde_json::json!(3);
-        value["stimuli"]["seed"] = serde_json::json!("00112233445566778899aabbccddeeff");
-        value["stimuli"]["items"] = Value::Array(
-            (1..=4)
-                .map(|number| {
-                    let id = format!("a-{number:02}");
-                    serde_json::json!({
-                        "stimulusId":id,
-                        "title":format!("Stimulus a-{number:02}"),
-                        "source":{
-                            "kind":"workspaceFile",
-                            "relativePath":format!("stimuli/a-{number:02}.mp4"),
-                            "mimeType":"video/mp4",
-                            "sha256":format!("{:x}", Sha256::digest(id.as_bytes())),
-                            "byteLength":1_000_000,
-                            "durationMs":30_000
-                        }
-                    })
-                })
-                .collect(),
+    fn shared_javascript_fixture_round_trips_every_persistence_contract() {
+        let fixture = parity_fixture();
+        assert_eq!(
+            String::from_utf8(canonical_json(&fixture["canonical"]["value"], &[]).unwrap())
+                .unwrap(),
+            fixture["canonical"]["json"].as_str().unwrap()
         );
-        value["stimuli"]["pools"] = serde_json::json!([{
-            "poolId":"pool-a","label":"Condition A","videosPerParticipant":2,
-            "stimulusIds":["a-01","a-02","a-03","a-04"]
-        }]);
-        let settings = serde_json::from_value::<ResearchSettingsV1>(value)
+        assert_eq!(
+            canonical_sha256(&fixture["canonical"]["value"], &[]).unwrap(),
+            fixture["canonical"]["sha256"].as_str().unwrap()
+        );
+        assert_eq!(
+            String::from_utf8(canonical_json(&fixture["canonicalNumbers"]["value"], &[]).unwrap())
+                .unwrap(),
+            fixture["canonicalNumbers"]["json"].as_str().unwrap()
+        );
+        assert_eq!(
+            canonical_sha256(&fixture["canonicalNumbers"]["value"], &[]).unwrap(),
+            fixture["canonicalNumbers"]["sha256"].as_str().unwrap()
+        );
+
+        let settings_value = fixture["valid"]["settings"]["value"].clone();
+        let settings = serde_json::from_value::<ResearchSettingsV1>(settings_value.clone())
             .unwrap()
             .normalize_and_validate()
             .unwrap();
         assert_eq!(
+            canonical_json(&settings, &[]).unwrap(),
+            canonical_json(&settings_value, &[]).unwrap(),
+            "the shared settings fixture is already canonical"
+        );
+        assert_eq!(
             settings.canonical_sha256().unwrap(),
-            "4a73900c017ef2a049a9e18709c34b19d4b8a8d723ac4be4c5ef8bb299fb3f12"
+            fixture["valid"]["settings"]["canonicalSha256"]
+                .as_str()
+                .unwrap()
         );
+
+        let mut youtube_settings_value = fixture["valid"]["settings"]["value"].clone();
+        youtube_settings_value["stimuli"]["items"][0]["source"] = serde_json::json!({
+            "kind": "youtube",
+            "url": fixture["youtubeUrl"]["noncanonical"].clone(),
+            "videoId": fixture["youtubeUrl"]["videoId"].clone(),
+            "observedTitle": null,
+            "observedDurationMs": null
+        });
+        let youtube_settings = serde_json::from_value::<ResearchSettingsV1>(youtube_settings_value)
+            .unwrap()
+            .normalize_and_validate()
+            .unwrap();
+        let StimulusSourceV1::Youtube { url, .. } = &youtube_settings.stimuli.items[0].source
+        else {
+            panic!("the shared YouTube settings variant must remain YouTube");
+        };
+        assert_eq!(url, fixture["youtubeUrl"]["normalized"].as_str().unwrap());
+
+        let mut text_normalization_value = fixture["valid"]["settings"]["value"].clone();
+        text_normalization_value["experiment"]["title"] =
+            fixture["textNormalization"]["input"].clone();
+        let text_normalization_settings =
+            serde_json::from_value::<ResearchSettingsV1>(text_normalization_value)
+                .unwrap()
+                .normalize_and_validate()
+                .unwrap();
+        assert_eq!(
+            text_normalization_settings.experiment.title,
+            fixture["textNormalization"]["normalized"].as_str().unwrap()
+        );
+        assert_eq!(
+            text_normalization_settings.canonical_sha256().unwrap(),
+            fixture["textNormalization"]["settingsCanonicalSha256"]
+                .as_str()
+                .unwrap()
+        );
+
+        let expected_plan = serde_json::from_value::<ResolvedAssignmentPlanV1>(
+            fixture["valid"]["plan"]["value"].clone(),
+        )
+        .unwrap();
         let plan = resolve_assignment_plan_v1(&settings).unwrap();
-        let selections = plan
-            .assignments
-            .iter()
-            .map(|assignment| {
-                assignment
-                    .slots
-                    .iter()
-                    .map(|slot| slot.stimulus_id.as_str())
-                    .collect::<Vec<_>>()
-            })
-            .collect::<Vec<_>>();
+        assert_eq!(plan, expected_plan);
+        plan.validate(&settings.canonical_sha256().unwrap())
+            .unwrap();
         assert_eq!(
-            selections,
-            [
-                vec!["a-02", "a-04"],
-                vec!["a-01", "a-03"],
-                vec!["a-04", "a-01"]
-            ]
+            canonical_sha256(&plan, &[]).unwrap(),
+            fixture["valid"]["plan"]["canonicalSha256"]
+                .as_str()
+                .unwrap()
         );
+
+        let sample =
+            serde_json::from_value::<ResearchSampleV1>(fixture["valid"]["sample"]["value"].clone())
+                .unwrap();
+        sample.validate().unwrap();
         assert_eq!(
-            plan.plan_hash_sha256,
-            "c5672c056f8a4c11ab9ce9c795d9d642f3343e595b1fa501cffbed6145e18025"
+            canonical_sha256(&sample, &[]).unwrap(),
+            fixture["valid"]["sample"]["canonicalSha256"]
+                .as_str()
+                .unwrap()
         );
+
+        let mut youtube_sample_value = fixture["valid"]["sample"]["value"].clone();
+        let stimulus_id = youtube_sample_value["stimulusIdentity"]["stimulusId"].clone();
+        let duration_ms = youtube_sample_value["stimulusIdentity"]["durationMs"].clone();
+        youtube_sample_value["stimulusIdentity"] = serde_json::json!({
+            "kind": "youtube",
+            "stimulusId": stimulus_id,
+            "sha256": null,
+            "byteLength": null,
+            "durationMs": duration_ms,
+            "url": fixture["youtubeUrl"]["canonical"].clone(),
+            "videoId": fixture["youtubeUrl"]["videoId"].clone()
+        });
+        let youtube_sample =
+            serde_json::from_value::<ResearchSampleV1>(youtube_sample_value).unwrap();
+        youtube_sample.validate().unwrap();
+        assert_eq!(
+            youtube_sample.stimulus_identity.url.as_deref(),
+            fixture["youtubeUrl"]["canonical"].as_str()
+        );
+
+        let event =
+            serde_json::from_value::<ResearchEventV1>(fixture["valid"]["event"]["value"].clone())
+                .unwrap();
+        event.validate().unwrap();
+        assert_eq!(
+            canonical_sha256(&event, &[]).unwrap(),
+            fixture["valid"]["event"]["canonicalSha256"]
+                .as_str()
+                .unwrap()
+        );
+
+        let manifest = serde_json::from_value::<ResearchRunManifestV2>(
+            fixture["valid"]["manifest"]["value"].clone(),
+        )
+        .unwrap();
+        manifest.validate().unwrap();
+        assert_eq!(
+            canonical_sha256(&manifest, &[]).unwrap(),
+            fixture["valid"]["manifest"]["canonicalSha256"]
+                .as_str()
+                .unwrap()
+        );
+    }
+
+    #[test]
+    fn shared_javascript_fixture_malformed_and_unknown_fields_fail_closed() {
+        let fixture = parity_fixture();
+        let settings_sha256 = fixture["valid"]["settings"]["canonicalSha256"]
+            .as_str()
+            .unwrap();
+        for invalid in fixture["invalid"].as_array().unwrap() {
+            let contract = invalid["contract"].as_str().unwrap();
+            let base = fixture["valid"][contract]["value"].clone();
+            let mutated = mutate_fixture(base, invalid["mutations"].as_array().unwrap());
+            assert!(
+                !fixture_contract_is_valid(contract, mutated, settings_sha256),
+                "{} must be rejected by Rust",
+                invalid["id"].as_str().unwrap()
+            );
+        }
     }
 
     #[test]

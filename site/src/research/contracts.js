@@ -43,7 +43,7 @@ const CANONICAL_UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab]
 const PARTICIPANT_PATTERN = /^P\d{3,6}$/u;
 const HEX_COLOR = /^#[a-f0-9]{6}$/iu;
 const MONOTONIC_NS = /^(0|[1-9]\d{0,29})$/u;
-const SAFE_CODE = /^[a-z0-9][a-z0-9_.:-]{0,127}$/iu;
+const SAFE_CODE = /^[a-z0-9][a-z0-9_.:-]{0,127}$/u;
 const MAX_PARTICIPANTS = 100_000;
 const MAX_STIMULI = 10_000;
 const MAX_POOLS = 256;
@@ -146,9 +146,15 @@ function text(value, path, { minimum = 1, maximum = 200, nullable = false } = {}
   if (nullable && value === null) return null;
   if (typeof value !== "string") throw new TypeError(`${path} must be text.`);
   const normalized = value.trim().normalize("NFC");
-  if (normalized.length < minimum || normalized.length > maximum || /[\u0000-\u001f\u007f]/u.test(normalized)) {
+  if (normalized.length < minimum || normalized.length > maximum || /\p{Cc}/u.test(normalized)) {
     throw new RangeError(`${path} must contain ${minimum}–${maximum} safe characters.`);
   }
+  return normalized;
+}
+
+function canonicalText(value, path, options) {
+  const normalized = text(value, path, options);
+  if (normalized !== value) throw new TypeError(`${path} must use its canonical spelling.`);
   return normalized;
 }
 
@@ -203,7 +209,7 @@ function sha256(value, path, { nullable = false } = {}) {
 }
 
 function utcTimestamp(value, path) {
-  const normalized = text(value, path, { maximum: 40 });
+  const normalized = canonicalText(value, path, { maximum: 40 });
   const date = new Date(normalized);
   if (!Number.isFinite(date.getTime()) || date.toISOString() !== normalized) {
     throw new TypeError(`${path} must be a canonical UTC ISO-8601 timestamp.`);
@@ -828,12 +834,12 @@ function sampleStimulusIdentity(value, path) {
   const kind = enumeration(value.kind, `${path}.kind`, STIMULUS_SOURCE_KINDS);
   const output = {
     kind,
-    stimulusId: identifier(value.stimulusId, `${path}.stimulusId`),
+    stimulusId: canonicalIdentifier(value.stimulusId, `${path}.stimulusId`),
     sha256: sha256(value.sha256, `${path}.sha256`, { nullable: true }),
     byteLength: value.byteLength === null ? null : integer(value.byteLength, `${path}.byteLength`, 1, Number.MAX_SAFE_INTEGER),
     durationMs: finiteNumber(value.durationMs, `${path}.durationMs`, 1, 86_400_000),
-    url: text(value.url, `${path}.url`, { maximum: 2_048, nullable: true }),
-    videoId: text(value.videoId, `${path}.videoId`, { minimum: 6, maximum: 32, nullable: true }),
+    url: canonicalText(value.url, `${path}.url`, { maximum: 2_048, nullable: true }),
+    videoId: canonicalText(value.videoId, `${path}.videoId`, { minimum: 6, maximum: 32, nullable: true }),
   };
   if (kind === "youtube") {
     if (output.sha256 !== null || output.byteLength !== null || output.url === null || output.videoId === null) {
@@ -844,7 +850,7 @@ function sampleStimulusIdentity(value, path) {
     if (parsed.protocol !== "https:" || !/(^|\.)youtube\.com$|(^|\.)youtu\.be$/iu.test(parsed.hostname)) {
       throw new TypeError(`${path}.url must be an HTTPS YouTube URL.`);
     }
-    output.url = parsed.href;
+    if (parsed.href !== output.url) throw new TypeError(`${path}.url must use its canonical URL spelling.`);
   } else if (output.sha256 === null || output.byteLength === null || output.url !== null || output.videoId !== null) {
     throw new TypeError(`${path} local identity must be hash- and byte-bound.`);
   }
@@ -873,7 +879,7 @@ export function validateResearchSampleV1(value) {
     schema: RESEARCH_SAMPLE_SCHEMA,
     version: 1,
     sequence: integer(value.sequence, "ResearchSampleV1.sequence", 1, Number.MAX_SAFE_INTEGER),
-    runId: identifier(value.runId, "ResearchSampleV1.runId"),
+    runId: canonicalIdentifier(value.runId, "ResearchSampleV1.runId"),
     participantId: participantIdentifier(value.participantId, "ResearchSampleV1.participantId"),
     attemptNumber: integer(value.attemptNumber, "ResearchSampleV1.attemptNumber", 1, 999_999),
     settingsSha256: sha256(value.settingsSha256, "ResearchSampleV1.settingsSha256"),
@@ -955,7 +961,7 @@ export function validateResearchEventV1(value) {
     schema: RESEARCH_EVENT_SCHEMA,
     version: 1,
     sequence: integer(value.sequence, "ResearchEventV1.sequence", 1, Number.MAX_SAFE_INTEGER),
-    runId: identifier(value.runId, "ResearchEventV1.runId"),
+    runId: canonicalIdentifier(value.runId, "ResearchEventV1.runId"),
     participantId: participantIdentifier(value.participantId, "ResearchEventV1.participantId"),
     attemptNumber: integer(value.attemptNumber, "ResearchEventV1.attemptNumber", 1, 999_999),
     settingsSha256: sha256(value.settingsSha256, "ResearchEventV1.settingsSha256"),
@@ -969,7 +975,7 @@ export function validateResearchEventV1(value) {
     stimulusPosition: nullableInteger(value.stimulusPosition, "ResearchEventV1.stimulusPosition", 1, MAX_STIMULI),
     mediaTimeMs: nullableNumber(value.mediaTimeMs, "ResearchEventV1.mediaTimeMs", 0, 86_400_000),
     missedSlotCount: nullableInteger(value.missedSlotCount, "ResearchEventV1.missedSlotCount", 1, 1_000_000),
-    detailCode: value.detailCode === null ? null : text(value.detailCode, "ResearchEventV1.detailCode", { maximum: 128 }),
+    detailCode: value.detailCode === null ? null : canonicalText(value.detailCode, "ResearchEventV1.detailCode", { maximum: 128 }),
   };
   if (output.type === "timingGap" && output.missedSlotCount === null) throw new TypeError("A timingGap event requires missedSlotCount.");
   if (output.type !== "timingGap" && output.missedSlotCount !== null) throw new TypeError("Only timingGap events may carry missedSlotCount.");
@@ -992,8 +998,8 @@ function manifestStimulus(value, path) {
 
 function manifestOutput(value, path) {
   exactObject(value, path, ["kind", "fileName", "sha256", "byteLength", "rowCount"]);
-  const fileName = text(value.fileName, `${path}.fileName`, { maximum: 240 });
-  if (fileName.includes("/") || fileName.includes("\\") || /[<>:"|?*\u0000-\u001f]/u.test(fileName)) {
+  const fileName = canonicalText(value.fileName, `${path}.fileName`, { maximum: 240 });
+  if (fileName.includes("/") || fileName.includes("\\") || /[<>:"|?*]|\p{Cc}/u.test(fileName)) {
     throw new TypeError(`${path}.fileName must be a safe basename.`);
   }
   const kind = enumeration(value.kind, `${path}.kind`, ["settings", "events", "csv", "tsv"]);
@@ -1024,8 +1030,8 @@ export function validateResearchRunManifestV2(value) {
   if (!Array.isArray(value.stimuli) || !value.stimuli.length || value.stimuli.length > MAX_STIMULI) throw new RangeError("ResearchRunManifestV2 stimuli are invalid.");
   if (!Array.isArray(value.outputs) || value.outputs.length < 3 || value.outputs.length > 4) throw new RangeError("ResearchRunManifestV2 outputs are invalid.");
   if (!Array.isArray(value.recovery.restartedStimulusIds) || value.recovery.restartedStimulusIds.length > MAX_STIMULI) throw new TypeError("ResearchRunManifestV2 recovery stimuli are invalid.");
-  const participantCode = text(value.participantCode, "ResearchRunManifestV2.participantCode", { maximum: 32 });
-  if (/[<>:"/\\|?*_\u0000-\u001f]/u.test(participantCode)) {
+  const participantCode = canonicalText(value.participantCode, "ResearchRunManifestV2.participantCode", { maximum: 32 });
+  if (/[<>:"/\\|?*_]|\p{Cc}/u.test(participantCode)) {
     throw new TypeError("ResearchRunManifestV2.participantCode is not filename-safe.");
   }
   const outputs = value.outputs.map((entry, index) => manifestOutput(entry, `ResearchRunManifestV2.outputs[${index}]`));
@@ -1049,8 +1055,8 @@ export function validateResearchRunManifestV2(value) {
     handedness: enumeration(value.handedness, "ResearchRunManifestV2.handedness", ["L", "R", "A"]),
     attemptNumber: integer(value.attemptNumber, "ResearchRunManifestV2.attemptNumber", 1, 999_999),
     sessionStem: (() => {
-      const stem = text(value.sessionStem, "ResearchRunManifestV2.sessionStem", { maximum: 240 });
-      if (/[<>:"/\\|?*\u0000-\u001f]/u.test(stem)) throw new TypeError("ResearchRunManifestV2.sessionStem must be a safe basename.");
+      const stem = canonicalText(value.sessionStem, "ResearchRunManifestV2.sessionStem", { maximum: 240 });
+      if (/[<>:"/\\|?*]|\p{Cc}/u.test(stem)) throw new TypeError("ResearchRunManifestV2.sessionStem must be a safe basename.");
       return stem;
     })(),
     completionStatus: enumeration(value.completionStatus, "ResearchRunManifestV2.completionStatus", ["completed", "partial"]),
@@ -1072,12 +1078,12 @@ export function validateResearchRunManifestV2(value) {
     recovery: {
       resumed: boolean(value.recovery.resumed, "ResearchRunManifestV2.recovery.resumed"),
       sourceRunId: value.recovery.sourceRunId === null ? null : canonicalIdentifier(value.recovery.sourceRunId, "ResearchRunManifestV2.recovery.sourceRunId"),
-      restartedStimulusIds: value.recovery.restartedStimulusIds.map((id, index) => identifier(id, `ResearchRunManifestV2.recovery.restartedStimulusIds[${index}]`)),
+      restartedStimulusIds: value.recovery.restartedStimulusIds.map((id, index) => canonicalIdentifier(id, `ResearchRunManifestV2.recovery.restartedStimulusIds[${index}]`)),
     },
     build: {
       platform: enumeration(value.build.platform, "ResearchRunManifestV2.build.platform", ["tauri-windows", "chrome", "edge"]),
-      appVersion: text(value.build.appVersion, "ResearchRunManifestV2.build.appVersion", { maximum: 40 }),
-      buildCommit: text(value.build.buildCommit, "ResearchRunManifestV2.build.buildCommit", { maximum: 64 }),
+      appVersion: canonicalText(value.build.appVersion, "ResearchRunManifestV2.build.appVersion", { maximum: 40 }),
+      buildCommit: canonicalText(value.build.buildCommit, "ResearchRunManifestV2.build.buildCommit", { maximum: 64 }),
     },
   };
   if (participantCode !== participantCode.toLocaleUpperCase("und")) throw new TypeError("ResearchRunManifestV2.participantCode must be uppercase.");
@@ -1115,6 +1121,9 @@ export function validateResearchRunManifestV2(value) {
   const ratingOutputs = output.outputs.filter(({ kind }) => kind === "csv" || kind === "tsv");
   if (ratingOutputs.some(({ rowCount }) => rowCount !== output.timing.sampleCount)) {
     throw new TypeError("ResearchRunManifestV2 rating row counts must equal the canonical sample count.");
+  }
+  if (output.timing.gapEventCount > output.timing.eventCount) {
+    throw new TypeError("ResearchRunManifestV2 timing-gap count cannot exceed its event count.");
   }
   if ((output.timing.gapEventCount === 0) !== (output.timing.missedSlotCount === 0)) {
     throw new TypeError("ResearchRunManifestV2 timing-gap and missed-slot totals are inconsistent.");

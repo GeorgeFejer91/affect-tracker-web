@@ -1,6 +1,9 @@
 use crate::research_contracts::*;
 use crate::research_error::{CommandError, ResearchResult};
-use crate::research_input::{NativeDigitalInput, ResearchInputService};
+use crate::research_input::{
+    NativeContinuousInput, NativeDigitalInput, NativeInputAuthorityLoss, NativeInputUpdate,
+    ResearchInputService,
+};
 use crate::research_lsl::{LslService, LslState};
 use crate::research_native_media::{NativeMediaService, PlaybackMode, PlaybackQualification};
 use crate::research_timing::DeadlineClock;
@@ -8,6 +11,7 @@ use crate::research_workspace::WorkspaceService;
 use fs2::FileExt;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use std::collections::VecDeque;
 use std::fs::{self, File, OpenOptions};
 use std::io::{BufRead, BufReader, BufWriter, Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
@@ -27,6 +31,11 @@ const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
 const RUN_EVIDENCE_PERSISTENCE_ERROR: &str = "run_evidence_persistence_failed";
 const RUN_EVIDENCE_PERSISTENCE_FAILURE: &str = "stimulus-evidence-persistence-failed";
 const COMPLETION_EARLY_TOLERANCE_MS: f64 = 1_000.0;
+const NATIVE_INPUT_DIGITAL_CAPACITY: usize = 128;
+const NATIVE_INPUT_ACTIVE_POLL: Duration = Duration::from_millis(4);
+const NATIVE_INPUT_QUEUE_OVERFLOW: &str = "native-input-queue-overflow";
+const NATIVE_INPUT_KIND_MISMATCH: &str = "native-input-kind-mismatch";
+const JS_MAX_SAFE_INTEGER_U64: u64 = 9_007_199_254_740_991;
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -121,6 +130,7 @@ pub struct RunStatus {
     pub event_count: u64,
     pub gap_event_count: u64,
     pub missed_slot_count: u64,
+    pub coalesced_input_update_count: u64,
     pub current_valence: f64,
     pub current_arousal: f64,
     pub input_active: bool,
@@ -151,6 +161,7 @@ impl RunStatus {
             event_count: 0,
             gap_event_count: 0,
             missed_slot_count: 0,
+            coalesced_input_update_count: 0,
             current_valence: 0.0,
             current_arousal: 0.0,
             input_active: false,
@@ -316,17 +327,168 @@ struct ActiveRun {
     status: Arc<Mutex<RunStatus>>,
     worker: Option<JoinHandle<()>>,
     input_authority_id: String,
+    input_mailbox: Arc<NativeInputMailbox>,
 }
 
 enum RunMessage {
     Stimulus(StimulusStateUpdate, mpsc::Sender<ResearchResult<()>>),
-    DigitalInput(NativeDigitalInput),
     Finish(FinishOutcome, mpsc::Sender<ResearchResult<FinalizeReceipt>>),
     MediaFailure(
         MediaPlaybackFailureReport,
         mpsc::Sender<ResearchResult<MediaPlaybackFailureReceipt>>,
     ),
     Interrupt(mpsc::Sender<ResearchResult<()>>),
+}
+
+/// Callback-only input transport. Native callbacks never block on or silently
+/// drop into the lifecycle command channel: digital edges are bounded and
+/// ordered, continuous state is intentionally coalesced, and loss of authority
+/// always takes priority over other pending work.
+struct NativeInputMailbox {
+    expected_kind: InputKindV1,
+    state: Mutex<NativeInputMailboxState>,
+}
+
+#[derive(Default)]
+struct NativeInputMailboxState {
+    digital: VecDeque<NativeDigitalInput>,
+    continuous: Option<NativeContinuousInput>,
+    continuous_superseded_count: u64,
+    authority_loss: Option<NativeInputAuthorityLoss>,
+    failure: Option<NativeInputMailboxFailure>,
+}
+
+#[derive(Debug)]
+struct NativeInputMailboxFailure {
+    reason_code: &'static str,
+    observed_at: Instant,
+}
+
+enum NativeInputDrainFailure {
+    Input(NativeInputMailboxFailure),
+    Persistence(CommandError),
+}
+
+impl NativeInputDrainFailure {
+    fn command_error(&self) -> CommandError {
+        match self {
+            Self::Input(failure) => native_input_command_error(failure.reason_code),
+            Self::Persistence(error) => error.clone(),
+        }
+    }
+}
+
+#[derive(Debug, Default)]
+struct NativeInputDrain {
+    digital: VecDeque<NativeDigitalInput>,
+    continuous: Option<NativeContinuousInput>,
+    continuous_superseded_count: u64,
+}
+
+impl NativeInputMailbox {
+    fn new(expected_kind: InputKindV1) -> Self {
+        Self {
+            expected_kind,
+            state: Mutex::new(NativeInputMailboxState::default()),
+        }
+    }
+
+    fn push(&self, update: NativeInputUpdate) {
+        let mut state = lock(&self.state);
+        match update {
+            NativeInputUpdate::AuthorityLost(loss) => {
+                if state.authority_loss.is_none() {
+                    state.authority_loss = Some(loss);
+                }
+            }
+            NativeInputUpdate::Digital(input) => {
+                if self.expected_kind != InputKindV1::Digital {
+                    latch_mailbox_failure(
+                        &mut state,
+                        NATIVE_INPUT_KIND_MISMATCH,
+                        input.observed_at,
+                    );
+                } else if state.digital.len() == NATIVE_INPUT_DIGITAL_CAPACITY {
+                    latch_mailbox_failure(
+                        &mut state,
+                        NATIVE_INPUT_QUEUE_OVERFLOW,
+                        input.observed_at,
+                    );
+                } else {
+                    state.digital.push_back(input);
+                }
+            }
+            NativeInputUpdate::Continuous(input) => {
+                if self.expected_kind == InputKindV1::Digital {
+                    latch_mailbox_failure(
+                        &mut state,
+                        NATIVE_INPUT_KIND_MISMATCH,
+                        input.observed_at,
+                    );
+                } else {
+                    match state.continuous.as_ref() {
+                        Some(current) if current.observed_at > input.observed_at => {
+                            state.continuous_superseded_count =
+                                state.continuous_superseded_count.saturating_add(1);
+                        }
+                        _ => {
+                            if state.continuous.replace(input).is_some() {
+                                state.continuous_superseded_count =
+                                    state.continuous_superseded_count.saturating_add(1);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    fn drain(&self) -> Result<NativeInputDrain, NativeInputMailboxFailure> {
+        let mut state = lock(&self.state);
+        if let Some(loss) = state.authority_loss.take() {
+            state.digital.clear();
+            state.continuous = None;
+            state.continuous_superseded_count = 0;
+            state.failure = None;
+            return Err(NativeInputMailboxFailure {
+                reason_code: loss.reason_code,
+                observed_at: loss.observed_at,
+            });
+        }
+        if let Some(failure) = state.failure.take() {
+            state.digital.clear();
+            state.continuous = None;
+            state.continuous_superseded_count = 0;
+            return Err(failure);
+        }
+        Ok(NativeInputDrain {
+            digital: std::mem::take(&mut state.digital),
+            continuous: state.continuous.take(),
+            continuous_superseded_count: std::mem::take(&mut state.continuous_superseded_count),
+        })
+    }
+
+    fn clear_pending(&self) {
+        let mut state = lock(&self.state);
+        state.digital.clear();
+        state.continuous = None;
+        state.continuous_superseded_count = 0;
+        state.authority_loss = None;
+        state.failure = None;
+    }
+}
+
+fn latch_mailbox_failure(
+    state: &mut NativeInputMailboxState,
+    reason_code: &'static str,
+    observed_at: Instant,
+) {
+    if state.failure.is_none() {
+        state.failure = Some(NativeInputMailboxFailure {
+            reason_code,
+            observed_at,
+        });
+    }
 }
 
 impl ResearchRuntime {
@@ -380,12 +542,13 @@ impl ResearchRuntime {
             .ok_or_else(|| CommandError::invalid_contract("The participant has no assignment."))?
             .clone();
         let (sender, receiver) = mpsc::sync_channel(512);
-        let native_sender = sender.clone();
-        let input_authority_id = self.input.prepare_run(
+        let input_mailbox = Arc::new(NativeInputMailbox::new(settings.input.kind));
+        let native_mailbox = Arc::clone(&input_mailbox);
+        let input_authority_id = self.input.prepare_run_full(
             settings.input.clone(),
             &request.input_test_receipt_id,
-            move |input| {
-                let _ = native_sender.try_send(RunMessage::DigitalInput(input));
+            move |update| {
+                native_mailbox.push(update);
             },
         )?;
 
@@ -413,9 +576,10 @@ impl ResearchRuntime {
         let receipt = prepared.receipt.clone();
         let status = Arc::new(Mutex::new(prepared.initial_status()));
         let worker_status = Arc::clone(&status);
+        let worker_mailbox = Arc::clone(&input_mailbox);
         let worker = match thread::Builder::new()
             .name("affect-research-writer".to_owned())
-            .spawn(move || run_worker(prepared, receiver, worker_status))
+            .spawn(move || run_worker(prepared, receiver, worker_status, worker_mailbox))
         {
             Ok(worker) => worker,
             Err(error) => {
@@ -430,6 +594,7 @@ impl ResearchRuntime {
             status,
             worker: Some(worker),
             input_authority_id,
+            input_mailbox,
         });
         Ok(receipt)
     }
@@ -453,12 +618,13 @@ impl ResearchRuntime {
             &request.workspace_files,
         )?;
         let (sender, receiver) = mpsc::sync_channel(512);
-        let native_sender = sender.clone();
-        let input_authority_id = self.input.prepare_run(
+        let input_mailbox = Arc::new(NativeInputMailbox::new(settings.input.kind));
+        let native_mailbox = Arc::clone(&input_mailbox);
+        let input_authority_id = self.input.prepare_run_full(
             settings.input.clone(),
             &request.input_test_receipt_id,
-            move |input| {
-                let _ = native_sender.try_send(RunMessage::DigitalInput(input));
+            move |update| {
+                native_mailbox.push(update);
             },
         )?;
         let prepared = match self
@@ -482,9 +648,10 @@ impl ResearchRuntime {
         let receipt = prepared.receipt.clone();
         let status = Arc::new(Mutex::new(prepared.initial_status()));
         let worker_status = Arc::clone(&status);
+        let worker_mailbox = Arc::clone(&input_mailbox);
         let worker = match thread::Builder::new()
             .name("affect-research-writer".to_owned())
-            .spawn(move || run_worker(prepared, receiver, worker_status))
+            .spawn(move || run_worker(prepared, receiver, worker_status, worker_mailbox))
         {
             Ok(worker) => worker,
             Err(error) => {
@@ -499,6 +666,7 @@ impl ResearchRuntime {
             status,
             worker: Some(worker),
             input_authority_id,
+            input_mailbox,
         });
         Ok(receipt)
     }
@@ -569,24 +737,55 @@ impl ResearchRuntime {
             let input_authority_id = run.input_authority_id.clone();
             if begins_sampling {
                 self.input.ensure_run_ready(&input_authority_id)?;
+                // Enable before enqueueing so a fallible native-input gate can
+                // never leave the worker sampling neutral after Started/Resumed.
+                // Input accepted after the renderer's lifecycle report is retained
+                // and applied once the worker has durably entered Playing.
+                self.input.set_run_accepting(&input_authority_id, true)?;
+            } else {
+                // This is a barrier: every previously accepted callback is now in
+                // the native mailbox before the worker freezes lifecycle state.
+                self.input.set_run_accepting(&input_authority_id, false)?;
             }
             let (reply_sender, reply_receiver) = mpsc::channel();
-            run.sender
+            if run
+                .sender
                 .try_send(RunMessage::Stimulus(update, reply_sender))
-                .map_err(|_| CommandError::io("The native run command queue is unavailable."))?;
+                .is_err()
+            {
+                if self
+                    .input
+                    .set_run_accepting(&input_authority_id, false)
+                    .is_ok()
+                {
+                    run.input_mailbox.clear_pending();
+                }
+                return Err(CommandError::io(
+                    "The native run command queue is unavailable.",
+                ));
+            }
             (reply_receiver, input_authority_id)
         };
-        let result = reply_receiver
-            .recv_timeout(Duration::from_secs(2))
-            .map_err(|_| CommandError::io("The stimulus lifecycle update timed out."))?;
-        if result.is_ok() {
-            self.input
-                .set_run_accepting(&input_authority_id, begins_sampling)?;
-        } else if result
-            .as_ref()
-            .is_err_and(|error| error.code == RUN_EVIDENCE_PERSISTENCE_ERROR)
+        let result = match reply_receiver.recv_timeout(Duration::from_secs(2)) {
+            Ok(result) => result,
+            Err(_) => {
+                if self
+                    .input
+                    .set_run_accepting(&input_authority_id, false)
+                    .is_ok()
+                {
+                    self.clear_input_mailbox(&input_authority_id);
+                }
+                return Err(CommandError::io("The stimulus lifecycle update timed out."));
+            }
+        };
+        if result.is_err()
+            && self
+                .input
+                .set_run_accepting(&input_authority_id, false)
+                .is_ok()
         {
-            let _ = self.input.set_run_accepting(&input_authority_id, false);
+            self.clear_input_mailbox(&input_authority_id);
         }
         result
     }
@@ -598,6 +797,8 @@ impl ResearchRuntime {
             return Err(CommandError::no_active_run());
         };
         authorize_run_id(&run.run_id, run_id)?;
+        self.input
+            .set_run_accepting(&run.input_authority_id, false)?;
         let (reply_sender, reply_receiver) = mpsc::channel();
         if run
             .sender
@@ -651,6 +852,8 @@ impl ResearchRuntime {
         };
         authorize_run_id(&run.run_id, &report.run_id)?;
         authorize_webview_media_mode(Some(run.playback_mode))?;
+        self.input
+            .set_run_accepting(&run.input_authority_id, false)?;
         let (reply_sender, reply_receiver) = mpsc::channel();
         if run
             .sender
@@ -702,17 +905,26 @@ impl ResearchRuntime {
     }
 
     fn interrupt(&self) -> ResearchResult<()> {
+        self.interrupt_with_timeout(Duration::from_secs(5))
+    }
+
+    fn interrupt_with_timeout(&self, timeout: Duration) -> ResearchResult<()> {
         let mut active = self.lock_active();
-        let Some(mut run) = active.take() else {
+        let Some(run) = active.as_ref() else {
             return Ok(());
         };
-        self.input.end_run(&run.input_authority_id);
+        self.input
+            .set_run_accepting(&run.input_authority_id, false)?;
         let (reply_sender, reply_receiver) = mpsc::channel();
         if run
             .sender
             .send(RunMessage::Interrupt(reply_sender))
             .is_err()
         {
+            let mut run = active
+                .take()
+                .expect("the unavailable worker still has an installed run handle");
+            self.input.end_run(&run.input_authority_id);
             if let Some(worker) = run.worker.take() {
                 let _ = worker.join();
             }
@@ -720,9 +932,21 @@ impl ResearchRuntime {
                 "The interrupted run retained its last recovery journal.",
             ));
         }
-        let result = reply_receiver
-            .recv_timeout(Duration::from_secs(5))
-            .map_err(|_| CommandError::io("The interrupted run could not flush in time."))?;
+        let result = match reply_receiver.recv_timeout(timeout) {
+            Ok(result) => result,
+            Err(_) => {
+                // Keep the sender and JoinHandle installed. The worker may still
+                // finish its durable checkpoint, and a later cleanup can join it;
+                // timing out must never detach the worker or discard authority.
+                return Err(CommandError::io(
+                    "The interrupted run could not flush in time.",
+                ));
+            }
+        };
+        let mut run = active
+            .take()
+            .expect("the active run remains installed until interruption replies");
+        self.input.end_run(&run.input_authority_id);
         if let Some(worker) = run.worker.take() {
             let _ = worker.join();
         }
@@ -733,6 +957,16 @@ impl ResearchRuntime {
         self.active
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    fn clear_input_mailbox(&self, input_authority_id: &str) {
+        let active = self.lock_active();
+        if let Some(run) = active
+            .as_ref()
+            .filter(|run| run.input_authority_id.as_str() == input_authority_id)
+        {
+            run.input_mailbox.clear_pending();
+        }
     }
 }
 
@@ -1020,6 +1254,7 @@ impl PreparedRun {
             event_count: self.event_sequence,
             gap_event_count: self.files.journal.gap_event_count,
             missed_slot_count: self.files.journal.missed_slot_count,
+            coalesced_input_update_count: 0,
             current_valence: 0.0,
             current_arousal: 0.0,
             input_active: false,
@@ -1043,6 +1278,7 @@ fn run_worker(
     prepared: PreparedRun,
     receiver: Receiver<RunMessage>,
     shared_status: Arc<Mutex<RunStatus>>,
+    input_mailbox: Arc<NativeInputMailbox>,
 ) {
     let mut worker = RunWorker::new(prepared, shared_status);
     if worker.start().is_err() {
@@ -1050,10 +1286,40 @@ fn run_worker(
         return;
     }
     loop {
+        if lock(&worker.status).phase == RunPhase::Playing {
+            if let Err(failure) = drain_native_input_mailbox(&input_mailbox, &mut worker) {
+                stop_for_native_input_failure(&mut worker, &failure);
+                return;
+            }
+        }
         let timeout = worker.timeout_until_sample();
-        match receiver.recv_timeout(timeout) {
+        let received = receiver.recv_timeout(timeout);
+        match received {
             Ok(RunMessage::Stimulus(update, reply)) => {
+                let begins_sampling = matches!(
+                    update.lifecycle,
+                    StimulusLifecycle::Started | StimulusLifecycle::Resumed
+                );
+                if !begins_sampling {
+                    // Acceptance was disabled before enqueue. This post-recv
+                    // drain closes the callback/command race before freezing.
+                    if let Err(failure) = drain_native_input_mailbox(&input_mailbox, &mut worker) {
+                        stop_for_native_input_failure(&mut worker, &failure);
+                        let _ = reply.send(Err(failure.command_error()));
+                        return;
+                    }
+                }
                 let (result, evidence_failure) = worker.apply_stimulus_message(update);
+                if result.is_ok() && begins_sampling {
+                    // Updates accepted after the renderer reported Started or
+                    // Resumed are legitimate. Apply them exactly once only after
+                    // the worker has entered Playing.
+                    if let Err(failure) = drain_native_input_mailbox(&input_mailbox, &mut worker) {
+                        stop_for_native_input_failure(&mut worker, &failure);
+                        let _ = reply.send(Err(failure.command_error()));
+                        return;
+                    }
+                }
                 if evidence_failure {
                     worker.fail(RUN_EVIDENCE_PERSISTENCE_FAILURE);
                 }
@@ -1062,13 +1328,12 @@ fn run_worker(
                     return;
                 }
             }
-            Ok(RunMessage::DigitalInput(input)) => {
-                if worker.apply_digital_input(input).is_err() {
-                    worker.fail("input-edge-invalid");
+            Ok(RunMessage::Finish(outcome, reply)) => {
+                if let Err(failure) = drain_native_input_mailbox(&input_mailbox, &mut worker) {
+                    stop_for_native_input_failure(&mut worker, &failure);
+                    let _ = reply.send(Err(failure.command_error()));
                     return;
                 }
-            }
-            Ok(RunMessage::Finish(outcome, reply)) => {
                 let previous_phase = lock(&worker.status).phase;
                 lock(&worker.status).phase = RunPhase::Finalizing;
                 let result = worker.finalize(outcome);
@@ -1082,28 +1347,93 @@ fn run_worker(
                 }
             }
             Ok(RunMessage::MediaFailure(report, reply)) => {
+                if let Err(failure) = drain_native_input_mailbox(&input_mailbox, &mut worker) {
+                    stop_for_native_input_failure(&mut worker, &failure);
+                    let _ = reply.send(Err(failure.command_error()));
+                    return;
+                }
                 let result = worker.interrupt_for_media_failure(report);
                 let _ = reply.send(result);
                 return;
             }
             Ok(RunMessage::Interrupt(reply)) => {
+                if let Err(failure) = drain_native_input_mailbox(&input_mailbox, &mut worker) {
+                    stop_for_native_input_failure(&mut worker, &failure);
+                    let _ = reply.send(Err(failure.command_error()));
+                    return;
+                }
                 let result = worker.interrupt();
                 let _ = reply.send(result);
                 return;
             }
             Err(RecvTimeoutError::Timeout) => {
+                // A callback may arrive just after the loop-top drain. Sampling
+                // is the final barrier, so drain once more immediately before it.
+                if lock(&worker.status).phase == RunPhase::Playing {
+                    if let Err(failure) = drain_native_input_mailbox(&input_mailbox, &mut worker) {
+                        stop_for_native_input_failure(&mut worker, &failure);
+                        return;
+                    }
+                }
                 if worker.sample_if_due().is_err() {
                     worker.fail("sample-write-failed");
                     return;
                 }
             }
             Err(RecvTimeoutError::Disconnected) => {
+                if let Err(failure) = drain_native_input_mailbox(&input_mailbox, &mut worker) {
+                    stop_for_native_input_failure(&mut worker, &failure);
+                    return;
+                }
                 // The recovery journal and partial tables intentionally remain authoritative.
                 worker.fail("command-channel-disconnected");
                 return;
             }
         }
     }
+}
+
+fn stop_for_native_input_failure(worker: &mut RunWorker, failure: &NativeInputDrainFailure) {
+    match failure {
+        NativeInputDrainFailure::Input(failure) => {
+            if worker
+                .interrupt_for_native_input_failure(failure.reason_code, failure.observed_at)
+                .is_err()
+            {
+                worker.fail("native-input-failure-persistence-failed");
+            }
+        }
+        NativeInputDrainFailure::Persistence(_) => {
+            // The failed operation was already the authoritative InputEdge event,
+            // journal checkpoint, or LSL marker. Never attempt an N+1
+            // WriteInterrupted through the same unhealthy persistence path.
+            worker.fail("native-input-evidence-persistence-failed");
+        }
+    }
+}
+
+fn drain_native_input_mailbox(
+    mailbox: &NativeInputMailbox,
+    worker: &mut RunWorker,
+) -> Result<(), NativeInputDrainFailure> {
+    let drain = mailbox.drain().map_err(NativeInputDrainFailure::Input)?;
+    worker.apply_native_input_drain(drain).map_err(|error| {
+        if error.code == "research_io" {
+            NativeInputDrainFailure::Persistence(error)
+        } else {
+            NativeInputDrainFailure::Input(NativeInputMailboxFailure {
+                reason_code: "native-input-invalid",
+                observed_at: Instant::now(),
+            })
+        }
+    })
+}
+
+fn native_input_command_error(reason_code: &'static str) -> CommandError {
+    CommandError::new(
+        "native_input_failed",
+        format!("The native input authority failed closed ({reason_code})."),
+    )
 }
 
 struct RunWorker {
@@ -1251,7 +1581,24 @@ impl RunWorker {
             .next_deadline()
             .checked_duration_since(Instant::now())
             .unwrap_or(Duration::ZERO)
-            .min(Duration::from_millis(250))
+            .min(NATIVE_INPUT_ACTIVE_POLL)
+    }
+
+    fn apply_native_input_drain(&mut self, drain: NativeInputDrain) -> ResearchResult<()> {
+        if drain.continuous_superseded_count > 0 {
+            let mut status = lock(&self.status);
+            status.coalesced_input_update_count = status
+                .coalesced_input_update_count
+                .saturating_add(drain.continuous_superseded_count)
+                .min(JS_MAX_SAFE_INTEGER_U64);
+        }
+        for input in drain.digital {
+            self.apply_digital_input(input)?;
+        }
+        if let Some(input) = drain.continuous {
+            self.apply_continuous_input(input)?;
+        }
+        Ok(())
     }
 
     fn apply_digital_input(&mut self, input: NativeDigitalInput) -> ResearchResult<()> {
@@ -1264,15 +1611,57 @@ impl RunWorker {
             return Ok(());
         }
         let now = Instant::now();
+        if input.observed_at > now {
+            return Err(CommandError::invalid_contract(
+                "Native input observation time cannot be in the future.",
+            ));
+        }
+        self.state.anchor = self.state.anchor.max(input.observed_at);
         if input.impulse {
             self.native_input_active = false;
-            self.state.impulse_active_until = now + Duration::from_millis(100);
+            self.state.impulse_active_until = input.observed_at + Duration::from_millis(100);
         } else {
             self.native_input_active = input.input_active;
+            if !input.input_active {
+                self.state.impulse_active_until = input.observed_at;
+            }
         }
         if input.apply_step {
-            self.apply_direction_step(input.direction, &input.detail, now)?;
+            self.apply_direction_step(input.direction, &input.detail, input.observed_at)?;
         }
+        self.publish_authoritative_state(now);
+        Ok(())
+    }
+
+    fn apply_continuous_input(&mut self, input: NativeContinuousInput) -> ResearchResult<()> {
+        if !matches!(
+            self.settings.input.kind,
+            InputKindV1::Absolute | InputKindV1::Analog
+        ) {
+            return Err(CommandError::forbidden(
+                "Continuous input is not available for this input preset.",
+            ));
+        }
+        if lock(&self.status).phase != RunPhase::Playing {
+            return Ok(());
+        }
+        let now = Instant::now();
+        if !input.x.is_finite()
+            || !input.y.is_finite()
+            || !(-1.0..=1.0).contains(&input.x)
+            || !(-1.0..=1.0).contains(&input.y)
+            || input.observed_at > now
+        {
+            return Err(CommandError::invalid_contract(
+                "Native continuous input is outside its semantic bounds.",
+            ));
+        }
+        self.state.current_x = if input.x == 0.0 { 0.0 } else { input.x };
+        self.state.current_y = if input.y == 0.0 { 0.0 } else { input.y };
+        self.state.target_x = self.state.current_x;
+        self.state.target_y = self.state.current_y;
+        self.state.anchor = self.state.anchor.max(input.observed_at);
+        self.native_input_active = input.input_active;
         self.publish_authoritative_state(now);
         Ok(())
     }
@@ -1281,7 +1670,7 @@ impl RunWorker {
         &mut self,
         direction: DirectionV1,
         detail: &str,
-        now: Instant,
+        observed_at: Instant,
     ) -> ResearchResult<()> {
         let step = self.settings.input.step_size.unwrap_or(0.1);
         match direction {
@@ -1298,8 +1687,7 @@ impl RunWorker {
         }
         self.state.current_x = self.state.target_x;
         self.state.current_y = self.state.target_y;
-        self.state.anchor = now;
-        self.publish_authoritative_state(now);
+        self.state.anchor = self.state.anchor.max(observed_at);
         self.write_event(
             ResearchEventTypeV1::InputEdge,
             self.active_stimulus.clone(),
@@ -1383,7 +1771,10 @@ impl RunWorker {
                 )?;
                 self.active_stimulus = Some(active.clone());
                 self.clock = None;
+                self.native_input_active = false;
+                self.state.impulse_active_until = now;
                 lock(&self.status).phase = RunPhase::Paused;
+                self.publish_authoritative_state(now);
                 ResearchEventTypeV1::StimulusPaused
             }
             StimulusLifecycle::Resumed => {
@@ -1676,7 +2067,10 @@ impl RunWorker {
         let (identity, position, media_time) = match stimulus {
             Some(stimulus) => {
                 let media = (stimulus.media_anchor_ms
-                    + duration_ms(now.duration_since(stimulus.media_anchor_at)))
+                    + duration_ms(
+                        now.checked_duration_since(stimulus.media_anchor_at)
+                            .unwrap_or(Duration::ZERO),
+                    ))
                 .min(stimulus.identity.duration_ms);
                 (
                     Some(stimulus.identity),
@@ -1884,6 +2278,37 @@ impl RunWorker {
             interrupted_stimulus_position,
             last_safe_stimulus_position: self.last_safe_position,
         })
+    }
+
+    fn interrupt_for_native_input_failure(
+        &mut self,
+        failure_code: &'static str,
+        observed_at: Instant,
+    ) -> ResearchResult<()> {
+        self.clock = None;
+        self.native_input_active = false;
+        let _physical_observation = observed_at;
+        self.write_event(
+            ResearchEventTypeV1::WriteInterrupted,
+            self.active_stimulus.clone(),
+            None,
+            Some(failure_code.to_owned()),
+        )?;
+        let interrupted_stimulus_position = self
+            .active_stimulus
+            .as_ref()
+            .map(|stimulus| stimulus.position);
+        self.checkpoint_journal(
+            interrupted_stimulus_position,
+            monotonic_ns(self.monotonic_offset_ns, self.run_epoch, Instant::now()),
+        )?;
+        let mut status = lock(&self.status);
+        status.active = false;
+        status.phase = RunPhase::Failed;
+        status.input_active = false;
+        status.write_healthy = true;
+        status.failure_code = Some(failure_code.to_owned());
+        Ok(())
     }
 
     fn fail(&mut self, code: &str) {
@@ -2135,8 +2560,10 @@ fn wall_time_now() -> ResearchResult<String> {
 }
 
 fn format_wall_time(time: OffsetDateTime) -> ResearchResult<String> {
-    time.format(&Rfc3339)
-        .map_err(|_| CommandError::io("The native wall-clock timestamp could not be formatted."))
+    time.format(format_description!(
+        "[year]-[month]-[day]T[hour]:[minute]:[second].[subsecond digits:3]Z"
+    ))
+    .map_err(|_| CommandError::io("The native wall-clock timestamp could not be formatted."))
 }
 
 #[cfg(target_os = "windows")]
@@ -2625,13 +3052,6 @@ impl RunFiles {
         settings: &ResearchSettingsV1,
         attempt_lock: File,
     ) -> ResearchResult<(Self, ReconciledRun)> {
-        if session_dir.join("manifest.json").exists() {
-            verify_committed_manifest(session_dir, &journal)?;
-            remove_recovery_journal_if_present(&recovery_path);
-            return Err(CommandError::forbidden(
-                "The attempt is already durably finalized; stale recovery evidence was cleaned.",
-            ));
-        }
         if let Some(pending) = &journal.pending_finalization {
             validate_manifest_against_journal(&pending.manifest, &journal)?;
             commit_pending_finalization(session_dir, &journal)?;
@@ -2639,6 +3059,13 @@ impl RunFiles {
             remove_recovery_journal_if_present(&recovery_path);
             return Err(CommandError::forbidden(
                 "The pending terminal attempt was durably finalized during recovery.",
+            ));
+        }
+        if session_dir.join("manifest.json").exists() {
+            verify_committed_manifest(session_dir, &journal)?;
+            remove_recovery_journal_if_present(&recovery_path);
+            return Err(CommandError::forbidden(
+                "The attempt is already durably finalized; stale recovery evidence was cleaned.",
             ));
         }
         let events_path = session_dir.join("events.jsonl");
@@ -3192,10 +3619,77 @@ fn canonical_event_line(event: &ResearchEventV1) -> ResearchResult<Vec<u8>> {
     Ok(line)
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum FinalizationPersistenceBoundary {
+    TerminalEventWritten,
+    TerminalEventSynced,
+    RatingsRenamed(RunOutputKindV1),
+    RatingsSynced(RunOutputKindV1),
+    ManifestPrefixWritten,
+    ManifestWritten,
+    ManifestSynced,
+}
+
+struct FinalizationPersistenceCheckpoints {
+    #[cfg(test)]
+    fail_after: Option<FinalizationPersistenceBoundary>,
+    #[cfg(test)]
+    observed: Vec<FinalizationPersistenceBoundary>,
+}
+
+impl FinalizationPersistenceCheckpoints {
+    fn production() -> Self {
+        Self {
+            #[cfg(test)]
+            fail_after: None,
+            #[cfg(test)]
+            observed: Vec::new(),
+        }
+    }
+
+    #[cfg(test)]
+    fn failing_after(boundary: FinalizationPersistenceBoundary) -> Self {
+        Self {
+            fail_after: Some(boundary),
+            observed: Vec::new(),
+        }
+    }
+
+    fn reached(&mut self, boundary: FinalizationPersistenceBoundary) -> ResearchResult<()> {
+        #[cfg(not(test))]
+        let _ = boundary;
+        #[cfg(test)]
+        {
+            self.observed.push(boundary);
+            if self.fail_after == Some(boundary) {
+                self.fail_after = None;
+                return Err(CommandError::io(
+                    "injected terminal persistence boundary failure",
+                ));
+            }
+        }
+        Ok(())
+    }
+}
+
 fn ensure_exact_append(
     path: &Path,
     prefix_byte_length: u64,
     expected: &[u8],
+) -> ResearchResult<()> {
+    ensure_exact_append_with_checkpoints(
+        path,
+        prefix_byte_length,
+        expected,
+        &mut FinalizationPersistenceCheckpoints::production(),
+    )
+}
+
+fn ensure_exact_append_with_checkpoints(
+    path: &Path,
+    prefix_byte_length: u64,
+    expected: &[u8],
+    checkpoints: &mut FinalizationPersistenceCheckpoints,
 ) -> ResearchResult<()> {
     let mut file = OpenOptions::new()
         .read(true)
@@ -3214,7 +3708,11 @@ fn ensure_exact_append(
     let mut observed = Vec::with_capacity((observed_length - prefix_byte_length) as usize);
     file.read_to_end(&mut observed).map_err(CommandError::io)?;
     if observed == expected {
-        return Ok(());
+        // An earlier process may have stopped after writing the exact terminal
+        // line but before its durability barrier. Re-sync it before a retry may
+        // advance to the manifest commit point.
+        file.sync_all().map_err(CommandError::io)?;
+        return checkpoints.reached(FinalizationPersistenceBoundary::TerminalEventSynced);
     }
     if !expected.starts_with(&observed) {
         return Err(CommandError::forbidden(
@@ -3225,7 +3723,9 @@ fn ensure_exact_append(
     file.seek(SeekFrom::Start(prefix_byte_length))
         .map_err(CommandError::io)?;
     file.write_all(expected).map_err(CommandError::io)?;
-    file.sync_all().map_err(CommandError::io)
+    checkpoints.reached(FinalizationPersistenceBoundary::TerminalEventWritten)?;
+    file.sync_all().map_err(CommandError::io)?;
+    checkpoints.reached(FinalizationPersistenceBoundary::TerminalEventSynced)
 }
 
 fn write_journal_record(
@@ -3889,10 +4389,10 @@ fn finalize_recovery_at_root(
         "assignment plan",
     )?;
 
-    let manifest = if session_dir.join("manifest.json").exists() {
-        verify_committed_manifest(&session_dir, &journal)?
-    } else if journal.pending_finalization.is_some() {
+    let manifest = if journal.pending_finalization.is_some() {
         commit_pending_finalization(&session_dir, &journal)?;
+        verify_committed_manifest(&session_dir, &journal)?
+    } else if session_dir.join("manifest.json").exists() {
         verify_committed_manifest(&session_dir, &journal)?
     } else {
         return finalize_completed_boundary_recovery(
@@ -4228,6 +4728,7 @@ fn promote_or_verify_output(
     partial_path: &Path,
     final_path: &Path,
     expected: &RunOutputV1,
+    checkpoints: &mut FinalizationPersistenceCheckpoints,
 ) -> ResearchResult<()> {
     let partial_exists = regular_file_exists(partial_path)?;
     let final_exists = regular_file_exists(final_path)?;
@@ -4241,9 +4742,22 @@ fn promote_or_verify_output(
                 .to_owned();
             verify_output_record(partial_path, &staged)?;
             fs::rename(partial_path, final_path).map_err(CommandError::io)?;
-            verify_output_record(final_path, expected)
+            checkpoints.reached(FinalizationPersistenceBoundary::RatingsRenamed(
+                expected.kind,
+            ))?;
+            sync_verified_output(final_path, expected)?;
+            checkpoints.reached(FinalizationPersistenceBoundary::RatingsSynced(
+                expected.kind,
+            ))
         }
-        (false, true) => verify_output_record(final_path, expected),
+        (false, true) => {
+            // A previous process may have stopped immediately after rename.
+            // Re-open, verify, and sync the exact final file before proceeding.
+            sync_verified_output(final_path, expected)?;
+            checkpoints.reached(FinalizationPersistenceBoundary::RatingsSynced(
+                expected.kind,
+            ))
+        }
         (true, true) => Err(CommandError::forbidden(
             "Both partial and final ratings files exist during finalization.",
         )),
@@ -4251,6 +4765,18 @@ fn promote_or_verify_output(
             "A ratings output disappeared during finalization.",
         )),
     }
+}
+
+fn sync_verified_output(path: &Path, expected: &RunOutputV1) -> ResearchResult<()> {
+    verify_output_record(path, expected)?;
+    OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(path)
+        .map_err(CommandError::io)?
+        .sync_all()
+        .map_err(CommandError::io)?;
+    verify_output_record(path, expected)
 }
 
 fn manifest_playback_mode(mode: PlaybackMode) -> RunPlaybackModeV1 {
@@ -4424,15 +4950,28 @@ fn commit_pending_finalization(
     session_dir: &Path,
     journal: &RecoveryJournalV1,
 ) -> ResearchResult<()> {
+    commit_pending_finalization_with_checkpoints(
+        session_dir,
+        journal,
+        &mut FinalizationPersistenceCheckpoints::production(),
+    )
+}
+
+fn commit_pending_finalization_with_checkpoints(
+    session_dir: &Path,
+    journal: &RecoveryJournalV1,
+    checkpoints: &mut FinalizationPersistenceCheckpoints,
+) -> ResearchResult<()> {
     let pending = journal
         .pending_finalization
         .as_ref()
         .ok_or_else(|| CommandError::io("No durable finalization intent is available."))?;
     validate_manifest_against_journal(&pending.manifest, journal)?;
-    ensure_exact_append(
+    ensure_exact_append_with_checkpoints(
         &session_dir.join("events.jsonl"),
         pending.events_prefix_byte_length,
         &canonical_event_line(&pending.terminal_event)?,
+        checkpoints,
     )?;
     let manifest = &pending.manifest;
     for output in &manifest.outputs {
@@ -4443,32 +4982,126 @@ fn commit_pending_finalization(
             }
             RunOutputKindV1::Csv | RunOutputKindV1::Tsv => {
                 let partial_path = session_dir.join(format!("{}.partial", output.file_name));
-                promote_or_verify_output(&partial_path, &final_path, output)?;
+                promote_or_verify_output(&partial_path, &final_path, output, checkpoints)?;
             }
         }
     }
     let manifest_path = session_dir.join("manifest.json");
     let expected = canonical_json(manifest, &[])?;
     if regular_file_exists(&manifest_path)? {
-        let observed = fs::read(&manifest_path).map_err(CommandError::io)?;
-        if observed != expected {
-            return Err(CommandError::forbidden(
-                "The durable manifest conflicts with the frozen finalization intent.",
-            ));
-        }
-    } else if let Err(error) = write_new(&manifest_path, &expected) {
-        if regular_file_exists(&manifest_path)? {
-            let observed = fs::read(&manifest_path).map_err(CommandError::io)?;
-            if observed != expected {
-                return Err(CommandError::forbidden(
-                    "A conflicting durable manifest won the finalization race.",
-                ));
+        complete_or_sync_manifest_prefix(&manifest_path, &expected, checkpoints)?;
+    } else {
+        match create_new_file(&manifest_path) {
+            Ok(mut file) => {
+                let split = (expected.len() / 2).max(1).min(expected.len());
+                file.write_all(&expected[..split])
+                    .map_err(CommandError::io)?;
+                checkpoints.reached(FinalizationPersistenceBoundary::ManifestPrefixWritten)?;
+                file.write_all(&expected[split..])
+                    .map_err(CommandError::io)?;
+                checkpoints.reached(FinalizationPersistenceBoundary::ManifestWritten)?;
+                file.sync_all().map_err(CommandError::io)?;
+                checkpoints.reached(FinalizationPersistenceBoundary::ManifestSynced)?;
+                let observed = fs::read(&manifest_path).map_err(CommandError::io)?;
+                if observed != expected {
+                    return Err(CommandError::forbidden(
+                        "The durable manifest changed during finalization verification.",
+                    ));
+                }
             }
-        } else {
-            return Err(error);
+            Err(_) if regular_file_exists(&manifest_path)? => {
+                // A competing retry may have won the create-new race. Only the
+                // exact frozen manifest or one of its byte prefixes is admissible.
+                // Completing a prefix only appends the frozen suffix; conflicting
+                // existing bytes are never overwritten.
+                complete_or_sync_manifest_prefix(&manifest_path, &expected, checkpoints)?;
+            }
+            Err(error) => return Err(error),
         }
     }
     verify_committed_manifest_outputs(session_dir, manifest)
+}
+
+fn complete_or_sync_manifest_prefix(
+    path: &Path,
+    expected: &[u8],
+    checkpoints: &mut FinalizationPersistenceCheckpoints,
+) -> ResearchResult<()> {
+    let mut file = OpenOptions::new()
+        .read(true)
+        .append(true)
+        .open(path)
+        .map_err(CommandError::io)?;
+    let observed_len = exact_manifest_prefix_length(&mut file, expected)?;
+    if observed_len < expected.len() {
+        // Append mode prevents a concurrent change from being overwritten. The
+        // attempt lock serializes supported writers; final verification still
+        // fails closed if an unsupported writer changes the file concurrently.
+        file.write_all(&expected[observed_len..])
+            .map_err(CommandError::io)?;
+        checkpoints.reached(FinalizationPersistenceBoundary::ManifestWritten)?;
+    }
+    file.sync_all().map_err(CommandError::io)?;
+    checkpoints.reached(FinalizationPersistenceBoundary::ManifestSynced)?;
+    let observed_after_sync_len = exact_manifest_prefix_length(&mut file, expected)?;
+    if observed_after_sync_len != expected.len() {
+        return Err(CommandError::forbidden(
+            "The durable manifest changed during finalization verification.",
+        ));
+    }
+    Ok(())
+}
+
+fn exact_manifest_prefix_length(file: &mut File, expected: &[u8]) -> ResearchResult<usize> {
+    file.seek(SeekFrom::Start(0)).map_err(CommandError::io)?;
+    let read_limit = expected
+        .len()
+        .checked_add(1)
+        .ok_or_else(|| CommandError::forbidden("The frozen manifest is too large."))?;
+    let mut observed = Vec::with_capacity(expected.len().min(64 * 1024));
+    file.take(read_limit as u64)
+        .read_to_end(&mut observed)
+        .map_err(CommandError::io)?;
+    if !expected.starts_with(&observed) {
+        return Err(CommandError::forbidden(
+            "The durable manifest conflicts with the frozen finalization intent.",
+        ));
+    }
+    Ok(observed.len())
+}
+
+fn verify_pending_manifest_prefix(path: &Path, expected: &[u8]) -> ResearchResult<()> {
+    if !regular_file_exists(path)? {
+        return Err(CommandError::forbidden(
+            "The pending manifest path is not a regular file.",
+        ));
+    }
+    let mut file = File::open(path).map_err(CommandError::io)?;
+    exact_manifest_prefix_length(&mut file, expected)?;
+    Ok(())
+}
+
+fn sync_exact_manifest(path: &Path, expected: &[u8]) -> ResearchResult<()> {
+    let mut file = OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(path)
+        .map_err(CommandError::io)?;
+    let mut observed = Vec::new();
+    file.read_to_end(&mut observed).map_err(CommandError::io)?;
+    if observed != expected {
+        return Err(CommandError::forbidden(
+            "The durable manifest conflicts with the frozen finalization intent.",
+        ));
+    }
+    file.sync_all().map_err(CommandError::io)?;
+    let observed_after_sync = fs::read(path).map_err(CommandError::io)?;
+    if observed_after_sync != expected {
+        return Err(CommandError::forbidden(
+            "The durable manifest changed during finalization verification.",
+        ));
+    }
+    Ok(())
 }
 
 fn verify_committed_manifest_outputs(
@@ -4500,6 +5133,11 @@ fn verify_committed_manifest(
             "The durable manifest is not canonically encoded.",
         ));
     }
+    // Recovery cleanup may observe an exact manifest left by a process that
+    // stopped immediately after its write. Re-sync the exact bytes before the
+    // manifest is accepted as the scientific commit point and the journal is
+    // eligible for removal.
+    sync_exact_manifest(&path, &bytes)?;
     validate_manifest_against_journal(&manifest, journal)?;
     verify_committed_manifest_outputs(session_dir, &manifest)?;
     Ok(manifest)
@@ -4579,14 +5217,32 @@ fn scan_recoveries(workspace_root: &Path) -> ResearchResult<RecoveryListing> {
                 continue;
             }
         };
-        if session_dir.join("manifest.json").exists() {
+        let manifest_path = session_dir.join("manifest.json");
+        if manifest_path.exists() {
             if verify_committed_manifest(&session_dir, &journal).is_ok() {
                 remove_recovery_journal_if_present(&entry.path());
-            } else {
+                continue;
+            }
+            let Some(pending) = journal.pending_finalization.as_ref() else {
                 corrupt_recovery_ids
                     .push(corrupt_recovery_id(&entry.file_name().to_string_lossy()));
+                continue;
+            };
+            let expected = match validate_manifest_against_journal(&pending.manifest, &journal)
+                .and_then(|()| canonical_json(&pending.manifest, &[]))
+            {
+                Ok(expected) => expected,
+                Err(_) => {
+                    corrupt_recovery_ids
+                        .push(corrupt_recovery_id(&entry.file_name().to_string_lossy()));
+                    continue;
+                }
+            };
+            if verify_pending_manifest_prefix(&manifest_path, &expected).is_err() {
+                corrupt_recovery_ids
+                    .push(corrupt_recovery_id(&entry.file_name().to_string_lossy()));
+                continue;
             }
-            continue;
         }
         let pending_completion_status = match journal.pending_finalization.as_ref() {
             Some(pending) => {
@@ -4781,6 +5437,33 @@ fn attempt_from_stem(stem: &str) -> u32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn digital_update(
+        direction: DirectionV1,
+        detail: impl Into<String>,
+        observed_at: Instant,
+        apply_step: bool,
+        input_active: bool,
+    ) -> NativeInputUpdate {
+        NativeInputUpdate::Digital(NativeDigitalInput {
+            direction,
+            detail: detail.into(),
+            apply_step,
+            input_active,
+            impulse: false,
+            observed_at,
+        })
+    }
+
+    fn continuous_update(x: f64, y: f64, observed_at: Instant) -> NativeInputUpdate {
+        NativeInputUpdate::Continuous(NativeContinuousInput {
+            x,
+            y,
+            detail: "gamepad:analog".to_owned(),
+            input_active: x != 0.0 || y != 0.0,
+            observed_at,
+        })
+    }
 
     fn test_plan(settings: &ResearchSettingsV1) -> ResolvedAssignmentPlanV1 {
         let settings_sha256 = settings.canonical_sha256().unwrap();
@@ -5090,7 +5773,7 @@ mod tests {
             }
         }
 
-        fn finalize(&mut self) -> ResearchResult<FinalizeReceipt> {
+        fn prepare_finalization_intent(&mut self) -> ResearchResult<()> {
             self.files.prepare_finalization(
                 &self.receipt,
                 &self.settings,
@@ -5103,13 +5786,17 @@ mod tests {
                 &self.terminal_event,
                 self.events_prefix_byte_length,
                 &self.finalized_at,
-            )?;
+            )
+        }
+
+        fn finalize(&mut self) -> ResearchResult<FinalizeReceipt> {
+            self.prepare_finalization_intent()?;
             self.files
                 .ensure_terminal_event(self.events_prefix_byte_length, &self.terminal_event)?;
             self.files.complete_finalization(&self.receipt)
         }
 
-        fn into_worker(self) -> (PathBuf, PathBuf, Arc<Mutex<RunStatus>>, RunWorker) {
+        fn into_prepared(self) -> (PathBuf, PathBuf, PreparedRun) {
             let Self {
                 base,
                 settings,
@@ -5143,6 +5830,11 @@ mod tests {
                 },
                 resumed: false,
             };
+            (base, recovery_path, prepared)
+        }
+
+        fn into_worker(self) -> (PathBuf, PathBuf, Arc<Mutex<RunStatus>>, RunWorker) {
+            let (base, recovery_path, prepared) = self.into_prepared();
             let status = Arc::new(Mutex::new(prepared.initial_status()));
             let worker = RunWorker::new(prepared, Arc::clone(&status));
             (base, recovery_path, status, worker)
@@ -5155,6 +5847,655 @@ mod tests {
         assert_eq!(validate_participant_code("ËÅ").unwrap(), "ËÅ");
         assert!(validate_participant_code("Em").is_err());
         assert!(validate_participant_code("E_M").is_err());
+    }
+
+    #[test]
+    fn native_wall_time_is_canonical_utc_with_exact_milliseconds() {
+        let fractional = OffsetDateTime::parse("2026-09-04T12:34:56.987654321Z", &Rfc3339).unwrap();
+        let whole_second = OffsetDateTime::parse("2026-09-04T12:34:56Z", &Rfc3339).unwrap();
+        assert_eq!(
+            format_wall_time(fractional).unwrap(),
+            "2026-09-04T12:34:56.987Z"
+        );
+        assert_eq!(
+            format_wall_time(whole_second).unwrap(),
+            "2026-09-04T12:34:56.000Z"
+        );
+    }
+
+    #[test]
+    fn native_input_mailbox_is_bounded_ordered_coalesced_and_loss_prioritized() {
+        let observed_at = Instant::now();
+        let ordered = NativeInputMailbox::new(InputKindV1::Digital);
+        for index in 0..NATIVE_INPUT_DIGITAL_CAPACITY {
+            ordered.push(digital_update(
+                DirectionV1::Up,
+                format!("edge-{index:03}"),
+                observed_at + Duration::from_nanos(index as u64),
+                true,
+                true,
+            ));
+        }
+        let drained = ordered.drain().unwrap();
+        assert_eq!(drained.digital.len(), NATIVE_INPUT_DIGITAL_CAPACITY);
+        assert_eq!(drained.digital.front().unwrap().detail, "edge-000");
+        assert_eq!(drained.digital.back().unwrap().detail, "edge-127");
+
+        let overflow = NativeInputMailbox::new(InputKindV1::Digital);
+        for index in 0..=NATIVE_INPUT_DIGITAL_CAPACITY {
+            overflow.push(digital_update(
+                DirectionV1::Right,
+                format!("overflow-{index}"),
+                observed_at,
+                true,
+                true,
+            ));
+        }
+        assert_eq!(
+            overflow.drain().unwrap_err().reason_code,
+            NATIVE_INPUT_QUEUE_OVERFLOW
+        );
+
+        let authority_wins = NativeInputMailbox::new(InputKindV1::Digital);
+        for index in 0..=NATIVE_INPUT_DIGITAL_CAPACITY {
+            authority_wins.push(digital_update(
+                DirectionV1::Left,
+                format!("queued-{index}"),
+                observed_at,
+                true,
+                true,
+            ));
+        }
+        authority_wins.push(NativeInputUpdate::AuthorityLost(NativeInputAuthorityLoss {
+            reason_code: "native-gamepad-disconnected",
+            observed_at,
+        }));
+        assert_eq!(
+            authority_wins.drain().unwrap_err().reason_code,
+            "native-gamepad-disconnected"
+        );
+
+        let coalesced = NativeInputMailbox::new(InputKindV1::Analog);
+        for index in 0..10_000_u64 {
+            coalesced.push(continuous_update(
+                index as f64 / 10_000.0,
+                0.0,
+                observed_at + Duration::from_nanos(index),
+            ));
+        }
+        let drain = coalesced.drain().unwrap();
+        assert_eq!(drain.continuous_superseded_count, 9_999);
+        assert_eq!(drain.continuous.unwrap().x, 0.9999);
+
+        let reversed_arrival = NativeInputMailbox::new(InputKindV1::Analog);
+        reversed_arrival.push(continuous_update(
+            0.8,
+            0.1,
+            observed_at + Duration::from_millis(2),
+        ));
+        reversed_arrival.push(continuous_update(-0.8, -0.1, observed_at));
+        let drain = reversed_arrival.drain().unwrap();
+        assert_eq!(drain.continuous_superseded_count, 1);
+        assert_eq!(drain.continuous.unwrap().x, 0.8);
+
+        let mismatch = NativeInputMailbox::new(InputKindV1::Digital);
+        mismatch.push(continuous_update(0.1, 0.2, observed_at));
+        assert_eq!(
+            mismatch.drain().unwrap_err().reason_code,
+            NATIVE_INPUT_KIND_MISMATCH
+        );
+    }
+
+    #[test]
+    fn coalesced_input_status_saturates_at_the_javascript_safe_integer_limit() {
+        let fixture = PersistenceFixture::new("coalesced-status-bound");
+        let (base, _recovery_path, status, mut worker) = fixture.into_worker();
+        lock(&status).coalesced_input_update_count = JS_MAX_SAFE_INTEGER_U64 - 1;
+        worker
+            .apply_native_input_drain(NativeInputDrain {
+                continuous_superseded_count: 10,
+                ..NativeInputDrain::default()
+            })
+            .unwrap();
+        assert_eq!(
+            lock(&status).coalesced_input_update_count,
+            JS_MAX_SAFE_INTEGER_U64
+        );
+        drop(worker);
+        fs::remove_dir_all(base).unwrap();
+    }
+
+    #[test]
+    fn continuous_input_uses_physical_anchor_and_exposes_coalescing() {
+        let mut fixture = PersistenceFixture::new("continuous-input-anchor");
+        fixture.settings.input = InputBindingV1 {
+            schema: INPUT_BINDING_SCHEMA.to_owned(),
+            version: 1,
+            preset: InputPresetV1::GamepadLeftStick,
+            kind: InputKindV1::Analog,
+            step_size: None,
+            directions: None,
+            axes: Some(InputAxesV1 {
+                x: AxisInputTokenV1::GamepadAxis {
+                    index: 0,
+                    invert: false,
+                },
+                y: AxisInputTokenV1::GamepadAxis {
+                    index: 1,
+                    invert: true,
+                },
+            }),
+        };
+        let run_id = fixture.receipt.run_id.clone();
+        let (base, _recovery_path, status, mut worker) = fixture.into_worker();
+        worker.start().unwrap();
+        worker
+            .apply_stimulus(StimulusStateUpdate {
+                run_id,
+                lifecycle: StimulusLifecycle::Started,
+                stimulus_id: "video-a".to_owned(),
+                stimulus_position: 1,
+                media_time_ms: 0.0,
+            })
+            .unwrap();
+        let observed_at = Instant::now();
+        std::thread::sleep(Duration::from_millis(3));
+        worker
+            .apply_native_input_drain(NativeInputDrain {
+                continuous: Some(NativeContinuousInput {
+                    x: 0.6,
+                    y: -0.4,
+                    detail: "gamepad:analog".to_owned(),
+                    input_active: true,
+                    observed_at,
+                }),
+                continuous_superseded_count: 7,
+                ..NativeInputDrain::default()
+            })
+            .unwrap();
+        assert_eq!(worker.state.anchor, observed_at);
+        assert_eq!(worker.state.current_x, 0.6);
+        assert_eq!(worker.state.current_y, -0.4);
+        let published = lock(&status).clone();
+        assert_eq!(published.current_valence, 0.6);
+        assert_eq!(published.current_arousal, -0.4);
+        assert_eq!(published.coalesced_input_update_count, 7);
+        drop(worker);
+        fs::remove_dir_all(base).unwrap();
+    }
+
+    #[test]
+    fn native_input_sample_then_delayed_edge_keeps_persistence_order_and_physical_anchor() {
+        let fixture = PersistenceFixture::new("sample-before-delayed-edge");
+        let run_id = fixture.receipt.run_id.clone();
+        let (base, _recovery_path, _status, mut worker) = fixture.into_worker();
+        worker.start().unwrap();
+        worker
+            .apply_stimulus(StimulusStateUpdate {
+                run_id,
+                lifecycle: StimulusLifecycle::Started,
+                stimulus_id: "video-a".to_owned(),
+                stimulus_position: 1,
+                media_time_ms: 0.0,
+            })
+            .unwrap();
+        let mailbox = NativeInputMailbox::new(InputKindV1::Digital);
+        worker
+            .apply_native_input_drain(mailbox.drain().unwrap())
+            .unwrap();
+        let observed_at = Instant::now();
+        mailbox.push(digital_update(
+            DirectionV1::Up,
+            "post-drain-edge",
+            observed_at,
+            true,
+            true,
+        ));
+        std::thread::sleep(Duration::from_millis(10));
+        worker.sample_if_due().unwrap();
+        assert_eq!(worker.sample_sequence, 1);
+        worker.files.sync_outputs().unwrap();
+        let sample_table = parse_sample_table(
+            worker.files.csv_partial_path.as_ref().unwrap(),
+            b',',
+            &worker.files.journal,
+        )
+        .unwrap();
+        let sample_monotonic = sample_table.monotonic_values[0];
+
+        worker
+            .apply_native_input_drain(mailbox.drain().unwrap())
+            .unwrap();
+        assert_eq!(worker.state.anchor, observed_at);
+        assert!(Instant::now().duration_since(worker.state.anchor) >= Duration::from_millis(10));
+        let event_monotonic = worker
+            .files
+            .journal
+            .last_monotonic_time_ns
+            .parse::<u128>()
+            .unwrap();
+        assert!(event_monotonic > sample_monotonic);
+
+        let release_at = Instant::now();
+        worker
+            .apply_digital_input(NativeDigitalInput {
+                direction: DirectionV1::Up,
+                detail: "post-drain-edge".to_owned(),
+                apply_step: false,
+                input_active: false,
+                impulse: false,
+                observed_at: release_at,
+            })
+            .unwrap();
+        assert_eq!(worker.state.anchor, release_at);
+        assert!(!lock(&worker.status).input_active);
+        drop(worker);
+        fs::remove_dir_all(base).unwrap();
+    }
+
+    #[test]
+    fn native_input_start_handshake_retains_then_terminal_drain_orders_every_edge_once() {
+        let fixture = PersistenceFixture::new("native-start-handshake");
+        let events_path = fixture.session_dir.join("events.jsonl");
+        let run_id = fixture.receipt.run_id.clone();
+        let (base, _recovery_path, prepared) = fixture.into_prepared();
+        let status = Arc::new(Mutex::new(prepared.initial_status()));
+        let mailbox = Arc::new(NativeInputMailbox::new(InputKindV1::Digital));
+        let (sender, receiver) = mpsc::sync_channel(8);
+        let worker_status = Arc::clone(&status);
+        let worker_mailbox = Arc::clone(&mailbox);
+        let worker =
+            thread::spawn(move || run_worker(prepared, receiver, worker_status, worker_mailbox));
+
+        mailbox.push(digital_update(
+            DirectionV1::Up,
+            "start-race-up",
+            Instant::now(),
+            true,
+            true,
+        ));
+        let (start_reply, start_result) = mpsc::channel();
+        sender
+            .send(RunMessage::Stimulus(
+                StimulusStateUpdate {
+                    run_id,
+                    lifecycle: StimulusLifecycle::Started,
+                    stimulus_id: "video-a".to_owned(),
+                    stimulus_position: 1,
+                    media_time_ms: 0.0,
+                },
+                start_reply,
+            ))
+            .unwrap();
+        start_result
+            .recv_timeout(Duration::from_secs(2))
+            .unwrap()
+            .unwrap();
+        assert_eq!(lock(&status).current_arousal, 0.1);
+
+        mailbox.push(digital_update(
+            DirectionV1::Right,
+            "finish-race-right",
+            Instant::now(),
+            true,
+            true,
+        ));
+        let (finish_reply, finish_result) = mpsc::channel();
+        sender
+            .send(RunMessage::Finish(FinishOutcome::StopEarly, finish_reply))
+            .unwrap();
+        finish_result
+            .recv_timeout(Duration::from_secs(2))
+            .unwrap()
+            .unwrap();
+        worker.join().unwrap();
+
+        let events = fs::read_to_string(events_path).unwrap();
+        assert_eq!(events.matches("\"type\":\"inputEdge\"").count(), 2);
+        assert_eq!(events.matches("start-race-up").count(), 1);
+        assert_eq!(events.matches("finish-race-right").count(), 1);
+        assert!(
+            events.rfind("finish-race-right").unwrap()
+                < events.rfind("\"type\":\"stoppedEarly\"").unwrap()
+        );
+        fs::remove_dir_all(base).unwrap();
+    }
+
+    #[test]
+    fn native_input_failures_persist_recoverable_interruption_with_healthy_writes() {
+        for authority_loss in [false, true] {
+            let label = if authority_loss {
+                "native-authority-loss"
+            } else {
+                "native-edge-overflow"
+            };
+            let fixture = PersistenceFixture::new(label);
+            let run_id = fixture.receipt.run_id.clone();
+            let (base, recovery_path, status, mut worker) = fixture.into_worker();
+            worker.start().unwrap();
+            worker
+                .apply_stimulus(StimulusStateUpdate {
+                    run_id,
+                    lifecycle: StimulusLifecycle::Started,
+                    stimulus_id: "video-a".to_owned(),
+                    stimulus_position: 1,
+                    media_time_ms: 0.0,
+                })
+                .unwrap();
+            if authority_loss {
+                worker
+                    .apply_stimulus(StimulusStateUpdate {
+                        run_id: worker.receipt.run_id.clone(),
+                        lifecycle: StimulusLifecycle::Paused,
+                        stimulus_id: "video-a".to_owned(),
+                        stimulus_position: 1,
+                        media_time_ms: 500.0,
+                    })
+                    .unwrap();
+                assert_eq!(lock(&status).phase, RunPhase::Paused);
+            }
+            let mailbox = NativeInputMailbox::new(InputKindV1::Digital);
+            for index in 0..=NATIVE_INPUT_DIGITAL_CAPACITY {
+                mailbox.push(digital_update(
+                    DirectionV1::Up,
+                    format!("failure-{index}"),
+                    Instant::now(),
+                    true,
+                    true,
+                ));
+            }
+            if authority_loss {
+                mailbox.push(NativeInputUpdate::AuthorityLost(NativeInputAuthorityLoss {
+                    reason_code: "native-gamepad-disconnected",
+                    observed_at: Instant::now(),
+                }));
+            }
+            let failure = mailbox.drain().unwrap_err();
+            let expected = if authority_loss {
+                "native-gamepad-disconnected"
+            } else {
+                NATIVE_INPUT_QUEUE_OVERFLOW
+            };
+            assert_eq!(failure.reason_code, expected);
+            stop_for_native_input_failure(&mut worker, &NativeInputDrainFailure::Input(failure));
+
+            let failed = lock(&status).clone();
+            assert_eq!(failed.phase, RunPhase::Failed);
+            assert_eq!(failed.failure_code.as_deref(), Some(expected));
+            assert!(failed.write_healthy);
+            assert!(!failed.input_active);
+            let journal = read_latest_journal(&recovery_path).unwrap().unwrap();
+            assert_eq!(journal.interrupted_stimulus_position, Some(1));
+            assert!(journal.partial_event_count >= if authority_loss { 5 } else { 4 });
+            let events = fs::read_to_string(&worker.files.events_path).unwrap();
+            assert!(events.contains("\"type\":\"writeInterrupted\""));
+            assert!(events.contains(expected));
+            drop(worker);
+            fs::remove_dir_all(base).unwrap();
+        }
+    }
+
+    #[test]
+    fn native_input_evidence_io_faults_stop_without_recursive_interruption_writes() {
+        for fault in ["event", "journal"] {
+            let fixture = PersistenceFixture::new(&format!("native-input-{fault}-fault"));
+            let run_id = fixture.receipt.run_id.clone();
+            let (base, recovery_path, status, mut worker) = fixture.into_worker();
+            worker.start().unwrap();
+            worker
+                .apply_stimulus(StimulusStateUpdate {
+                    run_id,
+                    lifecycle: StimulusLifecycle::Started,
+                    stimulus_id: "video-a".to_owned(),
+                    stimulus_position: 1,
+                    media_time_ms: 0.0,
+                })
+                .unwrap();
+            if fault == "event" {
+                worker.files.fail_next_event_write = true;
+            } else {
+                worker.files.fail_next_journal_write = true;
+            }
+            let mailbox = NativeInputMailbox::new(InputKindV1::Digital);
+            mailbox.push(digital_update(
+                DirectionV1::Up,
+                format!("{fault}-fault-edge"),
+                Instant::now(),
+                true,
+                true,
+            ));
+            let failure = drain_native_input_mailbox(&mailbox, &mut worker).unwrap_err();
+            assert!(matches!(
+                &failure,
+                NativeInputDrainFailure::Persistence(error) if error.code == "research_io"
+            ));
+            stop_for_native_input_failure(&mut worker, &failure);
+
+            let failed = lock(&status).clone();
+            assert_eq!(failed.phase, RunPhase::Failed);
+            assert_eq!(
+                failed.failure_code.as_deref(),
+                Some("native-input-evidence-persistence-failed")
+            );
+            assert!(!failed.write_healthy);
+            assert!(read_latest_journal(&recovery_path).unwrap().is_some());
+            let events = fs::read_to_string(&worker.files.events_path).unwrap();
+            assert_eq!(events.matches("\"type\":\"writeInterrupted\"").count(), 0);
+            assert_eq!(
+                events.matches(&format!("{fault}-fault-edge")).count(),
+                usize::from(fault == "journal")
+            );
+            drop(worker);
+            fs::remove_dir_all(base).unwrap();
+        }
+    }
+
+    #[test]
+    fn semantic_native_input_invalidity_uses_durable_recovery_interruption() {
+        let fixture = PersistenceFixture::new("native-input-semantic-invalidity");
+        let run_id = fixture.receipt.run_id.clone();
+        let (base, recovery_path, status, mut worker) = fixture.into_worker();
+        worker.start().unwrap();
+        worker
+            .apply_stimulus(StimulusStateUpdate {
+                run_id,
+                lifecycle: StimulusLifecycle::Started,
+                stimulus_id: "video-a".to_owned(),
+                stimulus_position: 1,
+                media_time_ms: 0.0,
+            })
+            .unwrap();
+        // The mailbox contract is internally coherent, but its semantic kind is
+        // incompatible with this frozen digital run binding.
+        let mailbox = NativeInputMailbox::new(InputKindV1::Analog);
+        mailbox.push(continuous_update(0.5, -0.25, Instant::now()));
+        let failure = drain_native_input_mailbox(&mailbox, &mut worker).unwrap_err();
+        assert!(matches!(
+            &failure,
+            NativeInputDrainFailure::Input(input) if input.reason_code == "native-input-invalid"
+        ));
+        stop_for_native_input_failure(&mut worker, &failure);
+
+        let failed = lock(&status).clone();
+        assert_eq!(failed.phase, RunPhase::Failed);
+        assert_eq!(failed.failure_code.as_deref(), Some("native-input-invalid"));
+        assert!(failed.write_healthy);
+        let journal = read_latest_journal(&recovery_path).unwrap().unwrap();
+        assert_eq!(journal.interrupted_stimulus_position, Some(1));
+        let events = fs::read_to_string(&worker.files.events_path).unwrap();
+        assert!(events.contains("\"type\":\"writeInterrupted\""));
+        assert!(events.contains("native-input-invalid"));
+        drop(worker);
+        fs::remove_dir_all(base).unwrap();
+    }
+
+    #[test]
+    fn paused_lifecycle_publishes_inactive_state_even_without_a_service_release() {
+        let fixture = PersistenceFixture::new("pause-input-quiescence");
+        let run_id = fixture.receipt.run_id.clone();
+        let (base, _recovery_path, status, mut worker) = fixture.into_worker();
+        worker.start().unwrap();
+        worker
+            .apply_stimulus(StimulusStateUpdate {
+                run_id: run_id.clone(),
+                lifecycle: StimulusLifecycle::Started,
+                stimulus_id: "video-a".to_owned(),
+                stimulus_position: 1,
+                media_time_ms: 0.0,
+            })
+            .unwrap();
+        worker
+            .apply_digital_input(NativeDigitalInput {
+                direction: DirectionV1::Up,
+                detail: "pause-held-key".to_owned(),
+                apply_step: true,
+                input_active: true,
+                impulse: false,
+                observed_at: Instant::now(),
+            })
+            .unwrap();
+        assert!(lock(&status).input_active);
+        worker
+            .apply_stimulus(StimulusStateUpdate {
+                run_id,
+                lifecycle: StimulusLifecycle::Paused,
+                stimulus_id: "video-a".to_owned(),
+                stimulus_position: 1,
+                media_time_ms: 25.0,
+            })
+            .unwrap();
+        let paused = lock(&status).clone();
+        assert_eq!(paused.phase, RunPhase::Paused);
+        assert!(!paused.input_active);
+        assert_eq!(paused.current_arousal, 0.1);
+        drop(worker);
+        fs::remove_dir_all(base).unwrap();
+    }
+
+    #[test]
+    fn paused_lifecycle_preserves_continuous_rating_coordinates() {
+        let fixture = PersistenceFixture::new("pause-continuous-rating");
+        let run_id = fixture.receipt.run_id.clone();
+        let (base, _recovery_path, status, mut worker) = fixture.into_worker();
+        worker.settings.input.kind = InputKindV1::Analog;
+        worker.start().unwrap();
+        worker
+            .apply_stimulus(StimulusStateUpdate {
+                run_id: run_id.clone(),
+                lifecycle: StimulusLifecycle::Started,
+                stimulus_id: "video-a".to_owned(),
+                stimulus_position: 1,
+                media_time_ms: 0.0,
+            })
+            .unwrap();
+        worker
+            .apply_continuous_input(NativeContinuousInput {
+                x: 0.6,
+                y: -0.4,
+                detail: "gamepad:analog".to_owned(),
+                input_active: true,
+                observed_at: Instant::now(),
+            })
+            .unwrap();
+        worker
+            .apply_continuous_input(NativeContinuousInput {
+                x: 0.6,
+                y: -0.4,
+                detail: "native:lifecycle-release".to_owned(),
+                input_active: false,
+                observed_at: Instant::now(),
+            })
+            .unwrap();
+        worker
+            .apply_stimulus(StimulusStateUpdate {
+                run_id,
+                lifecycle: StimulusLifecycle::Paused,
+                stimulus_id: "video-a".to_owned(),
+                stimulus_position: 1,
+                media_time_ms: 25.0,
+            })
+            .unwrap();
+        let paused = lock(&status).clone();
+        assert_eq!(paused.phase, RunPhase::Paused);
+        assert!(!paused.input_active);
+        assert_eq!(paused.current_valence, 0.6);
+        assert_eq!(paused.current_arousal, -0.4);
+        assert_eq!(worker.state.target_x, 0.6);
+        assert_eq!(worker.state.target_y, -0.4);
+        drop(worker);
+        fs::remove_dir_all(base).unwrap();
+    }
+
+    #[test]
+    fn interrupt_timeout_retains_worker_handle_and_input_authority_for_cleanup() {
+        let base = temporary_directory("interrupt-timeout-authority");
+        let workspace = Arc::new(WorkspaceService::new(base.join("app-data")).unwrap());
+        let input = Arc::new(ResearchInputService::for_tests());
+        let binding = crate::research_contracts::tests::default_settings().input;
+        let receipt = input.issue_test_receipt_for_tests(binding.clone()).unwrap();
+        let authority_id = input
+            .prepare_run_full(binding, &receipt.receipt_id, |_| {})
+            .unwrap();
+        input.set_run_accepting(&authority_id, true).unwrap();
+
+        let (sender, receiver) = mpsc::sync_channel(1);
+        let entered = Arc::new(std::sync::Barrier::new(2));
+        let release = Arc::new(std::sync::Barrier::new(2));
+        let worker_entered = Arc::clone(&entered);
+        let worker_release = Arc::clone(&release);
+        let (completed_sender, completed_receiver) = mpsc::channel();
+        let worker = thread::spawn(move || {
+            let RunMessage::Interrupt(reply) = receiver.recv().unwrap() else {
+                panic!("expected an interruption command");
+            };
+            worker_entered.wait();
+            worker_release.wait();
+            let _ = reply.send(Ok(()));
+            drop(receiver);
+            completed_sender.send(()).unwrap();
+        });
+        let runtime = ResearchRuntime::with_services(
+            workspace,
+            Arc::new(NativeMediaService::unavailable_for_tests()),
+            Arc::clone(&input),
+        );
+        *runtime.lock_active() = Some(ActiveRun {
+            run_id: Uuid::new_v4().to_string(),
+            playback_mode: PlaybackMode::UnqualifiedWebview,
+            sender,
+            status: Arc::new(Mutex::new(RunStatus::idle())),
+            worker: Some(worker),
+            input_authority_id: authority_id,
+            input_mailbox: Arc::new(NativeInputMailbox::new(InputKindV1::Digital)),
+        });
+
+        let error = runtime
+            .interrupt_with_timeout(Duration::from_millis(5))
+            .unwrap_err();
+        entered.wait();
+        assert_eq!(error.code, "research_io");
+        {
+            let active = runtime.lock_active();
+            assert!(active.as_ref().is_some_and(|run| run.worker.is_some()));
+        }
+        assert_eq!(
+            input.status().phase,
+            crate::research_input::NativeInputPhase::RunPrepared
+        );
+
+        release.wait();
+        completed_receiver
+            .recv_timeout(Duration::from_secs(1))
+            .unwrap();
+        assert!(runtime
+            .interrupt_with_timeout(Duration::from_secs(1))
+            .is_err());
+        assert!(runtime.lock_active().is_none());
+        assert_eq!(
+            input.status().phase,
+            crate::research_input::NativeInputPhase::Idle
+        );
+        fs::remove_dir_all(base).unwrap();
     }
 
     #[test]
@@ -5343,6 +6684,228 @@ mod tests {
         assert!(!fixture.session_dir.join("ratings.tsv.partial").exists());
         let events = fs::read_to_string(fixture.session_dir.join("events.jsonl")).unwrap();
         assert_eq!(events.matches("\"type\":\"stoppedEarly\"").count(), 1);
+        let base = fixture.base.clone();
+        drop(fixture);
+        fs::remove_dir_all(base).unwrap();
+    }
+
+    #[test]
+    fn every_terminal_commit_boundary_is_retryable_and_byte_identical() {
+        let boundaries = [
+            FinalizationPersistenceBoundary::TerminalEventWritten,
+            FinalizationPersistenceBoundary::TerminalEventSynced,
+            FinalizationPersistenceBoundary::RatingsRenamed(RunOutputKindV1::Csv),
+            FinalizationPersistenceBoundary::RatingsSynced(RunOutputKindV1::Csv),
+            FinalizationPersistenceBoundary::RatingsRenamed(RunOutputKindV1::Tsv),
+            FinalizationPersistenceBoundary::RatingsSynced(RunOutputKindV1::Tsv),
+            FinalizationPersistenceBoundary::ManifestPrefixWritten,
+            FinalizationPersistenceBoundary::ManifestWritten,
+            FinalizationPersistenceBoundary::ManifestSynced,
+        ];
+
+        for boundary in boundaries {
+            let mut fixture = PersistenceFixture::new(&format!("finalize-boundary-{boundary:?}"));
+            fixture.prepare_finalization_intent().unwrap();
+            let pending_before = fixture.files.journal.pending_finalization.clone().unwrap();
+            let mut checkpoints = FinalizationPersistenceCheckpoints::failing_after(boundary);
+            let injected = commit_pending_finalization_with_checkpoints(
+                &fixture.session_dir,
+                &fixture.files.journal,
+                &mut checkpoints,
+            )
+            .expect_err("the selected persistence boundary must fail deterministically");
+            assert_eq!(injected.code, "research_io", "boundary {boundary:?}");
+            assert!(
+                checkpoints.observed.contains(&boundary),
+                "boundary {boundary:?} was not reached"
+            );
+            assert!(fixture.files.recovery_path.is_file());
+            let retained = read_latest_journal(&fixture.files.recovery_path)
+                .unwrap()
+                .expect("the durable terminal intent must remain recoverable");
+            assert_eq!(
+                retained.pending_finalization.as_ref(),
+                Some(&pending_before),
+                "boundary {boundary:?} changed the durable intent"
+            );
+            if boundary == FinalizationPersistenceBoundary::ManifestPrefixWritten {
+                let partial = fs::read(fixture.session_dir.join("manifest.json")).unwrap();
+                let expected = canonical_json(&pending_before.manifest, &[]).unwrap();
+                assert!(!partial.is_empty());
+                assert!(partial.len() < expected.len());
+                assert!(expected.starts_with(&partial));
+            }
+            let interrupted_events =
+                fs::read_to_string(fixture.session_dir.join("events.jsonl")).unwrap();
+            assert_eq!(
+                interrupted_events
+                    .matches("\"type\":\"stoppedEarly\"")
+                    .count(),
+                1,
+                "boundary {boundary:?} duplicated the terminal event"
+            );
+
+            let receipt = fixture
+                .files
+                .complete_finalization(&fixture.receipt)
+                .unwrap();
+            assert_eq!(receipt.completion_status, CompletionStatusV1::Partial);
+            assert_eq!(receipt.files.len(), 5);
+            assert!(!fixture.files.recovery_path.exists());
+            assert!(fixture.session_dir.join("ratings.csv").is_file());
+            assert!(fixture.session_dir.join("ratings.tsv").is_file());
+            assert!(!fixture.session_dir.join("ratings.csv.partial").exists());
+            assert!(!fixture.session_dir.join("ratings.tsv.partial").exists());
+
+            let final_events =
+                fs::read_to_string(fixture.session_dir.join("events.jsonl")).unwrap();
+            assert_eq!(
+                final_events.matches("\"type\":\"stoppedEarly\"").count(),
+                1,
+                "boundary {boundary:?} duplicated the terminal event on retry"
+            );
+            let manifest_bytes = fs::read(fixture.session_dir.join("manifest.json")).unwrap();
+            let manifest: ResearchRunManifestV2 = serde_json::from_slice(&manifest_bytes).unwrap();
+            assert_eq!(canonical_json(&manifest, &[]).unwrap(), manifest_bytes);
+            assert_eq!(manifest, pending_before.manifest);
+            verify_committed_manifest_outputs(&fixture.session_dir, &manifest).unwrap();
+
+            let base = fixture.base.clone();
+            drop(fixture);
+            fs::remove_dir_all(base).unwrap();
+        }
+    }
+
+    #[test]
+    fn every_exact_manifest_byte_prefix_is_append_retryable() {
+        let base = temporary_directory("all-manifest-prefixes");
+        let path = base.join("manifest.json");
+        let expected =
+            b"{\"schema\":\"affect-research-run-manifest\",\"version\":2,\"status\":\"partial\"}";
+
+        for prefix_len in 0..=expected.len() {
+            fs::write(&path, &expected[..prefix_len]).unwrap();
+            let mut checkpoints = FinalizationPersistenceCheckpoints::production();
+            complete_or_sync_manifest_prefix(&path, expected, &mut checkpoints).unwrap();
+            assert_eq!(fs::read(&path).unwrap(), expected, "prefix {prefix_len}");
+            assert_eq!(
+                checkpoints
+                    .observed
+                    .contains(&FinalizationPersistenceBoundary::ManifestWritten),
+                prefix_len < expected.len(),
+                "prefix {prefix_len} used the wrong write path"
+            );
+            assert_eq!(
+                checkpoints.observed.last(),
+                Some(&FinalizationPersistenceBoundary::ManifestSynced),
+                "prefix {prefix_len} was not synced"
+            );
+        }
+
+        fs::remove_dir_all(base).unwrap();
+    }
+
+    #[test]
+    fn manifest_prefix_boundary_is_recoverable_after_reload() {
+        for route in ["resume", "finalize"] {
+            let mut fixture = PersistenceFixture::new(&format!("manifest-prefix-reload-{route}"));
+            fixture.prepare_finalization_intent().unwrap();
+            let pending = fixture.files.journal.pending_finalization.clone().unwrap();
+            let expected = canonical_json(&pending.manifest, &[]).unwrap();
+            let recovery_id = fixture.files.journal.recovery_id.clone();
+            let mut checkpoints = FinalizationPersistenceCheckpoints::failing_after(
+                FinalizationPersistenceBoundary::ManifestPrefixWritten,
+            );
+            let injected = commit_pending_finalization_with_checkpoints(
+                &fixture.session_dir,
+                &fixture.files.journal,
+                &mut checkpoints,
+            )
+            .expect_err("the partial-manifest checkpoint must interrupt finalization");
+            assert_eq!(injected.code, "research_io");
+            let partial = fs::read(fixture.session_dir.join("manifest.json")).unwrap();
+            assert!(!partial.is_empty());
+            assert!(partial.len() < expected.len());
+            assert!(expected.starts_with(&partial));
+
+            let PersistenceFixture {
+                base,
+                workspace_root,
+                session_dir,
+                settings,
+                plan,
+                files,
+                ..
+            } = fixture;
+            let recovery_path = files.recovery_path.clone();
+            drop(files);
+
+            let listing = scan_recoveries(&workspace_root).unwrap();
+            assert_eq!(listing.recoveries.len(), 1, "route {route}");
+            assert!(listing.corrupt_recovery_ids.is_empty(), "route {route}");
+            assert!(listing.recoveries[0].finalization_pending, "route {route}");
+
+            if route == "resume" {
+                let error = PreparedRun::resume(
+                    &workspace_root,
+                    &recovery_id,
+                    settings,
+                    plan,
+                    PlaybackMode::UnqualifiedWebview,
+                    PlaybackQualification::Unqualified,
+                )
+                .err()
+                .expect("pending finalization must not resume acquisition");
+                assert_eq!(error.code, "forbidden_operation");
+            } else {
+                let receipt =
+                    finalize_recovery_at_root(&workspace_root, &recovery_id, &settings, &plan)
+                        .unwrap();
+                assert_eq!(receipt.completion_status, CompletionStatusV1::Partial);
+            }
+            assert_eq!(
+                fs::read(session_dir.join("manifest.json")).unwrap(),
+                expected
+            );
+            assert!(!recovery_path.exists());
+            fs::remove_dir_all(base).unwrap();
+        }
+    }
+
+    #[test]
+    fn conflicting_manifest_prefix_is_never_overwritten_during_retry() {
+        let mut fixture = PersistenceFixture::new("finalize-conflicting-manifest-prefix");
+        fixture.prepare_finalization_intent().unwrap();
+        let manifest_path = fixture.session_dir.join("manifest.json");
+        let expected = canonical_json(
+            &fixture
+                .files
+                .journal
+                .pending_finalization
+                .as_ref()
+                .unwrap()
+                .manifest,
+            &[],
+        )
+        .unwrap();
+        let divergence = expected.len() / 2;
+        let mut conflicting = expected[..=divergence].to_vec();
+        conflicting[divergence] ^= 1;
+        assert!(expected.starts_with(&conflicting[..divergence]));
+        assert!(!expected.starts_with(&conflicting));
+        fs::write(&manifest_path, &conflicting).unwrap();
+
+        let error = fixture
+            .files
+            .complete_finalization(&fixture.receipt)
+            .expect_err("conflicting final-manifest bytes must fail closed");
+        assert_eq!(error.code, "forbidden_operation");
+        assert_eq!(fs::read(&manifest_path).unwrap(), conflicting);
+        assert!(fixture.files.recovery_path.is_file());
+        let listing = scan_recoveries(&fixture.workspace_root).unwrap();
+        assert!(listing.recoveries.is_empty());
+        assert_eq!(listing.corrupt_recovery_ids.len(), 1);
+
         let base = fixture.base.clone();
         drop(fixture);
         fs::remove_dir_all(base).unwrap();
@@ -5746,6 +7309,29 @@ mod tests {
         assert!(listing.recoveries.is_empty());
         assert_eq!(listing.corrupt_recovery_ids.len(), 1);
         assert!(!listing.corrupt_recovery_ids[0].contains("private"));
+        fs::remove_dir_all(base).unwrap();
+    }
+
+    #[test]
+    fn complete_corrupt_journal_record_is_quarantined_without_repair() {
+        let fixture = PersistenceFixture::new("complete-corrupt-journal-record");
+        let journal_path = fixture.files.recovery_path.clone();
+        let mut expected_bytes = fs::read(&journal_path).unwrap();
+        expected_bytes.extend_from_slice(b"{}\n");
+        let mut corrupt_append = OpenOptions::new().append(true).open(&journal_path).unwrap();
+        corrupt_append.write_all(b"{}\n").unwrap();
+        corrupt_append.sync_all().unwrap();
+
+        assert!(read_latest_journal(&journal_path).unwrap().is_none());
+        let listing = scan_recoveries(&fixture.workspace_root).unwrap();
+        assert!(listing.recoveries.is_empty());
+        assert_eq!(listing.corrupt_recovery_ids.len(), 1);
+        assert!(journal_path.is_file());
+        assert_eq!(fs::read(&journal_path).unwrap(), expected_bytes);
+        assert!(!fixture.session_dir.join("manifest.json").exists());
+
+        let base = fixture.base.clone();
+        drop(fixture);
         fs::remove_dir_all(base).unwrap();
     }
 

@@ -35,6 +35,7 @@ function nativeStatus(overrides = {}) {
     eventCount: 0,
     gapEventCount: 0,
     missedSlotCount: 0,
+    coalescedInputUpdateCount: 0,
     currentValence: 0,
     currentArousal: 0,
     inputActive: false,
@@ -64,6 +65,7 @@ function finalizedFiles() {
 test("native timing readiness requires a complete bounded RunStatus handshake", () => {
   assert.equal(nativeRunStatusHandshake(nativeStatus()), true);
   assert.equal(nativeRunStatusHandshake(nativeStatus({ sampleCount: -1 })), false);
+  assert.equal(nativeRunStatusHandshake(nativeStatus({ coalescedInputUpdateCount: -1 })), false);
   assert.equal(nativeRunStatusHandshake(nativeStatus({ currentValence: 1.01 })), false);
   assert.equal(nativeRunStatusHandshake(nativeStatus({ transitionReady: "yes" })), false);
   assert.equal(nativeRunStatusHandshake(nativeStatus({ phase: "playing" })), false);
@@ -588,19 +590,86 @@ test("explicit pending finalization cannot be retargeted by a newer resumable re
   assert.throws(() => selectPendingNativeFinalizationRecovery([pending, { ...pending }], expected), /duplicate pending finalization identities/u);
 });
 
-test("Tauri exposes only implemented native input presets and bounded client regions", () => {
+test("Tauri projects each native input preset through explicit backend capabilities", () => {
   const capability = {
     nativeAuthorityReady: true,
-    supportedPresets: ["arrowKeys", "wasd", "ijkl", "numpad", "mouseButtonsWheel", "custom"],
+    supportedPresets: [
+      "arrowKeys", "wasd", "ijkl", "numpad", "pointerGrid", "mouseButtonsWheel",
+      "gamepadDpad", "gamepadLeftStick", "gamepadRightStick", "custom",
+    ],
+    supportsCustomKeyboard: true,
+    supportsCustomMouseButtons: true,
+    supportsCustomWheel: true,
+    supportsCustomGamepadButtons: true,
+    supportsAbsolutePointer: true,
+    supportsGamepad: true,
   };
   const availability = nativeInputPresetAvailability(capability);
   assert.equal(availability["arrow-keys"], true);
-  assert.equal(availability["pointer-grid"], false);
-  assert.equal(availability["gamepad-dpad"], false);
-  assert.equal(nativeInputBindingSupported({
+  assert.equal(availability["pointer-grid"], true);
+  assert.equal(availability["gamepad-dpad"], true);
+
+  const pointer = {
+    preset: "pointerGrid", kind: "absolute",
+    axes: {
+      x: { kind: "pointerAxis", axis: "x", invert: false },
+      y: { kind: "pointerAxis", axis: "y", invert: true },
+    },
+  };
+  const dpad = {
+    preset: "gamepadDpad", kind: "digital",
+    directions: {
+      up: { kind: "gamepadButton", button: 12 },
+      down: { kind: "gamepadButton", button: 13 },
+      left: { kind: "gamepadButton", button: 14 },
+      right: { kind: "gamepadButton", button: 15 },
+    },
+  };
+  const leftStick = {
+    preset: "gamepadLeftStick", kind: "analog",
+    axes: {
+      x: { kind: "gamepadAxis", index: 0, invert: false },
+      y: { kind: "gamepadAxis", index: 1, invert: true },
+    },
+  };
+  const rightStick = {
+    ...leftStick,
+    preset: "gamepadRightStick",
+    axes: {
+      x: { kind: "gamepadAxis", index: 2, invert: false },
+      y: { kind: "gamepadAxis", index: 3, invert: true },
+    },
+  };
+  const mixedCustom = {
     preset: "custom", kind: "digital",
-    directions: { up: { kind: "gamepadButton", button: 0 } },
+    directions: {
+      up: { kind: "keyboard", code: "KeyW" },
+      down: { kind: "mouseButton", button: 0 },
+      left: { kind: "wheel", direction: "left" },
+      right: { kind: "gamepadButton", button: 0 },
+    },
+  };
+  for (const binding of [pointer, dpad, leftStick, rightStick, mixedCustom]) {
+    assert.equal(nativeInputBindingSupported(binding, capability), true);
+  }
+  assert.equal(nativeInputBindingSupported(pointer, {
+    ...capability, supportsAbsolutePointer: false,
+  }), false);
+  assert.equal(nativeInputBindingSupported(leftStick, {
+    ...capability, supportsGamepad: false,
+  }), false);
+  assert.equal(nativeInputBindingSupported(dpad, {
+    ...capability, supportsCustomGamepadButtons: false,
+  }), false);
+  assert.equal(nativeInputBindingSupported(mixedCustom, {
+    ...capability, supportsCustomWheel: false,
+  }), false);
+  assert.equal(nativeInputBindingSupported({
+    ...dpad, directions: { ...dpad.directions, right: undefined },
   }, capability), false);
+});
+
+test("native input regions remain bounded to visible client coordinates", () => {
   assert.deepEqual(nativeInputRegionRequest({
     getBoundingClientRect: () => ({ left: 10, top: 20, right: 110, bottom: 220, width: 100, height: 200 }),
   }, "runFeedback", 7, { innerWidth: 800, innerHeight: 600 }), {

@@ -643,16 +643,20 @@ export class BrowserResearchRunController extends EventTarget {
     this.workerCommands.clear();
     this.expectedWorkerSampleSequence = 1;
     this.worker.addEventListener("message", ({ data }) => this.#workerMessage(data));
-    this.worker.addEventListener("error", () => {
+    const workerFailure = () => {
+      if (!this.worker) return;
       this.#terminateWorker(new Error("Sampling worker failed."));
       this.dispatchEvent(new CustomEvent("runtimeerror", { detail: { code: "sampling-worker" } }));
       void this.interrupt("sampling-worker-failed");
-    });
+    };
+    this.worker.addEventListener("error", workerFailure);
+    this.worker.addEventListener("messageerror", workerFailure);
     const ready = new Promise((resolve, reject) => {
       const cleanup = () => {
         clearTimeout(timeout);
         this.worker?.removeEventListener("message", listener);
         this.worker?.removeEventListener("error", errorListener);
+        this.worker?.removeEventListener("messageerror", errorListener);
       };
       const listener = ({ data }) => {
         if (data?.type !== "ready") return;
@@ -679,6 +683,7 @@ export class BrowserResearchRunController extends EventTarget {
       }, 5_000);
       this.worker.addEventListener("message", listener);
       this.worker.addEventListener("error", errorListener, { once: true });
+      this.worker.addEventListener("messageerror", errorListener, { once: true });
     });
     this.worker.postMessage({
       type: "configure",
